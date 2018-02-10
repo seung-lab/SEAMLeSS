@@ -1,15 +1,28 @@
-# neuroflow
-
+# Neuroflow
+Compute Flow across sections and align.
 
 # Run
 
+Run the environment
+```
+nvidia-docker run -it --net=host \
+      -v $(pwd):/Neuroflow
+      -v /usr/people/$USER/.neuroglancer/secrets/:/root/.cloudvolume/secrets/ \
+      -e GOOGLE_APPLICATION_CREDENTIALS='/root/.cloudvolume/secrets/google-secret.json' \
+      cavelab:latest-gpu bash
+```
+And to train
+
+```
+cd /Neuroflow
+python neuroflow/train.py
+```
 
 # Goals
-
 1. small dataset (Proof of concept)
 2. a section (MVP)
-3. 10 sections (beta)
-4. 100 sections (alpha)
+3. Pinky 10 sections (beta)
+4. Pinky 100 sections (alpha)
 5. Phase II (production)
 
 # Todos
