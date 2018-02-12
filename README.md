@@ -9,7 +9,7 @@ nvidia-docker run -it --net=host \
       -v $(pwd):/Neuroflow
       -v /usr/people/$USER/.neuroglancer/secrets/:/root/.cloudvolume/secrets/ \
       -e GOOGLE_APPLICATION_CREDENTIALS='/root/.cloudvolume/secrets/google-secret.json' \
-      cavelab:latest-gpu bash
+      davidbun/cavelab:latest-gpu bash
 ```
 And to train
 
@@ -27,14 +27,13 @@ python neuroflow/train.py
 
 # Todos
 - Training
-  - data (in process) 1
+  V data (in process) 1
   V simple test data (in process) 1
-  - hierarchical training 2
+  - Hierarchical training 2
+  - Data Augmentation
+  - Compute Confidence level
 - Visualization 1
-  - Optical flow 1
-  - Tensorboard images 1
-- Experiments 2
-  - Log data 2
+  V Optical flow 1
   - Tensorboard 2
 - Inference 3
   - Compute flow 3
