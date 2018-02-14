@@ -29,12 +29,22 @@ python neuroflow/train.py
 - Training
   V data (in process) 1
   V simple test data (in process) 1
+  - Experiments
+    - Crack and Fold Detector
   - Hierarchical training 2
-  - Data Augmentation
-  - Compute Confidence level
+    - Per layer training 2
+    - Consider adding smoothness 2
+    - Locking specific layers 2
+    - Generic Looping 3
+  - Data Augmentation (Need to be smart)
+    - Flipping 2
+    - Rotations 2
+    - Translations 3
+    - Elastic Deformations 3
 - Visualization 1
   V Optical flow 1
   - Tensorboard 2
 - Inference 3
   - Compute flow 3
   - Apply 3
+  - Compute Confidence level

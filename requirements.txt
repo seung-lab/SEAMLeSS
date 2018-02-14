@@ -1,2 +1,5 @@
+cavelab
+numpy
 pytorch
 matplotlib
+tensorboardX
