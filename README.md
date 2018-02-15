@@ -5,11 +5,11 @@ Compute Flow across sections and align.
 
 Run the environment
 ```
-nvidia-docker run -it --net=host \
-      -v $(pwd):/Neuroflow
+NV_GPU=$1 nvidia-docker run -it --net=host \
+      -v $(pwd):/Neuroflow \
       -v /usr/people/$USER/.neuroglancer/secrets/:/root/.cloudvolume/secrets/ \
       -e GOOGLE_APPLICATION_CREDENTIALS='/root/.cloudvolume/secrets/google-secret.json' \
-      davidbun/cavelab:latest-gpu bash
+      davidbun/cavelab:stable-gpu bash
 ```
 And to train
 
@@ -27,8 +27,8 @@ python neuroflow/train.py
 
 # Todos
 - Training
-  V data (in process) 1
-  V simple test data (in process) 1
+  - data (in process) 1 (Done)
+  - simple test data (in process) 1 (Done)
   - Experiments
     - Crack and Fold Detector
   - Hierarchical training 2
@@ -41,10 +41,10 @@ python neuroflow/train.py
     - Rotations 2
     - Translations 3
     - Elastic Deformations 3
-- Visualization 1
-  V Optical flow 1
+- Visualization 1 (Done)
+  - Optical flow 1
   - Tensorboard 2
-- Inference 3
+- Inference 3 (Sergiy)
   - Compute flow 3
   - Apply 3
   - Compute Confidence level

@@ -44,7 +44,7 @@ class G(nn.Module):
     def forward(self, x, R):
         r = self.flow(x)
         R = r + R
-        x = torch.index_select(x, 1, self.index)
+        x = torch.index_select(x, 1, self.index) #FIXME use slicing []
         y = F.grid_sample(x, R.permute(0,2,3,1))
         return y, R, r
 
@@ -92,7 +92,7 @@ class Pyramid(nn.Module):
         G_level = []
         for i in range(levels):
             G_level.append(G())
-        self.G_level = ListModule(*G_level)
+        self.G_level = ListModule(*G_level) #FIXME nn.Module.List
 
         shape[2], shape[3] = int(shape[2]/2**levels), int(shape[3]/2**levels)
         identity = get_identity(batch_size=shape[0], width=shape[3])

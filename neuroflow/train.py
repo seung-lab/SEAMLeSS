@@ -24,7 +24,7 @@ if not torch.cuda.is_available():
 def mse_loss(input,target):
     out = torch.pow((input[:,16:240,16:240]-target[:,16:240,16:240]), 2)
     #out = torch.pow(input-target, 2)
-    loss = out.sum()
+    loss = out.mean()
     return loss
 
 
@@ -34,6 +34,17 @@ def mse_loss(input,target):
 #   - load Gs = {G_i: i>level & i<level+5 & i<10}
 #   - load Pyramid(Gs.locked())
 #   - save Pyramid.G[0]
+
+# [batch, 2, shape, shape]
+def smoothness_penalty(fields, order=1):
+    factor = lambda f: f.size()[2] / 256
+    dx =     lambda f: (f[:,:,1:,:] - f[:,:,:-1,:]) * factor(f)
+    dy =     lambda f: (f[:,:,:,1:] - f[:,:,:,:-1]) * factor(f)
+    for idx in range(order):
+        fields = sum(map(lambda f: [dx(f), dy(f)], fields), [])  # given k-th derivatives, compute (k+1)-th
+    square_errors = map(lambda f: torch.sum(f ** 2, 1), fields) # sum along last axis (x/y channel)
+    return sum(map(torch.mean, square_errors))
+
 
 def train(hparams):
 
@@ -51,25 +62,28 @@ def train(hparams):
 
     for i in range(hparams.steps):
         _target, _image = d.get_batch()
+
         image = Variable(torch.from_numpy(_image).cuda())
         target = Variable(torch.from_numpy(_target).cuda())
         x = torch.stack([image, target], dim=1)
 
         optimizer.zero_grad()
-
         ys, Rs, rs = model(x)
+        s = smoothness_penalty(Rs, 2)
 
         pred = torch.squeeze(ys[-1])
-        loss = mse_loss(pred, target)
-
+        loss = mse_loss(pred, target)+100*s
         loss.backward()
         optimizer.step()
-
+        #print('iteration time', t2-t1, t3-t2, t4-t3)
         if i%50 ==0: # Takes 4s
             #test(model, test_data) #0.7s
             print(i, 'loss', loss.data[0])
 
-            vizuaize(image, target, pred, Rs[-1], i, writer)
+            vizuaize(image,
+                    target,
+                    pred,
+                    Rs[-1], i, writer)
             writer.add_scalar('data/loss', loss, i)
             torch.save(model, path+'/model.pt') #0.3s
     writer.close()
@@ -103,24 +117,24 @@ def test(model, test_data):
 
 
 # Input four Pytorch variables that contain
-def vizuaize(image, target, prediction, transform, n_iter, writer, name="Train/"):
+def vizuaize(image, target, prediction, transform, n_iter, writer, name="Train/", crop=16):
     batch_size = image.shape[0]
 
     ### Vizualize examples
-    im = vutils.make_grid(image.data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
-    ta = vutils.make_grid(target.data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
-    pr = vutils.make_grid(prediction.data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
+    im = vutils.make_grid(image[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
+    ta = vutils.make_grid(target[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
+    pr = vutils.make_grid(prediction[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
 
     writer.add_image(name+'Images/image', im, n_iter)
     writer.add_image(name+'Images/target', ta, n_iter)
     writer.add_image(name+'Images/predictions', pr, n_iter)
 
     ### Optical Flow
-    R = transform.data.cpu().numpy()
-    R = R - get_identity(batch_size=batch_size, width=R.shape[-1])[0]
+    R = transform[:,:,crop:-crop,crop:-crop].data.cpu().numpy()
+    R = R - get_identity(batch_size=batch_size, width=transform.shape[-1])[0][:,crop:-crop,crop:-crop]
     R = np.transpose(R, (0,2,3,1))
 
-    width = transform.shape[-1]
+    width = transform.shape[-1]-2*crop
     hsvs = np.zeros((batch_size, 3, width, width))
     grids = np.zeros((batch_size, 3, 242, 242))
 

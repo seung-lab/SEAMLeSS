@@ -13,7 +13,7 @@
         "radius": {"data": 5, "type": "int", "description": "Maximum radius for finding second" },
         "mean_over_batch": {"data": true, "type": "bool", "description": "Take the mean over the batch otherwise min" },
         "lambd": {"data": -0.5, "type": "float", "description": "Lambda for mixed loss" },
-        "eps": {"data": 0.0001, "type": "float", "description": "small number" },
+        "eps": {"data": 0.00001, "type": "float", "description": "small number" },
         "loss_type": {"data": "dist", "type": "str", "description": "Define the loss format either 'dist' or 'ratio' " },
         "loss_form": {"data": "minus", "type": "str", "description": "Define the loss formulae to minimize over {'minus', 'inverse', 'log'}" },
         "softmax": {"data": false, "type": "bool", "description": "Use Softmax"},
