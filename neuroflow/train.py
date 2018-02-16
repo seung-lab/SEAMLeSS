@@ -69,10 +69,10 @@ def train(hparams):
 
         optimizer.zero_grad()
         ys, Rs, rs = model(x)
-        s = smoothness_penalty(Rs, 2)
+        s = smoothness_penalty([Rs[-1]], 2)
 
         pred = torch.squeeze(ys[-1])
-        loss = mse_loss(pred, target)+100*s
+        loss = mse_loss(pred, target)+300*s
         loss.backward()
         optimizer.step()
         #print('iteration time', t2-t1, t3-t2, t4-t3)

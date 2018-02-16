@@ -38,40 +38,14 @@ class G(nn.Module):
             nn.ReLU(True),
             nn.Conv2d(16, 2, kernel_size=7, padding=3),
         ).cuda()
-        self.index = Variable(torch.cuda.LongTensor([0]), requires_grad=False)
 
     # Flow transformer network forward function
     def forward(self, x, R):
         r = self.flow(x)
         R = r + R
-        x = torch.index_select(x, 1, self.index) #FIXME use slicing []
-        y = F.grid_sample(x, R.permute(0,2,3,1))
+        y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1))
         return y, R, r
 
-
-### written by Francisco Massa
-### Move to Cavelab
-class ListModule(nn.Module):
-    def __init__(self, *args):
-        super(ListModule, self).__init__()
-        idx = 0
-        for module in args:
-            self.add_module(str(idx), module)
-            idx += 1
-
-    def __getitem__(self, idx):
-        if idx < 0 or idx >= len(self._modules):
-            raise IndexError('index {} is out of range'.format(idx))
-        it = iter(self._modules.values())
-        for i in range(idx):
-            next(it)
-        return next(it)
-
-    def __iter__(self):
-        return iter(self._modules.values())
-
-    def __len__(self):
-        return len(self._modules)
 
 # Pyramid Level
 # --------------------------------------
@@ -89,17 +63,14 @@ class ListModule(nn.Module):
 class Pyramid(nn.Module):
     def __init__(self, levels=1, shape=[8,2,64,64]):
         super(Pyramid, self).__init__()
-        G_level = []
+        self.G_level = nn.ModuleList()
         for i in range(levels):
-            G_level.append(G())
-        self.G_level = ListModule(*G_level) #FIXME nn.Module.List
+            self.G_level.append(G())
 
         shape[2], shape[3] = int(shape[2]/2**levels), int(shape[3]/2**levels)
         identity = get_identity(batch_size=shape[0], width=shape[3])
 
         self.identity = Variable(torch.from_numpy(identity).cuda(), requires_grad=False)
-
-        #self.identity = torch.cuda.FloatTensor(*shape).fill_(0)
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear')
         self.levels = levels
         self.downsample = nn.AvgPool2d(2, stride=2)
