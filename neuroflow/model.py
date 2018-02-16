@@ -12,7 +12,6 @@ import numpy as np
 
 # G - Level convolution
 # --------------------------------------
-#
 # Network that takes input
 # - x [batch, 2, width, height] two images
 # - R [batch, 2, width, height] coarse estimate of the flow
@@ -37,7 +36,7 @@ class G(nn.Module):
             nn.Conv2d(32, 16, kernel_size=7, padding=3),
             nn.ReLU(True),
             nn.Conv2d(16, 2, kernel_size=7, padding=3),
-        ).cuda()
+        ).cuda(device=0)
 
     # Flow transformer network forward function
     def forward(self, x, R):
@@ -89,4 +88,4 @@ class Pyramid(nn.Module):
             R = self.upsample(R)
             y, R, r = self.G_level[i](xs[i], R)
             ys.append(y), Rs.append(R), rs.append(r)
-        return ys, Rs, rs
+        return xs, ys, Rs, rs
