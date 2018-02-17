@@ -20,6 +20,18 @@ import numpy as np
 # - R [batch, 2, width, height] finer estimate of the flow
 # - r [batch, 2, width, height] residual change to the coarser estimate
 
+# Pyramid Level
+# --------------------------------------
+# Initialized with the number of levels
+# - levels = 1
+# - shape=[batch, 2, width, height] - input shape
+# Network that takes input
+# - x [batch, 2, width, height] two images
+#
+# returns the output of each level
+# - ys [[batch, 1, width, height]...] transformed image
+# - Rs [[batch, 2, width, height]...] finer estimate of the flow
+# - rs [[batch, 2, width, height]...] residual change to the coarser estimate
 
 class G(nn.Module):
     def __init__(self):
@@ -44,20 +56,6 @@ class G(nn.Module):
         R = r + R
         y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1))
         return y, R, r
-
-
-# Pyramid Level
-# --------------------------------------
-# Initialized with the number of levels
-# - levels = 1
-# - shape=[batch, 2, width, height] - input shape
-# Network that takes input
-# - x [batch, 2, width, height] two images
-#
-# returns the output of each level
-# - ys [[batch, 1, width, height]...] transformed image
-# - Rs [[batch, 2, width, height]...] finer estimate of the flow
-# - rs [[batch, 2, width, height]...] residual change to the coarser estimate
 
 class Pyramid(nn.Module):
     def __init__(self, levels=1, shape=[8,2,64,64]):

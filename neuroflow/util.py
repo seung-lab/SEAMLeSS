@@ -18,17 +18,20 @@ def name(path):
     return log_dir
 
 # Input four Pytorch variables that contain
-def vizuaize(image, target, prediction, transform, n_iter, writer, name="Train/", crop=16):
+def visualize(image, target, label, prediction, transform, n_iter, writer, name="Train/", crop=16):
     batch_size = image.shape[0]
 
     ### Vizualize examples
     im = vutils.make_grid(image[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
     ta = vutils.make_grid(target[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
     pr = vutils.make_grid(prediction[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
+    la = vutils.make_grid(label[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
 
     writer.add_image(name+'Images/image', im, n_iter)
     writer.add_image(name+'Images/target', ta, n_iter)
+    writer.add_image(name+'Images/labels', la, n_iter)
     writer.add_image(name+'Images/predictions', pr, n_iter)
+
 
     ### Optical Flow
     R = transform[:,:,crop:-crop,crop:-crop].data.cpu().numpy()

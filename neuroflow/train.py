@@ -12,32 +12,13 @@ import numpy as np
 import cavelab as cl
 from model import Pyramid, G
 from data import Data
-from util import get_identity, name, vizuaize
+from loss import loss
+from util import get_identity, name, visualize
 from tensorboardX import SummaryWriter
+import json
 
 if not torch.cuda.is_available():
     raise ValueError("Cuda is not available")
-
-def mse_loss(input,target):
-    out = torch.pow((input[:,16:240,16:240]-target[:,16:240,16:240]), 2)
-    loss = out.mean()
-    return loss
-
-def smoothness_penalty(fields, order=1):
-    factor = lambda f: f.size()[2] / 256
-    dx =     lambda f: (f[:,:,1:,:] - f[:,:,:-1,:]) * factor(f)
-    dy =     lambda f: (f[:,:,:,1:] - f[:,:,:,:-1]) * factor(f)
-    for idx in range(order):
-        fields = sum(map(lambda f: [dx(f), dy(f)], fields), [])  # given k-th derivatives, compute (k+1)-th
-    square_errors = map(lambda f: torch.sum(f ** 2, 1), fields) # sum along last axis (x/y channel)
-    return sum(map(torch.mean, square_errors))
-
-def loss(xs, ys, Rs, rs, lambd=0):
-    s = smoothness_penalty([Rs[-1]], 2)
-    pred = torch.squeeze(ys[-1])
-    loss = mse_loss(pred, xs[-1][:,1,:,:])+lambd*s
-
-    return loss
 
 def train(hparams):
 
@@ -45,33 +26,37 @@ def train(hparams):
     d = Data(hparams)
     path = name('logs/'+hparams.name)
     writer = SummaryWriter(log_dir=path)
+    with open(path+'hparams.json', 'w') as outfile:
+        json.dump(hparams, outfile)
 
     input_shape = [hparams.batch_size, 2,256,256]
-    model = Pyramid(levels = 5, shape=input_shape)
+    model = Pyramid(levels = 4, shape=input_shape)
     model.cuda(device=0)
     optimizer = optim.Adam(model.parameters(), lr=hparams.learning_rate)
     model.train()
 
     for i in range(hparams.steps):
         t1 = time.time()
-        _target, _image = d.get_batch()
-        x = np.stack((_image, _target), axis=1)
+        image, target, label = d.get_batch()
+        x = np.stack((image, target), axis=1)
         x = torch.autograd.Variable(torch.from_numpy(x).cuda(device=0))
+        label = torch.autograd.Variable(torch.from_numpy(label).cuda(device=0))
 
         optimizer.zero_grad()
         xs, ys, Rs, rs = model(x)
-        l = loss(xs, ys, Rs, rs, lambd=hparams.smooth_lambda)
+        l = loss(xs, ys, Rs, rs, label, lambd=hparams.smooth_lambda)
 
         l.backward(), optimizer.step()
         t2 = time.time()
         print(i, 'loss', l.data[0], str(t2-t1)[:4]+"s")
         if i%hparams.log_iterations==0: # Takes 4s
             t3 = time.time()
-            vizuaize(x[:8,0,:,:], x[:8,1,:,:], torch.squeeze(ys[-1][:8]), Rs[-1][:8], i, writer)
+            visualize(x[:8,0,:,:], x[:8,1,:,:],
+                      label[:8, :, :], torch.squeeze(ys[-1][:8]), Rs[-1][:8], i, writer)
             writer.add_scalar('data/loss', l, i)
             torch.save(model, path+'/model.pt') #0.3s
             t4 = time.time()
-            print('vizualize time', str(t4-t3)[:4]+"s")
+            print('visualize time', str(t4-t3)[:4]+"s")
     writer.close()
 
 def test(model, test_data):

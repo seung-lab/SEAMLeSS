@@ -17,10 +17,10 @@ class Data():
 
     def get_batch(self):
 
-        template, image = self.data.get_batch()
+        image, label, target  = self.data.get_batch()
 
-        if not self.check_validity(image, template):
-            return self.get_batch()
+        #if not self.check_validity(image, template):
+        #    return self.get_batch()
 
         # Similar or Disimilar
         #if not self.similar:
@@ -29,9 +29,10 @@ class Data():
 
         #if self.similar:
         #    label = 2*(np.random.rand(self.batch_size)>0)-1 #FIXME add this variable - Probability of misinterpreting the label
-        #self.similar = not self.similar
+        #self.similar = not self.similarg
+        label = (label>0).astype(np.float32)
 
-        return image, template #label
+        return image, target, label
 
     def dissimilar(self, images, templates):
         length = templates.shape[0]-1
