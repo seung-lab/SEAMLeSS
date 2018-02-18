@@ -37,11 +37,11 @@ def train(hparams):
 
     for i in range(hparams.steps):
         t1 = time.time()
-        image, target, _label = d.get_batch()
-        _label = np.zeros(image.shape, dtype=np.float32)
+        image, target, label = d.get_batch()
+
         x = np.stack((image, target), axis=1)
         x = torch.autograd.Variable(torch.from_numpy(x).cuda(device=0))
-        label = torch.autograd.Variable(torch.from_numpy(_label).cuda(device=0))
+        label = torch.autograd.Variable(torch.from_numpy(label).cuda(device=0))
 
         optimizer.zero_grad()
         xs, ys, Rs, rs = model(x)

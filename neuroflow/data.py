@@ -18,9 +18,9 @@ class Data():
     def get_batch(self):
 
         image, label, target  = self.data.get_batch()
-        if not self.check_validity(image, template):
+        if not self.check_validity(image, target):
             return self.get_batch()
-
+        label += image == 0
         # Similar or Disimilar
         #if not self.similar:
         #    search_space, template = self.dissimilar(image, template)
@@ -42,7 +42,7 @@ class Data():
 
     def check_validity(self, image, template):
         t = np.array(template.shape)
-        if np.any(np.sum(image<0.01, axis=(1,2)) >= t[1]*t[2]) or image.shape[0]<self.batch_size:
+        if np.any(np.sum(image<0.05, axis=(1,2)) >= t[1]*t[2]) or image.shape[0]<self.batch_size:
             return False
 
         #if np.any(template.var(axis=(1,2))<0.0001):
