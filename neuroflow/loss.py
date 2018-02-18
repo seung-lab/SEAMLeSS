@@ -1,29 +1,41 @@
 import torch
+import torch.nn as nn
 
-def mse_loss(input,target):
-    out = torch.pow((input[:,16:240,16:240]-target[:,16:240,16:240]), 2)
-    loss = out.mean()
-    return loss
+def mse_loss(input,target, crop=1):
+    out = torch.pow((input[:,crop:-crop,crop:-crop]-target[:,crop:-crop,crop:-crop]), 2)
+    return out.mean()
+
+downsample = nn.AvgPool2d(2, stride=2)
 
 def smoothness_penalty(fields, label, order=1):
     factor = lambda f: f.size()[2] / 256
     dx =     lambda f: (f[:,:,1:,:] - f[:,:,:-1,:]) * factor(f)
     dy =     lambda f: (f[:,:,:,1:] - f[:,:,:,:-1]) * factor(f)
 
-    def square(f):
-        f = torch.sum(f ** 2, 1)
-        f = torch.mul(f, 1-label[:,:f.shape[1],:f.shape[2]] )
-        return f
+    labels = [label]
+    for i in range(len(fields)-1):
+        labels.append(downsample(labels[-1]))
+    labels.reverse()
 
     for idx in range(order):
         fields = sum(map(lambda f: [dx(f), dy(f)], fields), [])  # given k-th derivatives, compute (k+1)-th
-    square_errors = map(square, fields) # sum along last axis (x/y channel)
+    fields = list(map(lambda f: torch.sum(f ** 2, 1), fields)) # sum along last axis (x/y channel)
 
-    return sum(map(torch.mean, square_errors))
+    penalty = 0
+    for i in range(len(labels)):
+        for idx in range(2**order):
+            f = fields[2**order*i+idx]
+            f = torch.mul(f, 1-labels[i][:,:f.shape[1],:f.shape[2]])
+            penalty += torch.mean(f)
 
-def loss(xs, ys, Rs, rs, label, lambd=0):
-    s = smoothness_penalty([Rs[-1]], label, 2)
-    pred = torch.squeeze(ys[-1])
-    loss = mse_loss(pred, xs[-1][:,1,:,:])+lambd*s
+    return penalty/len(fields)
 
-    return loss
+def loss(xs, ys, Rs, rs, label, start=0, lambda_1=0, lambda_2=0):
+    p1 = 0#lambda_1*smoothness_penalty(rs, label, 1)
+    p2 = 0#lambda_2*smoothness_penalty(rs, label, 2)
+    mse = 0
+    for i in range(start, len(xs)):
+        mse += mse_loss(ys[i][:,0,:,:], xs[i][:,1,:,:], crop=2**i)
+    mse = mse/(len(xs)-start)
+    loss = mse+p1+p2
+    return loss, mse, p1, p2

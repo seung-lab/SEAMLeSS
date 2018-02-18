@@ -30,21 +30,25 @@ def train(hparams):
         json.dump(hparams, outfile)
 
     input_shape = [hparams.batch_size, 2,256,256]
-    model = Pyramid(levels = 4, shape=input_shape)
+    model = Pyramid(levels = hparams.levels, shape=input_shape)
     model.cuda(device=0)
     optimizer = optim.Adam(model.parameters(), lr=hparams.learning_rate)
     model.train()
 
     for i in range(hparams.steps):
         t1 = time.time()
-        image, target, label = d.get_batch()
+        image, target, _label = d.get_batch()
+        _label = np.zeros(image.shape, dtype=np.float32)
         x = np.stack((image, target), axis=1)
         x = torch.autograd.Variable(torch.from_numpy(x).cuda(device=0))
-        label = torch.autograd.Variable(torch.from_numpy(label).cuda(device=0))
+        label = torch.autograd.Variable(torch.from_numpy(_label).cuda(device=0))
 
         optimizer.zero_grad()
         xs, ys, Rs, rs = model(x)
-        l = loss(xs, ys, Rs, rs, label, lambd=hparams.smooth_lambda)
+        l, mse, p1, p2 = loss(xs, ys, Rs, rs, label,
+                              start=len(xs)-1,
+                              lambda_1=hparams.lambda_1,
+                              lambda_2=hparams.lambda_2)
 
         l.backward(), optimizer.step()
         t2 = time.time()
@@ -52,8 +56,13 @@ def train(hparams):
         if i%hparams.log_iterations==0: # Takes 4s
             t3 = time.time()
             visualize(x[:8,0,:,:], x[:8,1,:,:],
-                      label[:8, :, :], torch.squeeze(ys[-1][:8]), Rs[-1][:8], i, writer)
+                      label[:8, :, :], ys[-1][:8, 0,:,:], Rs[-1][:8], i, writer)
+
             writer.add_scalar('data/loss', l, i)
+            writer.add_scalar('data/mse', mse, i)
+            writer.add_scalar('data/p1', p1, i)
+            writer.add_scalar('data/p2', p2, i)
+
             torch.save(model, path+'/model.pt') #0.3s
             t4 = time.time()
             print('visualize time', str(t4-t3)[:4]+"s")

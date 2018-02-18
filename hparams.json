@@ -13,7 +13,7 @@
         "radius": {"data": 5, "type": "int", "description": "Maximum radius for finding second" },
         "mean_over_batch": {"data": true, "type": "bool", "description": "Take the mean over the batch otherwise min" },
         "lambd": {"data": -0.5, "type": "float", "description": "Lambda for mixed loss" },
-        "eps": {"data": 0.00001, "type": "float", "description": "small number" },
+        "eps": {"data": 0.0001, "type": "float", "description": "small number" },
         "loss_type": {"data": "dist", "type": "str", "description": "Define the loss format either 'dist' or 'ratio' " },
         "loss_form": {"data": "minus", "type": "str", "description": "Define the loss formulae to minimize over {'minus', 'inverse', 'log'}" },
         "softmax": {"data": false, "type": "bool", "description": "Use Softmax"},
@@ -21,20 +21,22 @@
         "train_file": {"data":["data/tf/crackflow_label_train.tfrecords"], "type": "str", "description": "Training dataset"},
         "test_file": {"data":["data/tf/bad_trainset_24000_612_324.tfrecords"], "type": "str", "description": "Testing dataset"},
 
-        "smooth_lambda": {"data": 10000,"type":"float", "description": "Trade off for smoothness factor"},
+        "lambda_1": {"data": 3000,"type":"int", "description": "Trade off for smoothness factor"},
+        "lambda_2": {"data": 1000,"type":"int", "description": "Trade off for smoothness factor"},
+        "levels": {"data": 5,"type":"int", "description": "Pyramid Levels"},
 
         "learning_rate": {"data": 0.0001, "type": "float", "description": "Learning rate"},
         "momentum": {"data": 0.9, "type": "float", "description": "Learning momentum"},
         "decay": {"data": 0.75, "type": "float", "description": "Learning momentum"},
         "decay_steps": {"data": 1000, "type": "int", "description": "Learning momentum"},
         "steps": {"data": 100000, "type": "int", "description":  "Number of steps to complete the training"},
-        "batch_size": {"data": 32, "type": "int", "description": "Batch size during training"},
+        "batch_size": {"data": 1, "type": "int", "description": "Batch size during training"},
         "epoch_size": {"data": 16, "type": "int", "description": "Epoch size during training"},
         "eval_batch_size": {"data": 2, "type": "int", "description": "Batch size during evaluation"},
         "optimizer": {"data": "Adam", "type": "str", "description": "Optimizer Name (Adam, Adagrad, etc)"},
         "loglevel": {"data": 20, "type": "int", "description": "Tensorflow log level"},
-        "output_layer": {"data": 1, "type": "int", "description": "output layer of UNET"},
-        "log_iterations": {"data": 100, "type": "int", "description": "Tensorflow log level"},
+        "output_layer": {"data": 8, "type": "int", "description": "output layer of UNET"},
+        "log_iterations": {"data": 10, "type": "int", "description": "Tensorflow log level"},
         "eval_iterations": {"data": 1000, "type": "int", "description": "Tensorflow log level"},
         "resize_conv": {"data": true, "type":"int","description": "use resize convolutions otherwise deconvolutions"},
 
@@ -53,6 +55,7 @@
                 "image": {"in_width": 312, "width": 256},
                 "target": {"in_width": 312, "width": 256},
                 "label": {"in_width": 312, "width": 256}
+
             }, "type": "dict", "description": "Structure of input features"},
 
         "augmentation":{

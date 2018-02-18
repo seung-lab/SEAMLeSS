@@ -18,9 +18,8 @@ class Data():
     def get_batch(self):
 
         image, label, target  = self.data.get_batch()
-
-        #if not self.check_validity(image, template):
-        #    return self.get_batch()
+        if not self.check_validity(image, template):
+            return self.get_batch()
 
         # Similar or Disimilar
         #if not self.similar:
