@@ -1,6 +1,6 @@
 import numpy as np
 from cavelab.data import tfdata
-
+import cavelab as cl
 # Data preprocessing
 similar = True
 class Data():
@@ -14,6 +14,22 @@ class Data():
                                 random_brightness=hparams.augmentation["random_brightness"],
                                 random_elastic_transform=hparams.augmentation["random_elastic_transform"])
         self.similar = True
+        self.test_data = np.load('data/evaluate/simple_test.npy').astype(np.float32)
+
+    def get_eval(self,):
+        c = 200
+        width = 128
+        i = 4
+        image = self.test_data[c:c+width,c:c+width,i]/256.0
+        target = self.test_data[c:c+width,c:c+width,i+1]/256.0
+
+        image = cl.image_processing.resize(image, (2, 2), order=2)
+        target = cl.image_processing.resize(target, (2, 2), order=2)
+        image = np.tile(image,(self.batch_size,1,1))
+        target = np.tile(target,(self.batch_size,1,1))
+        label = np.zeros((self.batch_size, 256, 256), dtype=np.float32)
+        print(image.shape, target.shape, label.shape)
+        return image, target, label
 
     def get_batch(self):
 

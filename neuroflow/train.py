@@ -26,7 +26,7 @@ def train(hparams):
     d = Data(hparams)
     path = name('logs/'+hparams.name)
     writer = SummaryWriter(log_dir=path)
-    with open(path+'hparams.json', 'w') as outfile:
+    with open(path+'/hparams.json', 'w') as outfile:
         json.dump(hparams, outfile)
 
     input_shape = [hparams.batch_size, 2,256,256]
@@ -37,11 +37,10 @@ def train(hparams):
 
     for i in range(hparams.steps):
         t1 = time.time()
-        image, target, label = d.get_batch()
-
+        image, target, lab = d.get_batch()
         x = np.stack((image, target), axis=1)
-        x = torch.autograd.Variable(torch.from_numpy(x).cuda(device=0))
-        label = torch.autograd.Variable(torch.from_numpy(label).cuda(device=0))
+        x = torch.autograd.Variable(torch.from_numpy(x).cuda(device=0), requires_grad=False)
+        label = torch.autograd.Variable(torch.from_numpy(lab).cuda(device=0), requires_grad=False)
 
         optimizer.zero_grad()
         xs, ys, Rs, rs = model(x)
@@ -55,15 +54,21 @@ def train(hparams):
         print(i, 'loss', l.data[0], str(t2-t1)[:4]+"s")
         if i%hparams.log_iterations==0: # Takes 4s
             t3 = time.time()
-            visualize(x[:8,0,:,:], x[:8,1,:,:],
+            j = -1
+            visualize(xs[-1][:8,0,:,:], xs[-1][:8,1,:,:],
                       label[:8, :, :], ys[-1][:8, 0,:,:], Rs[-1][:8], i, writer)
 
             writer.add_scalar('data/loss', l, i)
             writer.add_scalar('data/mse', mse, i)
             writer.add_scalar('data/p1', p1, i)
             writer.add_scalar('data/p2', p2, i)
+            #print(x[0,0,:,:].shape)
+            #
+            #cl.visual.save(xs[j][0,0,:,:].data.cpu().numpy(), 'dump/image')
+            #cl.visual.save(ys[j][0,0,:,:].data.cpu().numpy(), 'dump/pred')
+            #cl.visual.save(xs[j][0,1,:,:].data.cpu().numpy(), 'dump/target')
 
-            torch.save(model, path+'/model.pt') #0.3s
+            #torch.save(model, path+'/model.pt') #0.3s
             t4 = time.time()
             print('visualize time', str(t4-t3)[:4]+"s")
     writer.close()

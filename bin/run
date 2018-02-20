@@ -1,5 +1,6 @@
 NV_GPU=$1 nvidia-docker run -it --net=host \
       -v $(pwd):/Neuroflow \
+      -v $(pwd)/../Cavelab:/cavelab \
       -v /usr/people/$USER/.neuroglancer/secrets/:/root/.cloudvolume/secrets/ \
       -e GOOGLE_APPLICATION_CREDENTIALS='/root/.cloudvolume/secrets/google-secret.json' \
       davidbun/cavelab:stable-gpu bash

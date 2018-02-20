@@ -33,6 +33,13 @@ import numpy as np
 # - Rs [[batch, 2, width, height]...] finer estimate of the flow
 # - rs [[batch, 2, width, height]...] residual change to the coarser estimate
 
+class G_empty(nn.Module):
+    def __init__(self, skip=False):
+        super(G_empty, self).__init__()
+    # Flow transformer network forward function
+    def forward(self, x, R):
+        return x, R, R
+
 class G(nn.Module):
     def __init__(self):
         super(G, self).__init__()
@@ -48,11 +55,12 @@ class G(nn.Module):
             nn.Conv2d(32, 16, kernel_size=7, padding=3),
             nn.ReLU(True),
             nn.Conv2d(16, 2, kernel_size=7, padding=3),
-        ).cuda(device=0)
+        ).cuda()
 
     # Flow transformer network forward function
     def forward(self, x, R):
-        r = self.flow(x)
+        y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1))
+        r = self.flow(torch.cat([x[:,1:2,:,:], y], dim=1))
         R = r + R
         y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1))
         return y, R, r
@@ -61,7 +69,9 @@ class Pyramid(nn.Module):
     def __init__(self, levels=1, shape=[8,2,64,64]):
         super(Pyramid, self).__init__()
         self.G_level = nn.ModuleList()
-        for i in range(levels):
+
+        self.G_level.append(G())
+        for i in range(levels-1):
             self.G_level.append(G())
 
         shape[2], shape[3] = int(shape[2]/2**levels), int(shape[3]/2**levels)
@@ -86,4 +96,5 @@ class Pyramid(nn.Module):
             R = self.upsample(R)
             y, R, r = self.G_level[i](xs[i], R)
             ys.append(y), Rs.append(R), rs.append(r)
+
         return xs, ys, Rs, rs

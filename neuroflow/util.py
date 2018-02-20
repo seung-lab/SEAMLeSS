@@ -32,7 +32,6 @@ def visualize(image, target, label, prediction, transform, n_iter, writer, name=
     writer.add_image(name+'Images/labels', la, n_iter)
     writer.add_image(name+'Images/predictions', pr, n_iter)
 
-
     ### Optical Flow
     R = transform[:,:,crop:-crop,crop:-crop].data.cpu().numpy()
     R = R - get_identity(batch_size=batch_size, width=transform.shape[-1])[0][:,crop:-crop,crop:-crop]

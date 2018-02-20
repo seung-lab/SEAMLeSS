@@ -1,7 +1,7 @@
 
 {
     "default": {
-        "name": {"data":"CrackFlow_label", "type": "str", "description": "Name of the experiment"},
+        "name": {"data":"Crackflow_label_2", "type": "str", "description": "Name of the experiment"},
         "hypothesis": {"data": "Crack and fold corrector", "type":"str", "description": "What should you figure out running this experiment"},
         "identity_init" :{"data": false, "type": "bool", "description":"Initialize as Identity"},
         "resize": {"data": 4, "type": "int", "description": "Resize images"},
@@ -21,9 +21,9 @@
         "train_file": {"data":["data/tf/crackflow_label_train.tfrecords"], "type": "str", "description": "Training dataset"},
         "test_file": {"data":["data/tf/bad_trainset_24000_612_324.tfrecords"], "type": "str", "description": "Testing dataset"},
 
-        "lambda_1": {"data": 100,"type":"int", "description": "Trade off for smoothness factor"},
-        "lambda_2": {"data": 1000,"type":"int", "description": "Trade off for smoothness factor"},
-        "levels": {"data": 5,"type":"int", "description": "Pyramid Levels"},
+        "lambda_1": {"data": 0,"type":"int", "description": "Trade off for smoothness factor"},
+        "lambda_2": {"data": 10000,"type":"int", "description": "Trade off for smoothness factor"},
+        "levels": {"data": 4,"type":"int", "description": "Pyramid Levels"},
         "learning_rate": {"data": 0.0001, "type": "float", "description": "Learning rate"},
         "log_iterations": {"data": 50, "type": "int", "description": "Tensorflow log level"},
         "batch_size": {"data": 8, "type": "int", "description": "Batch size during training"},
@@ -63,7 +63,7 @@
             "data": {
                 "flipping": true,
                 "random_brightness": false,
-                "random_elastic_transform": false
+                "random_elastic_transform": true
             }, "type": "dict", "description": "augmetation"}
     },
 
