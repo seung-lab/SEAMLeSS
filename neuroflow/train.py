@@ -20,17 +20,24 @@ import json
 if not torch.cuda.is_available():
     raise ValueError("Cuda is not available")
 
+debug = False
+
 def train(hparams):
 
     # Load Data, Model, Logging
     d = Data(hparams)
     path = name('logs/'+hparams.name)
-    writer = SummaryWriter(log_dir=path)
-    with open(path+'/hparams.json', 'w') as outfile:
-        json.dump(hparams, outfile)
+
+    if not debug:
+        writer = SummaryWriter(log_dir=path)
+        with open(path+'/hparams.json', 'w') as outfile:
+            json.dump(hparams, outfile)
 
     input_shape = [hparams.batch_size, 2,256,256]
-    model = Pyramid(levels = hparams.levels, shape=input_shape)
+    model = Pyramid(levels = hparams.levels,
+                    skip_levels=hparams.skip_levels,
+                    shape=input_shape)
+                    
     model.cuda(device=0)
     optimizer = optim.Adam(model.parameters(), lr=hparams.learning_rate)
     model.train()
@@ -38,12 +45,14 @@ def train(hparams):
     for i in range(hparams.steps):
         t1 = time.time()
         image, target, lab = d.get_batch()
+        lab = np.zeros_like(lab, dtype=np.float32)
         x = np.stack((image, target), axis=1)
         x = torch.autograd.Variable(torch.from_numpy(x).cuda(device=0), requires_grad=False)
         label = torch.autograd.Variable(torch.from_numpy(lab).cuda(device=0), requires_grad=False)
 
         optimizer.zero_grad()
         xs, ys, Rs, rs = model(x)
+
         l, mse, p1, p2 = loss(xs, ys, Rs, rs, label,
                               start=len(xs)-1,
                               lambda_1=hparams.lambda_1,
@@ -51,24 +60,21 @@ def train(hparams):
 
         l.backward(), optimizer.step()
         t2 = time.time()
+
         print(i, 'loss', l.data[0], str(t2-t1)[:4]+"s")
         if i%hparams.log_iterations==0: # Takes 4s
             t3 = time.time()
             j = -1
-            visualize(xs[-1][:8,0,:,:], xs[-1][:8,1,:,:],
-                      label[:8, :, :], ys[-1][:8, 0,:,:], Rs[-1][:8], i, writer)
+            visualize(xs[j][:8,0,:,:], xs[j][:8,1,:,:],
+                      label[:8, :, :], ys[j][:8,0,:,:], Rs[j][:8], i, writer)
 
-            writer.add_scalar('data/loss', l, i)
-            writer.add_scalar('data/mse', mse, i)
-            writer.add_scalar('data/p1', p1, i)
-            writer.add_scalar('data/p2', p2, i)
-            #print(x[0,0,:,:].shape)
-            #
-            #cl.visual.save(xs[j][0,0,:,:].data.cpu().numpy(), 'dump/image')
-            #cl.visual.save(ys[j][0,0,:,:].data.cpu().numpy(), 'dump/pred')
-            #cl.visual.save(xs[j][0,1,:,:].data.cpu().numpy(), 'dump/target')
+            if not debug:
+                writer.add_scalar('data/loss', l, i)
+                writer.add_scalar('data/mse', mse, i)
+                writer.add_scalar('data/p1', p1, i)
+                writer.add_scalar('data/p2', p2, i)
 
-            #torch.save(model, path+'/model.pt') #0.3s
+            torch.save(model, path+'/model.pt') #0.3s
             t4 = time.time()
             print('visualize time', str(t4-t3)[:4]+"s")
     writer.close()
@@ -85,13 +91,6 @@ def test(model, test_data):
 
     vizuaize(image, target, ys[-1], Rs[-1], i, writer)
 
-
-# Hierarchical training algorithm
-# for level in mips.revers()
-#   - load Data(level)
-#   - load Gs = {G_i: i>level & i<level+5 & i<10}
-#   - load Pyramid(Gs.locked())
-#   - save Pyramid.G[0]
 
 if __name__ == "__main__":
     hparams = cl.hparams(name="default")

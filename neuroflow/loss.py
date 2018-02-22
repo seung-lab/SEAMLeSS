@@ -8,7 +8,7 @@ def mse_loss(input,target, crop=1):
 
 downsample = nn.AvgPool2d(2, stride=2)
 
-def smoothness_penalty(fields, labels, order=1):
+def smoothness_penalty(fields, labels, order=1, mask=True):
     factor = lambda f: f.size()[2] / 256
     dx =     lambda f: (f[:,:,1:,:] - f[:,:,:-1,:])*factor(f)
     dy =     lambda f: (f[:,:,:,1:] - f[:,:,:,:-1])*factor(f)
@@ -21,7 +21,8 @@ def smoothness_penalty(fields, labels, order=1):
     for i in range(len(labels)):
         for idx in range(2**order):
             f = fields[2**order*i+idx]
-            f = torch.mul(f, labels[i][:,:f.shape[1],:f.shape[2]])
+            if mask:
+                f = torch.mul(f, labels[i][:,:f.shape[1],:f.shape[2]])
             penalty += torch.mean(f)
 
     return penalty/len(fields)
@@ -33,8 +34,8 @@ def loss(xs, ys, Rs, rs, label, start=0, lambda_1=0, lambda_2=0):
         labels.append(downsample(labels[-1]))
     labels.reverse()
 
-    p1 = lambda_1*smoothness_penalty([Rs[-1]], [labels[-1]], 1)
-    p2 = lambda_2*smoothness_penalty([Rs[-1]], [labels[-1]], 2)
+    p1 = lambda_1*smoothness_penalty([Rs[-1]], [labels[-1]], 1, mask=False)
+    p2 = lambda_2*smoothness_penalty([Rs[-1]], [labels[-1]], 2, mask=False)
 
     start = 0
     mse = 0
@@ -43,5 +44,5 @@ def loss(xs, ys, Rs, rs, label, start=0, lambda_1=0, lambda_2=0):
                         xs[i][:,1,:,:],
                         crop=2**i)
     mse = mse/(len(xs)-start)
-    loss = mse+p1+p2
+    loss = mse+p2+p1
     return loss, mse, p1, p2

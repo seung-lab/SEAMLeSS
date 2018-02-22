@@ -33,15 +33,8 @@ import numpy as np
 # - Rs [[batch, 2, width, height]...] finer estimate of the flow
 # - rs [[batch, 2, width, height]...] residual change to the coarser estimate
 
-class G_empty(nn.Module):
-    def __init__(self, skip=False):
-        super(G_empty, self).__init__()
-    # Flow transformer network forward function
-    def forward(self, x, R):
-        return x, R, R
-
 class G(nn.Module):
-    def __init__(self):
+    def __init__(self, skip=False):
         super(G, self).__init__()
 
         # Spatial transformer localization-network
@@ -57,22 +50,29 @@ class G(nn.Module):
             nn.Conv2d(16, 2, kernel_size=7, padding=3),
         ).cuda()
 
+        self.skip = skip
+
     # Flow transformer network forward function
     def forward(self, x, R):
         y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1))
+        if self.skip:
+            r = torch.zeros_like(y)
+            return y, R, r
+
         r = self.flow(torch.cat([x[:,1:2,:,:], y], dim=1))
         R = r + R
         y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1))
         return y, R, r
 
 class Pyramid(nn.Module):
-    def __init__(self, levels=1, shape=[8,2,64,64]):
+    def __init__(self, levels=1, skip_level=0 shape=[8,2,64,64]):
         super(Pyramid, self).__init__()
         self.G_level = nn.ModuleList()
 
-        self.G_level.append(G())
-        for i in range(levels-1):
+        for i in range(levels-skip_level):
             self.G_level.append(G())
+        for i in range(skip_level):
+            self.G_level.append(G(skip=True))
 
         shape[2], shape[3] = int(shape[2]/2**levels), int(shape[3]/2**levels)
         identity = get_identity(batch_size=shape[0], width=shape[3])
