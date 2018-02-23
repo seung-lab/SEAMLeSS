@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 
 def mse_loss(input,target, crop=1):
     out = torch.pow((input[:,crop:-crop,crop:-crop]-target[:,crop:-crop,crop:-crop]), 2)
     return out.mean()
-
 
 downsample = nn.AvgPool2d(2, stride=2)
 
@@ -30,9 +30,10 @@ def loss(xs, ys, Rs, rs, label, start=0, lambda_1=0, lambda_2=0):
         scale = int(shp[-1]/Rs[i].shape[-1])
         Rs[i] = F.upsample(Rs[i], scale_factor=scale, mode='nearest')
         rs[i] = F.upsample(rs[i], scale_factor=scale, mode='nearest')
+    label = Variable(torch.zeros_like(label.data).cuda(device=0), requires_grad=False)
 
-    p1 = lambda_1*smoothness_penalty(Rs, label, 1, mask=False)
-    p2 = lambda_2*smoothness_penalty(Rs, label, 2, mask=False)
+    p1 = 0 #lambda_1*smoothness_penalty(Rs, 1-label, 1, mask=False)
+    p2 = 0 #lambda_2*smoothness_penalty(Rs, 1-label, 2, mask=False)
 
     start = 0
     mse = 0
