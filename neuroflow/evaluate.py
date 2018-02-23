@@ -7,8 +7,13 @@ from torch.autograd import Variable
 from util import get_identity
 
 
-
-model = torch.load('logs/Crackflow_label_2/Feb22_15-32-03/model.pt')
+R = get_identity(batch_size=1, width=256)[0]
+R = np.transpose(R, (1,2,0))
+hsv, grid = cl.visual.flow(R[16:240, 16:240, :])
+cl.visual.save(hsv, 'dump/hsv')
+cl.visual.save(grid, 'dump/grid')
+exit()
+model = torch.load('logs/Crackflow_label_2/Feb21_19-02-37/model.pt')
 model.cuda()
 
 # given input x1, x2 compute flow

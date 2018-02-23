@@ -26,7 +26,7 @@ def train(hparams):
 
     # Load Data, Model, Logging
     d = Data(hparams)
-    path = name('logs/'+hparams.name)
+    path = os.path.join('logs/'+hparams.name, hparams.version)
 
     if not debug:
         writer = SummaryWriter(log_dir=path)
@@ -37,7 +37,7 @@ def train(hparams):
     model = Pyramid(levels = hparams.levels,
                     skip_levels=hparams.skip_levels,
                     shape=input_shape)
-                    
+
     model.cuda(device=0)
     optimizer = optim.Adam(model.parameters(), lr=hparams.learning_rate)
     model.train()
@@ -45,7 +45,7 @@ def train(hparams):
     for i in range(hparams.steps):
         t1 = time.time()
         image, target, lab = d.get_batch()
-        lab = np.zeros_like(lab, dtype=np.float32)
+
         x = np.stack((image, target), axis=1)
         x = torch.autograd.Variable(torch.from_numpy(x).cuda(device=0), requires_grad=False)
         label = torch.autograd.Variable(torch.from_numpy(lab).cuda(device=0), requires_grad=False)
@@ -54,7 +54,7 @@ def train(hparams):
         xs, ys, Rs, rs = model(x)
 
         l, mse, p1, p2 = loss(xs, ys, Rs, rs, label,
-                              start=len(xs)-1,
+                              start=0,
                               lambda_1=hparams.lambda_1,
                               lambda_2=hparams.lambda_2)
 
@@ -92,6 +92,24 @@ def test(model, test_data):
     vizuaize(image, target, ys[-1], Rs[-1], i, writer)
 
 
+def getopts(argv):
+    opts = {}  # Empty dictionary to store key-value pairs.
+    while argv:  # While there are arguments left to parse...
+        if argv[0][0] == '-':  # Found a "-name value" pair.
+            opts[argv[0]] = argv[1]  # Add key and value to the dictionary.
+        argv = argv[1:]  # Reduce the argument list by copying it starting from index 1.
+    return opts
+
+import sys
+import os
+from datetime import datetime
 if __name__ == "__main__":
     hparams = cl.hparams(name="default")
+    myargs = getopts(sys.argv)
+    if '--name' in myargs:  # Example usage.
+        hparams.name = myargs['--name']
+    if '--version' in myargs:
+        hparams.version = myargs['--version']
+    else:
+        hparams.version = datetime.now().strftime('%b%d_%H-%M-%S')
     train(hparams)

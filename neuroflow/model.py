@@ -65,13 +65,13 @@ class G(nn.Module):
         return y, R, r
 
 class Pyramid(nn.Module):
-    def __init__(self, levels=1, skip_level=0 shape=[8,2,64,64]):
+    def __init__(self, levels=1, skip_levels=0, shape=[8,2,64,64]):
         super(Pyramid, self).__init__()
         self.G_level = nn.ModuleList()
 
-        for i in range(levels-skip_level):
+        for i in range(levels-skip_levels):
             self.G_level.append(G())
-        for i in range(skip_level):
+        for i in range(skip_levels):
             self.G_level.append(G(skip=True))
 
         shape[2], shape[3] = int(shape[2]/2**levels), int(shape[3]/2**levels)
