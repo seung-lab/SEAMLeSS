@@ -32,8 +32,8 @@ def train(hparams):
         writer = SummaryWriter(log_dir=path)
         with open(path+'/hparams.json', 'w') as outfile:
             json.dump(hparams, outfile)
-
-    input_shape = [hparams.batch_size, 2,256,256]
+    width = hparams.features['image']['width']
+    input_shape = [hparams.batch_size, 2,width,width]
     model = Pyramid(levels = hparams.levels,
                     skip_levels=hparams.skip_levels,
                     shape=input_shape)
@@ -52,21 +52,24 @@ def train(hparams):
 
         optimizer.zero_grad()
         xs, ys, Rs, rs = model(x)
-
         l, mse, p1, p2 = loss(xs, ys, Rs, rs, label,
                               start=0,
                               lambda_1=hparams.lambda_1,
                               lambda_2=hparams.lambda_2)
-
         l.backward(), optimizer.step()
         t2 = time.time()
 
         print(i, 'loss', l.data[0], str(t2-t1)[:4]+"s")
         if i%hparams.log_iterations==0: # Takes 4s
             t3 = time.time()
-            j = -1
-            visualize(xs[j][:8,0,:,:], xs[j][:8,1,:,:],
-                      label[:8, :, :], ys[j][:8,0,:,:], Rs[j][:8], i, writer)
+            for j in range(len(xs)):
+
+                visualize(xs[j][:8,0,:,:], xs[j][:8,1,:,:],
+                          label[:8, :, :], ys[j][:8,0,:,:],
+                          Rs[j][:8], rs[j][:8],
+                          i, writer,
+                          mip_level=len(xs)-j-1,
+                          crop=2**j)
 
             if not debug:
                 writer.add_scalar('data/loss', l, i)

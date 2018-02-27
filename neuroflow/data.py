@@ -36,15 +36,9 @@ class Data():
         image, label, target  = self.data.get_batch()
         if not self.check_validity(image, target):
             return self.get_batch()
-        label += image == 0
-        # Similar or Disimilar
-        #if not self.similar:
-        #    search_space, template = self.dissimilar(image, template)
-        #label = np.ones((self.batch_size),dtype=np.float) if self.similar else -1*np.ones((self.batch_size),dtype=np.float)
 
-        #if self.similar:
-        #    label = 2*(np.random.rand(self.batch_size)>0)-1 #FIXME add this variable - Probability of misinterpreting the label
-        #self.similar = not self.similarg
+        label += image == 0 # Borders
+
         label = (label>0).astype(np.float32)
 
         return image, target, label

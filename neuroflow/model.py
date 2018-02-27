@@ -38,16 +38,19 @@ class G(nn.Module):
         super(G, self).__init__()
 
         # Spatial transformer localization-network
+        kernel_size = 7
+        pad = 3
         self.flow = nn.Sequential(
-            nn.Conv2d(2, 32, kernel_size=7, padding=3),
+            nn.Conv2d(2, 32, kernel_size=kernel_size, padding=pad),
             nn.ReLU(True),
-            nn.Conv2d(32, 64, kernel_size=7, padding=3),
+            nn.Conv2d(32, 64, kernel_size=kernel_size, padding=pad),
             nn.ReLU(True),
-            nn.Conv2d(64, 32, kernel_size=7, padding=3),
+            nn.Conv2d(64, 32, kernel_size=kernel_size, padding=pad),
             nn.ReLU(True),
-            nn.Conv2d(32, 16, kernel_size=7, padding=3),
+            nn.Conv2d(32, 16, kernel_size=kernel_size, padding=pad),
             nn.ReLU(True),
-            nn.Conv2d(16, 2, kernel_size=7, padding=3),
+            nn.Conv2d(16,2, kernel_size=kernel_size, padding=pad),
+            nn.ReLU(True),
         ).cuda()
 
         self.skip = skip
@@ -56,7 +59,7 @@ class G(nn.Module):
     def forward(self, x, R):
         y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1))
         if self.skip:
-            r = torch.zeros_like(y)
+            r = torch.zeros_like(R)
             return y, R, r
 
         r = self.flow(torch.cat([x[:,1:2,:,:], y], dim=1))
@@ -71,6 +74,7 @@ class Pyramid(nn.Module):
 
         for i in range(levels-skip_levels):
             self.G_level.append(G())
+
         for i in range(skip_levels):
             self.G_level.append(G(skip=True))
 
