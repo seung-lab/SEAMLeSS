@@ -17,7 +17,7 @@ class Process(object):
         res = self.model.pyramid.mlist[level](x)
         return res.data.cpu().numpy()
 
-#simple test
+#Simple test
 if __name__ == "__main__":
     a = Process()
     s = np.ones((8,256,256), dtype=np.float32)
