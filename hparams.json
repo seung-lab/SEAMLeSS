@@ -22,12 +22,12 @@
         "train_file": {"data":["data/tf/crackflow_label_train.tfrecords"], "type": "str", "description": "Training dataset"},
         "test_file": {"data":["data/tf/bad_trainset_24000_612_324.tfrecords"], "type": "str", "description": "Testing dataset"},
 
-        "lambda_1": {"data": 100,"type":"int", "description": "Trade off for smoothness factor"},
-        "lambda_2": {"data": 1000,"type":"int", "description": "Trade off for smoothness factor"},
-        "levels": {"data": 4,"type":"int", "description": "Pyramid Levels"},
+        "lambda_1": {"data": 10,"type":"int", "description": "Trade off for smoothness factor"},
+        "lambda_2": {"data": 100,"type":"int", "description": "Trade off for smoothness factor"},
+        "levels": {"data": 5,"type":"int", "description": "Pyramid Levels"},
         "skip_levels": {"data": 1,"type":"int", "description": "Pyramid Levels to skip"},
 
-        "learning_rate": {"data": 0.0001, "type": "float", "description": "Learning rate"},
+        "learning_rate": {"data": 0.00002, "type": "float", "description": "Learning rate"},
         "log_iterations": {"data": 50, "type": "int", "description": "Tensorflow log level"},
         "batch_size": {"data": 4, "type": "int", "description": "Batch size during training"},
 

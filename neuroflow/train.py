@@ -52,8 +52,11 @@ def train(hparams):
 
         optimizer.zero_grad()
         xs, ys, Rs, rs = model(x)
-        l, mse, p1, p2 = loss(xs, ys, Rs, rs, label,
+
+        level = int(i/20000)+1
+        l, mse, p1, p2 = loss(xs[:level], ys[:level], Rs[:level], rs[:level], label,
                               start=0,
+                              level=level,
                               lambda_1=hparams.lambda_1,
                               lambda_2=hparams.lambda_2)
         l.backward(), optimizer.step()
@@ -63,7 +66,6 @@ def train(hparams):
         if i%hparams.log_iterations==0: # Takes 4s
             t3 = time.time()
             for j in range(len(xs)):
-
                 visualize(xs[j][:8,0,:,:], xs[j][:8,1,:,:],
                           label[:8, :, :], ys[j][:8,0,:,:],
                           Rs[j][:8], rs[j][:8],
