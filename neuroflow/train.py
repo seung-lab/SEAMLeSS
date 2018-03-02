@@ -53,10 +53,11 @@ def train(hparams):
         optimizer.zero_grad()
         xs, ys, Rs, rs = model(x)
 
-        level = int(i/20000)+1
+        level = int(i/10000)+1
+        if level>len(xs):
+            level = len(xs)
         l, mse, p1, p2 = loss(xs[:level], ys[:level], Rs[:level], rs[:level], label,
                               start=0,
-                              level=level,
                               lambda_1=hparams.lambda_1,
                               lambda_2=hparams.lambda_2)
         l.backward(), optimizer.step()

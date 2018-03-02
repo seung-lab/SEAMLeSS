@@ -22,10 +22,10 @@
         "train_file": {"data":["data/tf/crackflow_label_train.tfrecords"], "type": "str", "description": "Training dataset"},
         "test_file": {"data":["data/tf/bad_trainset_24000_612_324.tfrecords"], "type": "str", "description": "Testing dataset"},
 
-        "lambda_1": {"data": 10,"type":"int", "description": "Trade off for smoothness factor"},
-        "lambda_2": {"data": 100,"type":"int", "description": "Trade off for smoothness factor"},
-        "levels": {"data": 5,"type":"int", "description": "Pyramid Levels"},
-        "skip_levels": {"data": 1,"type":"int", "description": "Pyramid Levels to skip"},
+        "lambda_1": {"data": 0,"type":"int", "description": "Trade off for smoothness factor"},
+        "lambda_2": {"data": 0,"type":"int", "description": "Trade off for smoothness factor"},
+        "levels": {"data": 5 ,"type":"int", "description": "Pyramid Levels"},
+        "skip_levels": {"data": 2,"type":"int", "description": "Pyramid Levels to skip"},
 
         "learning_rate": {"data": 0.00002, "type": "float", "description": "Learning rate"},
         "log_iterations": {"data": 50, "type": "int", "description": "Tensorflow log level"},
@@ -39,7 +39,7 @@
         "eval_batch_size": {"data": 2, "type": "int", "description": "Batch size during evaluation"},
         "optimizer": {"data": "Adam", "type": "str", "description": "Optimizer Name (Adam, Adagrad, etc)"},
         "loglevel": {"data": 20, "type": "int", "description": "Tensorflow log level"},
-        "output_layer": {"data": 4, "type": "int", "description": "output layer of UNET"},
+        "output_layer": {"data": 8, "type": "int", "description": "output layer of UNET"},
 
         "eval_iterations": {"data": 1000, "type": "int", "description": "Tensorflow log level"},
         "resize_conv": {"data": true, "type":"int","description": "use resize convolutions otherwise deconvolutions"},

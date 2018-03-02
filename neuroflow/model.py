@@ -39,8 +39,9 @@ class G(nn.Module):
 
         # Spatial transformer localization-network
         kernel_size = 7
-        pad = 3
+        pad = 0
         self.flow = nn.Sequential(
+            nn.ReflectionPad2d(15),
             nn.Conv2d(2, 32, kernel_size=kernel_size, padding=pad),
             nn.ReLU(True),
             nn.Conv2d(32, 64, kernel_size=kernel_size, padding=pad),
@@ -57,14 +58,14 @@ class G(nn.Module):
 
     # Flow transformer network forward function
     def forward(self, x, R):
-        y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1))
+        y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1), padding_mode='border')
         if self.skip:
             r = torch.zeros_like(R)
             return y, R, r
 
         r = self.flow(torch.cat([x[:,1:2,:,:], y], dim=1))
         R = r + R
-        y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1))
+        y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1),  padding_mode='border')
         return y, R, r
 
 class Pyramid(nn.Module):

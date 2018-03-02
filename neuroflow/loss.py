@@ -23,27 +23,28 @@ def smoothness_penalty(fields, label, order=1, mask=True):
     penalty = sum(fields)/len(fields)
     return penalty
 
-def loss(xs, ys, Rs, rs, label, start=0, level=0, lambda_1=0, lambda_2=0):
+def loss(xs, ys, Rs, rs, label, start=0, lambda_1=0, lambda_2=0):
     shp = xs[-1].shape
-    r_crop = 2**level
-    mse_crop = 2**level
+    level = len(xs)
+    r_crop = 1 #2**level
+    mse_crop = 1 #2**level
 
     r = F.upsample(rs[0], scale_factor=2**level, mode='nearest')
     for i in range(1, len(rs)):
         r = r + F.upsample(rs[i], scale_factor=2**(level-i), mode='nearest')
-    res = r#[:,:,r_crop:-r_crop,r_crop:-r_crop]
+    res = r[:,:,r_crop:-r_crop,r_crop:-r_crop]
 
     label = Variable(torch.zeros_like(label.data).cuda(device=0), requires_grad=False)
-    p1 = lambda_1*smoothness_penalty([res], 1-label, 1, mask=True)
-    p2 = lambda_2*smoothness_penalty([res], 1-label, 2, mask=True)
+    p1 = lambda_1*smoothness_penalty([res], 1-label, 1, mask=False)
+    p2 = lambda_2*smoothness_penalty([res], 1-label, 2, mask=False)
 
     start = 0
-    #mse = 0
-    #for i in range(start, len(xs)):
-    mse = mse_loss(ys[-1][:,0,:,:],
-                   xs[-1][:,1,:,:],
-                   crop=mse_crop)
-    #mse = mse/(len(xs)-start)
-    loss = mse#+p2+p1
+    mse = 0
+    for i in range(start, len(xs)):
+        mse = mse_loss(ys[i][:,0,:,:],
+                       xs[i][:,1,:,:],
+                       crop=mse_crop)
+    mse = mse/(len(xs)-start)
+    loss = mse+p2+p1
 
     return loss, mse, p1, p2
