@@ -5,6 +5,7 @@ import torchvision.utils as vutils
 import socket
 from datetime import datetime
 import os
+import torch.nn.functional as F
 
 def get_identity(batch_size=8, width=256):
     identity = np.zeros((batch_size,2,width,width), dtype=np.float32)+0.5
@@ -18,7 +19,7 @@ def name(path, exp_name):
     return log_dir
 
 # Input four Pytorch variables that contain
-def visualize(image, target, label, prediction, transform, res, n_iter, writer, mip_level=0, name="Train", crop=16):
+def visualize(image, target, label, prediction, transform, res, rs, n_iter, writer, mip_level=0, name="Train", crop=16):
     batch_size = image.shape[0]
     name = name+'/'+str(mip_level)
     ### Vizualize examples
@@ -33,10 +34,17 @@ def visualize(image, target, label, prediction, transform, res, n_iter, writer, 
     writer.add_image(name+'/predictions', pr, n_iter)
 
     ### Optical Flow
-    R = transform[:,:,crop:-crop,crop:-crop].data.cpu().numpy()
-    R = R - get_identity(batch_size=batch_size, width=transform.shape[-1])[0][:,crop:-crop,crop:-crop]
+    level = len(rs)
+    r = F.upsample(rs[0], scale_factor=2**level, mode='nearest')
+    for i in range(1, len(rs)):
+        print(r.shape)
+        r = r + F.upsample(rs[i], scale_factor=2**(level-i), mode='nearest')
+
+    #R = transform[:,:,crop:-crop,crop:-crop].data.cpu().numpy()
+    #R = R - get_identity(batch_size=batch_size, width=prediction.shape[-1])[0][:,crop:-crop,crop:-crop]
+    R = r[:,:,crop:-crop,crop:-crop].data.cpu().numpy()
     R = np.transpose(R, (0,2,3,1))
-    
+
     r = np.transpose(res[:,:,crop:-crop,crop:-crop].data.cpu().numpy(), (0,2,3,1))
 
     visualize_flow(R, writer, n_iter, name=name+'/flow')

@@ -66,7 +66,7 @@ class Pyramid(nn.Module):
             return residual + field_so_far, residuals_so_far
 
 class PyramidTransformer(nn.Module):
-    def __init__(self, size=4, dim=192, skip=0):
+    def __init__(self, size=0, dim=1, skip=0):
         super(PyramidTransformer, self).__init__()
         self.pyramid = Pyramid(size, dim, skip)
 

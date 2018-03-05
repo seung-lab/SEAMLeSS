@@ -33,7 +33,10 @@ class Data():
 
     def get_batch(self):
 
-        image, label, target  = self.data.get_batch()
+        image  = self.data.get_batch()
+        #FIXME implement augmentation
+        return image
+
         if not self.check_validity(image, target):
             return self.get_batch()
 

@@ -7,7 +7,7 @@ import torchvision
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 
-from util import get_identity
+from neuroflow.util import get_identity
 import numpy as np
 
 # G - Level convolution
@@ -33,8 +33,9 @@ import numpy as np
 # - Rs [[batch, 2, width, height]...] finer estimate of the flow
 # - rs [[batch, 2, width, height]...] residual change to the coarser estimate
 
+
 class G(nn.Module):
-    def __init__(self, skip=False):
+    def __init__(self, skip=False, eps=0.0001):
         super(G, self).__init__()
 
         # Spatial transformer localization-network
@@ -49,22 +50,25 @@ class G(nn.Module):
             nn.ReLU(True),
             nn.Conv2d(32, 16, kernel_size=kernel_size, padding=pad),
             nn.ReLU(True),
-            nn.Conv2d(16,2, kernel_size=kernel_size, padding=pad),
-            nn.ReLU(True),
+            nn.Conv2d(16, 2, kernel_size=kernel_size, padding=pad),
         ).cuda()
+
+        self.flow[-1].weight.data *= eps
+        self.flow[-1].bias.data *= eps
 
         self.skip = skip
 
     # Flow transformer network forward function
-    def forward(self, x, R):
-        y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1))
+    def forward(self, x, R, ident):
+
+        y = F.grid_sample(x[:,0:1,:,:], (R+ident).permute(0,2,3,1))
         if self.skip:
             r = torch.zeros_like(R)
             return y, R, r
 
         r = self.flow(torch.cat([x[:,1:2,:,:], y], dim=1))
         R = r + R
-        y = F.grid_sample(x[:,0:1,:,:], R.permute(0,2,3,1))
+        y = F.grid_sample(x[:,0:1,:,:], (R+ident).permute(0,2,3,1))
         return y, R, r
 
 class Pyramid(nn.Module):
@@ -79,15 +83,18 @@ class Pyramid(nn.Module):
             self.G_level.append(G(skip=True))
 
         shape[2], shape[3] = int(shape[2]/2**levels), int(shape[3]/2**levels)
-        identity = get_identity(batch_size=shape[0], width=shape[3])
+        self.identities = []
+        for i in range(levels+1):
+            identity = get_identity(batch_size=shape[0], width=shape[3]*(2**i))
+            identity = Variable(torch.from_numpy(identity).cuda(), requires_grad=False)
+            self.identities.append(identity)
 
-        self.identity = Variable(torch.from_numpy(identity).cuda(), requires_grad=False)
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear')
         self.levels = levels
         self.downsample = nn.AvgPool2d(2, stride=2)
 
     def forward(self, x):
-        R = self.identity
+        R = torch.zeros_like(self.identities[0])
         xs, ys, Rs, rs = [x], [], [], []
 
         # Downsample
@@ -98,7 +105,7 @@ class Pyramid(nn.Module):
         # Levels
         for i in range(self.levels):
             R = self.upsample(R)
-            y, R, r = self.G_level[i](xs[i], R)
+            y, R, r = self.G_level[i](xs[i], R, self.identities[i+1])
             ys.append(y), Rs.append(R), rs.append(r)
 
         return xs, ys, Rs, rs
