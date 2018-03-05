@@ -3,47 +3,52 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-def mse_loss(input,target, crop=1):
-    out = torch.pow((input[:,crop:-crop,crop:-crop]-target[:,crop:-crop,crop:-crop]), 2)
+def mse_loss(inp, target, crop=1):
+    out = torch.pow((inp[:,crop:-crop,crop:-crop]-target[:,crop:-crop,crop:-crop]), 2)
+    #out = torch.mul(out, 1-label[:,crop:-crop,crop:-crop])
     return out.mean()
 
-downsample = nn.AvgPool2d(2, stride=2)
+def norm(x):
+    return torch.sum(torch.pow(x, 2))
 
-def smoothness_penalty(fields, label, order=1, mask=True):
-    dx =     lambda f: (f[:,:,1:,:] - f[:,:,:-1,:])
-    dy =     lambda f: (f[:,:,:,1:] - f[:,:,:,:-1])
+def normalize(x):
+    n = torch.pow(x, 2)
+    n = torch.sum(n, 1)
+    n = torch.sqrt(n)
+    return x/n
+
+def smoothness_penalty(fields, order=1):
+    dx = lambda f: (f[:,:,1:,:] - f[:,:,:-1,:])
+    dy = lambda f: (f[:,:,:,1:] - f[:,:,:,:-1])
 
     for idx in range(order):
         fields = sum(map(lambda f: [dx(f), dy(f)], fields), [])  # given k-th derivatives, compute (k+1)-th
     fields = list(map(lambda f: torch.sum(f ** 2, 1), fields)) # sum along last axis (x/y channel)
 
-    if mask:
-        fields = [torch.mul(f, label[:,:f.shape[1],:f.shape[2]]) for f in fields]
-    fields = [torch.mean(f) for f in fields]
-    penalty = sum(fields)/len(fields)
+    fields = [norm(f) for f in fields]
+    penalty = sum(fields)
     return penalty
 
-def loss(xs, ys, Rs, rs, label, start=0, level=0, lambda_1=0, lambda_2=0):
-    shp = xs[-1].shape
-    r_crop = 2**level
-    mse_crop = 2**level
-
-    r = F.upsample(rs[0], scale_factor=2**level, mode='nearest')
+def smoothness(rs, label, crop=1):
+    r = rs[0]
     for i in range(1, len(rs)):
-        r = r + F.upsample(rs[i], scale_factor=2**(level-i), mode='nearest')
-    res = r#[:,:,r_crop:-r_crop,r_crop:-r_crop]
+        r = rs[i]+ F.upsample(r, scale_factor=2, mode='nearest')
 
-    label = Variable(torch.zeros_like(label.data).cuda(device=0), requires_grad=False)
-    p1 = lambda_1*smoothness_penalty([res], 1-label, 1, mask=True)
-    p2 = lambda_2*smoothness_penalty([res], 1-label, 2, mask=True)
+    #r = torch.mul(r, 1-label)
+    res = r#[:,:,crop:-crop,crop:-crop]
 
-    start = 0
-    #mse = 0
-    #for i in range(start, len(xs)):
+    p1 = smoothness_penalty([res], 1)
+    return p1
+
+def loss(xs, ys, Rs, rs, label, start=0, lambda_1=0, lambda_2=0):
+    crop = 2**(len(rs))*15
+    #r = normalize(Rs[-1])
+    r = Rs[-1]#[:, :,crop:-crop,crop:-crop]
+    p1 = smoothness_penalty([r], 1)
+    p2 = smoothness_penalty([r], 2)
+
     mse = mse_loss(ys[-1][:,0,:,:],
                    xs[-1][:,1,:,:],
-                   crop=mse_crop)
-    #mse = mse/(len(xs)-start)
-    loss = mse#+p2+p1
-
-    return loss, mse, p1, p2
+                   crop=crop)
+    loss = mse+lambda_1*p1+lambda_2*p2
+    return loss, mse, lambda_1*p1, 0#lambda_2*p1

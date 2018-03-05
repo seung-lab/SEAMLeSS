@@ -9,12 +9,14 @@ class Process(object):
         self.cuda = cuda
         self.model = PyramidTransformer().load(archive_path=path, cuda=cuda)
 
-    def process(self, s, t, level=0):
+    def process(self, s, t, level=0, crop=0):
         x = torch.from_numpy(np.stack((s, t), axis=1))
         if self.cuda:
             x = x.cuda()
         x = torch.autograd.Variable(x, requires_grad=False)
         res = self.model.pyramid.mlist[level](x)
+        if crop>0:
+            res = res[:,crop:-crop, crop:-crop,:]
         return res.data.cpu().numpy()
 
 #Simple test
@@ -22,5 +24,5 @@ if __name__ == "__main__":
     a = Process()
     s = np.ones((8,256,256), dtype=np.float32)
     t = np.ones((8,256,256), dtype=np.float32)
-    flow = a.process(s, t)
+    flow = a.process(s, t, level=5, crop=10)
     print(flow.shape) #expected output (8,256,256,2)
