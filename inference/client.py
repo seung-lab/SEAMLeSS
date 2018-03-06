@@ -1,6 +1,7 @@
 from aligner import Aligner, BoundingBox
 
-a = Aligner('model/1_6_3.pt', (256, 256), 'gs://neuroglancer/pinky40_v11/image', 'gs://neuroglancer/nflow_tests/p40')
+a = Aligner('model/1_6_3.pt', (1024, 1024), 256, 6, 4, 'gs://neuroglancer/pinky40_v11/image', 'gs://neuroglancer/nflow_tests/p40')
 t = 1024
-bbox = BoundingBox(t, t+ 256, t, t + 256)
-a.align_ng_stack(0, 1, 4, bbox)
+s = 1024
+bbox = BoundingBox(t, t + s, t, t + s)
+a.align_ng_stack(10, 11, 0, bbox)
