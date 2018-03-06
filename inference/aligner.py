@@ -8,15 +8,47 @@ import json
 from copy import deepcopy
 
 class BoundingBox:
-  def __init__(self, xs, xe, ys, ye):
-    self.x = (int(xs), int(xe))
-    self.y = (int(ys), int(ye))
-    self.x_size = int(xe - xs)
-    self.y_size = int(ye - ys)
+  def __init__(self, xs, xe, ys, ye, mip, mip_range=(0, 10)):
+    scale_factor = 2**mip
+    self.set_m0(xs*scale_factor, xe*scale_factor, ys*scale_factor, ye*scale_factor)
 
-  def uncrop(self, crop_xy):
-    return BoundingBox(self.x[0] - crop_xy, self.x[1] + crop_xy,
-            self.y[0] - crop_xy, self.y[1] + crop_xy)
+  def set_m0(self, xs, xe, ys, ye):
+    self.m0_x = (int(xs), int(xe))
+    self.m0_y = (int(ys), int(ye))
+    self.m0_x_size = int(xe - xs)
+    self.m0_y_size = int(ye - ys)
+
+  def x_range(self, mip):
+    scale_factor = 2**mip
+    return self.m0_x / scale_factor
+
+  def y_range(self, mip):
+    scale_factor = 2**mip
+    return self.m0_y / scale_factor
+
+  def x_size(self, mip):
+    scale_factor = 2**mip
+    return self.m0_x_size / scale_factor
+
+  def y_size(self, mip):
+    scale_factor = 2**mip
+    return self.m0_y_size / scale_factor
+
+  def crop(self, crop_xy, mip):
+    scale_factor = 2**mip
+    m0_crop_xy = crop_xy * scale_factor
+    self.set_m0(self.xs + m0_crop_xy,
+                self.xe - m0_crop_xy,
+                self.ys + m0_crop_xy,
+                self.ye - m0_crop_xy)
+
+  def uncrop(self, crop_xy, mip):
+    scale_factor = 2**mip
+    m0_crop_xy = crop_xy * scale_factor
+    self.set_m0(self.xs - m0_crop_xy,
+                self.xe + m0_crop_xy,
+                self.ys - m0_crop_xy,
+                self.ye + m0_crop_xy)
 
   def zeros(self):
     return np.zeros((self.x[1] - self.x[0], self.y[1] - self.y[0]), dtype=np.float32)
@@ -114,37 +146,36 @@ class Aligner:
   def check_all_params(self):
     return True
 
-  def align_ng_stack(self, start_section, end_section, mip, bbox):
+  def align_ng_stack(self, start_section, end_section, bbox):
     if not self.check_all_params():
       raise Exception("Not all parameters are set")
     #if not bbox.is_chunk_aligned(self.dst_ng_path):
     #  raise Exception("Have to align a chunkaligned size")
+    self.produce_optical_flow(start_section, end_section, bbox)
+    self.render_stack(start_section, end_section, bbox, mip=0)
 
-    '''allign sections one by one'''
+  def produce_optical_flow(self, start_section, end_section, bbox):
     for z in range(start_section, end_section):
-      self.align_ng_section_pair(z + 1, z, mip, bbox)
+      self.get_section_pair_residuals(z + 1, z, bbox)
 
-  def align_ng_section_pair(self, source_z, target_z, mip, bbox):
-    '''allign a pair of sections from NG'''
+  def get_section_pair_residuals(self, source_z, target_z, bbox):
     for m in range(self.high_mip,  self.low_mip - 1, -1):
-      mip_bbox = bbox.rescale(2**(mip - m))
+      x_range = bbox.x_range(mip=m)
+      y_range = bbox.y_range(mip=m)
+      for xs in range(x_range[0], x_range[1], self.chunk_size[0]):
+        for ys in range(y_range[0], y_range[1], self.chunk_size[1]):
+          patch_bbox = BoundingBox(xs, xs + self.chunk_size[0], ys, ys + self.chunk_size[0], mip=m)
+          self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
 
-      for xs in range(mip_bbox.x[0], mip_bbox.x[1], self.chunk_size[0]):
-        for ys in range(mip_bbox.y[0], mip_bbox.y[1], self.chunk_size[1]):
-          patch_bbox = BoundingBox(xs, xs + self.chunk_size[0], ys, ys + self.chunk_size[0])
-          self.compute_flow_patch(source_z, target_z, m, patch_bbox)
+  def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
+    precrop_patch_bbox = deepcopy(out_patch_bbox).uncrop(self.crop_amount)
 
-    self.render_section(source_z, 0, bbox)
-
-  def compute_residual_patch(self, source_z, target_z, mip, out_patch_bbox):
-    precrop_patch_bbox = out_patch_bbox.uncrop(self.crop_amount)
-
-    src_patch = self.get_warped_patch(self.src_ng_path, source_z, mip, precrop_patch_bbox)
-    tgt_patch = self.get_image_data(self.src_ng_path, target_z, mip, precrop_patch_bbox)
+    src_patch = self.get_warped_patch(self.src_ng_path, source_z, precrop_patch_bbox, mip)
+    tgt_patch = self.get_image_data(self.src_ng_path, target_z, precrop_patch_bbox, mip)
 
     #mip2 corresponds to level0 in the net
     residual = self.net.process(src_patch, tgt_patch, mip - 2, crop=self.crop_amount)
-    self.save_residual_patch(residual, source_z, mip, out_patch_bbox)
+    self.save_residual_patch(residual, source_z, out_patch_bbox, mip)
 
   def preprocess_data(self, data):
     sd = np.squeeze(data)
@@ -152,38 +183,43 @@ class Aligner:
     nd = np.divide(ed, float(256.0), dtype=np.float32)
     return nd
 
-  def get_image_data(self, path, z, mip, bbox):
+  def get_image_data(self, path, z, bbox, mip):
+    x_range = bbox.x_range(mip=mip)
+    y_range = bbox.y_range(mip=mip)
+
     data = cv(path, mip=mip,
-              bounded=False, fill_missing=True)[bbox.x[0]:bbox.x[1], bbox.y[0]:bbox.y[1], z]
+              bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     return self.preprocess_data(data)
 
   def get_vector_data(self, path, z, mip, bbox):
+    x_range = bbox.x_range(mip=mip)
+    y_range = bbox.y_range(mip=mip)
+
     data = cv(path, mip=mip,
-           bounded=False, fill_missing=True)[bbox.x[0]:bbox.x[1], bbox.y[0]:bbox.y[1], z]
+              bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     return data
 
-  def get_x_residual(self, z, mip, bbox):
-    data = self.get_vector_data(self.x_vec_ng_path, z, mip, bbox)[..., 0, 0]
+  def get_x_residual(self, z, bbox, mip):
+    data = self.get_vector_data(self.x_vec_ng_path, z, bbox, mip)[..., 0, 0]
     return np.expand_dims(data, axis=0)
 
-  def get_y_residual(self, z, mip, bbox):
-    data = self.get_vector_data(self.y_vec_ng_path, z, mip, bbox)[..., 0, 0]
+  def get_y_residual(self, z, bbox, mip):
+    data = self.get_vector_data(self.y_vec_ng_path, z, bbox, mip)[..., 0, 0]
     return np.expand_dims(data, axis=0)
 
 
-  def get_aggregate_flow(self, z, mip, bbox):
-    x_result = bbox.x_identity()
+  def get_aggregate_flow(self, z, bbox, mip):
+    x_result = bbox.x_identity(mip=mip)
     x_result = np.expand_dims(x_result, axis=0)
-    y_result = bbox.y_identity()
+    y_result = bbox.y_identity(mip=mip)
     y_result = np.expand_dims(y_result, axis=0)
 
     start_mip = min(mip + 1, self.low_mip)
     for m in range(start_mip, self.high_mip + 1):
       scale_factor = 2**(m - mip)
-      m_bbox = bbox.rescale(1.0 / scale_factor)
 
-      x_residual   = self.get_x_residual(z, m, m_bbox)
-      y_residual   = self.get_y_residual(z, m, m_bbox)
+      x_residual   = self.get_x_residual(z, bbox, m)
+      y_residual   = self.get_y_residual(z, bbox, m)
 
       upsampled_x  = upsample(x_residual, scale_factor) * scale_factor
       upsampled_y  = upsample(y_residual, scale_factor) * scale_factor
@@ -194,28 +230,47 @@ class Aligner:
 
     return np.stack((x_result, y_result), axis = 3)
 
-  def get_warped_patch(self, ng_path, z, mip, bbox):
+  def get_warped_patch(self, ng_path, z, bbox, mip):
     mip_disp = int(self.max_displacement / (2**mip))
-    influence_bbox =  bbox.uncrop(mip_disp)
+    influence_bbox =  deepcopy(bbox).uncrop(mip_disp)
 
-    agg_flow = self.get_aggregate_flow(z, mip, influence_bbox)
+    agg_flow = self.get_aggregate_flow(z, influence_bbox, mip)
 
-    raw_data = self.get_image_data(ng_path, z, mip, influence_bbox)
+    raw_data = self.get_image_data(ng_path, z, influence_bbox, mip)
     warped   = warp(raw_data, agg_flow)
     result   = crop(warped, mip_disp)
 
     return self.preprocess_data(result)
 
-  def save_residual_patch(self, residual, z, mip, bbox):
+  def save_image_patch(self, patch, z, bbox, mip):
+    x_range = bbox.x_range(mip=mip)
+    y_range = bbox.y_range(mip=mip)
+
+    cv(self.dst_ng_path, mip=mip, bounded=False)[x_range[0]:x_range[1],
+                                                  y_range[0]:y_range[1], z] = patch
+
+  def save_residual_patch(self, residual, z, bbox, mip):
     x_res = residual[0, :, :, 0, np.newaxis]
     y_res = residual[0, :, :, 1, np.newaxis]
 
-    cv(self.x_vec_ng_path, mip=mip, bounded=False)[bbox.x[0]:bbox.x[1], bbox.y[0]:bbox.y[1], z] = x_res
-    cv(self.y_vec_ng_path, mip=mip, bounded=False)[bbox.x[0]:bbox.x[1], bbox.y[0]:bbox.y[1], z] = y_res
+    x_range = bbox.x_range(mip=mip)
+    y_range = bbox.y_range(mip=mip)
 
-  '''def render_section(self, z, mip, bbox):
-    for xs in range(mip_bbox.x[0], mip_bbox.x[1], self.chunk_size[0]):
-      for ys in range(mip_bbox.y[0], mip_bbox.y[1], self.chunk_size[1]):
-        patch_bbox = BoundingBox(xs, xs + self.chunk_size[0], ys, ys + self.chunk_size[0])
-        warped = self.get_warped_patch(self.src_ng_path, z, mip, patch_bbox)'''
+    cv(self.x_vec_ng_path, mip=mip, bounded=False)[x_range[0]:x_range[1],
+                                                   y_range[0]:y_range[1], z] = x_res
+    cv(self.y_vec_ng_path, mip=mip, bounded=False)[x_range[0]:x_range[1],
+                                                   y_range[0]:y_range[1], z] = y_res
+
+  def render_section(self, z, bbox, mip):
+    x_range = bbox.x_range(mip=mip)
+    y_range = bbox.y_range(mip=mip)
+
+    for xs in range(x_range[0], x_range[1], self.chunk_size[0]):
+      for ys in range(y_range[0], y_range[1], self.chunk_size[1]):
+        patch_bbox = BoundingBox(xs, xs + self.chunk_size[0],
+                                 ys, ys + self.chunk_size[0], mip=mip)
+        warped_patch = self.get_warped_patch(self.src_ng_path, z, patch_bbox, mip)
+        self.save_image_patch(warped_patch, z, patch_bbox, mip)
+
+
 
