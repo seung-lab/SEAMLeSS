@@ -8,8 +8,9 @@ import json
 from copy import deepcopy
 
 class BoundingBox:
-  def __init__(self, xs, xe, ys, ye, mip, mip_range=(0, 10)):
+  def __init__(self, xs, xe, ys, ye, mip, max_mip=10):
     scale_factor = 2**mip
+    self.max_mip = max_mip
     self.set_m0(xs*scale_factor, xe*scale_factor, ys*scale_factor, ye*scale_factor)
 
   def set_m0(self, xs, xe, ys, ye):
@@ -19,24 +20,33 @@ class BoundingBox:
     self.m0_y_size = int(ye - ys)
 
   def x_range(self, mip):
+    assert(mip <= self.max_mip)
     scale_factor = 2**mip
     xs = int(self.m0_x[0] / scale_factor)
     xe = int(self.m0_x[1] / scale_factor)
     return (xs, xe)
 
   def y_range(self, mip):
+    assert(mip <= self.max_mip)
     scale_factor = 2**mip
     ys = int(self.m0_y[0] / scale_factor)
     ye = int(self.m0_y[1] / scale_factor)
     return (ys, ye)
 
   def x_size(self, mip):
+    assert(mip <= self.max_mip)
     scale_factor = 2**mip
     return int(self.m0_x_size / scale_factor)
 
   def y_size(self, mip):
+    assert(mip <= self.max_mip)
     scale_factor = 2**mip
     return int(self.m0_y_size / scale_factor)
+
+  def check_mips(self):
+    for m in range(1, self.max_mip + 1):
+      if self.m0_x_size % 2**m != 0:
+        raise Exception('Bounding box problem at mip {}'.format(m))
 
   def crop(self, crop_xy, mip):
     scale_factor = 2**mip
@@ -45,6 +55,7 @@ class BoundingBox:
                 self.m0_x[1] - m0_crop_xy,
                 self.m0_y[0] + m0_crop_xy,
                 self.m0_y[1] - m0_crop_xy)
+    self.check_mips()
 
   def uncrop(self, crop_xy, mip):
     scale_factor = 2**mip
@@ -53,6 +64,7 @@ class BoundingBox:
                 self.m0_x[1] + m0_crop_xy,
                 self.m0_y[0] - m0_crop_xy,
                 self.m0_y[1] + m0_crop_xy)
+    self.check_mips()
 
   def zeros(self, mip):
     return np.zeros((self.x_size(mip), self.y_size(mip)), dtype=np.float32)
@@ -70,11 +82,11 @@ class BoundingBox:
     return norm.T
 
 class Aligner:
-  def __init__(self, model_path, chunk_size, max_displacement,
+  def __init__(self, model_path, chunk_size, max_displacement, crop,
                high_mip, low_mip, src_ng_path, dst_ng_path):
     self.chunk_size = chunk_size
     self.max_displacement = max_displacement
-    self.crop_amount = 0
+    self.crop_amount = crop
 
     self.src_ng_path = src_ng_path
     self.dst_ng_path = os.path.join(dst_ng_path, 'image')
@@ -84,7 +96,7 @@ class Aligner:
     self.y_vec_ng_path = os.path.join(self.vec_ng_path, 'y')
 
     self.net = Process(model_path)
-    self._create_info_files(1024)
+    self._create_info_files(max_displacement)
 
     self.high_mip = high_mip
     self.low_mip  = low_mip
@@ -122,7 +134,7 @@ class Aligner:
       json.dump(dst_info, f)
     os.system("gsutil -h {} cp {} {}".format(nocache_f,
                                        os.path.join(tmp_dir, "info.dst"),
-                                       os.path.join(self.dst_ng_path, "image/info")))
+                                       os.path.join(self.dst_ng_path, "info")))
 
     vec_info = deepcopy(src_info)
     vec_info["data_type"] = "float32"
@@ -156,15 +168,16 @@ class Aligner:
 
   def produce_optical_flow(self, start_section, end_section, bbox):
     for z in range(start_section, end_section):
-      self.get_section_pair_residuals(z + 1, z, bbox)
+      self.compute_section_pair_residuals(z + 1, z, bbox)
 
-  def get_section_pair_residuals(self, source_z, target_z, bbox):
+  def compute_section_pair_residuals(self, source_z, target_z, bbox):
     for m in range(self.high_mip,  self.low_mip - 1, -1):
       x_range = bbox.x_range(mip=m)
       y_range = bbox.y_range(mip=m)
       for xs in range(x_range[0], x_range[1], self.chunk_size[0]):
         for ys in range(y_range[0], y_range[1], self.chunk_size[1]):
-          patch_bbox = BoundingBox(xs, xs + self.chunk_size[0], ys, ys + self.chunk_size[0], mip=m)
+          patch_bbox = BoundingBox(xs, xs + self.chunk_size[0], ys, ys + self.chunk_size[0],
+                                   mip=m, max_mip=self.high_mip)
           self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
 
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
@@ -242,14 +255,17 @@ class Aligner:
     mip_disp = int(self.max_displacement / 2**mip)
     result   = crop(warped, mip_disp)
 
-    return self.preprocess_data(result)
+    #preprocess divides by 256 and puts it into right dimensions
+    #this data range is good already, so mult by 256
+    return self.preprocess_data(result * 256)
 
-  def save_image_patch(self, patch, z, bbox, mip):
+  def save_image_patch(self, float_patch, z, bbox, mip):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-
+    patch = float_patch[0, :, :, np.newaxis]
+    uint_patch = (np.multiply(patch, 256)).astype(np.uint8)
     cv(self.dst_ng_path, mip=mip, bounded=False)[x_range[0]:x_range[1],
-                                                  y_range[0]:y_range[1], z] = patch
+                                                  y_range[0]:y_range[1], z] = uint_patch
 
   def save_residual_patch(self, residual, z, bbox, mip):
     x_res = residual[0, :, :, 0, np.newaxis]
@@ -270,7 +286,8 @@ class Aligner:
     for xs in range(x_range[0], x_range[1], self.chunk_size[0]):
       for ys in range(y_range[0], y_range[1], self.chunk_size[1]):
         patch_bbox = BoundingBox(xs, xs + self.chunk_size[0],
-                                 ys, ys + self.chunk_size[0], mip=mip)
+                                 ys, ys + self.chunk_size[0],
+                                 mip=mip, max_mip=self.high_mip)
         warped_patch = self.get_warped_patch(self.src_ng_path, z, patch_bbox, mip)
         self.save_image_patch(warped_patch, z, patch_bbox, mip)
 
