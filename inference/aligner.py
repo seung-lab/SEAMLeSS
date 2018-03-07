@@ -20,54 +20,54 @@ class BoundingBox:
 
   def x_range(self, mip):
     scale_factor = 2**mip
-    return self.m0_x / scale_factor
+    xs = int(self.m0_x[0] / scale_factor)
+    xe = int(self.m0_x[1] / scale_factor)
+    return (xs, xe)
 
   def y_range(self, mip):
     scale_factor = 2**mip
-    return self.m0_y / scale_factor
+    ys = int(self.m0_y[0] / scale_factor)
+    ye = int(self.m0_y[1] / scale_factor)
+    return (ys, ye)
 
   def x_size(self, mip):
     scale_factor = 2**mip
-    return self.m0_x_size / scale_factor
+    return int(self.m0_x_size / scale_factor)
 
   def y_size(self, mip):
     scale_factor = 2**mip
-    return self.m0_y_size / scale_factor
+    return int(self.m0_y_size / scale_factor)
 
   def crop(self, crop_xy, mip):
     scale_factor = 2**mip
     m0_crop_xy = crop_xy * scale_factor
-    self.set_m0(self.xs + m0_crop_xy,
-                self.xe - m0_crop_xy,
-                self.ys + m0_crop_xy,
-                self.ye - m0_crop_xy)
+    self.set_m0(self.m0_x[0] + m0_crop_xy,
+                self.m0_x[1] - m0_crop_xy,
+                self.m0_y[0] + m0_crop_xy,
+                self.m0_y[1] - m0_crop_xy)
 
   def uncrop(self, crop_xy, mip):
     scale_factor = 2**mip
     m0_crop_xy = crop_xy * scale_factor
-    self.set_m0(self.xs - m0_crop_xy,
-                self.xe + m0_crop_xy,
-                self.ys - m0_crop_xy,
-                self.ye + m0_crop_xy)
+    self.set_m0(self.m0_x[0] - m0_crop_xy,
+                self.m0_x[1] + m0_crop_xy,
+                self.m0_y[0] - m0_crop_xy,
+                self.m0_y[1] + m0_crop_xy)
 
-  def zeros(self):
-    return np.zeros((self.x[1] - self.x[0], self.y[1] - self.y[0]), dtype=np.float32)
+  def zeros(self, mip):
+    return np.zeros((self.x_size(mip), self.y_size(mip)), dtype=np.float32)
 
-  def y_identity(self):
-    row  = np.arange(self.x_size, dtype=np.float32)[:, np.newaxis]
-    full = np.tile(row, (1, self.y_size))
-    norm = (full / self.x_size) * 2 - 1
+  def y_identity(self, mip):
+    row  = np.arange(self.x_size(mip), dtype=np.float32)[:, np.newaxis]
+    full = np.tile(row, (1, self.y_size(mip)))
+    norm = (full / self.x_size(mip)) * 2 - 1
     return norm
 
-  def x_identity(self):
-    row  = np.arange(self.y_size, dtype=np.float32)[:, np.newaxis]
-    full = np.tile(row, (1, self.x_size))
-    norm = (full / self.y_size) * 2 - 1
+  def x_identity(self, mip):
+    row  = np.arange(self.y_size(mip), dtype=np.float32)[:, np.newaxis]
+    full = np.tile(row, (1, self.x_size(mip)))
+    norm = (full / self.y_size(mip)) * 2 - 1
     return norm.T
-
-  def rescale(self, factor):
-    return BoundingBox(self.x[0]*factor, self.x[1]*factor,
-                       self.y[0]*factor, self.y[1]*factor)
 
 class Aligner:
   def __init__(self, model_path, chunk_size, max_displacement,
@@ -168,7 +168,8 @@ class Aligner:
           self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
 
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
-    precrop_patch_bbox = deepcopy(out_patch_bbox).uncrop(self.crop_amount)
+    precrop_patch_bbox = deepcopy(out_patch_bbox)
+    precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
 
     src_patch = self.get_warped_patch(self.src_ng_path, source_z, precrop_patch_bbox, mip)
     tgt_patch = self.get_image_data(self.src_ng_path, target_z, precrop_patch_bbox, mip)
@@ -191,7 +192,7 @@ class Aligner:
               bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     return self.preprocess_data(data)
 
-  def get_vector_data(self, path, z, mip, bbox):
+  def get_vector_data(self, path, z, bbox, mip):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
 
@@ -214,7 +215,7 @@ class Aligner:
     y_result = bbox.y_identity(mip=mip)
     y_result = np.expand_dims(y_result, axis=0)
 
-    start_mip = min(mip + 1, self.low_mip)
+    start_mip = max(mip + 1, self.low_mip)
     for m in range(start_mip, self.high_mip + 1):
       scale_factor = 2**(m - mip)
 
@@ -231,13 +232,14 @@ class Aligner:
     return np.stack((x_result, y_result), axis = 3)
 
   def get_warped_patch(self, ng_path, z, bbox, mip):
-    mip_disp = int(self.max_displacement / (2**mip))
-    influence_bbox =  deepcopy(bbox).uncrop(mip_disp)
+    influence_bbox =  deepcopy(bbox)
+    influence_bbox.uncrop(self.max_displacement, mip=0)
 
     agg_flow = self.get_aggregate_flow(z, influence_bbox, mip)
 
     raw_data = self.get_image_data(ng_path, z, influence_bbox, mip)
     warped   = warp(raw_data, agg_flow)
+    mip_disp = int(self.max_displacement / 2**mip)
     result   = crop(warped, mip_disp)
 
     return self.preprocess_data(result)
