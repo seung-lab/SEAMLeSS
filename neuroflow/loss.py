@@ -3,13 +3,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-def mse_loss(inp, target, crop=1):
-    out = torch.pow((inp[:,crop:-crop,crop:-crop]-target[:,crop:-crop,crop:-crop]), 2)
-    #out = torch.mul(out, 1-label[:,crop:-crop,crop:-crop])
-    return out.mean()
+def mse_loss(inp, target):
+    out = torch.pow((inp-target), 2)
+    return torch.mean(out)
+
+s = nn.Sigmoid()
+def sigmoid_loss(inp, target):
+    out = torch.pow((inp-target), 2)
+    out = 1-s(-10*(out-0.01))
+    return torch.mean(out)
 
 def norm(x):
-    return torch.sum(torch.pow(x, 2))
+    return torch.sum(x)#torch.pow(x, 2))
 
 def normalize(x):
     n = torch.pow(x, 2)
@@ -18,37 +23,26 @@ def normalize(x):
     return x/n
 
 def smoothness_penalty(fields, order=1):
-    dx = lambda f: (f[:,:,1:,:] - f[:,:,:-1,:])
-    dy = lambda f: (f[:,:,:,1:] - f[:,:,:,:-1])
+    dx = lambda f: f[:,:,1:,:] - f[:,:,:-1,:]
+    dy = lambda f: f[:,:,:,1:] - f[:,:,:,:-1]
 
     for idx in range(order):
         fields = sum(map(lambda f: [dx(f), dy(f)], fields), [])  # given k-th derivatives, compute (k+1)-th
-    fields = list(map(lambda f: torch.sum(f ** 2, 1), fields)) # sum along last axis (x/y channel)
+    square_errors = map(lambda f: torch.sum(f ** 2, -1), fields) # sum along last axis (x/y channel)
+    return sum(map(torch.mean, square_errors))
 
-    fields = [norm(f) for f in fields]
-    penalty = sum(fields)
-    return penalty
-
-def smoothness(rs, label, crop=1):
-    r = rs[0]
-    for i in range(1, len(rs)):
-        r = rs[i]+ F.upsample(r, scale_factor=2, mode='nearest')
-
-    #r = torch.mul(r, 1-label)
-    res = r#[:,:,crop:-crop,crop:-crop]
-
-    p1 = smoothness_penalty([res], 1)
-    return p1
-
-def loss(xs, ys, Rs, rs, label, start=0, lambda_1=0, lambda_2=0):
-    crop = 2**(len(rs))*15
+import cavelab as cl
+def loss(xs, ys, Rs, rs, label=0, start=0, lambda_1=0, lambda_2=0):
+    crop = 30
     #r = normalize(Rs[-1])
-    r = Rs[-1]#[:, :,crop:-crop,crop:-crop]
-    p1 = smoothness_penalty([r], 1)
-    p2 = smoothness_penalty([r], 2)
+    r = [[Rs[i][:,:,crop:-crop,crop:-crop]] for i in range(Rs.shape[0])] #[:, :,crop:-crop,crop:-crop]
 
-    mse = mse_loss(ys[-1][:,0,:,:],
-                   xs[-1][:,1,:,:],
-                   crop=crop)
+    p1 = smoothness_penalty(r, 1)
+    p2 = smoothness_penalty(r, 2)
+    #cl.visual.save(ys[0,0,crop:-crop,crop:-crop].data.cpu().numpy(), 'dump/pred_loss')
+    #cl.visual.save(xs[0,0,crop:-crop,crop:-crop].data.cpu().numpy(), 'dump/target_loss')
+
+    mse = mse_loss(ys[:, :,crop:-crop,crop:-crop],
+                   xs[:, :-1,crop:-crop,crop:-crop])
     loss = mse+lambda_1*p1+lambda_2*p2
-    return loss, mse, lambda_1*p1, 0#lambda_2*p1
+    return loss, mse, lambda_1*p1, lambda_2*p2

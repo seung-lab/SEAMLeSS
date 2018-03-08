@@ -10,7 +10,7 @@ from torch.autograd import Variable
 import time
 import numpy as np
 import cavelab as cl
-from model import Pyramid, G
+from model import Pyramid, Xmas
 from data import Data
 from loss import loss
 from util import get_identity, name, visualize
@@ -20,7 +20,7 @@ import json
 if not torch.cuda.is_available():
     raise ValueError("Cuda is not available")
 
-debug = True
+debug = False
 
 def train(hparams):
 
@@ -33,78 +33,73 @@ def train(hparams):
         with open(path+'/hparams.json', 'w') as outfile:
             json.dump(hparams, outfile)
     width = hparams.features['image']['width']
-    input_shape = [hparams.batch_size, 2,width,width]
-    model = Pyramid(levels = hparams.levels,
-                    skip_levels=hparams.skip_levels,
-                    shape=input_shape)
+    input_shape = [hparams.levels, hparams.batch_size, width, width]
+    model = Xmas(levels = hparams.levels,
+                 skip_levels = hparams.skip_levels,
+                 shape = input_shape)
 
     model.cuda(device=0)
     optimizer = optim.Adam(model.parameters(), lr=hparams.learning_rate)
     model.train()
-    image, target, lab = d.get_batch()
-    image, target, lab = d.get_batch()
-    new_image = np.zeros_like(image)
-    width = 16
-    new_image[0, :120, :] = image[0, :120,:]
-    lab[0, 120:120+width, :] = 1
-    new_image[0, 120+width:256,:] = image[0, 120:256-width,:]
-    target = image
-    image = new_image
+    #image = d.get_batch()
+
+    #print(image.shape)
+    #temp = image[:,0,:,:]
+    #j = 4
+    #image[:,1,:,:] = np.zeros((5, 256,256))
+    #image[:,1,:128-j,:] = temp[:,j:128, :]
+    #image[:,1,128:,:] = temp[:,128:, :]
+    #exit()
     for i in range(hparams.steps):
         t1 = time.time()
 
-        x = np.stack((image, target), axis=1)
-        x = torch.autograd.Variable(torch.from_numpy(x).cuda(device=0), requires_grad=False)
-        label = torch.autograd.Variable(torch.from_numpy(lab).cuda(device=0), requires_grad=False)
+        image = d.get_batch()
 
-        optimizer.zero_grad()
-        xs, ys, Rs, rs = model(x)
+        xs = torch.autograd.Variable(torch.from_numpy(image[0:0+hparams.levels]).cuda(device=0), requires_grad=False)
+        for j in range(1):
+            optimizer.zero_grad()
+            ys, Rs, rs = model(xs)
 
-        level = int(i/20000)+1
-        if level>len(xs):
-            level = len(xs)
-        level = 1
-        l, mse, p1, norm = loss(xs[:level], ys[:level],
-                                Rs[
-                                :level], rs[:level], label,
-                                start=0,
-                                lambda_1=hparams.lambda_1,
-                                lambda_2=hparams.lambda_2)
-        l.backward(), optimizer.step()
+            l, mse, p1, p2 = loss(xs[:], ys[:],
+                                  Rs[:], rs[:],
+                                  start=0,
+                                  lambda_1=hparams.lambda_1,
+                                  lambda_2=hparams.lambda_2)
+
+            l.backward(), optimizer.step()
         t2 = time.time()
 
         print(i, 'loss',  str(l.data[0])[:4],
                           str(p1.data[0])[:4],
                           str(t2-t1)[:4]+"s")
 
-        #cl.visual.save(rs[j][0], 'dump/target')
-
         if i%hparams.log_iterations==0: # Takes 4s
             t3 = time.time()
             j = 0
-            cl.visual.save(xs[j][0,0].data.cpu().numpy(), 'dump/image')
-            cl.visual.save(ys[j][0,0].data.cpu().numpy(), 'dump/pred')
-            cl.visual.save(xs[j][0,1].data.cpu().numpy(), 'dump/target')
-            cl.visual.save(label[0].data.cpu().numpy(), 'dump/label')
-            rss = np.transpose(Rs[j][0].data.cpu().numpy(), (1,2,0))
-            #rss_2 = np.transpose(get_identity(batch_size=1, width=rss.shape[0])[0], (1,2,0))
-            #rss_2 -= rss
-            hsv, grid = cl.visual.flow(rss)
-            cl.visual.save(hsv, 'dump/grid')
-            for j in range(len(xs)):
-                pass
-                #visualize(xs[j][:8,0,:,:], xs[j][:8,1,:,:],
-                #          label[:8, :, :], ys[j][:8,0,:,:],
-                #          Rs[j][:8], rs[j][:8], rs[:(j+1)][:8],
-                #          i, writer,
-                #          mip_level=len(xs)-j-1,
-                #          crop=(2**j+3))
+            if debug:
+                cl.visual.save(xs[j,1].data.cpu().numpy(), 'dump/image')
+                cl.visual.save(ys[j,0].data.cpu().numpy(), 'dump/pred')
+                cl.visual.save(xs[j,0].data.cpu().numpy(), 'dump/target')
+
+                rss = np.transpose(Rs[j, 0].data.cpu().numpy(), (1,2,0))
+                rss_2 = np.transpose(get_identity(batch_size=1, width=rss.shape[0])[0], (1,2,0))
+                rss_2 -= rss
+                hsv, grid = cl.visual.flow(rss)
+                cl.visual.save(hsv, 'dump/grid')
+                continue
+            for j in range(hparams.levels):
+                visualize(xs[j,1:,:,:], xs[j,:-1,:,:],
+                          ys[j,:,:,:], Rs[j,:,:,:],
+                          rs[j,:], rs[j,:],
+                          i, writer,
+                          mip_level=j,
+                          crop=(2**j))
 
             if not debug:
                 writer.add_scalar('data/loss', l, i)
                 writer.add_scalar('data/mse', mse, i)
                 writer.add_scalar('data/p1', p1, i)
-                writer.add_scalar('data/norm', norm, i)
+                writer.add_scalar('data/p2', p2, i)
 
                 torch.save(model, path+'/model.pt') #0.3s
             t4 = time.time()

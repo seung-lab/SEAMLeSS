@@ -8,7 +8,7 @@ class Data():
         self.batch_size = hparams.batch_size
         self.data = tfdata(hparams.train_file,
                                 random_order = random,
-                                batch_size = self.batch_size,
+                                batch_size = 1,#self.batch_size,
                                 features=hparams.features,
                                 flipping=hparams.augmentation["flipping"],
                                 random_brightness=hparams.augmentation["random_brightness"],
@@ -33,18 +33,20 @@ class Data():
 
     def get_batch(self):
 
-        image  = self.data.get_batch()
+        xs  = self.data.get_batch() # 5,256,256,8
+        xs = np.transpose(xs['image'].squeeze(0), (0,3,1,2)).astype(np.float32)
         #FIXME implement augmentation
-        return image
+        #TODO random flipping (easy)
+        #TODO random translations (medium)
+        #TODO Elastic transform (hard)
+        i = 0
+        return xs[:,i:i+self.batch_size, :, :]
 
-        if not self.check_validity(image, target):
-            return self.get_batch()
-
-        label += image == 0 # Borders
-
-        label = (label>0).astype(np.float32)
-
-        return image, target, label
+        #if not self.check_validity(image, target):
+        #    return self.get_batch()
+        #label += image == 0 # Borders
+        #label = (label>0).astype(np.float32)
+        #return image, target, label
 
     def dissimilar(self, images, templates):
         length = templates.shape[0]-1

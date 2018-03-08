@@ -11,25 +11,17 @@
         "linear": {"data": false, "type": "bool", "description": "Decide if the convolution is linear or not" },
         "output_layer": {"data": 1, "type": "int", "description": "Decide output channel" },
 
-        "radius": {"data": 5, "type": "int", "description": "Maximum radius for finding second" },
-        "mean_over_batch": {"data": true, "type": "bool", "description": "Take the mean over the batch otherwise min" },
-        "lambd": {"data": -0.5, "type": "float", "description": "Lambda for mixed loss" },
-        "eps": {"data": 0.0001, "type": "float", "description": "small number" },
-        "loss_type": {"data": "dist", "type": "str", "description": "Define the loss format either 'dist' or 'ratio' " },
-        "loss_form": {"data": "minus", "type": "str", "description": "Define the loss formulae to minimize over {'minus', 'inverse', 'log'}" },
-        "softmax": {"data": false, "type": "bool", "description": "Use Softmax"},
-
         "train_file": {"data":["data/tf/crackflow_5x256_train.tfrecords"], "type": "str", "description": "Training dataset"},
         "test_file": {"data":["data/tf/bad_trainset_24000_612_324.tfrecords"], "type": "str", "description": "Testing dataset"},
 
-        "lambda_1": {"data": 100, "type":"int", "description": "Trade off for smoothness factor"},
+        "lambda_1": {"data": 5, "type":"int", "description": "Trade off for smoothness factor"},
         "lambda_2": {"data": 0,"type":"int", "description": "Trade off for smoothness factor"},
-        "levels": {"data": 3,"type":"int", "description": "Pyramid Levels"},
+        "levels": {"data": 3, "type":"int", "description": "Pyramid Levels"},
         "skip_levels": {"data": 0,"type":"int", "description": "Pyramid Levels to skip"},
         "learning_rate": {"data": 0.00001, "type": "float", "description": "Learning rate"},
         "log_iterations": {"data": 50, "type": "int", "description": "Tensorflow log level"},
-        "batch_size": {"data": 1, "type": "int", "description": "Batch size during training"},
-        "steps": {"data": 7000, "type": "int", "description":  "Number of steps to complete the training"},
+        "batch_size": {"data": 8, "type": "int", "description": "Batch size during training"},
+        "steps": {"data": 80000, "type": "int", "description":  "Number of steps to complete the training"},
 
         "momentum": {"data": 0.9, "type": "float", "description": "Learning momentum"},
         "decay": {"data": 0.75, "type": "float", "description": "Learning momentum"},
@@ -55,7 +47,7 @@
 
         "features": {
             "data": {
-                "image": {"shape": [8,5,256,256], "width":256}
+                "image": {"shape": [5,256,256,8], "width":256}
 
             }, "type": "dict", "description": "Structure of input features"},
 
