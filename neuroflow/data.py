@@ -33,35 +33,57 @@ class Data():
 
     def get_batch(self):
 
-        xs  = self.data.get_batch() # 5,256,256,8
-        xs = np.transpose(xs['image'].squeeze(0), (0,3,1,2)).astype(np.float32)
-        #FIXME implement augmentation
-        #TODO random flipping (easy)
-        #TODO random translations (medium)
+        xs  = self.data.get_batch() # 5,256,256,8i = 0
+        xs = np.transpose(xs['image'].squeeze(0)[0:0+hparams.levels,:,:,0:0+self.batch_size], (0,3,1,2)).astype(np.float32)
+        xs = Data.augmentation(xs)
+        return xs
+
+    ### Augmentations
+    @staticmethod
+    def augmentation(image): # [d,b, width, height]
+        image = Data.flipping(image)
+        image = Data.translate(image)
         #TODO Elastic transform (hard)
-        i = 0
-        return xs[:,i:i+self.batch_size, :, :]
+        return image
 
-        #if not self.check_validity(image, target):
-        #    return self.get_batch()
-        #label += image == 0 # Borders
-        #label = (label>0).astype(np.float32)
-        #return image, target, label
+    @staticmethod
+    def flipping(xs):
+        #FIXME Some of the strides are zero
+        if np.random.randint(2):
+            image = np.flip(xs, 2)
+        if np.random.randint(2):
+            image = np.flip(xs, 3)
 
-    def dissimilar(self, images, templates):
-        length = templates.shape[0]-1
-        temp = np.array(templates[0])
-        templates[0:length] = templates[1:length+1]
-        templates[length] = temp
-        return images, templates
+        xs = np.rot90(xs, k=np.random.randint(4), axis=(2,3))
+        return xs
 
-    def check_validity(self, image, template):
-        t = np.array(template.shape)
-        if np.any(np.sum(image<0.05, axis=(1,2)) >= t[1]*t[2]) or image.shape[0]<self.batch_size:
-            return False
+    @staticmethod
+    def translate(xs):
+        for b in range(xs.shape[1]):
+            n = np.random.randint(2*2**xs.shape[0])-2**xs.shape[0]
+            m = np.random.randint(2*2**xs.shape[0])-2**xs.shape[0]
 
-        #if np.any(template.var(axis=(1,2))<0.0001):
-        #    print("hey")
-        #    return False
+            for d in range(xs.shape[0]):
+                xs[d,b] = Data.shift(xs[d,b], int(n/2**d), int(m/2**d))
+        return xs
 
-        return True
+    @staticmethod
+    def shift(xs, n, m):
+        e = np.zeros_like(xs)
+        if n > 0 and m > 0:
+            e[n:,m:] = xs[:-n, :-m]
+        elif n > 0 and m < 0:
+            e[n:, :m] = xs[:-n, -m:]
+        elif n < 0 and m > 0:
+            e[:n, m:] = xs[-n:, :-m]
+        elif n < 0 and m < 0:
+            e[:n, :m] = xs[-n:, -m:]
+        else:
+            e = xs
+        return e
+
+
+if __name__ == "__main__":
+    image = np.ones((5,8,256,256))
+    image = Data.augmentation(image)
+    cl.visual.save(image[4,5], 'dump/image')

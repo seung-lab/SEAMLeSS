@@ -13,11 +13,14 @@ from model import G
 from .unet import Unet
 
 class Xmas(nn.Module):
-    def __init__(self, levels=1, skip_levels=0, shape=[5,8,256,256]):
+    def __init__(self, levels=1, skip_levels=2, shape=[5,8,256,256]):
         super(Xmas, self).__init__()
         self.G_level = nn.ModuleList()
         self.levels = levels
-        for i in range(levels):
+        for i in range(skip_levels):
+            self.G_level.append(G(skip=True))
+
+        for i in range(self.levels-skip_levels):
             self.G_level.append(G())
 
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear')
@@ -53,7 +56,7 @@ class Xmas(nn.Module):
         for i in range(self.levels):
             j = self.levels-i-1
             if j<self.levels-1:
-                R = self.up_crop(Rs[j+1])
+                R = 2*self.up_crop(Rs[j+1])
             else:
                 R = torch.zeros_like(Rs[j])
             x = self.render(xs[j,:,:,:], R) #[8,256,256]

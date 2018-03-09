@@ -32,17 +32,19 @@ def smoothness_penalty(fields, order=1):
     return sum(map(torch.mean, square_errors))
 
 import cavelab as cl
-def loss(xs, ys, Rs, rs, label=0, start=0, lambda_1=0, lambda_2=0):
+def loss(xs, ys, Rs, rs, level=0, lambda_1=0, lambda_2=0):
     crop = 30
+    level = 0
     #r = normalize(Rs[-1])
-    r = [[Rs[i][:,:,crop:-crop,crop:-crop]] for i in range(Rs.shape[0])] #[:, :,crop:-crop,crop:-crop]
+    r = [Rs[level][:,:,crop:-crop,crop:-crop]]# for i in range(Rs.shape[0])] #[:, :,crop:-crop,crop:-crop]
 
     p1 = smoothness_penalty(r, 1)
     p2 = smoothness_penalty(r, 2)
-    #cl.visual.save(ys[0,0,crop:-crop,crop:-crop].data.cpu().numpy(), 'dump/pred_loss')
-    #cl.visual.save(xs[0,0,crop:-crop,crop:-crop].data.cpu().numpy(), 'dump/target_loss')
+    #cl.visual.save(ys[level, :,crop:-crop,crop:-crop].data.cpu().numpy(), 'dump/pred_loss')
+    #cl.visual.save(xs[level, :-1,crop:-crop,crop:-crop].data.cpu().numpy(), 'dump/target_loss')
 
-    mse = mse_loss(ys[:, :,crop:-crop,crop:-crop],
-                   xs[:, :-1,crop:-crop,crop:-crop])
+    mse = mse_loss(ys[level, :,crop:-crop,crop:-crop],
+                   xs[level, :-1,crop:-crop,crop:-crop])
+
     loss = mse+lambda_1*p1+lambda_2*p2
     return loss, mse, lambda_1*p1, lambda_2*p2
