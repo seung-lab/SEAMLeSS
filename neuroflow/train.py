@@ -22,10 +22,20 @@ if not torch.cuda.is_available():
 
 debug = False
 
+def freeze_all(model, besides=0):
+    levels = len(model.G_level)
+    for i in range(levels):
+        for param in model.G_level[i].parameters():
+            param.requires_grad = False
+
+    for param in model.G_level[besides].parameters():
+        param.requires_grad = True
+
 def train(hparams):
 
     # Load Data, Model, Logging
     d = Data(hparams)
+
     path = os.path.join('logs/'+hparams.name, hparams.version)
 
     if not debug:
@@ -39,6 +49,7 @@ def train(hparams):
                  shape = input_shape)
 
     model.cuda(device=0)
+
     optimizer = optim.Adam(model.parameters(), lr=hparams.learning_rate)
     model.train()
     #image = d.get_batch()
@@ -48,21 +59,24 @@ def train(hparams):
     #j = 4
     #image[:,1,:,:] = np.zeros((5, 256,256))
     #image[:,1,:128-j,:] = temp[:,j:128, :]
-    #image[:,1,128:,:] = temp[:,128:, :]
-    #exit()
+    #image[:,
+    level = hparams.levels-1
+
     for i in range(hparams.steps):
         t1 = time.time()
-
         image = d.get_batch()
+        xs = torch.autograd.Variable(torch.from_numpy(image).cuda(device=0), requires_grad=False)
+        if i%10000==0:
+            #level = max(0, level-1)
+            freeze_all(model, besides=level)
 
-        xs = torch.autograd.Variable(torch.from_numpy(image[0:0+hparams.levels]).cuda(device=0), requires_grad=False)
         for j in range(1):
             optimizer.zero_grad()
             ys, Rs, rs = model(xs)
 
             l, mse, p1, p2 = loss(xs[:], ys[:],
                                   Rs[:], rs[:],
-                                  start=0,
+                                  level=0,
                                   lambda_1=hparams.lambda_1,
                                   lambda_2=hparams.lambda_2)
 
@@ -77,9 +91,9 @@ def train(hparams):
             t3 = time.time()
             j = 0
             if debug:
-                cl.visual.save(xs[j,1].data.cpu().numpy(), 'dump/image')
-                cl.visual.save(ys[j,0].data.cpu().numpy(), 'dump/pred')
-                cl.visual.save(xs[j,0].data.cpu().numpy(), 'dump/target')
+                cl.visual.save(xs[j,5].data.cpu().numpy(), 'dump/image')
+                cl.visual.save(ys[j,4].data.cpu().numpy(), 'dump/pred')
+                cl.visual.save(xs[j,4].data.cpu().numpy(), 'dump/target')
 
                 rss = np.transpose(Rs[j, 0].data.cpu().numpy(), (1,2,0))
                 rss_2 = np.transpose(get_identity(batch_size=1, width=rss.shape[0])[0], (1,2,0))
@@ -100,6 +114,7 @@ def train(hparams):
                 writer.add_scalar('data/mse', mse, i)
                 writer.add_scalar('data/p1', p1, i)
                 writer.add_scalar('data/p2', p2, i)
+                writer.add_scalar('data/level', level, i)
 
                 torch.save(model, path+'/model.pt') #0.3s
             t4 = time.time()

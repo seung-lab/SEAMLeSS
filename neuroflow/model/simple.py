@@ -8,7 +8,7 @@ from torchvision import datasets, transforms
 from torch.autograd import Variable
 
 class G(nn.Module):
-    def __init__(self, skip=False, eps=0.1, kernel_size=7):
+    def __init__(self, skip=False, eps=1, kernel_size=7):
         super(G, self).__init__()
 
         # Spatial transformer localization-network
@@ -35,7 +35,7 @@ class G(nn.Module):
     # Flow transformer network forward function
     def forward(self, x): #[b,2,256,256]
         if self.skip:
-            r = torch.zeros(x) #FIXME
+            r = torch.zeros_like(x) #FIXME
             return r
         r = self.flow(x)
-        return r #[b, 256, 256,2]
+        return r #[b, 2, 256, 256]
