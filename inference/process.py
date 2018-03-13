@@ -9,7 +9,7 @@ class Process(object):
         self.cuda = cuda
         self.model = PyramidTransformer().load(archive_path=path, height=5, skips=2, cuda=cuda)
         self.mip = 5 # hardcoded to be the mip that the model was trained at
-        
+
     def process(self, s, t, level=0, crop=0):
         if level < self.mip + self.model.pyramid.skip:
             return None
@@ -41,4 +41,4 @@ if __name__ == "__main__":
     flow = a.process(s, t, level=5, crop=10)
     assert flow == None
 
-    print 'All tests passed.'
+    print ('All tests passed.')
