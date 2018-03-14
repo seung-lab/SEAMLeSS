@@ -22,6 +22,13 @@ if not torch.cuda.is_available():
 
 debug = False
 
+def freeze(model, level=0):
+    print('freeze', level)
+    if level>len(model.G_level)-1:
+        return
+    for param in model.G_level[level].parameters():
+        param.requires_grad = False
+
 def freeze_all(model, besides=0):
     levels = len(model.G_level)
     for i in range(levels):
@@ -52,23 +59,22 @@ def train(hparams):
 
     optimizer = optim.Adam(model.parameters(), lr=hparams.learning_rate)
     model.train()
-    #image = d.get_batch()
 
-    #print(image.shape)
-    #temp = image[:,0,:,:]
-    #j = 4
-    #image[:,1,:,:] = np.zeros((5, 256,256))
-    #image[:,1,:128-j,:] = temp[:,j:128, :]
-    #image[:,
-    level = hparams.levels-1
+    level = hparams.levels
 
     for i in range(hparams.steps):
         t1 = time.time()
         image = d.get_batch()
         xs = torch.autograd.Variable(torch.from_numpy(image).cuda(device=0), requires_grad=False)
-        if i%10000==0:
+        #if i%10000==0:
             #level = max(0, level-1)
-            freeze_all(model, besides=level)
+            #freeze(model, max(hparams.skip_levels+1, level+1))
+            #freeze(model,2)
+            #freeze(model,3)
+            #freeze(model,4)
+            #freeze(model,1)
+            #freeze(model,0)
+            #freeze_all(model, besides=max(hparams.skip_levels, level))
 
         for j in range(1):
             optimizer.zero_grad()
@@ -87,38 +93,41 @@ def train(hparams):
                           str(p1.data[0])[:4],
                           str(t2-t1)[:4]+"s")
 
-        if i%hparams.log_iterations==0: # Takes 4s
+        if i%hparams.log_iterations==0 or debug: # Takes 4s
             t3 = time.time()
-            j = 0
-            if debug:
-                cl.visual.save(xs[j,5].data.cpu().numpy(), 'dump/image')
-                cl.visual.save(ys[j,4].data.cpu().numpy(), 'dump/pred')
-                cl.visual.save(xs[j,4].data.cpu().numpy(), 'dump/target')
 
-                rss = np.transpose(Rs[j, 0].data.cpu().numpy(), (1,2,0))
+            if debug:
+                j = 0
+                k = 0
+                cl.visual.save(xs[j,k+1].data.cpu().numpy(), 'dump/image')
+                cl.visual.save(ys[j,k].data.cpu().numpy(), 'dump/pred')
+                cl.visual.save(xs[j,k].data.cpu().numpy(), 'dump/target')
+
+                rss = np.transpose(Rs[j, k].data.cpu().numpy(), (1,2,0))
                 rss_2 = np.transpose(get_identity(batch_size=1, width=rss.shape[0])[0], (1,2,0))
                 rss_2 -= rss
                 hsv, grid = cl.visual.flow(rss)
                 cl.visual.save(hsv, 'dump/grid')
                 continue
+
             for j in range(hparams.levels):
                 visualize(xs[j,1:,:,:], xs[j,:-1,:,:],
                           ys[j,:,:,:], Rs[j,:,:,:],
-                          rs[j,:], rs[j,:],
+                          rs[j,:],
                           i, writer,
                           mip_level=j,
                           crop=(2**j))
-
-            if not debug:
-                writer.add_scalar('data/loss', l, i)
-                writer.add_scalar('data/mse', mse, i)
-                writer.add_scalar('data/p1', p1, i)
-                writer.add_scalar('data/p2', p2, i)
-                writer.add_scalar('data/level', level, i)
-
-                torch.save(model, path+'/model.pt') #0.3s
+            torch.save(model, path+'/model.pt') #0.3s
             t4 = time.time()
             print('visualize time', str(t4-t3)[:4]+"s")
+
+        if not debug:
+            writer.add_scalar('data/loss', l, i)
+            writer.add_scalar('data/mse', mse, i)
+            writer.add_scalar('data/p1', p1, i)
+            writer.add_scalar('data/p2', p2, i)
+            writer.add_scalar('data/level', level, i)
+
     writer.close()
 
 def test(model, test_data):
@@ -148,6 +157,8 @@ from datetime import datetime
 if __name__ == "__main__":
     hparams = cl.hparams(name="default")
     myargs = getopts(sys.argv)
+    if '--debug' in myargs:
+        debug = True
     if '--name' in myargs:  # Example usage.
         hparams.name = myargs['--name']
     if '--version' in myargs:
