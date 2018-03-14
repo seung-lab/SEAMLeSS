@@ -9,7 +9,6 @@ class G(nn.Module):
     def __init__(self, dim=192, k=7, f=nn.ReLU()):
         super(G, self).__init__()
         self.dim = dim
-        print('building G for dim:', dim, 'with kernel', k)
         p = int((k-1)/2)
         self.conv1 = nn.Conv2d(2, 32, k, padding=p)
         self.conv2 = nn.Conv2d(32, 64, k, padding=p)
@@ -38,7 +37,7 @@ class Pyramid(nn.Module):
     def __init__(self, size, dim, skip):
         super(Pyramid, self).__init__()
         rdim = dim / (2 ** (size))
-        print('------- Constructing PyramidNet with size', size, '(' + str(size-1) + ' downsamples) [' + str(rdim) + '] -------')
+        print('------- Constructing PyramidNet with size', size, '(' + str(max(0,size-1)) + ' downsamples) [' + str(rdim) + '] -------')
         self.skip = skip
         self.size = size
         self.mlist = nn.ModuleList([G(dim / (2 ** level)) for level in range(size)])
