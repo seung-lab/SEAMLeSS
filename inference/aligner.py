@@ -8,9 +8,9 @@ import json
 from copy import deepcopy
 
 class BoundingBox:
-  def __init__(self, xs, xe, ys, ye, mip, max_mip=10):
-    scale_factor = 2**mip
+  def __init__(self, xs, xe, ys, ye, mip, max_mip=12):
     self.max_mip = max_mip
+    scale_factor = 2**mip
     self.set_m0(xs*scale_factor, xe*scale_factor, ys*scale_factor, ye*scale_factor)
 
   def set_m0(self, xs, xe, ys, ye):
@@ -81,10 +81,18 @@ class BoundingBox:
     norm = (full / self.y_size(mip)) * 2 - 1
     return norm.T
 
+  def is_identity_flow(self, flow, mip):
+    x_id = np.array_equal(self.x_identity(mip), flow[0, :, :, 0])
+    y_id = np.array_equal(self.y_identity(mip), flow[0, :, :, 1])
+    return x_id and y_id
+
+  def __str__(self, mip):
+    return "{}, {}".format(self.x_range(mip), self.y_range(mip))
+
 class Aligner:
-  def __init__(self, model_path, chunk_size, max_displacement, crop,
+  def __init__(self, model_path, processing_chunk_size, max_displacement, crop,
                high_mip, low_mip, src_ng_path, dst_ng_path):
-    self.chunk_size = chunk_size
+    self.processing_chunk_size = processing_chunk_size
     self.max_displacement = max_displacement
     self.crop_amount = crop
 
@@ -96,6 +104,11 @@ class Aligner:
     self.y_vec_ng_path = os.path.join(self.vec_ng_path, 'y')
 
     self.net = Process(model_path)
+
+    self.dst_chunk_sizes   = []
+    self.dst_voxel_offsets = []
+    self.vec_chunk_sizes   = []
+    self.vec_voxel_offsets = []
     self._create_info_files(max_displacement)
 
     self.high_mip = high_mip
@@ -123,12 +136,33 @@ class Aligner:
       dst_size_increase = dst_size_increase - (dst_size_increase % max_offset) + chunk_size
     scales = dst_info["scales"]
     for i in range(len(scales)):
-      scales[i]["voxel_offset"][0] - dst_size_increase / (2**i)
-      scales[i]["voxel_offset"][1] - dst_size_increase / (2**i)
-      scales[i]["size"][0] + dst_size_increase / (2**i)
-      scales[i]["size"][1] - dst_size_increase / (2**i)
+      scales[i]["voxel_offset"][0] -= int(dst_size_increase / (2**i))
+      scales[i]["voxel_offset"][1] -= int(dst_size_increase / (2**i))
+
+      scales[i]["size"][0] += int(dst_size_increase / (2**i))
+      scales[i]["size"][1] += int(dst_size_increase / (2**i))
+
+      x_remainder = scales[i]["size"][0] % scales[i]["chunk_sizes"][0][0]
+      y_remainder = scales[i]["size"][1] % scales[i]["chunk_sizes"][0][1]
+
+      x_delta = 0
+      y_delta = 0
+      if x_remainder != 0:
+        x_delta = scales[i]["chunk_sizes"][0][0] - x_remainder
+      if y_remainder != 0:
+        y_delta = scales[i]["chunk_sizes"][0][1] - y_remainder
+
+      scales[i]["size"][0] += x_delta
+      scales[i]["size"][1] += y_delta
+
+      scales[i]["size"][0] += int(dst_size_increase / (2**i))
+      scales[i]["size"][1] += int(dst_size_increase / (2**i))
+
       #make it slice-by-slice writable
       scales[i]["chunk_sizes"][0][2] = 1
+
+      self.dst_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
+      self.dst_voxel_offsets.append(scales[i]["voxel_offset"])
 
     with open(os.path.join(tmp_dir, "info.dst"), 'w') as f:
       json.dump(dst_info, f)
@@ -140,8 +174,24 @@ class Aligner:
     vec_info["data_type"] = "float32"
     scales = vec_info["scales"]
     for i in range(len(scales)):
+      x_remainder = scales[i]["size"][0] % scales[i]["chunk_sizes"][0][0]
+      y_remainder = scales[i]["size"][1] % scales[i]["chunk_sizes"][0][1]
+
+      x_delta = 0
+      y_delta = 0
+      if x_remainder != 0:
+        x_delta = scales[i]["chunk_sizes"][0][0] - x_remainder
+      if y_remainder != 0:
+        y_delta = scales[i]["chunk_sizes"][0][1] - y_remainder
+
+      scales[i]["size"][0] += x_delta
+      scales[i]["size"][1] += y_delta
+
       #make it slice-by-slice writable
       scales[i]["chunk_sizes"][0][2] = 1
+
+      self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
+      self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
 
     with open(os.path.join(tmp_dir, "info.vec"), 'w') as f:
       json.dump(vec_info, f)
@@ -172,23 +222,73 @@ class Aligner:
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
     for m in range(self.high_mip,  self.low_mip - 1, -1):
-      x_range = bbox.x_range(mip=m)
-      y_range = bbox.y_range(mip=m)
-      for xs in range(x_range[0], x_range[1], self.chunk_size[0]):
-        for ys in range(y_range[0], y_range[1], self.chunk_size[1]):
-          patch_bbox = BoundingBox(xs, xs + self.chunk_size[0], ys, ys + self.chunk_size[0],
+      raw_x_range = bbox.x_range(mip=m)
+      raw_y_range = bbox.y_range(mip=m)
+
+      x_chunk = self.vec_chunk_sizes[m][0]
+      y_chunk = self.vec_chunk_sizes[m][1]
+
+      x_offset = self.vec_voxel_offsets[m][0]
+      y_offset = self.vec_voxel_offsets[m][1]
+
+      x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
+      y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
+
+      x_delta = 0
+      y_delta = 0
+      if x_remainder != 0:
+        x_delta =  x_chunk - x_remainder
+      if y_remainder != 0:
+        y_delta =  y_chunk - y_remainder
+
+      calign_x_range = [raw_x_range[0] + x_delta, raw_x_range[1]]
+      calign_y_range = [raw_y_range[0] + y_delta, raw_y_range[1]]
+
+      x_start = calign_x_range[0] - x_chunk
+      y_start = calign_y_range[0] - y_chunk
+
+      #do the initial partial chunks to chunk align everything
+      #corner
+      if x_delta != 0 and y_delta != 0:
+        patch_bbox = BoundingBox(x_start, x_start + x_chunk,
+                                 y_start, y_start + y_chunk,
+                                 mip=m, max_mip=self.high_mip)
+        self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
+
+      #x seam
+      if y_delta != 0:
+        for xs in range(calign_x_range[0], calign_x_range[1], self.processing_chunk_size[0]):
+          patch_bbox = BoundingBox(xs, xs + self.processing_chunk_size[0],
+                                   y_start, y_start + y_chunk,
+                                   mip=m, max_mip=self.high_mip)
+          self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
+      #y seam
+      if x_delta != 0:
+        for ys in range(calign_y_range[0], calign_y_range[1], self.processing_chunk_size[0]):
+          patch_bbox = BoundingBox(x_start, x_start + x_chunk,
+                                   ys, ys + self.processing_chunk_size[0],
                                    mip=m, max_mip=self.high_mip)
           self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
 
+      #do the rest
+      for xs in range(calign_x_range[0], calign_x_range[1], self.processing_chunk_size[0]):
+        for ys in range(calign_y_range[0], calign_y_range[1], self.processing_chunk_size[1]):
+          patch_bbox = BoundingBox(xs, xs + self.processing_chunk_size[0],
+                                   ys, ys + self.processing_chunk_size[0],
+                                   mip=m, max_mip=self.high_mip)
+          self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
+
+
+
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
+    print ("Computing residual for {}".format(out_patch_bbox.__str__(mip=0)))
     precrop_patch_bbox = deepcopy(out_patch_bbox)
     precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
 
     src_patch = self.get_warped_patch(self.src_ng_path, source_z, precrop_patch_bbox, mip)
     tgt_patch = self.get_image_data(self.src_ng_path, target_z, precrop_patch_bbox, mip)
 
-    #mip2 corresponds to level0 in the net
-    residual = self.net.process(src_patch, tgt_patch, mip - 2, crop=self.crop_amount)
+    residual = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
     self.save_residual_patch(residual, source_z, out_patch_bbox, mip)
 
   def preprocess_data(self, data):
@@ -201,7 +301,7 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
 
-    data = cv(path, mip=mip,
+    data = cv(path, mip=mip, progress=False,
               bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     return self.preprocess_data(data)
 
@@ -209,7 +309,7 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
 
-    data = cv(path, mip=mip,
+    data = cv(path, mip=mip, progress=False,
               bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     return data
 
@@ -249,9 +349,15 @@ class Aligner:
     influence_bbox.uncrop(self.max_displacement, mip=0)
 
     agg_flow = self.get_aggregate_flow(z, influence_bbox, mip)
-
     raw_data = self.get_image_data(ng_path, z, influence_bbox, mip)
-    warped   = warp(raw_data, agg_flow)
+    #no need to warp if flow is identity
+    #warp introduces noise
+    if not influence_bbox.is_identity_flow(agg_flow, mip=mip):
+      warped   = warp(raw_data, agg_flow)
+    else:
+      print ("not warping")
+      warped = raw_data[0]
+
     mip_disp = int(self.max_displacement / 2**mip)
     result   = crop(warped, mip_disp)
 
@@ -260,11 +366,13 @@ class Aligner:
     return self.preprocess_data(result * 256)
 
   def save_image_patch(self, float_patch, z, bbox, mip):
+    print (bbox.__str__(mip=0))
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = float_patch[0, :, :, np.newaxis]
     uint_patch = (np.multiply(patch, 256)).astype(np.uint8)
-    cv(self.dst_ng_path, mip=mip, bounded=False)[x_range[0]:x_range[1],
+    cv(self.dst_ng_path, mip=mip, bounded=False, fill_missing=True,
+                                  progress=False)[x_range[0]:x_range[1],
                                                   y_range[0]:y_range[1], z] = uint_patch
 
   def save_residual_patch(self, residual, z, bbox, mip):
@@ -274,22 +382,84 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
 
-    cv(self.x_vec_ng_path, mip=mip, bounded=False)[x_range[0]:x_range[1],
+    cv(self.x_vec_ng_path, mip=mip, bounded=False, fill_missing=True,
+                                   progress=False)[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = x_res
-    cv(self.y_vec_ng_path, mip=mip, bounded=False)[x_range[0]:x_range[1],
+    cv(self.y_vec_ng_path, mip=mip, bounded=False, fill_missing=True,
+                                   progress=False)[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = y_res
 
-  def render_section(self, z, bbox, mip):
-    x_range = bbox.x_range(mip=mip)
+  def render(self, z, bbox, mip):
+    '''x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
 
-    for xs in range(x_range[0], x_range[1], self.chunk_size[0]):
-      for ys in range(y_range[0], y_range[1], self.chunk_size[1]):
-        patch_bbox = BoundingBox(xs, xs + self.chunk_size[0],
-                                 ys, ys + self.chunk_size[0],
+    for xs in range(x_range[0], x_range[1], self.processing_chunk_size[0]):
+      for ys in range(y_range[0], y_range[1], self.processing_chunk_size[1]):
+        patch_bbox = BoundingBox(xs, xs + self.processing_chunk_size[0],
+                                 ys, ys + self.processing_chunk_size[0],
+                                 mip=mip, max_mip=self.high_mip)
+        warped_patch = self.get_warped_patch(self.src_ng_path, z, patch_bbox, mip)
+        self.save_image_patch(warped_patch, z, patch_bbox, mip)
+    '''
+    raw_x_range = bbox.x_range(mip=mip)
+    raw_y_range = bbox.y_range(mip=mip)
+
+    x_chunk = self.dst_chunk_sizes[mip][0]
+    y_chunk = self.dst_chunk_sizes[mip][1]
+
+    x_offset = self.dst_voxel_offsets[mip][0]
+    y_offset = self.dst_voxel_offsets[mip][1]
+
+    x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
+    y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
+
+    x_delta = 0
+    y_delta = 0
+
+    if x_remainder != 0:
+      x_delta =  x_chunk - x_remainder
+    if y_remainder != 0:
+      y_delta =  y_chunk - y_remainder
+
+    calign_x_range = [raw_x_range[0] + x_delta, raw_x_range[1]]
+    calign_y_range = [raw_y_range[0] + y_delta, raw_y_range[1]]
+
+    x_start = calign_x_range[0] - x_chunk
+    y_start = calign_y_range[0] - y_chunk
+
+    #do the initial partial chunks to chunk align everything
+    #corner
+    if x_delta != 0 and y_delta != 0:
+      patch_bbox = BoundingBox(x_start, x_start + x_chunk,
+                               y_start, y_start + y_chunk,
+                               mip=mip, max_mip=self.high_mip)
+      warped_patch = self.get_warped_patch(self.src_ng_path, z, patch_bbox, mip)
+      self.save_image_patch(warped_patch, z, patch_bbox, mip)
+
+    #x seam
+    if y_delta != 0:
+      for xs in range(calign_x_range[0], calign_x_range[1], self.processing_chunk_size[0]):
+        patch_bbox = BoundingBox(xs, xs + self.processing_chunk_size[0],
+                                 y_start, y_start + y_chunk,
+                                 mip=mip, max_mip=self.high_mip)
+        warped_patch = self.get_warped_patch(self.src_ng_path, z, patch_bbox, mip)
+        self.save_image_patch(warped_patch, z, patch_bbox, mip)
+    #y seam
+    if x_delta != 0:
+      for ys in range(calign_y_range[0], calign_y_range[1], self.processing_chunk_size[0]):
+        patch_bbox = BoundingBox(x_start, x_start + x_chunk,
+                                 ys, ys + self.processing_chunk_size[0],
                                  mip=mip, max_mip=self.high_mip)
         warped_patch = self.get_warped_patch(self.src_ng_path, z, patch_bbox, mip)
         self.save_image_patch(warped_patch, z, patch_bbox, mip)
 
+    #do the rest
+    for xs in range(calign_x_range[0], calign_x_range[1], self.processing_chunk_size[0]):
+      for ys in range(calign_y_range[0], calign_y_range[1], self.processing_chunk_size[1]):
+        patch_bbox = BoundingBox(xs, xs + self.processing_chunk_size[0],
+                                 ys, ys + self.processing_chunk_size[0],
+                                 mip=mip, max_mip=self.high_mip)
+        warped_patch = self.get_warped_patch(self.src_ng_path, z, patch_bbox, mip)
+        self.save_image_patch(warped_patch, z, patch_bbox, mip)
 
 
