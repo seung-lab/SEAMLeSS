@@ -19,26 +19,24 @@ def name(path, exp_name):
     return log_dir
 
 # Input four Pytorch variables that contain
-def visualize(image, target, prediction, transform, res, rs, n_iter, writer, mip_level=0, label="", name="Train", crop=16):
-    batch_size = image.shape[0]
+def visualize(xs, xs_t, ys, Rs, rs, n_iter, writer, mip_level=0, label="", name="Train", crop=16):
+    batch_size = xs.shape[0]
     name = name+'/'+str(mip_level)
     ### Vizualize examples
-    im = vutils.make_grid(image[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
-    ta = vutils.make_grid(target[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
-    pr = vutils.make_grid(prediction[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
+    im = vutils.make_grid(xs[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
+    ta = vutils.make_grid(xs_t[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
+    pr = vutils.make_grid(ys[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
     #la = vutils.make_grid(label[:,crop:-crop,crop:-crop].data.unsqueeze(1), normalize=False, scale_each=True, nrow=4)
 
     writer.add_image(name+'/image', im, n_iter)
     writer.add_image(name+'/target', ta, n_iter)
     writer.add_image(name+'/predictions', pr, n_iter)
 
-    R = transform[:,:,crop:-crop,crop:-crop].data.cpu().numpy()
-    R = np.transpose(R, (0,2,3,1))
+    R = np.transpose(Rs[:,:,crop:-crop,crop:-crop].data.cpu().numpy(), (0,2,3,1))
+    r = np.transpose(rs[:,:,crop:-crop,crop:-crop].data.cpu().numpy(), (0,2,3,1))
 
-    r = np.transpose(res[:,:,crop:-crop,crop:-crop].data.cpu().numpy(), (0,2,3,1))
-
-    visualize_flow(R, writer, n_iter, name=name+'/flow')
-    visualize_flow(r, writer, n_iter, name=name+'/residual')
+    visualize_flow(R, writer, n_iter, name=name+'/R')
+    visualize_flow(r, writer, n_iter, name=name+'/r')
 
 
 def visualize_flow(flow, writer, n_iter, name=''):

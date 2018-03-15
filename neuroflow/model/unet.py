@@ -9,7 +9,7 @@ from torchvision import datasets, transforms
 from torch.autograd import Variable
 
 class Unet(nn.Module):
-    def __init__(self, eps=0.1, kernel_shape = [[3,3,2,8],
+    def __init__(self, eps=1, kernel_shape = [[3,3,2,8],
                                                 [3,3,8,16],
                                                 [3,3,16,32],
                                                 [3,3,32,64]]):
@@ -24,11 +24,16 @@ class Unet(nn.Module):
         self.final = nn.Conv2d(kernel_shape[0][3], kernel_shape[0][2],
                                kernel_size=kernel_shape[0][0], padding=1)
         self.final.weight.data *= eps
-        self.final.bias.data *= 0
+        self.final.bias.data *= eps
+        self.tanh = nn.Tanh()
         self.levels = levels
         self.upsamples = []
         for i in range(1, levels):
             self.upsamples.append(self.block(kernel_shape[-i], down=True))
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                torch.nn.init.xavier_normal(m.weight)
 
         self.pool = nn.MaxPool2d(2)
         self.upsample = nn.Upsample(scale_factor=2)
@@ -41,7 +46,7 @@ class Unet(nn.Module):
 
         return nn.Sequential(
                 nn.Conv2d(inp, out, kernel_size=shape[0], padding=padding),
-                nn.ReLU(True),
+                nn.ReLU(),
                 nn.Conv2d(out, out, kernel_size=shape[0], padding=padding),
                 nn.ReLU(True),
                 nn.Conv2d(out, out, kernel_size=shape[0], padding=padding),
