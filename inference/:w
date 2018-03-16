@@ -81,35 +81,20 @@ class BoundingBox:
     norm = (full / self.y_size(mip)) * 2 - 1
     return norm.T
 
-  def identity(self, mip):
-    x_id = self.x_identity(mip=mip)
-    y_id = self.y_identity(mip=mip)
-    result = np.stack((x_id, y_id), axis=2)
-    return result
-
   def is_identity_flow(self, flow, mip):
     x_id = np.array_equal(self.x_identity(mip), flow[0, :, :, 0])
     y_id = np.array_equal(self.y_identity(mip), flow[0, :, :, 1])
     return x_id and y_id
-
-  def n_pixels_displacement_x(self, n, mip):
-    disp_prop = n / self.x_range(mip)
-    np.full
-    pass
-    row  = np.arange(self.y_size(mip), dtype=np.float32)[:, np.newaxis]
-    full = np.tile(row, (1, self.x_size(mip)))
-    norm = (full / self.y_size(mip)) * 2 - 1
 
   def __str__(self, mip):
     return "{}, {}".format(self.x_range(mip), self.y_range(mip))
 
 class Aligner:
   def __init__(self, model_path, processing_chunk_size, max_displacement, crop,
-               high_mip, low_mip, src_ng_path, dst_ng_path, move_anchor=False):
+               high_mip, low_mip, src_ng_path, dst_ng_path):
     self.processing_chunk_size = processing_chunk_size
     self.max_displacement = max_displacement
     self.crop_amount = crop
-    self.move_anchor = move_anchor
 
     self.src_ng_path = src_ng_path
     self.dst_ng_path = os.path.join(dst_ng_path, 'image')
@@ -137,8 +122,6 @@ class Aligner:
     #if not chunk_size[0] :
     #  raise Exception("The chunk size has to be aligned with ng chunk size")
 
-  def set_processing_chunk_size(self, processing_chunk_size):
-    self.processing_chunk_size = processing_chunk_size
 
   def _create_info_files(self, max_offset):
     tmp_dir = "/tmp/{}".format(os.getpid())
@@ -163,9 +146,6 @@ class Aligner:
 
       scales[i]["size"][0] += int(dst_size_increase / (2**i))
       scales[i]["size"][1] += int(dst_size_increase / (2**i))
-
-      #scales[i]["chunk_sizes"][0] = 512
-      #scales[i]["chunk_sizes"][1] = 512
 
       x_remainder = scales[i]["size"][0] % scales[i]["chunk_sizes"][0][0]
       y_remainder = scales[i]["size"][1] % scales[i]["chunk_sizes"][0][1]
@@ -245,12 +225,9 @@ class Aligner:
     #if not bbox.is_chunk_aligned(self.dst_ng_path):
     #  raise Exception("Have to align a chunkaligned size")
     self.produce_optical_flow(start_section, end_section, bbox)
-    #self.render_stack(start_section, end_section, bbox, mip=0)
-  def produce_optical_flow(self, start_section, end_section, bbox):
-    if self.move_anchor:
-      for m in range(self.low_mip, self.high_mip + 1):
-        self.copy_section_to_dest(start_section, bbox, mip=m)
+    self.render_stack(start_section, end_section, bbox, mip=0)
 
+  def produce_optical_flow(self, start_section, end_section, bbox):
     for z in range(start_section, end_section):
       self.compute_section_pair_residuals(z + 1, z, bbox)
 
@@ -319,10 +296,6 @@ class Aligner:
 
       self.render(source_z, bbox, m)
 
-    #self.render(source_z, bbox, 3)
-    #self.render(source_z, bbox, 4)
-    #self.render(source_z, bbox, 5)
-    #self.render(source_z, bbox, 6)
 
 
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
@@ -335,15 +308,15 @@ class Aligner:
     else:
       src_patch = self.get_image_data(self.dst_ng_path, source_z, precrop_patch_bbox, mip)
 
-    tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip)
+    tgt_patch = self.get_image_data(self.src_ng_path, target_z, precrop_patch_bbox, mip)
 
     rel_residual = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
-    abs_residual = self.rel_to_abs_residual(rel_residual, precrop_patch_bbox, mip)
+    abs_residual = self.rel_to_abs_residual(rel_residual, src_patch, mip)
     self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
 
   def rel_to_abs_residual(self, rel_residual, patch, mip):
-    x_fraction = patch.x_size(mip=mip) / self.vec_total_sizes[mip][0]
-    y_fraction = patch.y_size(mip=mip) / self.vec_total_sizes[mip][1]
+    x_fraction = patch.x_size(mip=mip) / self.vec_total_size[mip][0]
+    y_fraction = patch.y_size(mip=mip) / self.vec_total_size[mip][1]
 
     #TODO: this deepcopy takes memory
     abs_residual = deepcopy(rel_residual)
@@ -352,8 +325,8 @@ class Aligner:
     return abs_residual
 
   def abs_to_rel_residual(self, abs_residual, patch, mip):
-    x_fraction = patch.x_size(mip=mip) / self.vec_total_sizes[mip][0]
-    y_fraction = patch.y_size(mip=mip) / self.vec_total_sizes[mip][1]
+    x_fraction = patch.x_size(mip=mip) / self.vec_total_size[mip][0]
+    y_fraction = patch.y_size(mip=mip) / self.vec_total_size[mip][1]
 
     rel_residual = deepcopy(abs_residual)
     rel_residual[0, :, :, 0] *= x_fraction
@@ -385,42 +358,44 @@ class Aligner:
               bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     return data
 
-  def get_abs_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.x_res_ng_path, z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.y_res_ng_path, z, bbox, mip)[..., 0, 0]
-    result = np.stack((x, y), axis=2)
-    return np.expand_dims(result, axis=0)
+  def get_x_rel_residual(self, z, bbox, mip):
+    abs_r = self.get_x_abs_residual(self, z, bbox, mip)
+    return self.abs_to_rel_residual(abs_r, bbox, mip)
 
-  def get_rel_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.x_res_ng_path, z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.y_res_ng_path, z, bbox, mip)[..., 0, 0]
-    abs_res = np.stack((x, y), axis=2)
-    abs_res = np.expand_dims(abs_res, axis=0)
-    rel_res = self.abs_to_rel_residual(abs_res, bbox, mip)
-    return rel_res
+  def get_x_abs_residual(self, z, bbox, mip):
+    data = self.get_vector_data(self.x_res_ng_path, z, bbox, mip)[..., 0, 0]
+    return np.expand_dims(data, axis=0)
+
+  def get_y_rel_residual(self, z, bbox, mip):
+    abs_r = self.get_y_abs_residual(self, z, bbox, mip)
+    return self.abs_to_rel_residual(abs_r, bbox, mip)
+
+  def get_y_abs_residual(self, z, bbox, mip):
+    data = self.get_vector_data(self.y_res_ng_path, z, bbox, mip)[..., 0, 0]
+    return np.expand_dims(data, axis=0)
 
 
   def get_aggregate_rel_flow(self, z, bbox, mip):
-    result = bbox.identity(mip=mip)
-    result = np.expand_dims(result, axis=0)
+    x_result = bbox.x_identity(mip=mip)
+    x_result = np.expand_dims(x_result, axis=0)
+    y_result = bbox.y_identity(mip=mip)
+    y_result = np.expand_dims(y_result, axis=0)
 
     start_mip = max(mip + 1, self.low_mip)
     for res_mip in range(start_mip, self.high_mip + 1):
       scale_factor = 2**(res_mip - mip)
 
-      rel_res = self.get_rel_residual(z, bbox, res_mip)
-      up_rel_res = np.stack((upsample(rel_res[:, :, :, 0], scale_factor),
-                             upsample(rel_res[:, :, :, 1], scale_factor)), axis=3)
+      x_residual   = self.get_x_rel_residual(z, bbox, res_mip)
+      y_residual   = self.get_y_rel_residual(z, bbox, res_mip)
 
-      #size_x_scale = self.vec_total_sizes[mip][0] / self.vec_total_sizes[res_mip][0]
-      #size_y_scale = self.vec_total_sizes[mip][1] / self.vec_total_sizes[res_mip][1]
-      #up_rel_res[:, :, :, 0] *= size_x_scale
-      #up_rel_res[:, :, :, 1] *= size_y_scale
+      upsampled_x  = upsample(x_residual, scale_factor) * scale_factor
+      upsampled_y  = upsample(y_residual, scale_factor) * scale_factor
 
-      result += up_rel_res
+      x_result    += upsampled_x
+      y_result    += upsampled_y
 
-    return result
 
+    return np.stack((x_result, y_result), axis = 3)
 
   def warp_patch(self, ng_path, z, bbox, mip):
     influence_bbox =  deepcopy(bbox)
@@ -443,9 +418,8 @@ class Aligner:
     #this data range is good already, so mult by 256
     return self.preprocess_data(result * 256)
 
-
   def save_image_patch(self, float_patch, z, bbox, mip):
-    print ("Saving {} at mip {}".format(bbox.__str__(mip=0), mip))
+    print ("Rendering {} at mip {}".format(bbox.__str__(mip=0), mip))
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = float_patch[0, :, :, np.newaxis]
@@ -454,11 +428,11 @@ class Aligner:
                                   progress=False)[x_range[0]:x_range[1],
                                                   y_range[0]:y_range[1], z] = uint_patch
 
-  def save_residual_patch(self, flow, z, bbox, mip):
+  def save_residual_flow_patch(self, flow, z, bbox, mip):
     print ("Saving residual patch {} at mip {}".format(bbox.__str__(mip=0), mip))
     self.save_vector_patch(flow, self.x_res_ng_path, self.y_res_ng_path, z, bbox, mip)
 
-  def save_aggregate_patch(self, flow, z, bbox, mip):
+  def save_aggregate_flow_patch(self, flow, z, bbox, mip):
     print ("Saving aggregate patch {} at mip {}".format(bbox.__str__(mip=0), mip))
     self.save_vector_patch(flow, self.x_agg_ng_path, self.y_agg_ng_path, z, bbox, mip)
 
@@ -482,14 +456,6 @@ class Aligner:
       raise Exception("Not implemented")
       agg_flow = self.get_aggregate_abs_flow(z, patch_bbox, mip)
       self.save_aggregate_flow_patch(agg_flow, z, patch_bbox, mip)
-
-  def copy_section_to_dest(self, z, bbox, mip):
-    print ("moving section {} to dest".format(z))
-    chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
-                                    self.dst_voxel_offsets[mip], mip=mip)
-    for patch_bbox in chunks:
-      raw_patch = self.get_image_data(self.src_ng_path, z, patch_bbox, mip)
-      self.save_image_patch(raw_patch, z, patch_bbox, mip)
 
   def render(self, z, bbox, mip):
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
