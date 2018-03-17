@@ -72,13 +72,13 @@ class BoundingBox:
   def y_identity(self, mip):
     row  = np.arange(self.x_size(mip), dtype=np.float32)[:, np.newaxis]
     full = np.tile(row, (1, self.y_size(mip)))
-    norm = (full / self.x_size(mip)) * 2 - 1
+    norm = (full / (self.x_size(mip) -1)) * 2 - 1
     return norm
 
   def x_identity(self, mip):
     row  = np.arange(self.y_size(mip), dtype=np.float32)[:, np.newaxis]
     full = np.tile(row, (1, self.x_size(mip)))
-    norm = (full / self.y_size(mip)) * 2 - 1
+    norm = (full / (self.y_size(mip)-1)) * 2 - 1
     return norm.T
 
   def identity(self, mip):
@@ -92,13 +92,22 @@ class BoundingBox:
     y_id = np.array_equal(self.y_identity(mip), flow[0, :, :, 1])
     return x_id and y_id
 
-  def n_pixels_displacement_x(self, n, mip):
-    disp_prop = n / self.x_range(mip)
-    np.full
-    pass
-    row  = np.arange(self.y_size(mip), dtype=np.float32)[:, np.newaxis]
-    full = np.tile(row, (1, self.x_size(mip)))
-    norm = (full / self.y_size(mip)) * 2 - 1
+  def x_res_displacement(self, d_pixels, mip):
+    disp_prop = d_pixels / self.x_size(mip=0)
+    result = np.full((self.x_size(mip), self.y_size(mip)), disp_prop, dtype=np.float32)
+    return result
+
+  def y_res_displacement(self, d_pixels, mip):
+    disp_prop = d_pixels / self.y_size(mip=0)
+    result = np.full((self.x_size(mip), self.y_size(mip)), disp_prop, dtype=np.float32)
+    return result
+
+  def spoof_x_y_residual(self, x_d, y_d, mip, crop_amount=0):
+    x_res = crop(self.x_res_displacement(x_d, mip=mip), crop_amount)
+    y_res = crop(self.y_res_displacement(y_d, mip=mip), crop_amount)
+    result = np.stack((x_res, y_res), axis=2)
+    result = np.expand_dims(result, 0)
+    return result
 
   def __str__(self, mip):
     return "{}, {}".format(self.x_range(mip), self.y_range(mip))
@@ -246,11 +255,11 @@ class Aligner:
     #  raise Exception("Have to align a chunkaligned size")
     self.produce_optical_flow(start_section, end_section, bbox)
     #self.render_stack(start_section, end_section, bbox, mip=0)
+
   def produce_optical_flow(self, start_section, end_section, bbox):
     if self.move_anchor:
       for m in range(self.low_mip, self.high_mip + 1):
         self.copy_section_to_dest(start_section, bbox, mip=m)
-
     for z in range(start_section, end_section):
       self.compute_section_pair_residuals(z + 1, z, bbox)
 
@@ -317,7 +326,7 @@ class Aligner:
       for patch_bbox in chunks:
         self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
 
-      self.render(source_z, bbox, m)
+      self.render(source_z, bbox, m - 1)
 
     #self.render(source_z, bbox, 3)
     #self.render(source_z, bbox, 4)
@@ -338,26 +347,30 @@ class Aligner:
     tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip)
 
     rel_residual = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
+    #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
+    #                        crop_amount=self.crop_amount)
     abs_residual = self.rel_to_abs_residual(rel_residual, precrop_patch_bbox, mip)
-    self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
+    return abs_residual
+    #self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
+
 
   def rel_to_abs_residual(self, rel_residual, patch, mip):
-    x_fraction = patch.x_size(mip=mip) / self.vec_total_sizes[mip][0]
-    y_fraction = patch.y_size(mip=mip) / self.vec_total_sizes[mip][1]
+    x_fraction = patch.x_size(mip=0)
+    y_fraction = patch.y_size(mip=0)
 
     #TODO: this deepcopy takes memory
     abs_residual = deepcopy(rel_residual)
-    abs_residual[0, :, :, 0] /= x_fraction
-    abs_residual[0, :, :, 1] /= y_fraction
+    abs_residual[0, :, :, 0] *= x_fraction
+    abs_residual[0, :, :, 1] *= y_fraction
     return abs_residual
 
   def abs_to_rel_residual(self, abs_residual, patch, mip):
-    x_fraction = patch.x_size(mip=mip) / self.vec_total_sizes[mip][0]
-    y_fraction = patch.y_size(mip=mip) / self.vec_total_sizes[mip][1]
+    x_fraction = patch.x_size(mip=0)
+    y_fraction = patch.y_size(mip=0)
 
     rel_residual = deepcopy(abs_residual)
-    rel_residual[0, :, :, 0] *= x_fraction
-    rel_residual[0, :, :, 1] *= y_fraction
+    rel_residual[0, :, :, 0] /= x_fraction
+    rel_residual[0, :, :, 1] /= y_fraction
     return rel_residual
 
   def preprocess_data(self, data):
@@ -365,9 +378,6 @@ class Aligner:
     ed = np.expand_dims(sd, 0)
     nd = np.divide(ed, float(256.0), dtype=np.float32)
     return nd
-
-  def get_warped_imgae_data(self, ng_path, z, bbox, mip):
-    return self.get_image_data(self, self.dst_ng_path, z, bbox, mip)
 
   def get_image_data(self, path, z, bbox, mip):
     x_range = bbox.x_range(mip=mip)
@@ -401,17 +411,17 @@ class Aligner:
 
 
   def get_aggregate_rel_flow(self, z, bbox, mip):
-    result = bbox.identity(mip=mip)
-    result = np.expand_dims(result, axis=0)
-
+    #result = bbox.identity(mip=mip)
+    #result = np.expand_dims(result, axis=0)
+    result = np.zeros((1, bbox.x_size(mip), bbox.y_size(mip), 2), dtype=np.float32)
     start_mip = max(mip + 1, self.low_mip)
     for res_mip in range(start_mip, self.high_mip + 1):
       scale_factor = 2**(res_mip - mip)
 
       rel_res = self.get_rel_residual(z, bbox, res_mip)
+
       up_rel_res = np.stack((upsample(rel_res[:, :, :, 0], scale_factor),
                              upsample(rel_res[:, :, :, 1], scale_factor)), axis=3)
-
       #size_x_scale = self.vec_total_sizes[mip][0] / self.vec_total_sizes[res_mip][0]
       #size_y_scale = self.vec_total_sizes[mip][1] / self.vec_total_sizes[res_mip][1]
       #up_rel_res[:, :, :, 0] *= size_x_scale
@@ -426,7 +436,11 @@ class Aligner:
     influence_bbox =  deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
 
-    agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, mip)
+    agg_flow = influence_bbox.identity(mip=mip)
+    agg_flow = np.expand_dims(agg_flow, axis=0)
+    agg_res  = self.get_aggregate_rel_flow(z, influence_bbox, mip)
+    agg_flow += agg_res
+
     raw_data = self.get_image_data(ng_path, z, influence_bbox, mip)
     #no need to warp if flow is identity
     #warp introduces noise
