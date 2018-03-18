@@ -13,7 +13,7 @@ import cavelab as cl
 from model import Pyramid, Xmas
 from data import Data
 from loss import loss
-from util import get_identity, name, visualize
+from util import get_identity, name, visualize, log_param_mean
 from tensorboardX import SummaryWriter
 import json
 
@@ -21,6 +21,8 @@ if not torch.cuda.is_available():
     raise ValueError("Cuda is not available")
 
 debug = False
+
+#TODO smoothness penalty seperately
 
 def freeze(model, level=0):
     print('freeze', level)
@@ -37,6 +39,13 @@ def freeze_all(model, besides=0):
 
     for param in model.G_level[besides].parameters():
         param.requires_grad = True
+
+def unfreeze(model):
+    levels = len(model.G_level)
+    for i in range(levels):
+        for param in model.G_level[i].parameters():
+            param.requires_grad = True
+
 
 def train(hparams):
 
@@ -57,24 +66,23 @@ def train(hparams):
 
     model.cuda(device=0)
 
-    optimizer = optim.Adam(model.parameters(), lr=hparams.learning_rate)
+    #optimizer = optim.Adam(model.parameters(), lr=hparams.learning_rate)
     model.train()
-
     level = hparams.levels
-
+    image = d.get_batch()
     for i in range(hparams.steps):
         t1 = time.time()
-        image = d.get_batch()
+
+
         xs = torch.autograd.Variable(torch.from_numpy(image).cuda(device=0), requires_grad=False)
-        #if i%10000==0:
-            #level = max(0, level-1)
-            #freeze(model, max(hparams.skip_levels+1, level+1))
-            #freeze(model,2)
-            #freeze(model,3)
-            #freeze(model,4)
-            #freeze(model,1)
-            #freeze(model,0)
-            #freeze_all(model, besides=max(hparams.skip_levels, level))
+        if i%3==0:
+            level = max(0, level-1)
+            if hparams.skip_levels>level:
+                unfreeze(model)
+
+            freeze_all(model, besides=max(hparams.skip_levels,level))
+            params = filter(lambda x: x.requires_grad, model.parameters())
+            optimizer = optim.Adam(params, lr=hparams.learning_rate)
 
         for j in range(1):
             optimizer.zero_grad()
@@ -82,7 +90,7 @@ def train(hparams):
 
             l, mse, p1, p2 = loss(xs[:], ys[:],
                                   Rs[:], rs[:],
-                                  level=0,
+                                  level=level,
                                   lambda_1=hparams.lambda_1,
                                   lambda_2=hparams.lambda_2)
 
@@ -97,7 +105,7 @@ def train(hparams):
             t3 = time.time()
 
             if debug:
-                j = 0
+                j = 1
                 k = 0
                 cl.visual.save(xs[j,k+1].data.cpu().numpy(), 'dump/image')
                 cl.visual.save(ys[j,k].data.cpu().numpy(), 'dump/pred')
@@ -127,6 +135,8 @@ def train(hparams):
             writer.add_scalar('data/p1', p1, i)
             writer.add_scalar('data/p2', p2, i)
             writer.add_scalar('data/level', level, i)
+
+            #writer.add_scalars('data/weight_mean', log_param_mean(model), i)
 
     writer.close()
 

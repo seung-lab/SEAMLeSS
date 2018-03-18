@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 def get_identity(batch_size=8, width=256):
     identity = np.zeros((batch_size,2,width,width), dtype=np.float32)+0.5
-    identity[:,0,:,:] = np.arange(width)/(width/2)-1
+    identity[:,0,:,:] = np.arange(width)/((width-1)/2)-1
     identity[:,1,:,:] = np.transpose(identity, axes = [0,1,3,2])[:,0,:,:]
     return identity
 
@@ -56,3 +56,16 @@ def visualize_flow(flow, writer, n_iter, name=''):
 
     writer.add_image(name+'/flow', hsvs, n_iter)
     writer.add_image(name+'/field', grids, n_iter)
+
+
+def log_param_mean(model):
+    levels = len(model.G_level)
+    ls = {}
+    for i in range(levels):
+        mean = 0
+        convs = list(filter(lambda x: isinstance(x, torch.nn.Conv2d), model.G_level[i].flow))
+        for c in convs:
+            mean += torch.mean(c.weight)
+        mean /= len(convs)
+        ls[str(i)] = mean.data.cpu().numpy()[0]
+    return ls

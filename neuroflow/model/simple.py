@@ -19,16 +19,16 @@ class G(nn.Module):
         self.flow = nn.Sequential(
             nn.Conv2d(2, 32, kernel_size=kernel_size, padding=pad),
             nn.ReLU(True),
-            #nn.BatchNorm2d(32),
+            #nn.BatchNorm2d(32, affine=False),
             nn.Conv2d(32, 64, kernel_size=kernel_size, padding=pad),
             nn.ReLU(True),
-            #nn.BatchNorm2d(64),
+            #nn.BatchNorm2d(64, affine=False),
             nn.Conv2d(64, 32, kernel_size=kernel_size, padding=pad),
             nn.ReLU(True),
-            #nn.BatchNorm2d(32),
+            #nn.BatchNorm2d(32, affine=False),
             nn.Conv2d(32, 16, kernel_size=kernel_size, padding=pad),
             nn.ReLU(True),
-            #nn.BatchNorm2d(16),
+            #nn.BatchNorm2d(16, affine=False),
             nn.Conv2d(16, 2, kernel_size=kernel_size, padding=pad),
             #nn.BatchNorm2d(2),
         ).cuda()
@@ -36,6 +36,9 @@ class G(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 torch.nn.init.xavier_normal(m.weight)
+
+        #self.flow[-1].weight.data *= eps
+        #self.flow[-1].bias.data *= eps
 
         self.tanh = nn.Tanh()
         self.skip = skip
