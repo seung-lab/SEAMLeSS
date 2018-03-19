@@ -1,12 +1,16 @@
 import torch
 import numpy as np
 from PyramidTransformer import PyramidTransformer
-
+from XmasTransformer import *
 class Process(object):
     """docstring for Process."""
     def __init__(self, path='model/2_5_2.pt', cuda=False):
         super(Process, self).__init__()
         self.cuda = cuda
+        #print(Xmas())
+        #self.model = torch.load(path)
+        #print(self.model)
+        #exit()
         self.model = PyramidTransformer().load(archive_path=path, height=5, skips=2, cuda=cuda)
         self.mip = 5 # hardcoded to be the mip that the model was trained at
 
