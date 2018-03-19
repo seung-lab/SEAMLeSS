@@ -221,7 +221,7 @@ class Aligner:
     if mip != 9:
       high_mip_scale = max(1, int(high_mip_scale / 4))
     processing_chunk = (self.high_mip_chunk[0] * high_mip_scale,
-                        self.high_mip_chunk[1] * high_mip_scale
+                        self.high_mip_chunk[1] * high_mip_scale)
 
     if x_delta != 0 and y_delta != 0:
        chunks.append(BoundingBox(x_start, x_start + x_chunk,
