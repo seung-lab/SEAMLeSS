@@ -10,18 +10,20 @@ from boundingbox import BoundingBox
 
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
-               high_mip, low_mip, render_mip, high_mip_chunk,
-               src_ng_path, dst_ng_path, move_anchor=False):
-    self.high_mip       = high_mip
-    self.low_mip        = low_mip
+               mip_range, render_mip, high_mip_chunk,
+               src_ng_path, dst_ng_path):
+
+    self.high_mip       = mip_range[1]
+    self.low_mip        = mip_range[0]
     self.render_mip     = render_mip
     self.high_mip_chunk = high_mip_chunk
 
     self.max_displacement = max_displacement
     self.crop_amount = crop
-    self.move_anchor = move_anchor
 
-    self.src_ng_path = src_ng_path
+    self.org_ng_path = src_ng_path
+    self.src_ng_path = self.org_ng_path
+
     self.dst_ng_path = os.path.join(dst_ng_path, 'image')
     self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
 
@@ -415,13 +417,13 @@ class Aligner:
     return result
 
   ## High level services
-  def copy_section_to_dest(self, z, bbox, mip):
+  def copy_section(self, source, dest, z, bbox, mip):
     print ("moving section {} mip {} to dest".format(z, mip))
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip)
     for patch_bbox in chunks:
-      raw_patch = self.get_image_data(self.src_ng_path, z, patch_bbox, mip)
-      self.save_image_patch(self.dst_ng_path, raw_patch, z, patch_bbox, mip)
+      raw_patch = self.get_image_data(source, z, patch_bbox, mip)
+      self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
 
   def prepare_source(self, z, bbox, mip):
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
@@ -442,7 +444,7 @@ class Aligner:
                                     (mip, self.high_mip), mip)
       self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
 
-  def render_all_mips(self, z, bbox):
+  def render_section_all_mips(self, z, bbox):
     #total_bbox = self.get_upchunked_bbox(bbox, self.dst_chunk_sizes[self.high_mip],
     #                                           self.dst_voxel_offsets[self.high_mip],
     #                                           mip=self.high_mip)
@@ -470,19 +472,19 @@ class Aligner:
 
 
   ## Whole stack operations
-  def align_ng_stack(self, start_section, end_section, bbox):
+  def align_ng_stack(self, start_section, end_section, bbox, move_anchor=True):
     if not self.check_all_params():
       raise Exception("Not all parameters are set")
     #if not bbox.is_chunk_aligned(self.dst_ng_path):
     #  raise Exception("Have to align a chunkaligned size")
 
-    if self.move_anchor:
+    if move_anchor:
       for m in range(self.render_mip, self.high_mip + 1):
-        self.copy_section_to_dest(start_section, bbox, mip=m)
+        self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
 
     for z in range(start_section, end_section):
       self.compute_section_pair_residuals(z + 1, z, bbox)
-      self.render_all_mips(z + 1, bbox)
+      self.render_section_all_mips(z + 1, bbox)
 
 
 
