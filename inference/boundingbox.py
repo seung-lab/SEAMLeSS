@@ -40,10 +40,7 @@ class BoundingBox:
   def check_mips(self):
     for m in range(1, self.max_mip + 1):
       if self.m0_x_size % 2**m != 0:
-<<<<<<< HEAD
-=======
         import pdb; pdb.set_trace()
->>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
         raise Exception('Bounding box problem at mip {}'.format(m))
 
   def crop(self, crop_xy, mip):
@@ -109,4 +106,3 @@ class BoundingBox:
 
   def __str__(self, mip):
     return "{}, {}".format(self.x_range(mip), self.y_range(mip))
-

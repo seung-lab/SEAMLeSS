@@ -1,10 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-<<<<<<< HEAD
-=======
 from torch.autograd import Variable
->>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
 import numpy as np
 
 def crop(data_2d, crop):
@@ -21,17 +18,10 @@ def upsample_flow(data_4d, factor):
                        upsample(data_4d[:, :, :, 1], factor)), axis=3)
     return result
 
-<<<<<<< HEAD
-def downsample_mip(data_3d, factor):
-    m = nn.AvgPool2d(2, stride=2)
-    data_4d = np.expand_dims(data_3d, axis=1)
-    result = m(torch.from_numpy(data_4d))
-=======
 def downsample_mip(data_3d):
     m = nn.AvgPool2d(2, stride=2)
     data_4d = np.expand_dims(data_3d, axis=1)
     result = m(Variable(torch.from_numpy(data_4d)))
->>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
     return result.data.numpy()[:, 0, :, :]
 
 def warp(data, flow):
@@ -39,4 +29,3 @@ def warp(data, flow):
     tf = torch.from_numpy(flow)
     y = F.grid_sample(td, tf)
     return y.data.numpy()[0, 0]
-
