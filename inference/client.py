@@ -1,4 +1,5 @@
 from aligner import Aligner, BoundingBox
+<<<<<<< HEAD
 from copy import deepcopy
 from time import time
 s = 64*(2**7)
@@ -44,3 +45,26 @@ for z in range(116, 118):
 #a.render(source_z, patch_bbox, mip=8)
 #a.render(source_z, patch_bbox, mip=2)
 #a.render(source_z, patch_bbox, mip=7)
+=======
+
+v_off = (10240, 4096, 0)
+x_size = 57344
+y_size = 40960
+
+model_path = 'model/2_5_2.pt'
+max_displacement = 2048
+net_crop  = 32
+mip_range = (7, 9)
+render_mip = 4
+high_mip_chunk = (64, 64)
+a = Aligner('model/2_5_2.pt', max_displacement, net_crop, mip_range, render_mip, high_mip_chunk,
+            'gs://neuroglancer/pinky40_alignment/prealigned',
+            'gs://neuroglancer/nflow_tests/test')
+
+bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=9)
+stack_start = 30
+stack_size  = 2
+a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=True)
+stack_start += stack_size
+a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=False)
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2

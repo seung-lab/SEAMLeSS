@@ -6,6 +6,7 @@ import json
 from copy import deepcopy
 
 from util import crop, warp, upsample_flow, downsample_mip
+<<<<<<< HEAD
 from boudingbox import BoundingBox
 
 class Aligner:
@@ -14,14 +15,32 @@ class Aligner:
                src_ng_path, dst_ng_path, move_anchor=False):
     self.high_mip       = high_mip
     self.low_mip        = low_mip
+=======
+from boundingbox import BoundingBox
+
+class Aligner:
+  def __init__(self, model_path, max_displacement, crop,
+               mip_range, render_mip, high_mip_chunk,
+               src_ng_path, dst_ng_path):
+
+    self.high_mip       = mip_range[1]
+    self.low_mip        = mip_range[0]
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
     self.render_mip     = render_mip
     self.high_mip_chunk = high_mip_chunk
 
     self.max_displacement = max_displacement
     self.crop_amount = crop
+<<<<<<< HEAD
     self.move_anchor = move_anchor
 
     self.src_ng_path = src_ng_path
+=======
+
+    self.org_ng_path = src_ng_path
+    self.src_ng_path = self.org_ng_path
+
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
     self.dst_ng_path = os.path.join(dst_ng_path, 'image')
     self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
 
@@ -73,8 +92,13 @@ class Aligner:
       scales[i]["size"][0] += int(dst_size_increase / (2**i))
       scales[i]["size"][1] += int(dst_size_increase / (2**i))
 
+<<<<<<< HEAD
       #scales[i]["chunk_sizes"][0] = 512
       #scales[i]["chunk_sizes"][1] = 512
+=======
+      #scales[i]["chunk_sizes"][0][0] = 512
+      #scales[i]["chunk_sizes"][0][1] = 512
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
 
       x_remainder = scales[i]["size"][0] % scales[i]["chunk_sizes"][0][0]
       y_remainder = scales[i]["size"][1] % scales[i]["chunk_sizes"][0][1]
@@ -124,6 +148,12 @@ class Aligner:
       scales[i]["size"][0] += x_delta
       scales[i]["size"][1] += y_delta
 
+<<<<<<< HEAD
+=======
+      #scales[i]["chunk_sizes"][0][0] = 512
+      #scales[i]["chunk_sizes"][0][1] = 512
+
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
       #make it slice-by-slice writable
       scales[i]["chunk_sizes"][0][2] = 1
 
@@ -151,6 +181,43 @@ class Aligner:
   def check_all_params(self):
     return True
 
+<<<<<<< HEAD
+=======
+  def get_upchunked_bbox(self, bbox, ng_chunk_size, offset, mip):
+    raw_x_range = bbox.x_range(mip=mip)
+    raw_y_range = bbox.y_range(mip=mip)
+
+    x_chunk = ng_chunk_size[0]
+    y_chunk = ng_chunk_size[1]
+
+    x_offset = offset[0]
+    y_offset = offset[1]
+
+    x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
+    y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
+
+    x_delta = 0
+    y_delta = 0
+    if x_remainder != 0:
+      x_delta =  x_chunk - x_remainder
+    if y_remainder != 0:
+      y_delta =  y_chunk - y_remainder
+
+    calign_x_range = [raw_x_range[0] + x_delta, raw_x_range[1]]
+    calign_y_range = [raw_y_range[0] + y_delta, raw_y_range[1]]
+
+    x_start = calign_x_range[0] - x_chunk
+    y_start = calign_y_range[0] - y_chunk
+
+    x_start_m0 = x_start * 2**mip
+    y_start_m0 = y_start * 2**mip
+
+    result = BoundingBox(x_start_m0, x_start_m0 + bbox.x_size(mip=0),
+                         y_start_m0, y_start_m0 + bbox.y_size(mip=0),
+                         mip=0, max_mip=self.high_mip)
+    return result
+
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
   def break_into_chunks(self, bbox, ng_chunk_size, offset, mip):
     chunks = []
     raw_x_range = bbox.x_range(mip=mip)
@@ -178,7 +245,16 @@ class Aligner:
     x_start = calign_x_range[0] - x_chunk
     y_start = calign_y_range[0] - y_chunk
 
+<<<<<<< HEAD
     processing_chunk_size = self.high_mip_chunk * (2**(self.high_mip - mip))
+=======
+    high_mip_scale = min(2**(self.high_mip - mip), 64)
+    #TODO
+    if mip != 9:
+      high_mip_scale = max(1, int(high_mip_scale / 4))
+    processing_chunk = (self.high_mip_chunk[0] * high_mip_scale,
+                        self.high_mip_chunk[1] * high_mip_scale)
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
 
     if x_delta != 0 and y_delta != 0:
        chunks.append(BoundingBox(x_start, x_start + x_chunk,
@@ -188,12 +264,18 @@ class Aligner:
 
       #x seam
     if y_delta != 0:
+<<<<<<< HEAD
       for xs in range(calign_x_range[0], calign_x_range[1], processing_chunk_size[0]):
         chunks.append(BoundingBox(xs, xs + processing_chunk_size[0],
+=======
+      for xs in range(calign_x_range[0], calign_x_range[1], processing_chunk[0]):
+        chunks.append(BoundingBox(xs, xs + processing_chunk[0],
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
                                    y_start, y_start + y_chunk,
                                    mip=mip, max_mip=self.high_mip))
     #y seam
     if x_delta != 0:
+<<<<<<< HEAD
       for ys in range(calign_y_range[0], calign_y_range[1], processing_chunk_size[0]):
         chunks.append(BoundingBox(x_start, x_start + x_chunk,
                                  ys, ys + processing_chunk_size[0],
@@ -204,6 +286,18 @@ class Aligner:
       for ys in range(calign_y_range[0], calign_y_range[1], processing_chunk_size[1]):
         chunks.append(BoundingBox(xs, xs + processing_chunk_size[0],
                                  ys, ys + processing_chunk_size[0],
+=======
+      for ys in range(calign_y_range[0], calign_y_range[1], processing_chunk[1]):
+        chunks.append(BoundingBox(x_start, x_start + x_chunk,
+                                 ys, ys + processing_chunk[0],
+                                 mip=mip, max_mip=self.high_mip))
+
+    #do the rest
+    for xs in range(calign_x_range[0], calign_x_range[1], processing_chunk[0]):
+      for ys in range(calign_y_range[0], calign_y_range[1], processing_chunk[1]):
+        chunks.append(BoundingBox(xs, xs + processing_chunk[0],
+                                 ys, ys + processing_chunk[0],
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
                                  mip=mip, max_mip=self.high_mip))
 
     return chunks
@@ -276,7 +370,11 @@ class Aligner:
     return self.preprocess_data(result * 256)
 
   def downsample_patch(self, ng_path, z, bbox, mip):
+<<<<<<< HEAD
     in_data = self.get_image_data(ng_path, z, bbox, mip + 1)
+=======
+    in_data = self.get_image_data(ng_path, z, bbox, mip - 1)
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
     result  = downsample_mip(in_data)
     return result
 
@@ -373,20 +471,34 @@ class Aligner:
     return result
 
   ## High level services
+<<<<<<< HEAD
   def copy_section_to_dest(self, z, bbox, mip):
+=======
+  def copy_section(self, source, dest, z, bbox, mip):
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
     print ("moving section {} mip {} to dest".format(z, mip))
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip)
     for patch_bbox in chunks:
+<<<<<<< HEAD
       raw_patch = self.get_image_data(self.src_ng_path, z, patch_bbox, mip)
       self.save_image_patch(self.dst_ng_path, raw_patch, z, patch_bbox, mip)
+=======
+      raw_patch = self.get_image_data(source, z, patch_bbox, mip)
+      self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
 
   def prepare_source(self, z, bbox, mip):
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip)
+<<<<<<< HEAD
 
     for patch_bbox in chunks:
       print ("Preparing future source {} at mip {}".format(bbox.__str__(mip=0), mip))
+=======
+    for patch_bbox in chunks:
+      print ("Preparing future source {} at mip {}".format(patch_bbox.__str__(mip=0), mip))
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                      (mip + 1, self.high_mip), mip)
       self.save_image_patch(self.tmp_ng_path, warped_patch, z, patch_bbox, mip)
@@ -396,21 +508,41 @@ class Aligner:
                                     self.dst_voxel_offsets[mip], mip=mip)
 
     for patch_bbox in chunks:
+<<<<<<< HEAD
       print ("Rendering {} at mip {}".format(bbox.__str__(mip=0), mip))
+=======
+      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip))
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                     (mip, self.high_mip), mip)
       self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
 
+<<<<<<< HEAD
   def render_all_mips(self, z, bbox):
     self.render(z, bbox, self.render_mip)
     self.downsample(z, bbox, self.render_mip, self.high_mip)
 
   def downasmple(self, z, bbox, source_mip, target_mip):
     for m in range(source_mip, target_mip):
+=======
+  def render_section_all_mips(self, z, bbox):
+    #total_bbox = self.get_upchunked_bbox(bbox, self.dst_chunk_sizes[self.high_mip],
+    #                                           self.dst_voxel_offsets[self.high_mip],
+    #                                           mip=self.high_mip)
+    self.render(z, bbox, self.render_mip)
+    self.downsample(z, bbox, self.render_mip, self.high_mip)
+
+  def downsample(self, z, bbox, source_mip, target_mip):
+    for m in range(source_mip+1, target_mip + 1):
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
       chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
                                       self.dst_voxel_offsets[m], mip=m)
 
       for patch_bbox in chunks:
+<<<<<<< HEAD
+=======
+        print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
         downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
         self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
 
@@ -425,12 +557,17 @@ class Aligner:
 
 
   ## Whole stack operations
+<<<<<<< HEAD
   def align_ng_stack(self, start_section, end_section, bbox):
+=======
+  def align_ng_stack(self, start_section, end_section, bbox, move_anchor=True):
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
     if not self.check_all_params():
       raise Exception("Not all parameters are set")
     #if not bbox.is_chunk_aligned(self.dst_ng_path):
     #  raise Exception("Have to align a chunkaligned size")
 
+<<<<<<< HEAD
     if self.move_anchor:
       for m in range(self.low_mip - 1, self.high_mip + 1):
         self.copy_section_to_dest(start_section, bbox, mip=m)
@@ -438,6 +575,15 @@ class Aligner:
     for z in range(start_section, end_section):
       self.compute_section_pair_residuals(z + 1, z, bbox)
       self.render_all_mips(z + 1, bbox)
+=======
+    if move_anchor:
+      for m in range(self.render_mip, self.high_mip + 1):
+        self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
+
+    for z in range(start_section, end_section):
+      self.compute_section_pair_residuals(z + 1, z, bbox)
+      self.render_section_all_mips(z + 1, bbox)
+>>>>>>> e6f086e578aa4dd457c9ce5248eb82a2022307f2
 
 
 
