@@ -35,7 +35,7 @@ class Xmas(nn.Module):
         return self.upsample(upcrop[:,:,64:64+128,64:64+128])
 
     def render(self, img, Res): #[b,256,256],[b-1, 2,256,256]
-        R_p = self.ident #+ Res.permute(0,2,3,1)
+        R_p = self.ident + Res.permute(0,2,3,1)
         rend = F.grid_sample(img[1:,:,:].unsqueeze(1), R_p)
         return torch.cat([img[0].unsqueeze(0), rend.squeeze(1)], dim=0) #[8,256,256]
 

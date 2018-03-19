@@ -13,7 +13,7 @@ import cavelab as cl
 from model import Pyramid, Xmas
 from data import Data
 from loss import loss
-from util import get_identity, name, visualize, log_param_mean
+from util import *
 from tensorboardX import SummaryWriter
 import json
 
@@ -21,31 +21,6 @@ if not torch.cuda.is_available():
     raise ValueError("Cuda is not available")
 
 debug = False
-
-#TODO smoothness penalty seperately
-
-def freeze(model, level=0):
-    print('freeze', level)
-    if level>len(model.G_level)-1:
-        return
-    for param in model.G_level[level].parameters():
-        param.requires_grad = False
-
-def freeze_all(model, besides=0):
-    levels = len(model.G_level)
-    for i in range(levels):
-        for param in model.G_level[i].parameters():
-            param.requires_grad = False
-
-    for param in model.G_level[besides].parameters():
-        param.requires_grad = True
-
-def unfreeze(model):
-    levels = len(model.G_level)
-    for i in range(levels):
-        for param in model.G_level[i].parameters():
-            param.requires_grad = True
-
 
 def train(hparams):
 
@@ -69,18 +44,18 @@ def train(hparams):
     #optimizer = optim.Adam(model.parameters(), lr=hparams.learning_rate)
     model.train()
     level = hparams.levels
-    image = d.get_batch()
+
     for i in range(hparams.steps):
         t1 = time.time()
 
-
+        image = d.get_batch()
         xs = torch.autograd.Variable(torch.from_numpy(image).cuda(device=0), requires_grad=False)
-        if i%3==0:
+        if i%30000==0:
             level = max(0, level-1)
             if hparams.skip_levels>level:
                 unfreeze(model)
-
-            freeze_all(model, besides=max(hparams.skip_levels,level))
+            else:
+                freeze_all(model, besides=max(hparams.skip_levels,level))
             params = filter(lambda x: x.requires_grad, model.parameters())
             optimizer = optim.Adam(params, lr=hparams.learning_rate)
 

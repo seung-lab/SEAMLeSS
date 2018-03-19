@@ -21,7 +21,7 @@ class Data():
 
         xs  = self.data.get_batch() # 5,256,256,8
         start = 0
-        start_level = 1
+        start_level = 0
         xs = np.transpose(xs['image'].squeeze(0)[start_level:start_level+self.levels,:,:,start:start+self.batch_size], (0,3,1,2)).astype(np.float32)
         xs = Data.augmentation(xs)
         xs = np.ndarray.copy(xs)
