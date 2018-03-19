@@ -3,6 +3,7 @@ from cloudvolume import CloudVolume as cv
 import numpy as np
 import os
 import json
+from time import time
 from copy import deepcopy
 
 from util import crop, warp, upsample_flow, downsample_mip
@@ -216,10 +217,16 @@ class Aligner:
     x_start = calign_x_range[0] - x_chunk
     y_start = calign_y_range[0] - y_chunk
 
-    high_mip_scale = min(2**(self.high_mip - mip), 64)
+    high_mip_scale = int(self.dst_chunk_sizes[mip][0] / self.dst_chunk_sizes[self.high_mip][0])
+    if high_mip_scale == 1:
+        high_mip_scale *= min(2**(self.high_mip - mip), 1)
+    else:
+        high_mip_scale *= max(int(min(2**(self.high_mip - mip), 1024) / 32), 1)
+    #high_mip_scale = chunk_size_ratio * min(2**(self.high_mip - mip), 16)
+
     #TODO
-    if mip != 9:
-      high_mip_scale = max(1, int(high_mip_scale / 4))
+    '''if mip != 9:
+      high_mip_scale = max(1, int(high_mip_scale / 4))'''
     processing_chunk = (self.high_mip_chunk[0] * high_mip_scale,
                         self.high_mip_chunk[1] * high_mip_scale)
 
@@ -254,7 +261,9 @@ class Aligner:
 
   ## Residual computation
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
-    print ("Computing residual for {}".format(out_patch_bbox.__str__(mip=0)))
+    print ("Computing residual for {}".format(out_patch_bbox.__str__(mip=0)),
+            end='', flush=True)
+    start = time()
     precrop_patch_bbox = deepcopy(out_patch_bbox)
     precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
 
@@ -269,6 +278,8 @@ class Aligner:
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
     abs_residual = self.rel_to_abs_residual(rel_residual, precrop_patch_bbox, mip)
+    end = time()
+    print (": {} sec".format(end - start))
     self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
 
 
@@ -334,12 +345,18 @@ class Aligner:
                                                   y_range[0]:y_range[1], z] = uint_patch
 
   def save_residual_patch(self, flow, z, bbox, mip):
-    print ("Saving residual patch {} at mip {}".format(bbox.__str__(mip=0), mip))
+    print ("Saving residual patch {} at mip {}".format(bbox.__str__(mip=0), mip), end='')
+    start = time()
     self.save_vector_patch(flow, self.x_res_ng_path, self.y_res_ng_path, z, bbox, mip)
+    end = time()
+    print (": {} sec".format(end - start))
 
   def save_aggregate_patch(self, flow, z, bbox, mip):
-    print ("Saving aggregate patch {} at mip {}".format(bbox.__str__(mip=0), mip))
+    print ("Saving aggregate patch {} at mip {}".format(bbox.__str__(mip=0), mip), end='')
+    start = time()
     self.save_vector_patch(flow, self.x_agg_ng_path, self.y_agg_ng_path, z, bbox, mip)
+    end = time()
+    print (": {} sec".format(end - start))
 
   def save_vector_patch(self, flow, x_path, y_path, z, bbox, mip):
     x_res = flow[0, :, :, 0, np.newaxis]
@@ -417,31 +434,43 @@ class Aligner:
 
   ## High level services
   def copy_section(self, source, dest, z, bbox, mip):
-    print ("moving section {} mip {} to dest".format(z, mip))
+    print ("moving section {} mip {} to dest".format(z, mip), end='', flush=True)
+    start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip)
     for patch_bbox in chunks:
       raw_patch = self.get_image_data(source, z, patch_bbox, mip)
       self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
 
+    end = time()
+    print (": {} sec".format(end - start))
+
   def prepare_source(self, z, bbox, mip):
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip)
     for patch_bbox in chunks:
-      print ("Preparing future source {} at mip {}".format(patch_bbox.__str__(mip=0), mip))
+      print ("Preparing future source {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+              end='', flush=True)
+      start = time()
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                      (mip + 1, self.high_mip), mip)
       self.save_image_patch(self.tmp_ng_path, warped_patch, z, patch_bbox, mip)
+      end = time()
+      print (": {} sec".format(end - start))
 
   def render(self, z, bbox, mip):
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip)
 
     for patch_bbox in chunks:
-      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip))
+      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+                end='', flush=True)
+      start = time()
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                     (mip, self.high_mip), mip)
       self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+      end = time()
+      print (": {} sec".format(end - start))
 
   def render_section_all_mips(self, z, bbox):
     #total_bbox = self.get_upchunked_bbox(bbox, self.dst_chunk_sizes[self.high_mip],
@@ -466,8 +495,8 @@ class Aligner:
                                       self.vec_voxel_offsets[m], mip=m)
       for patch_bbox in chunks:
         self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
-
-      self.prepare_source(source_z, bbox, m - 1)
+      if m > self.low_mip:
+          self.prepare_source(source_z, bbox, m - 1)
 
 
   ## Whole stack operations
@@ -476,6 +505,7 @@ class Aligner:
       raise Exception("Not all parameters are set")
     #if not bbox.is_chunk_aligned(self.dst_ng_path):
     #  raise Exception("Have to align a chunkaligned size")
+    start = time()
     if move_anchor:
       for m in range(self.render_mip, self.high_mip + 1):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
@@ -483,3 +513,12 @@ class Aligner:
     for z in range(start_section, end_section):
       self.compute_section_pair_residuals(z + 1, z, bbox)
       self.render_section_all_mips(z + 1, bbox)
+    end = time()
+    print ("Total time for aligning {} slices: {}".format(end_section - start_section,
+                                                          end - start))
+
+
+
+
+
+
