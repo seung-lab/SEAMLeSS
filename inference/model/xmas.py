@@ -7,55 +7,9 @@ import torchvision
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 
+from .simple import G
 from neuroflow.util import get_identity
 import numpy as np
-import math
-
-class G(nn.Module):
-    def __init__(self, skip=False, eps=0.001, kernel_size=7):
-        super(G, self).__init__()
-
-        # Spatial transformer localization-network
-        pad = int(kernel_size/2)
-        #kernel_size = [kernel_size, kernel_size]
-        #pad = (pad, pad)
-        self.flow = nn.Sequential(
-            nn.Conv2d(2, 32, kernel_size=kernel_size, padding=pad),
-            nn.ReLU(True),
-            #nn.BatchNorm2d(32, affine=False),
-            nn.Conv2d(32, 64, kernel_size=kernel_size, padding=pad),
-            nn.ReLU(True),
-            #nn.BatchNorm2d(64, affine=False),
-            nn.Conv2d(64, 32, kernel_size=kernel_size, padding=pad),
-            nn.ReLU(True),
-            #nn.BatchNorm2d(32, affine=False),
-            nn.Conv2d(32, 16, kernel_size=kernel_size, padding=pad),
-            nn.ReLU(True),
-            #nn.BatchNorm2d(16, affine=False),
-            nn.Conv2d(16, 2, kernel_size=kernel_size, padding=pad),
-            #nn.BatchNorm2d(2),
-        ).cuda()
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                torch.nn.init.xavier_normal(m.weight)
-
-        #self.flow[-1].weight.data *= eps
-        #self.flow[-1].bias.data *= eps
-
-        self.tanh = nn.Tanh()
-        self.skip = skip
-
-    # Flow transformer network forward function
-    def forward(self, x): #[b,2,256,256]
-        if self.skip:
-            r = torch.zeros_like(x) #FIXME
-            return r
-        r = self.flow(x)
-
-        return r #[b, 2, 256, 256]
-
-
 
 class Xmas(nn.Module):
     def __init__(self, levels=1, skip_levels=2, shape=[5,8,256,256]):
@@ -112,6 +66,38 @@ class Xmas(nn.Module):
 
         return ys, Rs, rs #[5,b-1,256,256], [5, b-1,2,256,256], [b-1,2,256,256]
 
+    @staticmethod
+    def load(archive_path=None, height=6, dim=256, skips=3, cuda=True):
+        """
+        Builds and load a model with the specified architecture from
+        an archive.
+
+        Params:
+            height: the number of layers in the pyramid (including
+                    bottom layer (number of downsamples = height - 1)
+            dim:    the size of the full resolution images used as input
+            skips:  the number of residual fields (from the bottom of the
+                    pyramid) to skip
+            cuda:   whether or not to move the model to the GPU
+        """
+        assert archive_path is not None, "Must provide an archive."
+        if cuda:
+            map_location={'cuda:0':'cuda:0'}
+        else:
+            map_location={'cuda:0':'cpu'}
+
+        model = torch.load(archive_path, map_location=map_location)
+
+        if cuda:
+            model = model.cuda()
+        for p in model.parameters():
+            p.requires_grad = False
+        model.train(False)
+        #print(model)
+        #print('Loading model state from', archive_path + '...')
+        #model.load_state_dict(torch.load(archive_path))
+
+        return model
 
 #Simple test
 if __name__ == "__main__":

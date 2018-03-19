@@ -4,7 +4,7 @@ v_off = (10240, 4096, 0)
 x_size = 57344
 y_size = 40960
 
-model_path = 'model/2_5_2.pt'
+model_path = 'model_repository/D1_5_2.pt'
 max_displacement = 2048
 net_crop  = 32
 mip_range = (3, 5)

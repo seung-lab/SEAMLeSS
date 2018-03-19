@@ -12,7 +12,7 @@ from boundingbox import BoundingBox
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, render_mip, high_mip_chunk,
-               src_ng_path, dst_ng_path):
+               src_ng_path, dst_ng_path, is_Xmas=False):
 
     self.high_mip       = mip_range[1]
     self.low_mip        = mip_range[0]
@@ -35,7 +35,7 @@ class Aligner:
     self.x_agg_ng_path = os.path.join(self.agg_ng_path, 'x')
     self.y_agg_ng_path = os.path.join(self.agg_ng_path, 'y')
 
-    self.net = Process(model_path)
+    self.net = Process(model_path, is_Xmas)
 
     self.dst_chunk_sizes   = []
     self.dst_voxel_offsets = []
@@ -516,9 +516,3 @@ class Aligner:
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
                                                           end - start))
-
-
-
-
-
-

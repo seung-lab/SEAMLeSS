@@ -1,7 +1,7 @@
 from aligner import Aligner, BoundingBox
 
 
-model_path = 'model/2_5_2.pt'
+model_path = 'model_repository/2_5_2.pt'
 max_displacement = 2048
 net_crop  = 32
 mip_range = (7, 9)
