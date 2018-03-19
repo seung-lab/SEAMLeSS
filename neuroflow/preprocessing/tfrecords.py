@@ -2,6 +2,7 @@ import json
 import cavelab as cl
 import tensorflow as tf
 import numpy as np
+import time
 
 def _int64_feature(value):
   return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
@@ -13,6 +14,12 @@ def get_points(path):
     with open(hparams.points, 'r') as f:
         points = json.load(f)
     return points
+
+def get_random_points(bbox, n): #[[x1,x2], [y1,y2], [z1,z2]]
+    points = np.random.rand(n, 3)
+    for i in range(3):
+        points[:,i] = points[:,i]*(bbox[i][1]-bbox[i][0])+bbox[i][0]
+    return points.astype(np.int).tolist()
 
 def get_cloudvolumes(src, start_mip, end_mip):
     volume_mip = []
@@ -26,11 +33,14 @@ def create_tf_records(hparams, train=True):
     if not train:
         path, sign = hparams.tfrecord_test_dest, 1
 
-    points = get_points(hparams.points)
+    #points = get_points(hparams.points)
+    points = get_random_points([[50000, 240000], [70000, 308815], [1, 230]], 10000)
+
     writer = tf.python_io.TFRecordWriter(path)
     vols = get_cloudvolumes(hparams.cloud_src, hparams.cloud_mip, hparams.cloud_mip+lvls)
     count = 0
     for point in points:
+        t1 = time.time()
         if(sign*(point[-1]-140)>0):
             continue
         image = np.zeros((lvls, size, size, dpth))
@@ -47,11 +57,12 @@ def create_tf_records(hparams, train=True):
         }))
         writer.write(ex.SerializeToString())
         count += 1
-        print(count)
+        t2 = time.time()
+        print(count, t2-t1)
 
     writer.close()
 
 if __name__ == "__main__":
     hparams = cl.hparams(name="preprocessing")
     create_tf_records(hparams, train=True)
-    create_tf_records(hparams, train=False)
+    #create_tf_records(hparams, train=False)

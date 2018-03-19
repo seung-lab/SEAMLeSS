@@ -29,4 +29,3 @@ def warp(data, flow):
     tf = torch.from_numpy(flow)
     y = F.grid_sample(td, tf)
     return y.data.numpy()[0, 0]
-

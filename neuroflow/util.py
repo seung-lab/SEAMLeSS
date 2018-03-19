@@ -69,3 +69,26 @@ def log_param_mean(model):
         mean /= len(convs)
         ls[str(i)] = mean.data.cpu().numpy()[0]
     return ls
+
+
+def freeze(model, level=0):
+    print('freeze', level)
+    if level>len(model.G_level)-1:
+        return
+    for param in model.G_level[level].parameters():
+        param.requires_grad = False
+
+def freeze_all(model, besides=0):
+    levels = len(model.G_level)
+    for i in range(levels):
+        for param in model.G_level[i].parameters():
+            param.requires_grad = False
+
+    for param in model.G_level[besides].parameters():
+        param.requires_grad = True
+
+def unfreeze(model):
+    levels = len(model.G_level)
+    for i in range(levels):
+        for param in model.G_level[i].parameters():
+            param.requires_grad = True

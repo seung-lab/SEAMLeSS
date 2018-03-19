@@ -21,7 +21,6 @@ class Aligner:
 
     self.max_displacement = max_displacement
     self.crop_amount = crop
-
     self.org_ng_path = src_ng_path
     self.src_ng_path = self.org_ng_path
 

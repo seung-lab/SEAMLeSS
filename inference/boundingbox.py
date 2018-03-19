@@ -106,4 +106,3 @@ class BoundingBox:
 
   def __str__(self, mip):
     return "{}, {}".format(self.x_range(mip), self.y_range(mip))
-
