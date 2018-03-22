@@ -41,7 +41,6 @@ def train(hparams):
 
     model.cuda(device=0)
 
-    #optimizer = optim.Adam(model.parameters(), lr=hparams.learning_rate)
     model.train()
     level = hparams.levels
 
@@ -52,10 +51,10 @@ def train(hparams):
         xs = torch.autograd.Variable(torch.from_numpy(image).cuda(device=0), requires_grad=False)
         if i%30000==0:
             level = max(0, level-1)
-            if hparams.skip_levels>level:
-                unfreeze(model)
-            else:
-                freeze_all(model, besides=max(hparams.skip_levels,level))
+            #if hparams.skip_levels>level:
+            #    unfreeze(model)
+            #else:
+            freeze_all(model, besides=max(hparams.skip_levels,level))
             params = filter(lambda x: x.requires_grad, model.parameters())
             optimizer = optim.Adam(params, lr=hparams.learning_rate)
 
@@ -80,7 +79,7 @@ def train(hparams):
             t3 = time.time()
 
             if debug:
-                j = 1
+                j = 0
                 k = 0
                 cl.visual.save(xs[j,k+1].data.cpu().numpy(), 'dump/image')
                 cl.visual.save(ys[j,k].data.cpu().numpy(), 'dump/pred')

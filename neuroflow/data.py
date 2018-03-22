@@ -18,14 +18,31 @@ class Data():
         self.levels = hparams.levels
 
     def get_batch(self):
-
         xs  = self.data.get_batch() # 5,256,256,8
         start = 0
-        start_level = 0
+        start_level = 1
         xs = np.transpose(xs['image'].squeeze(0)[start_level:start_level+self.levels,:,:,start:start+self.batch_size], (0,3,1,2)).astype(np.float32)
+        xs = Data.normalize(xs)
         xs = Data.augmentation(xs)
         xs = np.ndarray.copy(xs)
         return xs
+
+    #normalize
+    @staticmethod
+    def normalize(image, var = 3): # [d,b,width, height]
+        mask = image==0
+        image = np.ma.array(image, mask=mask, dtype=np.float32)
+        mean = image.mean(axis=(0,2,3), keepdims=True)
+        std = image.std(axis=(0,2,3), keepdims=True)
+        image = (image-mean)/std
+
+        black = -var*(image<-var)
+        white = var*(image>var)#.astype(np.float32)
+        image = np.multiply(image, np.abs(image)<var)+black+white
+        mn = -var
+        mx = var
+        image = (image-mn)/(mx-mn)
+        return image.data.astype(np.float32)
 
     ### Augmentations
     @staticmethod
