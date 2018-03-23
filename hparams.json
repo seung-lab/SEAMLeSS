@@ -11,7 +11,7 @@
         "linear": {"data": false, "type": "bool", "description": "Decide if the convolution is linear or not" },
         "output_layer": {"data": 1, "type": "int", "description": "Decide output channel" },
 
-        "train_file": {"data":["data/tf/basiltrain.tfrecords", "data/tf/basiltrain2.tfrecords"], "type": "str", "description": "Training dataset"},
+        "train_file": {"data":["data/tf/basil_norm_train_10K.tfrecords"], "type": "str", "description": "Training dataset"},
         "test_file": {"data":["data/tf/bad_trainset_24000_612_324.tfrecords"], "type": "str", "description": "Testing dataset"},
 
         "lambda_1": {"data": 500, "type":"int", "description": "Trade off for smoothness factor"},
@@ -59,8 +59,8 @@
             }, "type": "dict", "description": "augmetation"}
     },
     "preprocessing": {
-        "tfrecord_train_dest": {"data":"data/tf/basiltrain32.tfrecords", "type": "str", "description": "Destination of training set"},
-        "tfrecord_test_dest": {"data":"data/tf/basiltest32.tfrecords", "type": "str", "description": "Destination of training set"},
+        "tfrecord_train_dest": {"data":"data/tf/basiltest.tfrecords", "type": "str", "description": "Destination of training set"},
+        "tfrecord_test_dest": {"data":"data/tf/basil_norm_test_10K.tfrecords", "type": "str", "description": "Destination of training set"},
         "points": {"data": "data/cracks/pinky40.json", "type": "str", "description": "Destination of training set"},
         "cloud_src": {"data":"gs://neuroglancer/basil_v0/raw_image", "type": "str", "description": "Cloud directory e.g. gs://neuroglancer/pinky40_alignment/prealigned"},
         "cloud_mip": {"data": 2, "type": "str", "description": "MIP level for neuroglancer"},

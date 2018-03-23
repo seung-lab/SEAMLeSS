@@ -35,7 +35,7 @@ class Aligner:
     self.x_agg_ng_path = os.path.join(self.agg_ng_path, 'x')
     self.y_agg_ng_path = os.path.join(self.agg_ng_path, 'y')
 
-    self.net = Process(model_path, is_Xmas)
+    self.net = Process(model_path, is_Xmas=is_Xmas)
 
     self.dst_chunk_sizes   = []
     self.dst_voxel_offsets = []
@@ -56,11 +56,16 @@ class Aligner:
     nocache_f = '"Cache-Control: no-cache"'
 
     os.system("mkdir {}".format(tmp_dir))
-    os.system("gsutil cp {} {}".format(os.path.join(self.src_ng_path, "info"),
-                                       os.path.join(tmp_dir, "info.src")))
 
-    with open(os.path.join(tmp_dir, "info.src")) as f:
-      src_info = json.load(f)
+    src_info = cv(self.src_ng_path).info
+    #with open(file, 'wt') as f:
+    #json.dumps()
+
+    #os.system("gsutil cp {} {}".format(os.path.join(self.src_ng_path, "info"),
+    #                                   os.path.join(tmp_dir, "info.src")))
+
+    #with open(os.path.join(tmp_dir, "info.src")) as f:
+    #  src_info = json.load(f)
     dst_info = deepcopy(src_info)
 
     chunk_size = dst_info["scales"][0]["chunk_sizes"][0][0]
@@ -100,14 +105,17 @@ class Aligner:
       self.dst_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.dst_voxel_offsets.append(scales[i]["voxel_offset"])
 
-    with open(os.path.join(tmp_dir, "info.dst"), 'w') as f:
-      json.dump(dst_info, f)
-    os.system("gsutil -h {} cp {} {}".format(nocache_f,
-                                       os.path.join(tmp_dir, "info.dst"),
-                                       os.path.join(self.dst_ng_path, "info")))
-    os.system("gsutil -h {} cp {} {}".format(nocache_f,
-                                       os.path.join(tmp_dir, "info.dst"),
-                                       os.path.join(self.tmp_ng_path, "info")))
+    #with open(os.path.join(tmp_dir, "info.dst"), 'w') as f:
+    #  json.dump(dst_info, f)
+    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
+    #                                   os.path.join(tmp_dir, "info.dst"),
+    #                                   os.path.join(self.dst_ng_path, "info")))
+    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
+    #                                   os.path.join(tmp_dir, "info.dst"),
+    #                                   os.path.join(self.tmp_ng_path, "info")))
+
+    cv(self.dst_ng_path, info=dst_info).commit_info()
+    cv(self.tmp_ng_path, info=dst_info).commit_info()
 
     vec_info = deepcopy(src_info)
     vec_info["data_type"] = "float32"
@@ -136,22 +144,27 @@ class Aligner:
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
 
-    with open(os.path.join(tmp_dir, "info.vec"), 'w') as f:
-      json.dump(vec_info, f)
+    #with open(os.path.join(tmp_dir, "info.vec"), 'w') as f:
+    #  json.dump(vec_info, f)
 
-    os.system("gsutil -h {} cp {} {}".format(nocache_f,
-                                       os.path.join(tmp_dir, "info.vec"),
-                                       os.path.join(self.x_res_ng_path, "info")))
-    os.system("gsutil -h {} cp {} {}".format(nocache_f,
-                                       os.path.join(tmp_dir, "info.vec"),
-                                       os.path.join(self.y_res_ng_path, "info")))
-    os.system("gsutil -h {} cp {} {}".format(nocache_f,
-                                       os.path.join(tmp_dir, "info.vec"),
-                                       os.path.join(self.x_agg_ng_path, "info")))
-    os.system("gsutil -h {} cp {} {}".format(nocache_f,
-                                       os.path.join(tmp_dir, "info.vec"),
-                                       os.path.join(self.y_agg_ng_path, "info")))
-    os.system("rm -rf {}".format(tmp_dir))
+    cv(self.x_res_ng_path, info=vec_info).commit_info()
+    cv(self.y_res_ng_path, info=vec_info).commit_info()
+    cv(self.x_agg_ng_path, info=vec_info).commit_info()
+    cv(self.y_agg_ng_path, info=vec_info).commit_info()
+
+    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
+    #                                   os.path.join(tmp_dir, "info.vec"),
+    #                                   os.path.join(self.x_res_ng_path, "info")))
+    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
+    #                                   os.path.join(tmp_dir, "info.vec"),
+    #                                   os.path.join(self.y_res_ng_path, "info")))
+    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
+    #                                   os.path.join(tmp_dir, "info.vec"),
+    #                                   os.path.join(self.x_agg_ng_path, "info")))
+    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
+    #                                   os.path.join(tmp_dir, "info.vec"),
+    #                                   os.path.join(self.y_agg_ng_path, "info")))
+    #os.system("rm -rf {}".format(tmp_dir))
 
   def check_all_params(self):
     return True

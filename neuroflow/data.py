@@ -22,7 +22,7 @@ class Data():
         start = 0
         start_level = 1
         xs = np.transpose(xs['image'].squeeze(0)[start_level:start_level+self.levels,:,:,start:start+self.batch_size], (0,3,1,2)).astype(np.float32)
-        xs = Data.normalize(xs)
+        #xs = Data.normalize(xs)
         xs = Data.augmentation(xs)
         xs = np.ndarray.copy(xs)
         return xs

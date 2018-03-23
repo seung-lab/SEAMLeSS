@@ -27,6 +27,21 @@ def get_cloudvolumes(src, start_mip, end_mip):
         volume_mip.append(cl.Cloud(src, mip=i, cache=False))
     return volume_mip
 
+def normalize(image, var = 3, axis=(0,1,2)): # [d,b,width, height]
+    mask = image==0
+    image = np.ma.array(image, mask=mask, dtype=np.float32)
+    mean = image.mean(axis, keepdims=True)
+    std = image.std(axis, keepdims=True)
+    image = (image-mean)/std
+
+    black = -var*(image<-var)
+    white = var*(image>var)
+    image = np.multiply(image, np.abs(image)<var)+black+white
+    mn = -var
+    mx = var
+    image = (image-mn)/(mx-mn)
+    return image.data.astype(np.float32)
+
 def create_tf_records(hparams, train=True):
     lvls, dpth, size = hparams.levels, hparams.depth,  hparams.width
     path, sign = hparams.tfrecord_train_dest, -1
@@ -34,7 +49,7 @@ def create_tf_records(hparams, train=True):
         path, sign = hparams.tfrecord_test_dest, 1
 
     #points = get_points(hparams.points)
-    points = get_random_points([[50000, 240000], [70000, 308815], [1, 230]], 10000)
+    points = get_random_points([[50000, 240000], [70000, 308815], [1, 230]], 30000)
 
     writer = tf.python_io.TFRecordWriter(path)
     vols = get_cloudvolumes(hparams.cloud_src, hparams.cloud_mip, hparams.cloud_mip+lvls)
@@ -51,6 +66,9 @@ def create_tf_records(hparams, train=True):
               image[i] = vols[i].read_global((x,y,point[-1]-5),(size,size, dpth))
         except:
             continue
+        image = image/255.0
+        image = normalize(image)
+        image = 255.0*image
         image_raw = np.asarray(image, dtype=np.uint8).tostring()
         ex = tf.train.Example(features=tf.train.Features(feature={
             'image': _bytes_feature(image_raw),
