@@ -19,6 +19,7 @@ class Unet(nn.Module):
                        activation = nn.ReLU,
                        kernel_size = 3,
                        batchnorm = False,
+                       upsample = True,
                        kernel_shape =  [[3,8],
                                         [8,16],
                                         [16,32],
@@ -59,15 +60,17 @@ class Unet(nn.Module):
                               kernel_size = kernel_size,
                               batchnorm = batchnorm)
 
+
         print('~~~~ Up ~~~~~')
         self.upsamples = nn.ModuleList()
         self.upconvs = nn.ModuleList()
         for i in range(1, self.levels):
             j = self.levels-i
-            self.upconvs.append(self.upconv(inp = kshp[j][1],
+            self.upconvs.append(self.upconv(inp = kernel_shape[j][1],
                                             out = min(factor,2)*kernel_shape[j][0],
-                                            activation=activation,
-                                            kernel_size=kernel_size))
+                                            upsample = upsample,
+                                            activation = activation,
+                                            kernel_size = kernel_size))
 
             self.upsamples.append(self.block(inp = factor*kernel_shape[j][0],
                                              mid = kernel_shape[j][0],
