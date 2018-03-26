@@ -35,7 +35,10 @@ class G(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                torch.nn.init.xavier_normal(m.weight)
+                torch.nn.init.xavier_uniform(m.weight)
+                #m.weight.data = m.weight.data*eps
+                #m.bias.data = torch.zeros_like(m.bias.data)
+                #print(torch.mean(m.bias.data))
 
         #self.flow[-1].weight.data *= eps
         #self.flow[-1].bias.data *= eps

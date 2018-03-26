@@ -33,8 +33,9 @@ def train(hparams):
         writer = SummaryWriter(log_dir=path)
         with open(path+'/hparams.json', 'w') as outfile:
             json.dump(hparams, outfile)
+
     width = hparams.features['image']['width']
-    input_shape = [hparams.levels, hparams.batch_size, width, width]
+    input_shape = [hparams.levels, hparams.batch_size, int(width/2), int(width/2)]
     model = Xmas(levels = hparams.levels,
                  skip_levels = hparams.skip_levels,
                  shape = input_shape)
@@ -43,43 +44,46 @@ def train(hparams):
 
     model.train()
     level = hparams.levels
-
+    lr = hparams.learning_rate
+    lambda_1 = hparams.lambda_1
     for i in range(hparams.steps):
         t1 = time.time()
-
         image = d.get_batch()
         xs = torch.autograd.Variable(torch.from_numpy(image).cuda(device=0), requires_grad=False)
         if i%30000==0:
             level = max(0, level-1)
-            #if hparams.skip_levels>level:
-            #    unfreeze(model)
-            #else:
-            freeze_all(model, besides=max(hparams.skip_levels,level))
+            lambda_1 = (hparams.levels-level)*hparams.lambda_1
+            if hparams.skip_levels>level:
+                unfreeze(model)
+                lr = 0.1*hparams.learning_rate
+            else:
+                #pass
+                freeze_all(model, besides=level)
             params = filter(lambda x: x.requires_grad, model.parameters())
-            optimizer = optim.Adam(params, lr=hparams.learning_rate)
+            optimizer = optim.Adam(params, lr=lr)
 
         for j in range(1):
             optimizer.zero_grad()
-            ys, Rs, rs = model(xs)
+            ys, Rs, rs = model(xs, level)
 
             l, mse, p1, p2 = loss(xs[:], ys[:],
                                   Rs[:], rs[:],
                                   level=level,
-                                  lambda_1=hparams.lambda_1,
+                                  lambda_1=lambda_1,
                                   lambda_2=hparams.lambda_2)
 
             l.backward(), optimizer.step()
         t2 = time.time()
 
-        print(i, 'loss',  str(l.data[0])[:4],
-                          str(p1.data[0])[:4],
+        print(i, 'loss',  str(l.data[0])[:6],
+                          str(p1.data[0])[:6],
                           str(t2-t1)[:4]+"s")
 
-        if i%hparams.log_iterations==0 or debug: # Takes 4s
+        if i%hparams.log_iterations==0: # Takes 4s
             t3 = time.time()
 
             if debug:
-                j = 0
+                j = level
                 k = 0
                 cl.visual.save(xs[j,k+1].data.cpu().numpy(), 'dump/image')
                 cl.visual.save(ys[j,k].data.cpu().numpy(), 'dump/pred')
@@ -98,7 +102,7 @@ def train(hparams):
                           rs[j,:],
                           i, writer,
                           mip_level=j,
-                          crop=(2**j))
+                          crop=16)
             torch.save(model, path+'/model.pt') #0.3s
             t4 = time.time()
             print('visualize time', str(t4-t3)[:4]+"s")
@@ -109,6 +113,7 @@ def train(hparams):
             writer.add_scalar('data/p1', p1, i)
             writer.add_scalar('data/p2', p2, i)
             writer.add_scalar('data/level', level, i)
+            writer.add_scalar('data/lambda_1', lambda_1, i)
 
             #writer.add_scalars('data/weight_mean', log_param_mean(model), i)
 

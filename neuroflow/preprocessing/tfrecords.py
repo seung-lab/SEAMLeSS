@@ -27,7 +27,7 @@ def get_cloudvolumes(src, start_mip, end_mip):
         volume_mip.append(cl.Cloud(src, mip=i, cache=False))
     return volume_mip
 
-def normalize(image, var = 3, axis=(0,1,2)): # [d,b,width, height]
+def normalize(image, var = 3, axis=(0,1,2)): # [d,width, height,b]
     mask = image==0
     image = np.ma.array(image, mask=mask, dtype=np.float32)
     mean = image.mean(axis, keepdims=True)

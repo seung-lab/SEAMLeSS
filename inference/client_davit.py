@@ -11,7 +11,8 @@ mip_range = (3, 5)
 render_mip = 4
 high_mip_chunk = (64, 64)
 
-a = Aligner(model_path, max_displacement, net_crop, mip_range, render_mip, high_mip_chunk,
+a = Aligner(model_path, max_displacement,
+            net_crop, mip_range, render_mip, high_mip_chunk,
             'gs://neuroglancer/pinky40_alignment/prealigned',
             'gs://neuroglancer/nflow_tests/davit_test',
             is_Xmas = True)

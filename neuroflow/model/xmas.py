@@ -32,7 +32,8 @@ class Xmas(nn.Module):
         self.r_shape = [shape[0], shape[1], 2, shape[2], shape[3]]
 
     def up_crop(self, upcrop): #[b-1,2,256,256]
-        return self.upsample(upcrop[:,:,64:64+128,64:64+128])
+        s, e = int(upcrop.shape[2]/4), int(upcrop.shape[2]/2)
+        return self.upsample(upcrop[:,:,s:-s,s:-s])
 
     def render(self, img, Res): #[b,256,256],[b-1, 2,256,256]
         R_p = self.ident + Res.permute(0,2,3,1)
@@ -48,12 +49,12 @@ class Xmas(nn.Module):
         res = self.G_level[level](batch)
         return res #[b-1,2,256,256]
 
-    def forward(self, xs): #[5,8,256,256]
+    def forward(self, xs, level=0): #[5,8,256,256]
         Rs = Variable(torch.zeros(self.r_shape).cuda())
         rs = Variable(torch.zeros(self.r_shape).cuda())
         ys = Variable(torch.zeros(self.shape).cuda())
 
-        for i in range(self.levels):
+        for i in range(self.levels-level):
             j = self.levels-i-1
             if j<self.levels-1:
                 R = 2*self.up_crop(Rs[j+1])
@@ -61,7 +62,7 @@ class Xmas(nn.Module):
                 R = torch.zeros_like(Rs[j])
             x = self.render(xs[j,:,:,:], R) #[8,256,256]
             rs[j] = self.compute_res(x, j) #[7,256,256,2]
-            Rs[j] = rs[j] + R
+            Rs[j] = R + rs[j]
 
             ys[j] = self.render(xs[j], Rs[j])[1:] #[7,256,256]
 

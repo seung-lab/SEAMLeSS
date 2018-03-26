@@ -4,8 +4,9 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import cavelab as cl
 
-def mse_loss(inp, target):
-    out = torch.pow((inp-target), 2)
+def mse_loss(inp, target, mask=1):
+
+    out = torch.pow(torch.mul(inp-target, mask), 2)
     return torch.mean(out)
 
 
@@ -26,17 +27,22 @@ def smoothness_penalty(fields, order=1):
 
 
 def loss(xs, ys, Rs, rs, level=0, lambda_1=0, lambda_2=0):
-    crop = 30
+    crop = 16
     #r = normalize(Rs[-1])
     r = [Rs[level][:,:,crop:-crop,crop:-crop]]# for i in range(Rs.shape[0])] #[:, :,crop:-crop,crop:-crop]
-
+    #print(ys[level, :,crop:-crop,crop:-crop].shape)
+    #exit()
     p1 = smoothness_penalty(r, 1)
-    p2 = smoothness_penalty(r, 2)
+    #p2 = smoothness_penalty(r, 2)
+
     #cl.visual.save(ys[level, :,crop:-crop,crop:-crop].data.cpu().numpy(), 'dump/pred_loss')
     #cl.visual.save(xs[level, :-1,crop:-crop,crop:-crop].data.cpu().numpy(), 'dump/target_loss')
+    #mask = xs[level,:,crop:-crop,crop:-crop]
+    #mask = (mask[:-1]==0)==(mask[1:]==0)
 
     mse = mse_loss(ys[level, :,crop:-crop,crop:-crop],
                    xs[level, :-1,crop:-crop,crop:-crop])
+                   #mask = mask.type(torch.cuda.FloatTensor))
 
-    loss = mse+lambda_1*p1+lambda_2*p2
-    return loss, mse, p1, p2
+    loss = mse+lambda_1*p1#+lambda_2*p2
+    return loss, mse, p1, 0 #p2

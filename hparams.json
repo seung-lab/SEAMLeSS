@@ -14,14 +14,14 @@
         "train_file": {"data":["data/tf/basil_norm_train_10K.tfrecords"], "type": "str", "description": "Training dataset"},
         "test_file": {"data":["data/tf/bad_trainset_24000_612_324.tfrecords"], "type": "str", "description": "Testing dataset"},
 
-        "lambda_1": {"data": 500, "type":"int", "description": "Trade off for smoothness factor"},
+        "lambda_1": {"data": 10, "type":"int", "description": "Trade off for smoothness factor"},
         "lambda_2": {"data": 0,"type":"int", "description": "Trade off for smoothness factor"},
         "levels": {"data": 7, "type":"int", "description": "Pyramid Levels"},
         "skip_levels": {"data": 1,"type":"int", "description": "Pyramid Levels to skip"},
         "learning_rate": {"data": 0.00002, "type": "float", "description": "Learning rate"},
-        "log_iterations": {"data": 1000, "type": "int", "description": "Tensorflow log level"},
+        "log_iterations": {"data": 10000, "type": "int", "description": "Tensorflow log level"},
         "batch_size": {"data": 8, "type": "int", "description": "Batch size during training"},
-        "steps": {"data": 210000, "type": "int", "description":  "Number of steps to complete the training"},
+        "steps": {"data": 90000, "type": "int", "description":  "Number of steps to complete the training"},
 
         "momentum": {"data": 0.9, "type": "float", "description": "Learning momentum"},
         "decay": {"data": 0.75, "type": "float", "description": "Learning momentum"},
