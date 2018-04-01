@@ -40,24 +40,27 @@ def train(hparams):
                  skip_levels = hparams.skip_levels,
                  shape = input_shape)
 
-    model.cuda(device=0)
+    if hparams.pretrained_model != "":
+        model = torch.load(hparams.pretrained_model)
 
+    model.cuda(device=0)
     model.train()
-    level = hparams.levels
+    level = hparams.start_levels
     lr = hparams.learning_rate
     lambda_1 = hparams.lambda_1
+
     for i in range(hparams.steps):
         t1 = time.time()
         image = d.get_batch()
         xs = torch.autograd.Variable(torch.from_numpy(image).cuda(device=0), requires_grad=False)
-        if i%30000==0:
-            level = max(0, level-1)
+
+        if i%60000==0:
+            level = max(hparams.skip_levels-1, level-1)
             lambda_1 = (hparams.levels-level)*hparams.lambda_1
             if hparams.skip_levels>level:
                 unfreeze(model)
                 lr = 0.1*hparams.learning_rate
             else:
-                #pass
                 freeze_all(model, besides=level)
             params = filter(lambda x: x.requires_grad, model.parameters())
             optimizer = optim.Adam(params, lr=lr)

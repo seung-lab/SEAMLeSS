@@ -8,8 +8,14 @@ from torchvision import datasets, transforms
 from torch.autograd import Variable
 
 from .simple import G
-from neuroflow.util import get_identity
+#from neuroflow.util import get_identity
 import numpy as np
+
+def get_identity(batch_size=8, width=256):
+    identity = np.zeros((batch_size,2,width,width), dtype=np.float32)+0.5
+    identity[:,0,:,:] = np.arange(width)/((width-1)/2)-1
+    identity[:,1,:,:] = np.transpose(identity, axes = [0,1,3,2])[:,0,:,:]
+    return identity
 
 class Xmas(nn.Module):
     def __init__(self, levels=1, skip_levels=2, shape=[5,8,256,256]):

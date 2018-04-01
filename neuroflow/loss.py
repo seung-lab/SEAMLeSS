@@ -29,7 +29,7 @@ def smoothness_penalty(fields, order=1):
 def loss(xs, ys, Rs, rs, level=0, lambda_1=0, lambda_2=0):
     crop = 16
     #r = normalize(Rs[-1])
-    r = [Rs[level][:,:,crop:-crop,crop:-crop]]# for i in range(Rs.shape[0])] #[:, :,crop:-crop,crop:-crop]
+    r = [Rs[level][:,:,crop:-crop,crop:-crop]]# for level in range(Rs.shape[0])] #[:, :,crop:-crop,crop:-crop]
     #print(ys[level, :,crop:-crop,crop:-crop].shape)
     #exit()
     p1 = smoothness_penalty(r, 1)

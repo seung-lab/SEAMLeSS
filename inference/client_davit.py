@@ -1,19 +1,20 @@
 from aligner import Aligner, BoundingBox
 
-v_off = (10240, 4096, 0)
-x_size = 57344
-y_size = 40960
+#v_off = (10240, 4096, 0)
+v_off = (51200, 51200, 509)
+x_size = 10*1024
+y_size = 10*1024
 
-model_path = 'model_repository/D1_4_0.pt'
+model_path = 'model_repository/basil_7_1.pt'
 max_displacement = 2048
 net_crop  = 32
-mip_range = (3, 5)
+mip_range = (4, 8)
 render_mip = 4
 high_mip_chunk = (64, 64)
 
 a = Aligner(model_path, max_displacement,
             net_crop, mip_range, render_mip, high_mip_chunk,
-            'gs://neuroglancer/pinky40_alignment/prealigned',
+            'gs://neuroglancer/basil_v0/raw_image',
             'gs://neuroglancer/nflow_tests/davit_test',
             is_Xmas = True)
 
