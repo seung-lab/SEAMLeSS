@@ -18,6 +18,6 @@ bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, 
 
 stack_start = 30
 stack_size  = 2
-a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=False)
+a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=True)
 stack_start += stack_size
 a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=False)
