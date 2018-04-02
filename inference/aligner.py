@@ -9,10 +9,12 @@ from copy import deepcopy
 from util import crop, warp, upsample_flow, downsample_mip
 from boundingbox import BoundingBox
 
+from pathos.multiprocessing import ProcessPool, ThreadPool
+
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, render_mip, high_mip_chunk,
-               src_ng_path, dst_ng_path, is_Xmas=False):
+               src_ng_path, dst_ng_path, is_Xmas=False, threads = 1):
 
     self.high_mip       = mip_range[1]
     self.low_mip        = mip_range[0]
@@ -43,6 +45,7 @@ class Aligner:
     self.vec_voxel_offsets = []
     self.vec_total_sizes   = []
     self._create_info_files(max_displacement)
+    self.pool = ThreadPool(1)
 
 
     #if not chunk_size[0] :
@@ -451,9 +454,12 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip)
-    for patch_bbox in chunks:
+    #for patch_bbox in chunks:
+    def chunkwise(patch_bbox):
       raw_patch = self.get_image_data(source, z, patch_bbox, mip)
       self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
+
+    self.pool.map(chunkwise, chunks)
 
     end = time()
     print (": {} sec".format(end - start))
@@ -461,7 +467,8 @@ class Aligner:
   def prepare_source(self, z, bbox, mip):
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip)
-    for patch_bbox in chunks:
+    #for patch_bbox in chunks:
+    def chunkwise(patch_bbox):
       print ("Preparing future source {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
               end='', flush=True)
       start = time()
@@ -470,12 +477,14 @@ class Aligner:
       self.save_image_patch(self.tmp_ng_path, warped_patch, z, patch_bbox, mip)
       end = time()
       print (": {} sec".format(end - start))
+    self.pool.map(chunkwise, chunks)
 
   def render(self, z, bbox, mip):
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip)
 
-    for patch_bbox in chunks:
+    #for patch_bbox in chunks:
+    def chunkwise(patch_bbox):
       print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
                 end='', flush=True)
       start = time()
@@ -484,6 +493,7 @@ class Aligner:
       self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
       end = time()
       print (": {} sec".format(end - start))
+    self.pool.map(chunkwise, chunks)
 
   def render_section_all_mips(self, z, bbox):
     #total_bbox = self.get_upchunked_bbox(bbox, self.dst_chunk_sizes[self.high_mip],
@@ -497,17 +507,24 @@ class Aligner:
       chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
                                       self.dst_voxel_offsets[m], mip=m)
 
-      for patch_bbox in chunks:
+      #for patch_bbox in chunks:
+      def chunkwise(patch_bbox):
         print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
         downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
         self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
+      self.pool.map(chunkwise, chunks)
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
     for m in range(self.high_mip,  self.low_mip - 1, -1):
       chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[m],
                                       self.vec_voxel_offsets[m], mip=m)
       for patch_bbox in chunks:
+      #def chunkwise(patch_bbox):
+      #FIXME Torch runs out of memory
+      #FIXME batchify download and upload
         self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
+      #self.pool.map(chunkwise, chunks)
+
       if m > self.low_mip:
           self.prepare_source(source_z, bbox, m - 1)
 

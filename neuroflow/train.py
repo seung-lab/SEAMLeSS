@@ -56,7 +56,7 @@ def train(hparams):
 
         if i%60000==0:
             level = max(hparams.skip_levels-1, level-1)
-            lambda_1 = (hparams.levels-level)*hparams.lambda_1
+            lambda_1 = hparams.lambda_1*(hparams.levels-level)**2
             if hparams.skip_levels>level:
                 unfreeze(model)
                 lr = 0.1*hparams.learning_rate

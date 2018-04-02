@@ -10,7 +10,7 @@ class Process(object):
         self.cuda = cuda
         self.is_Xmas = is_Xmas
         if self.is_Xmas:
-            self.height = 4
+            self.height = 6
             self.model = Xmas().load(archive_path=path, height=self.height, skips=0, cuda=cuda)
             self.convs = self.model.G_level
             self.skip = 0
@@ -23,10 +23,12 @@ class Process(object):
             self.mip = 5 # hardcoded to be the mip that the model was trained at
 
     def process(self, s, t, level=0, crop=0):
-        if level < self.mip + self.skip or level>=self.height+self.mip:
+        if level < self.mip + self.skip:
             return None
         level -= self.mip
-        x = torch.from_numpy(np.stack((s, t), axis=1))
+        print("~ Level: ", level)
+        x = (t, s) if self.is_Xmas else (s, t)
+        x = torch.from_numpy(np.stack(x, axis=1))
         if self.cuda:
             x = x.cuda()
         x = torch.autograd.Variable(x, requires_grad=False)
