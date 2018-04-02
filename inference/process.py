@@ -10,7 +10,7 @@ class Process(object):
         self.cuda = cuda
         self.is_Xmas = is_Xmas
         if self.is_Xmas:
-            self.height = 6
+            self.height = 4
             self.model = Xmas().load(archive_path=path, height=self.height, skips=0, cuda=cuda)
             self.convs = self.model.G_level
             self.skip = 0

@@ -14,7 +14,7 @@ from pathos.multiprocessing import ProcessPool, ThreadPool
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, render_mip, high_mip_chunk,
-               src_ng_path, dst_ng_path, is_Xmas=False, threads = 1):
+               src_ng_path, dst_ng_path, is_Xmas=False, threads = 44):
 
     self.high_mip       = mip_range[1]
     self.low_mip        = mip_range[0]
@@ -45,8 +45,7 @@ class Aligner:
     self.vec_voxel_offsets = []
     self.vec_total_sizes   = []
     self._create_info_files(max_displacement)
-    self.pool = ThreadPool(1)
-
+    self.pool = ThreadPool(threads)
 
     #if not chunk_size[0] :
     #  raise Exception("The chunk size has to be aligned with ng chunk size")
