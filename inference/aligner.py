@@ -14,7 +14,7 @@ from pathos.multiprocessing import ProcessPool, ThreadPool
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, render_mip, high_mip_chunk,
-               src_ng_path, dst_ng_path, is_Xmas=False, threads = 44):
+               src_ng_path, dst_ng_path, is_Xmas=False, threads = 10):
 
     self.high_mip       = mip_range[1]
     self.low_mip        = mip_range[0]
@@ -29,13 +29,11 @@ class Aligner:
     self.dst_ng_path = os.path.join(dst_ng_path, 'image')
     self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
 
-    self.res_ng_path   = os.path.join(dst_ng_path, 'vec')
-    self.x_res_ng_path = os.path.join(self.res_ng_path, 'x')
-    self.y_res_ng_path = os.path.join(self.res_ng_path, 'y')
 
-    self.agg_ng_path   = os.path.join(dst_ng_path, 'vec/agg')
-    self.x_agg_ng_path = os.path.join(self.agg_ng_path, 'x')
-    self.y_agg_ng_path = os.path.join(self.agg_ng_path, 'y')
+    self.res_ng_paths  = [os.path.join(dst_ng_path, 'vec/{}'.format(i))
+                                                    for i in range(self.high_mip + 1)]
+    self.x_res_ng_paths = [os.path.join(r, 'x') for r in self.res_ng_paths]
+    self.y_res_ng_paths = [os.path.join(r, 'y') for r in self.res_ng_paths]
 
     self.net = Process(model_path, is_Xmas=is_Xmas)
 
@@ -60,16 +58,11 @@ class Aligner:
     os.system("mkdir {}".format(tmp_dir))
 
     src_info = cv(self.src_ng_path).info
-    #with open(file, 'wt') as f:
-    #json.dumps()
-
-    #os.system("gsutil cp {} {}".format(os.path.join(self.src_ng_path, "info"),
-    #                                   os.path.join(tmp_dir, "info.src")))
-
-    #with open(os.path.join(tmp_dir, "info.src")) as f:
-    #  src_info = json.load(f)
     dst_info = deepcopy(src_info)
 
+    ##########################################################
+    #### Create dest info file
+    ##########################################################
     chunk_size = dst_info["scales"][0]["chunk_sizes"][0][0]
     dst_size_increase = max_offset
     if dst_size_increase % chunk_size != 0:
@@ -81,9 +74,6 @@ class Aligner:
 
       scales[i]["size"][0] += int(dst_size_increase / (2**i))
       scales[i]["size"][1] += int(dst_size_increase / (2**i))
-
-      #scales[i]["chunk_sizes"][0][0] = 512
-      #scales[i]["chunk_sizes"][0][1] = 512
 
       x_remainder = scales[i]["size"][0] % scales[i]["chunk_sizes"][0][0]
       y_remainder = scales[i]["size"][1] % scales[i]["chunk_sizes"][0][1]
@@ -107,66 +97,22 @@ class Aligner:
       self.dst_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.dst_voxel_offsets.append(scales[i]["voxel_offset"])
 
-    #with open(os.path.join(tmp_dir, "info.dst"), 'w') as f:
-    #  json.dump(dst_info, f)
-    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
-    #                                   os.path.join(tmp_dir, "info.dst"),
-    #                                   os.path.join(self.dst_ng_path, "info")))
-    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
-    #                                   os.path.join(tmp_dir, "info.dst"),
-    #                                   os.path.join(self.tmp_ng_path, "info")))
-
     cv(self.dst_ng_path, info=dst_info).commit_info()
     cv(self.tmp_ng_path, info=dst_info).commit_info()
 
+    ##########################################################
+    #### Create vec info file
+    ##########################################################
     vec_info = deepcopy(src_info)
     vec_info["data_type"] = "float32"
-    scales = vec_info["scales"]
+    scales = deepcopy(vec_info["scales"])
     for i in range(len(scales)):
-      x_remainder = scales[i]["size"][0] % scales[i]["chunk_sizes"][0][0]
-      y_remainder = scales[i]["size"][1] % scales[i]["chunk_sizes"][0][1]
-
-      x_delta = 0
-      y_delta = 0
-      if x_remainder != 0:
-        x_delta = scales[i]["chunk_sizes"][0][0] - x_remainder
-      if y_remainder != 0:
-        y_delta = scales[i]["chunk_sizes"][0][1] - y_remainder
-
-      scales[i]["size"][0] += x_delta
-      scales[i]["size"][1] += y_delta
-
-      #scales[i]["chunk_sizes"][0][0] = 512
-      #scales[i]["chunk_sizes"][0][1] = 512
-
-      #make it slice-by-slice writable
-      scales[i]["chunk_sizes"][0][2] = 1
-
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
 
-    #with open(os.path.join(tmp_dir, "info.vec"), 'w') as f:
-    #  json.dump(vec_info, f)
-
-    cv(self.x_res_ng_path, info=vec_info).commit_info()
-    cv(self.y_res_ng_path, info=vec_info).commit_info()
-    cv(self.x_agg_ng_path, info=vec_info).commit_info()
-    cv(self.y_agg_ng_path, info=vec_info).commit_info()
-
-    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
-    #                                   os.path.join(tmp_dir, "info.vec"),
-    #                                   os.path.join(self.x_res_ng_path, "info")))
-    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
-    #                                   os.path.join(tmp_dir, "info.vec"),
-    #                                   os.path.join(self.y_res_ng_path, "info")))
-    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
-    #                                   os.path.join(tmp_dir, "info.vec"),
-    #                                   os.path.join(self.x_agg_ng_path, "info")))
-    #os.system("gsutil -h {} cp {} {}".format(nocache_f,
-    #                                   os.path.join(tmp_dir, "info.vec"),
-    #                                   os.path.join(self.y_agg_ng_path, "info")))
-    #os.system("rm -rf {}".format(tmp_dir))
+      cv(self.x_res_ng_paths[i], info=vec_info).commit_info()
+      cv(self.y_res_ng_paths[i], info=vec_info).commit_info()
 
   def check_all_params(self):
     return True
@@ -226,8 +172,8 @@ class Aligner:
     if y_remainder != 0:
       y_delta =  y_chunk - y_remainder
 
-    calign_x_range = [raw_x_range[0] + x_delta, raw_x_range[1]]
-    calign_y_range = [raw_y_range[0] + y_delta, raw_y_range[1]]
+    calign_x_range = [raw_x_range[0] - x_remainder, raw_x_range[1]]
+    calign_y_range = [raw_y_range[0] - y_remainder, raw_y_range[1]]
 
     x_start = calign_x_range[0] - x_chunk
     y_start = calign_y_range[0] - y_chunk
@@ -245,7 +191,7 @@ class Aligner:
     processing_chunk = (self.high_mip_chunk[0] * high_mip_scale,
                         self.high_mip_chunk[1] * high_mip_scale)
 
-    if x_delta != 0 and y_delta != 0:
+    '''if x_delta != 0 and y_delta != 0:
        chunks.append(BoundingBox(x_start, x_start + x_chunk,
                                  y_start, y_start + y_chunk,
                                  mip=mip, max_mip=self.high_mip))
@@ -262,7 +208,7 @@ class Aligner:
       for ys in range(calign_y_range[0], calign_y_range[1], processing_chunk[1]):
         chunks.append(BoundingBox(x_start, x_start + x_chunk,
                                  ys, ys + processing_chunk[0],
-                                 mip=mip, max_mip=self.high_mip))
+                                 mip=mip, max_mip=self.high_mip))'''
 
     #do the rest
     for xs in range(calign_x_range[0], calign_x_range[1], processing_chunk[0]):
@@ -355,21 +301,14 @@ class Aligner:
     y_range = bbox.y_range(mip=mip)
     patch = float_patch[0, :, :, np.newaxis]
     uint_patch = (np.multiply(patch, 256)).astype(np.uint8)
-    cv(ng_path, mip=mip, bounded=False, fill_missing=True,
+    cv(ng_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
                                   progress=False)[x_range[0]:x_range[1],
                                                   y_range[0]:y_range[1], z] = uint_patch
 
   def save_residual_patch(self, flow, z, bbox, mip):
     print ("Saving residual patch {} at mip {}".format(bbox.__str__(mip=0), mip), end='')
     start = time()
-    self.save_vector_patch(flow, self.x_res_ng_path, self.y_res_ng_path, z, bbox, mip)
-    end = time()
-    print (": {} sec".format(end - start))
-
-  def save_aggregate_patch(self, flow, z, bbox, mip):
-    print ("Saving aggregate patch {} at mip {}".format(bbox.__str__(mip=0), mip), end='')
-    start = time()
-    self.save_vector_patch(flow, self.x_agg_ng_path, self.y_agg_ng_path, z, bbox, mip)
+    self.save_vector_patch(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], z, bbox, mip)
     end = time()
     print (": {} sec".format(end - start))
 
@@ -380,19 +319,12 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
 
-    cv(x_path, mip=mip, bounded=False, fill_missing=True,
+    cv(x_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
                                    progress=False)[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = x_res
-    cv(y_path, mip=mip, bounded=False, fill_missing=True,
+    cv(y_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
                                    progress=False)[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = y_res
-  def save_aggregate_flow(self, z, bbox, mip):
-    chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[mip],
-                                    self.vec_voxel_offsets[mip], mip=mip)
-    for patch_bbox in chunks:
-      raise Exception("Not implemented")
-      agg_flow = self.get_aggregate_abs_flow(z, patch_bbox, mip)
-      self.save_aggregate_flow_patch(agg_flow, z, patch_bbox, mip)
 
   ## Data loading
   def preprocess_data(self, data):
@@ -418,14 +350,14 @@ class Aligner:
     return data
 
   def get_abs_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.x_res_ng_path, z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.y_res_ng_path, z, bbox, mip)[..., 0, 0]
+    x = self.get_vector_data(self.x_res_ng_paths[mip], z, bbox, mip)[..., 0, 0]
+    y = self.get_vector_data(self.y_res_ng_paths[mip], z, bbox, mip)[..., 0, 0]
     result = np.stack((x, y), axis=2)
     return np.expand_dims(result, axis=0)
 
   def get_rel_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.x_res_ng_path, z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.y_res_ng_path, z, bbox, mip)[..., 0, 0]
+    x = self.get_vector_data(self.x_res_ng_paths[mip], z, bbox, mip)[..., 0, 0]
+    y = self.get_vector_data(self.y_res_ng_paths[mip], z, bbox, mip)[..., 0, 0]
     abs_res = np.stack((x, y), axis=2)
     abs_res = np.expand_dims(abs_res, axis=0)
     rel_res = self.abs_to_rel_residual(abs_res, bbox, mip)
