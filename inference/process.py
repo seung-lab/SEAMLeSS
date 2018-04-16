@@ -5,7 +5,7 @@ from model.xmas import Xmas
 
 class Process(object):
     """docstring for Process."""
-    def __init__(self, path='model_repository/2_5_2.pt', cuda=False, is_Xmas=False):
+    def __init__(self, path='model_repository/9_4_2.pt', cuda=False, is_Xmas=False):
         super(Process, self).__init__()
         self.cuda = cuda
         self.is_Xmas = is_Xmas
@@ -20,10 +20,10 @@ class Process(object):
             self.model = PyramidTransformer().load(archive_path=path, height=self.height, skips=2, cuda=cuda)
             self.skip = self.model.pyramid.skip
             self.convs = self.model.pyramid.mlist
-            self.mip = 5 # hardcoded to be the mip that the model was trained at
+            self.mip = 4 # hardcoded to be the mip that the model was trained at
 
     def process(self, s, t, level=0, crop=0):
-        if level < self.mip + self.skip:
+        if level < self.mip + self.skip or level > self.mip + self.height - 1:
             return None
         level -= self.mip
         print("~ Level: ", level)
@@ -37,6 +37,8 @@ class Process(object):
             res = res.permute(0,2,3,1)
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
+        if not self.is_Xmas:
+            res *= 44 * (2 ** (self.mip + self.height - 1))
         return res.data.cpu().numpy()
 
 #Simple test
