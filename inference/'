@@ -178,10 +178,36 @@ class Aligner:
     x_start = calign_x_range[0] - x_chunk
     y_start = calign_y_range[0] - y_chunk
 
+    #high_mip_scale = int(self.dst_chunk_sizes[mip][0] / self.dst_chunk_sizes[self.high_mip][0])
     high_mip_scale = min(2**(self.high_mip - mip), 1024)
+    #high_mip_scale = chunk_size_ratio * min(2**(self.high_mip - mip), 16)
+
+    #TODO
+    '''if mip != 9:
+      high_mip_scale = max(1, int(high_mip_scale / 4))'''
     processing_chunk = (self.high_mip_chunk[0] * high_mip_scale,
                         self.high_mip_chunk[1] * high_mip_scale)
 
+    '''if x_delta != 0 and y_delta != 0:
+       chunks.append(BoundingBox(x_start, x_start + x_chunk,
+                                 y_start, y_start + y_chunk,
+                                 mip=mip, max_mip=self.high_mip))
+
+
+      #x seam
+    if y_delta != 0:
+      for xs in range(calign_x_range[0], calign_x_range[1], processing_chunk[0]):
+        chunks.append(BoundingBox(xs, xs + processing_chunk[0],
+                                   y_start, y_start + y_chunk,
+                                   mip=mip, max_mip=self.high_mip))
+    #y seam
+    if x_delta != 0:
+      for ys in range(calign_y_range[0], calign_y_range[1], processing_chunk[1]):
+        chunks.append(BoundingBox(x_start, x_start + x_chunk,
+                                 ys, ys + processing_chunk[0],
+                                 mip=mip, max_mip=self.high_mip))'''
+
+    #do the rest
     for xs in range(calign_x_range[0], calign_x_range[1], processing_chunk[0]):
       for ys in range(calign_y_range[0], calign_y_range[1], processing_chunk[1]):
         chunks.append(BoundingBox(xs, xs + processing_chunk[0],
@@ -216,8 +242,14 @@ class Aligner:
 
 
   def rel_to_abs_residual(self, rel_residual, patch, mip):
+    #x_fraction = patch.x_size(mip=0)
+    #y_fraction = patch.y_size(mip=0)
+
+    #TODO: this deepcopy takes memory
     abs_residual = deepcopy(rel_residual)
     abs_residual *= (2**9)*44
+    #abs_residual[0, :, :, 0] *= x_fraction
+    #abs_residual[0, :, :, 1] *= y_fraction
     return abs_residual
 
   def abs_to_rel_residual(self, abs_residual, patch, mip):
