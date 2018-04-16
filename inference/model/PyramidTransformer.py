@@ -151,7 +151,6 @@ class PyramidTransformer(nn.Module):
             cuda:   whether or not to move the model to the GPU
         """
         assert archive_path is not None, "Must provide an archive"
-
         model = PyramidTransformer(size=height, dim=dim, skip=skips, dilate=dilate, amp=amp, unet=unet)
         if cuda:
             model = model.cuda()

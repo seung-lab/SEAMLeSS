@@ -17,7 +17,7 @@ class Process(object):
             self.mip = 2
         else:
             self.height = 5
-            self.model = PyramidTransformer().load(archive_path=path, height=self.height, skips=2, cuda=cuda)
+            self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=2, cuda=cuda)
             self.skip = self.model.pyramid.skip
             self.convs = self.model.pyramid.mlist
             self.mip = 4 # hardcoded to be the mip that the model was trained at
@@ -43,6 +43,7 @@ class Process(object):
 
 #Simple test
 if __name__ == "__main__":
+    print('Testing...')
     a = Process()
     s = np.ones((2,256,256), dtype=np.float32)
     t = np.ones((2,256,256), dtype=np.float32)

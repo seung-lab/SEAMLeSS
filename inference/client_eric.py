@@ -7,7 +7,7 @@ net_crop  = 64
 mip_range = (6, 8)
 render_mip = 5
 high_mip_chunk = (64, 64)
-a = Aligner(model_path, max_displacement, net_crop, mip_range, render_mip, high_mip_chunk, 'gs://neuroglancer/pinky40_alignment/prealigned_rechunked', 'gs://neuroglancer/nflow_tests/mip4')
+a = Aligner(model_path, max_displacement, net_crop, mip_range, render_mip, high_mip_chunk, 'gs://neuroglancer/pinky40_alignment/prealigned_rechunked', 'gs://neuroglancer/nflow_tests/mip4fixed')
 
 v_off = (10240, 4096, 0)
 x_size = 57344
