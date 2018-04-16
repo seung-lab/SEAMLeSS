@@ -206,19 +206,13 @@ class Aligner:
 
     tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip)
 
-    rel_residual = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
+    abs_residual = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
-    abs_residual = self.rel_to_abs_residual(rel_residual, precrop_patch_bbox, mip)
     end = time()
     print (": {} sec".format(end - start))
     self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
 
-
-  def rel_to_abs_residual(self, rel_residual, patch, mip):
-    abs_residual = deepcopy(rel_residual)
-    abs_residual *= (2**9)*44
-    return abs_residual
 
   def abs_to_rel_residual(self, abs_residual, patch, mip):
     x_fraction = patch.x_size(mip=0)
