@@ -14,12 +14,13 @@ from pathos.multiprocessing import ProcessPool, ThreadPool
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, render_mip, high_mip_chunk,
-               src_ng_path, dst_ng_path, is_Xmas=False, threads = 10):
+               src_ng_path, dst_ng_path, is_Xmas=False, threads = 10, max_chunk = (768, 768)):
 
     self.high_mip       = mip_range[1]
     self.low_mip        = mip_range[0]
     self.render_mip     = render_mip
     self.high_mip_chunk = high_mip_chunk
+    self.max_chunk      = max_chunk
 
     self.max_displacement = max_displacement
     self.crop_amount = crop
@@ -31,7 +32,7 @@ class Aligner:
 
 
     self.res_ng_paths  = [os.path.join(dst_ng_path, 'vec/{}'.format(i))
-                                                    for i in range(self.high_mip + 1)]
+                                                    for i in range(self.high_mip + 10)] #TODO
     self.x_res_ng_paths = [os.path.join(r, 'x') for r in self.res_ng_paths]
     self.y_res_ng_paths = [os.path.join(r, 'y') for r in self.res_ng_paths]
 
@@ -151,7 +152,7 @@ class Aligner:
                          mip=0, max_mip=self.high_mip)
     return result
 
-  def break_into_chunks(self, bbox, ng_chunk_size, offset, mip):
+  def break_into_chunks(self, bbox, ng_chunk_size, offset, mip, render=False):
     chunks = []
     raw_x_range = bbox.x_range(mip=mip)
     raw_y_range = bbox.y_range(mip=mip)
@@ -178,9 +179,12 @@ class Aligner:
     x_start = calign_x_range[0] - x_chunk
     y_start = calign_y_range[0] - y_chunk
 
-    high_mip_scale = min(2**(self.high_mip - mip), 1024)
+    high_mip_scale = 2**(self.high_mip - mip)
     processing_chunk = (self.high_mip_chunk[0] * high_mip_scale,
                         self.high_mip_chunk[1] * high_mip_scale)
+    if not render and (processing_chunk[0] > self.max_chunk[0]
+                      or processing_chunk[1] > self.max_chunk[1]):
+      processing_chunk = self.max_chunk
 
     for xs in range(calign_x_range[0], calign_x_range[1], processing_chunk[0]):
       for ys in range(calign_y_range[0], calign_y_range[1], processing_chunk[1]):
@@ -193,8 +197,8 @@ class Aligner:
 
   ## Residual computation
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
-    print ("Computing residual for {}".format(out_patch_bbox.__str__(mip=0)),
-            end='', flush=True)
+    #print ("Computing residual for {}".format(out_patch_bbox.__str__(mip=0)),
+    #        end='', flush=True)
     start = time()
     precrop_patch_bbox = deepcopy(out_patch_bbox)
     precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
@@ -210,7 +214,7 @@ class Aligner:
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
     end = time()
-    print (": {} sec".format(end - start))
+    #print (": {} sec".format(end - start))
     self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
 
 
@@ -240,7 +244,7 @@ class Aligner:
     if not influence_bbox.is_identity_flow(agg_flow, mip=mip):
       warped   = warp(raw_data, agg_flow)
     else:
-      print ("not warping")
+      #print ("not warping")
       warped = raw_data[0]
 
     mip_disp = int(self.max_displacement / 2**mip)
@@ -266,11 +270,11 @@ class Aligner:
                                                   y_range[0]:y_range[1], z] = uint_patch
 
   def save_residual_patch(self, flow, z, bbox, mip):
-    print ("Saving residual patch {} at mip {}".format(bbox.__str__(mip=0), mip), end='')
+    #print ("Saving residual patch {} at mip {}".format(bbox.__str__(mip=0), mip), end='')
     start = time()
     self.save_vector_patch(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], z, bbox, mip)
     end = time()
-    print (": {} sec".format(end - start))
+    #print (": {} sec".format(end - start))
 
   def save_vector_patch(self, flow, x_path, y_path, z, bbox, mip):
     x_res = flow[0, :, :, 0, np.newaxis]
@@ -344,7 +348,7 @@ class Aligner:
     print ("moving section {} mip {} to dest".format(z, mip), end='', flush=True)
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
-                                    self.dst_voxel_offsets[mip], mip=mip)
+                                    self.dst_voxel_offsets[mip], mip=mip, render=True)
     #for patch_bbox in chunks:
     def chunkwise(patch_bbox):
       raw_patch = self.get_image_data(source, z, patch_bbox, mip)
@@ -356,35 +360,41 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def prepare_source(self, z, bbox, mip):
+    print ("Prerendering mip {}".format(mip),
+           end='', flush=True)
+    start = time()
+
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
-                                    self.dst_voxel_offsets[mip], mip=mip)
+                                    self.dst_voxel_offsets[mip], mip=mip, render=True)
     #for patch_bbox in chunks:
     def chunkwise(patch_bbox):
-      print ("Preparing future source {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-              end='', flush=True)
-      start = time()
+      #print ("Preparing future source {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+      #        end='', flush=True)
+      #start = time()
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                      (mip + 1, self.high_mip), mip)
       self.save_image_patch(self.tmp_ng_path, warped_patch, z, patch_bbox, mip)
-      end = time()
-      print (": {} sec".format(end - start))
     self.pool.map(chunkwise, chunks)
+    end = time()
+    print (": {} sec".format(end - start))
 
   def render(self, z, bbox, mip):
+    print ("Rendering mip {}".format(mip),
+              end='', flush=True)
+    start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
-                                    self.dst_voxel_offsets[mip], mip=mip)
+                                    self.dst_voxel_offsets[mip], mip=mip, render=True)
 
     #for patch_bbox in chunks:
     def chunkwise(patch_bbox):
-      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-                end='', flush=True)
-      start = time()
+      #print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+      #          end='', flush=True)
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                     (mip, self.high_mip), mip)
       self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
-      end = time()
-      print (": {} sec".format(end - start))
     self.pool.map(chunkwise, chunks)
+    end = time()
+    print (": {} sec".format(end - start))
 
   def render_section_all_mips(self, z, bbox):
     #total_bbox = self.get_upchunked_bbox(bbox, self.dst_chunk_sizes[self.high_mip],
@@ -396,7 +406,7 @@ class Aligner:
   def downsample(self, z, bbox, source_mip, target_mip):
     for m in range(source_mip+1, target_mip + 1):
       chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
-                                      self.dst_voxel_offsets[m], mip=m)
+                                      self.dst_voxel_offsets[m], mip=m, render=True)
 
       #for patch_bbox in chunks:
       def chunkwise(patch_bbox):
@@ -407,6 +417,9 @@ class Aligner:
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
     for m in range(self.high_mip,  self.low_mip - 1, -1):
+      print ("Running net at mip {}".format(m),
+                                end='', flush=True)
+      start = time()
       chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[m],
                                       self.vec_voxel_offsets[m], mip=m)
       for patch_bbox in chunks:
@@ -415,9 +428,12 @@ class Aligner:
       #FIXME batchify download and upload
         self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
       #self.pool.map(chunkwise, chunks)
+      end = time()
+      print (": {} sec".format(end - start))
 
       if m > self.low_mip:
           self.prepare_source(source_z, bbox, m - 1)
+
 
 
   ## Whole stack operations

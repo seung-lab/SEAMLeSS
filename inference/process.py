@@ -26,7 +26,7 @@ class Process(object):
         if level < self.mip + self.skip or level > self.mip + self.height - 1:
             return None
         level -= self.mip
-        print("~ Level: ", level)
+        #print("~ Level: ", level) #FU davit
         x = (t, s) if self.is_Xmas else (s, t)
         x = torch.from_numpy(np.stack(x, axis=1))
         if self.cuda:
