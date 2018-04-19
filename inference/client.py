@@ -3,7 +3,7 @@ from aligner import Aligner, BoundingBox
 
 model_path = 'model_repository/2_5_2.pt'
 max_displacement = 2048
-net_crop  = 48
+net_crop  = 64
 mip_range = (7, 9)
 render_mip = 4
 high_mip_chunk = (128, 128)

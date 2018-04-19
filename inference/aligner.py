@@ -36,7 +36,7 @@ class Aligner:
     self.x_res_ng_paths = [os.path.join(r, 'x') for r in self.res_ng_paths]
     self.y_res_ng_paths = [os.path.join(r, 'y') for r in self.res_ng_paths]
 
-    self.net = Process(model_path, is_Xmas=is_Xmas)
+    self.net = Process(model_path, is_Xmas=is_Xmas, cuda=True)
 
     self.dst_chunk_sizes   = []
     self.dst_voxel_offsets = []
@@ -196,10 +196,12 @@ class Aligner:
 
 
   ## Residual computation
+  def run_net_test(self, s, t, mip):
+    abs_residual = self.net.process(s, t, mip)
+
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
     #print ("Computing residual for {}".format(out_patch_bbox.__str__(mip=0)),
     #        end='', flush=True)
-    start = time()
     precrop_patch_bbox = deepcopy(out_patch_bbox)
     precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
 
@@ -213,8 +215,6 @@ class Aligner:
     abs_residual = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
-    end = time()
-    #print (": {} sec".format(end - start))
     self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
 
 
