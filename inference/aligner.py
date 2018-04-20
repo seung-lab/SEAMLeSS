@@ -14,13 +14,15 @@ from pathos.multiprocessing import ProcessPool, ThreadPool
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, render_mip, high_mip_chunk,
-               src_ng_path, dst_ng_path, is_Xmas=False, threads = 10, max_chunk = (768, 768)):
+               src_ng_path, dst_ng_path, is_Xmas=False, threads = 10,
+               max_chunk = (768, 768), max_render_chunk = (2048*2, 2048*2)):
 
     self.high_mip       = mip_range[1]
     self.low_mip        = mip_range[0]
     self.render_mip     = render_mip
     self.high_mip_chunk = high_mip_chunk
     self.max_chunk      = max_chunk
+    self.max_render_chunk = max_render_chunk
 
     self.max_displacement = max_displacement
     self.crop_amount = crop
@@ -185,6 +187,9 @@ class Aligner:
     if not render and (processing_chunk[0] > self.max_chunk[0]
                       or processing_chunk[1] > self.max_chunk[1]):
       processing_chunk = self.max_chunk
+    elif render and (processing_chunk[0] > self.max_render_chunk[0]
+                     or processing_chunk[1] > self.max_render_chunk[1]):
+      processing_chunk = self.max_render_chunk
 
     for xs in range(calign_x_range[0], calign_x_range[1], processing_chunk[0]):
       for ys in range(calign_y_range[0], calign_y_range[1], processing_chunk[1]):

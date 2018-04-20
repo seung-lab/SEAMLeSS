@@ -5,7 +5,7 @@ model_path = 'model_repository/9_4_2.pt'
 max_displacement = 2048
 net_crop  = 64
 mip_range = (6, 8)
-render_mip = 2
+render_mip = 0
 high_mip_chunk = (256, 256)
 a = Aligner(model_path, max_displacement, net_crop, mip_range, render_mip, high_mip_chunk, 'gs://neuroglancer/pinky40_alignment/prealigned_rechunked', 'gs://neuroglancer/nflow_tests/mip4fixed')
 
