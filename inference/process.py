@@ -5,7 +5,7 @@ from model.xmas import Xmas
 
 class Process(object):
     """docstring for Process."""
-    def __init__(self, path='model_repository/9_4_2.pt', cuda=False, is_Xmas=False):
+    def __init__(self, path='model_repository/11_3_0.pt', cuda=False, is_Xmas=False):
         super(Process, self).__init__()
         self.cuda = cuda
         self.is_Xmas = is_Xmas
@@ -17,14 +17,15 @@ class Process(object):
             self.mip = 2
         else:
             self.height = 5
-            self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=2, cuda=cuda)
+            self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=0, cuda=cuda)
             self.skip = self.model.pyramid.skip
             self.convs = self.model.pyramid.mlist
-            self.mip = 4 # hardcoded to be the mip that the model was trained at
+            self.mip = 3 # hardcoded to be the mip that the model was trained at
 
     def process(self, s, t, level=0, crop=0):
         if level < self.mip + self.skip or level > self.mip + self.height - 1:
-            return None
+            #return None
+            return np.zeros((1,s.shape[2]-crop*2,s.shape[2] - crop*2,2), dtype=np.float32)
         level -= self.mip
         #print("~ Level: ", level) #FU davit
         x = (t, s) if self.is_Xmas else (s, t)
@@ -38,7 +39,7 @@ class Process(object):
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
         if not self.is_Xmas:
-            res *= 44 * (2 ** (self.mip + self.height - 1))
+            res *= (80 / 2) * (2 ** (self.mip + self.height - 1))
         return res.data.cpu().numpy()
 
 #Simple test
