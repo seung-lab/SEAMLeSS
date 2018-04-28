@@ -5,7 +5,7 @@ from model.xmas import Xmas
 
 class Process(object):
     """docstring for Process."""
-    def __init__(self, path='model_repository/epf6.pt', cuda=True, is_Xmas=False):
+    def __init__(self, path='model_repository/11_3_0.pt', cuda=True, is_Xmas=False):
         super(Process, self).__init__()
         self.cuda = cuda
         self.is_Xmas = is_Xmas
@@ -23,8 +23,6 @@ class Process(object):
             self.mip = 3 # hardcoded to be the mip that the model was trained at
 
     def process(self, s, t, level=0, crop=0):
-        if level != self.mip:
-            return None
         if level < self.mip + self.skip or level > self.mip + self.height - 1:
             return None
             #return np.zeros((1,s.shape[2]-crop*2,s.shape[2] - crop*2,2), dtype=np.float32)
@@ -35,13 +33,13 @@ class Process(object):
         if self.cuda:
             x = x.cuda()
         x = torch.autograd.Variable(x, requires_grad=False)
-        res = self.model(x)[1] - self.model.pyramid.get_identity_grid(x.size(3))
+        res = self.convs[level](x)
         if self.is_Xmas:
             res = res.permute(0,2,3,1)
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
         if not self.is_Xmas:
-            res *= (1280 / 2) * (2 ** (self.mip))
+            res *= (80 / 2) * (2 ** (self.mip + self.height - 1))
         return res.data.cpu().numpy()
 
 #Simple test

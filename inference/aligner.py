@@ -15,7 +15,7 @@ class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, render_mip, high_mip_chunk,
                src_ng_path, dst_ng_path, is_Xmas=False, threads = 10,
-               max_chunk = (768, 768), max_render_chunk = (2048*2, 2048*2)):
+               max_chunk = (1024, 1024), max_render_chunk = (2048*2, 2048*2)):
 
     self.high_mip       = mip_range[1]
     self.low_mip        = mip_range[0]
