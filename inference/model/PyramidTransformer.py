@@ -349,7 +349,6 @@ class EPyramid(nn.Module):
         super(EPyramid, self).__init__()
         dim=1280
         rdim = dim // (2 ** (size - 1))
-        k=5
         print('------- Constructing EPyramidNet with size', size, '(' + str(size-1) + ' downsamples) ' + str(dim))
         self.name = name
         fm = 6

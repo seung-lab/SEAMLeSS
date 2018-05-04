@@ -1,6 +1,6 @@
 from aligner import Aligner, BoundingBox
 
-model_name = 'epf6'
+model_name = 'jacob'
 model_path = 'model_repository/' + model_name + '.pt'
 max_displacement = 2048
 net_crop  = 128
