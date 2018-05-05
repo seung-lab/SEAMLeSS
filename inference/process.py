@@ -41,7 +41,7 @@ class Process(object):
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
         if not self.is_Xmas:
-            res *= (1280 / 2) * (2 ** (self.mip))
+            res *= (1280 / 2) * (2 ** (self.mip)) * 2 # why do we need the extra factor of two?
         return res.data.cpu().numpy()
 
 #Simple test

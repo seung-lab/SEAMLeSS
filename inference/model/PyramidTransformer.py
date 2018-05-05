@@ -263,11 +263,8 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         out = x
-        vis = np.random.uniform() < 0.01
         for idx, enc in enumerate(self.enclist):
             out = self.down(enc(out)[0])
-            if vis:
-                gif('outasdf' + str(idx), np.squeeze(out.data.cpu().numpy()) * 255)
         for dec in self.declist:
             out = self.up(dec(out))
         return out
@@ -368,12 +365,6 @@ class EPyramid(nn.Module):
         for idx in range(1, self.size):
             encodings.append(self.enclist[idx](self.down(encodings[-1])))
 
-        if self.counter % 500 == 0:
-            if self.name:
-                for idx, s in enumerate(encodings):
-                    gif(self.name + 'input' + str(self.counter / 500) + '_' + str(idx), np.squeeze(s.data.cpu().numpy()) * 255)
-
-        self.counter += 1
         residuals = [self.I]
         field_so_far = self.I
         for i in range(self.size - 1, target_level - 1, -1):
