@@ -13,15 +13,16 @@ from pathos.multiprocessing import ProcessPool, ThreadPool
 
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
-               mip_range, render_mip, high_mip_chunk,
-               src_ng_path, dst_ng_path, is_Xmas=False, threads = 10,
+               mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
+               render_low_mip=2, render_high_mip=8, is_Xmas=False, threads = 10,
                max_chunk = (1024, 1024), max_render_chunk = (2048*2, 2048*2)):
-
-    self.high_mip       = mip_range[1]
-    self.low_mip        = mip_range[0]
-    self.render_mip     = render_mip
-    self.high_mip_chunk = high_mip_chunk
-    self.max_chunk      = max_chunk
+    self.process_high_mip = mip_range[1]
+    self.process_low_mip  = mip_range[0]
+    self.render_low_mip  = render_low_mip
+    self.render_high_mip = render_high_mip
+    self.high_mip = max(self.render_high_mip, self.process_high_mip)
+    self.high_mip_chunk  = high_mip_chunk
+    self.max_chunk       = max_chunk
     self.max_render_chunk = max_render_chunk
 
     self.max_displacement = max_displacement
@@ -34,7 +35,7 @@ class Aligner:
 
 
     self.res_ng_paths  = [os.path.join(dst_ng_path, 'vec/{}'.format(i))
-                                                    for i in range(self.high_mip + 10)] #TODO
+                                                    for i in range(self.process_high_mip + 10)] #TODO
     self.x_res_ng_paths = [os.path.join(r, 'x') for r in self.res_ng_paths]
     self.y_res_ng_paths = [os.path.join(r, 'y') for r in self.res_ng_paths]
 
@@ -151,7 +152,7 @@ class Aligner:
 
     result = BoundingBox(x_start_m0, x_start_m0 + bbox.x_size(mip=0),
                          y_start_m0, y_start_m0 + bbox.y_size(mip=0),
-                         mip=0, max_mip=self.high_mip)
+                         mip=0, max_mip=self.process_high_mip)
     return result
 
   def break_into_chunks(self, bbox, ng_chunk_size, offset, mip, render=False):
@@ -181,9 +182,13 @@ class Aligner:
     x_start = calign_x_range[0] - x_chunk
     y_start = calign_y_range[0] - y_chunk
 
-    high_mip_scale = 2**(self.high_mip - mip)
-    processing_chunk = (self.high_mip_chunk[0] * high_mip_scale,
-                        self.high_mip_chunk[1] * high_mip_scale)
+    if (self.process_high_mip > mip):
+        high_mip_scale = 2**(self.process_high_mip - mip)
+    else:
+        high_mip_scale = 1
+
+    processing_chunk = (int(self.high_mip_chunk[0] * high_mip_scale),
+                        int(self.high_mip_chunk[1] * high_mip_scale))
     if not render and (processing_chunk[0] > self.max_chunk[0]
                       or processing_chunk[1] > self.max_chunk[1]):
       processing_chunk = self.max_chunk
@@ -210,7 +215,7 @@ class Aligner:
     precrop_patch_bbox = deepcopy(out_patch_bbox)
     precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
 
-    if mip == self.high_mip:
+    if mip == self.process_high_mip:
       src_patch = self.get_image_data(self.src_ng_path, source_z, precrop_patch_bbox, mip)
     else:
       src_patch = self.get_image_data(self.tmp_ng_path, source_z, precrop_patch_bbox, mip)
@@ -335,8 +340,8 @@ class Aligner:
 
   def get_aggregate_rel_flow(self, z, bbox, res_mip_range, mip):
     result = np.zeros((1, bbox.x_size(mip), bbox.y_size(mip), 2), dtype=np.float32)
-    start_mip = max(res_mip_range[0], self.low_mip)
-    end_mip   = min(res_mip_range[1], self.high_mip)
+    start_mip = max(res_mip_range[0], self.process_low_mip)
+    end_mip   = min(res_mip_range[1], self.process_high_mip)
 
     for res_mip in range(start_mip, end_mip + 1):
       scale_factor = 2**(res_mip - mip)
@@ -377,7 +382,7 @@ class Aligner:
       #        end='', flush=True)
       #start = time()
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
-                                     (mip + 1, self.high_mip), mip)
+                                     (mip + 1, self.process_high_mip), mip)
       self.save_image_patch(self.tmp_ng_path, warped_patch, z, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
     end = time()
@@ -395,18 +400,18 @@ class Aligner:
       #print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
       #          end='', flush=True)
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
-                                    (mip, self.high_mip), mip)
+                                    (mip, self.process_high_mip), mip)
       self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
 
   def render_section_all_mips(self, z, bbox):
-    #total_bbox = self.get_upchunked_bbox(bbox, self.dst_chunk_sizes[self.high_mip],
-    #                                           self.dst_voxel_offsets[self.high_mip],
-    #                                           mip=self.high_mip)
-    self.render(z, bbox, self.render_mip)
-    self.downsample(z, bbox, self.render_mip, self.high_mip)
+    #total_bbox = self.get_upchunked_bbox(bbox, self.dst_chunk_sizes[self.process_high_mip],
+    #                                           self.dst_voxel_offsets[self.process_high_mip],
+    #                                           mip=self.process_high_mip)
+    self.render(z, bbox, self.render_low_mip)
+    self.downsample(z, bbox, self.render_low_mip, self.render_high_mip)
 
   def downsample(self, z, bbox, source_mip, target_mip):
     for m in range(source_mip+1, target_mip + 1):
@@ -421,7 +426,7 @@ class Aligner:
       self.pool.map(chunkwise, chunks)
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
-    for m in range(self.high_mip,  self.low_mip - 1, -1):
+    for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
       print ("Running net at mip {}".format(m),
                                 end='', flush=True)
       start = time()
@@ -436,7 +441,7 @@ class Aligner:
       end = time()
       print (": {} sec".format(end - start))
 
-      if m > self.low_mip:
+      if m > self.process_low_mip:
           self.prepare_source(source_z, bbox, m - 1)
 
 
@@ -449,7 +454,7 @@ class Aligner:
     #  raise Exception("Have to align a chunkaligned size")
     start = time()
     if move_anchor:
-      for m in range(self.render_mip, self.high_mip + 1):
+      for m in range(self.render_low_mip, self.high_mip):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
 
     for z in range(start_section, end_section):
