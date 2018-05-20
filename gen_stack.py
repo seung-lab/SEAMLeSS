@@ -15,6 +15,7 @@ parser.add_argument('--mip', type=int, default=5)
 parser.add_argument('--stack_height', type=int, default=50)
 parser.add_argument('--dim', type=int, default=1152)
 parser.add_argument('--coords', type=str, default=None)
+parser.add_argument('--source', type=str)
 args = parser.parse_args()
 is_test = args.test
 N = args.count
@@ -24,7 +25,7 @@ mip = args.mip
 stack_height = args.stack_height
 #sampler = Sampler(source='gs://neuroglancer/pinky40_v11/image', dim=dim, mip=mip, height=stack_height)
 #sampler = Sampler(source='gs://neuroglancer/pinky40_alignment/prealigned', dim=dim, mip=mip, height=stack_height)
-sampler = Sampler(source='gs://neuroglancer/basil_v0/raw_image', dim=dim, mip=mip, height=stack_height)
+sampler = Sampler(source=args.source, dim=dim, mip=mip, height=stack_height)
 
 def get_chunk(coords=None, coords_=None):    
     chunk = None
