@@ -117,8 +117,8 @@ if __name__ == '__main__':
         p.requires_grad = not args.inference_only
     model.train(not args.inference_only)
 
-    train_dataset = StackDataset('../../../../fullq_train_mip3.h5')
-    test_dataset = StackDataset('../../../../fullqq_test_mip3.h5')
+    train_dataset = StackDataset(os.path.expanduser('~/../eam6/fullq_train_mip3.h5'))
+    test_dataset = StackDataset(os.path.expanduser('~/../eam6/fullqq_test_mip3.h5'))
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
