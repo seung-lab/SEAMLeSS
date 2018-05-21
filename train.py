@@ -96,6 +96,9 @@ if __name__ == '__main__':
     if not os.path.isdir(log_path):
         os.makedirs(log_path)
 
+    if not os.path.isdir('pt'):
+        os.makedirs('pt')
+        
     if args.state_archive is None:
         model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=log_path + name).cuda()
     else:
