@@ -402,7 +402,7 @@ class SPyramid(nn.Module):
         return field_so_far, residuals
 
 class PyramidTransformer(nn.Module):
-    def __init__(self, size=4, dim=192, skip=0, k=7, dilate=False, amp=False, unet=False, num_targets=1, name=None, ep=True):
+    def __init__(self, size=4, dim=192, skip=0, k=7, dilate=False, amp=False, unet=False, num_targets=1, name=None):
         super(PyramidTransformer, self).__init__()
         self.pyramid = EPyramid(size, dim, skip, k, dilate, amp, unet, num_targets, name=name)
             

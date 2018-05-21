@@ -44,7 +44,6 @@ if __name__ == '__main__':
     parser.add_argument('--crack', action='store_true')
     parser.add_argument('--num_targets', type=int, default=1)
     parser.add_argument('--lambda1', type=float, default=0.1)
-    parser.add_argument('--lambda2', type=float, default=0)
     parser.add_argument('--skip', type=int, default=0)
     parser.add_argument('--no_anneal', action='store_true')
     parser.add_argument('--size', type=int, default=5)
@@ -52,7 +51,6 @@ if __name__ == '__main__':
     parser.add_argument('--trunc', type=int, default=4)
     parser.add_argument('--lr', help='starting learning rate', type=float, default=0.0002)
     parser.add_argument('--it', help='number of training epochs', type=int, default=1000)
-    parser.add_argument('--info_period', help='iterations between outputs', type=int, default=20)
     parser.add_argument('--state_archive', help='saved model to initialize with', type=str, default=None)
     parser.add_argument('--inference_only', help='whether or not to skip training', action='store_true')
     parser.add_argument('--archive_fields', help='whether or not to include residual fields in output', action='store_true')
@@ -62,13 +60,9 @@ if __name__ == '__main__':
     parser.add_argument('--amp', help='amplify G_i', action='store_true')
     parser.add_argument('--unet', help='use unet for G_i', action='store_true')
     parser.add_argument('--fall_time', help='epochs between layers', type=int, default=2)
-    parser.add_argument('--upsample_penalty', action='store_true')
-    parser.add_argument('--upsample_factor', type=int, default=5)
     parser.add_argument('--epoch', type=int, default=0)
     parser.add_argument('--padding', type=int, default=128)
-    parser.add_argument('--pad_value', type=float, default=0)
     parser.add_argument('--fine_tuning', action='store_true')
-    parser.add_argument('--ep', action='store_true')
     parser.add_argument('--penalty', type=str, default='jacob')
     parser.add_argument('--crack_mask', action='store_false')
     args = parser.parse_args()
@@ -85,20 +79,14 @@ if __name__ == '__main__':
     dim = args.dim + padding
     kernel_size = args.k
     lambda1 = args.lambda1
-    lambda2 = args.lambda2
     anneal = not args.no_anneal
     log_path = 'out/' + name + '/'
     log_file = log_path + name + '.log'
     it = args.it
     lr = args.lr
-    info_period = 1 if args.inference_only else args.info_period
     batch_size = args.batch_size
     fall_time = args.fall_time
-    default_penalty = not args.upsample_penalty
-    upsample_factor = args.upsample_factor
-    pad_value = args.pad_value
     fine_tuning = args.fine_tuning
-    ep = args.ep
     epoch = args.epoch
     print(args)
 
@@ -109,9 +97,9 @@ if __name__ == '__main__':
         os.makedirs(log_path)
 
     if args.state_archive is None:
-        model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=log_path + name, ep=ep).cuda()
+        model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=log_path + name).cuda()
     else:
-        model = PyramidTransformer.load(args.state_archive, height=size, dim=dim, skips=skiplayers, k=kernel_size, dilate=dilate, unet=unet, num_targets=num_targets, name=log_path + name, ep=ep)
+        model = PyramidTransformer.load(args.state_archive, height=size, dim=dim, skips=skiplayers, k=kernel_size, dilate=dilate, unet=unet, num_targets=num_targets, name=log_path + name)
 
     for p in model.parameters():
         p.requires_grad = not args.inference_only
@@ -135,19 +123,14 @@ if __name__ == '__main__':
             print('training all residual networks')
             params.extend(model.parameters())
 
-        if ep and (fine_tuning or epoch < fall_time - 1):
+        if fine_tuning or epoch < fall_time - 1:
             print('training ep params')
-            try:
-                params.extend(model.pyramid.enclist.parameters())
-            except Exception as e:
-                params.extend(model.pyramid.embedding.parameters())
-                params.extend(model.pyramid.enc.parameters())
-                print('Training SS params')
+            params.extend(model.pyramid.enclist.parameters())
         else:
             print('freezing ep params')
 
         lr_ = lr if not fine_tuning else lr * 0.2
-        print('building optimizer for layer', layer, 'fine tuning', fine_tuning, 'lr', lr_)
+        print('Building optimizer for layer', layer, 'fine tuning', fine_tuning, 'lr', lr_)
         return torch.optim.Adam(params, lr=lr_)
 
     downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
@@ -188,12 +171,12 @@ if __name__ == '__main__':
         pred, field, residuals = model.apply(input_src, input_target, trunclayer)
 
         # resample some stuff with our new field prediction
-        pred = F.grid_sample((downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)).squeeze() if ep else src).unsqueeze(0).unsqueeze(0), field)
+        pred = F.grid_sample(downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)).squeeze().unsqueeze(0).unsqueeze(0), field)
         if crack_mask is not None:
-            crack_mask = F.grid_sample((downsample(trunclayer)(crack_mask.unsqueeze(0).unsqueeze(0)) if ep else crack_mask), field)
+            crack_mask = F.grid_sample(downsample(trunclayer)(crack_mask.unsqueeze(0).unsqueeze(0)), field)
 
         rfield = field - get_identity_grid(field.size()[-2])
-        target = downsample(trunclayer)(target.unsqueeze(0).unsqueeze(0)).squeeze() if ep else target
+        target = downsample(trunclayer)(target.unsqueeze(0).unsqueeze(0)).squeeze()
         border_mask = -nn.MaxPool2d(5,1,2)(-Variable((pred.data != 0) * (target.data != 0)).float())
 
         err = mse(pred.squeeze(0).expand(num_targets, pred.size()[-1], pred.size()[-1]), target)
@@ -224,8 +207,7 @@ if __name__ == '__main__':
                 # Get inputs
                 X = Variable(X, requires_grad=False)
                 X = X.cuda()
-                X = downsample(trunclayer)(X) if not ep else X
-                X = aug_stack(X, padding=padding / (2 ** (trunclayer if not ep else 0)))
+                X = aug_stack(X, padding=padding)
 
                 errs = []
                 penalties = []
@@ -240,9 +222,9 @@ if __name__ == '__main__':
                     penalties.append(penalty1)
 
                     if sample_idx == 31 and random.randint(0,3) == 0:
-                        a_, b_ = downsample(trunclayer)(a.unsqueeze(0).unsqueeze(0)) if ep else a.unsqueeze(0).unsqueeze(0), b.unsqueeze(0).unsqueeze(0)
+                        a_, b_ = downsample(trunclayer)(a.unsqueeze(0).unsqueeze(0)), b.unsqueeze(0).unsqueeze(0)
                         gif(log_path + name + 'stack' + str(epoch) + '_' + str(t), 255 * np.squeeze(torch.cat((a_,b_,pred_), 1).data.cpu().numpy()))
-                        [display_v(residuals[idx].data.cpu().numpy()[:,::2**(idx),::2**(idx),:], log_path + name + 'rfield' + str(epoch) + '_' + str(t) + '_' + str(idx)) for idx in (range(1, len(residuals)) if ep else range(len(residuals) - 1))]
+                        [display_v(residuals[idx].data.cpu().numpy()[:,::2**(idx),::2**(idx),:], log_path + name + 'rfield' + str(epoch) + '_' + str(t) + '_' + str(idx)) for idx in range(1, len(residuals))]
 
 
                     if random.randint(0,1) == 0:
@@ -279,12 +261,12 @@ if __name__ == '__main__':
                     log.write('\n')
                 history = []
 
-        if ep and trunclayer > 0:
+        if trunclayer > 0:
             continue
+
         preds = []
         ys = []
-        X = downsample(trunclayer)(X_test) if not ep else X_test
-        X = aug_stack(X, jitter=False, padding=padding / (2 ** (trunclayer if not ep else 0)))
+        X = aug_stack(X_test, jitter=False, padding=padding)
         for i in range(num_targets):
             if i == num_targets - 1:
                 preds.append(X[:,-1:])
