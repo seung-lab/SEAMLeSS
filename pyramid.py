@@ -230,75 +230,6 @@ class DG(nn.Module):
             gif(idd + '8', np.squeeze(out.data.cpu().numpy()) * 255)
         return out.permute(0,2,3,1)
     
-class Pyramid(nn.Module):
-    def get_identity_grid(self, dim):
-        if dim not in self.identities:
-            gx, gy = np.linspace(-1, 1, dim), np.linspace(-1, 1, dim)
-            I = np.stack(np.meshgrid(gx, gy))
-            I = np.expand_dims(I, 0)
-            I = torch.FloatTensor(I)
-            I = torch.autograd.Variable(I, requires_grad=False)
-            I = I.permute(0,2,3,1)
-            self.identities[dim] = I.cuda()
-        return self.identities[dim]
-
-    def __init__(self, size, dim, skip, k, dilate=False, amp=False, unet=False, num_targets=1):
-        super(Pyramid, self).__init__()
-        rdim = dim // (2 ** (size))
-        print('------- Constructing PyramidNet with size', size, '(' + str(size-1) + ' downsamples)')
-        self.identities = {}
-        self.skip = skip
-        self.size = size
-        if dilate:
-            if amp:
-                self.mlist = nn.ModuleList([AmpDG(k=k) for level in range(size)])
-            else:
-                self.mlist = nn.ModuleList([DG(k=k, t=num_targets) for level in range(size)])
-        elif unet:
-            self.mlist = nn.ModuleList([UNet(k=3, depth=3) for level in range(size)])
-        else:
-            self.mlist = nn.ModuleList([G(k=k) for level in range(size)])
-        self.f_up = lambda x: nn.Upsample(scale_factor=x, mode='bilinear')
-        self.up = self.f_up(2)
-        self.down = nn.AvgPool2d(2, 2)
-        self.I = self.get_identity_grid(rdim)
-        self.Zero = self.I - self.I
-
-    def forward(self, stack, idx=0, vis=None):
-        if idx < self.size:
-            field_so_far, residuals_so_far = self.forward(self.down(stack), idx + 1, vis) # (B,dim,dim,2)
-            field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
-        else:
-            return self.I, [ self.I ]
-
-        if idx < self.skip:
-            residuals_so_far.insert(0, self.f_up(2 ** (self.size - idx))(self.Zero.permute(0,3,1,2)).permute(0,2,3,1)) # placeholder
-            return field_so_far, residuals_so_far
-        else:
-            resampled_source = grid_sample(stack[:,0:1], field_so_far, mode='bilinear')
-            new_input_stack = torch.cat((resampled_source, stack[:,1:]),1)
-            residual = self.mlist[idx](new_input_stack)
-            residuals_so_far.insert(0, residual)
-            return residual + field_so_far, residuals_so_far
-
-class Encoder(nn.Module):
-    def __init__(self, fm=8, size=5):
-        super(Encoder, self).__init__()
-        self.enclist = nn.ModuleList([Enc(i==0, fm=fm) for i in range(size)])
-        self.declist = nn.ModuleList([Dec(i==size-1, fm=fm) for i in range(size)])
-        self.down = nn.MaxPool2d(2)
-        self.up = nn.Upsample(scale_factor=2, mode='bilinear')
-
-    def forward(self, x):
-        out = x
-        vis = np.random.uniform() < 0.01
-        for idx, enc in enumerate(self.enclist):
-            out = self.down(enc(out)[0])
-            if vis:
-                gif('outasdf' + str(idx), np.squeeze(out.data.cpu().numpy()) * 255)
-        for dec in self.declist:
-            out = self.up(dec(out))
-        return out
 
 class Dec(nn.Module):
     def initw(self, m):
@@ -327,22 +258,6 @@ class Dec(nn.Module):
         return out
         
 class Enc(nn.Module):
-    def initw(self, m):
-        k = m.weight.size(2)
-        infm, outfm = m.weight.size(1), m.weight.size(0)
-        weights = torch.zeros(m.weight.size()).normal_(0, 0.1)
-        for outfm_i in range(m.weight.size(0)):
-            for infm_i in range(m.weight.size(1)):
-                weights[outfm_i,infm_i,k//2,k//2] = 1.0 / infm
-        m.weight = nn.Parameter(weights)
-        m.bias.data = torch.abs(m.bias.data) / 100.0
-
-    def initr(self, m):
-        weights = torch.zeros(m.weight.size()).normal_(0, 0.04)
-        weights[0,2,0,0] = 1
-        m.weight.data = weights
-        m.bias.data = torch.abs(m.bias.data) / 10.0
-
     def initc(self, m):
         m.weight.data *= np.sqrt(6)
 
@@ -376,7 +291,7 @@ class EPyramid(nn.Module):
     def __init__(self, size, dim, skip, k, dilate=False, amp=False, unet=False, num_targets=1, name=None):
         super(EPyramid, self).__init__()
         rdim = dim // (2 ** (size - 1))
-        print('------- Constructing EPyramidNet with size', size, '(' + str(size-1) + ' downsamples) ' + str(dim))
+        print('------- Constructing EPyramid with size', size, '(' + str(size-1) + ' downsamples) ' + str(dim))
         if name:
             self.name = name
         fm = 6
@@ -397,7 +312,7 @@ class EPyramid(nn.Module):
         for idx in range(1, self.size):
             encodings.append(self.enclist[idx](self.down(encodings[-1])))
 
-        if self.counter % 1000 == 0 and self.counter > 0:
+        if self.counter % 10000 == 0:
             rinput = np.squeeze(stack.data.cpu().numpy())
             rinput -= np.min(rinput)
             rinput /= np.max(rinput)
@@ -486,77 +401,10 @@ class SPyramid(nn.Module):
                 field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
         return field_so_far, residuals
 
-class SSPyramid(nn.Module):
-    def get_identity_grid(self, dim):
-        if dim not in self.identities:
-            gx, gy = np.linspace(-1, 1, dim), np.linspace(-1, 1, dim)
-            I = np.stack(np.meshgrid(gx, gy))
-            I = np.expand_dims(I, 0)
-            I = torch.FloatTensor(I)
-            I = torch.autograd.Variable(I, requires_grad=False)
-            I = I.permute(0,2,3,1)
-            self.identities[dim] = I.cuda()
-        return self.identities[dim]
-    
-    def __init__(self, size, dim, skip, k, dilate=False, amp=False, unet=False, num_targets=1, name=None):
-        super(SSPyramid, self).__init__()
-        rdim = dim // (2 ** (size - 1))
-        print('------- Constructing SSPyramidNet with size', size, '(' + str(size-1) + ' downsamples) ' + str(dim))
-        if name:
-            self.name = name
-        fm = 12
-        self.identities = {}
-        self.skip = skip
-        self.size = size
-        self.g = G(k=k, infm=fm*2)
-        self.up = nn.Upsample(scale_factor=2, mode='bilinear')
-        self.down = nn.MaxPool2d(2)
-        self.embedding = nn.Conv2d(2, fm*2, 7, padding=3, groups=2)
-        self.f = nn.LeakyReLU()
-        self.enc = Enc(infm=fm, outfm=fm)
-        self.I = self.get_identity_grid(rdim)
-        self.Zero = self.I - self.I
-        self.counter = 0
-
-    def forward(self, stack, target_level, vis=False):
-        encodings = [self.enc(self.f(self.embedding(stack)))]
-        for idx in range(1, self.size):
-            encodings.append(self.enc(self.down(encodings[-1])))
-
-        if self.counter % 1000 == 0:
-            rinput = np.squeeze(stack.data.cpu().numpy())
-            rinput -= np.min(rinput)
-            rinput /= np.max(rinput)
-            gif(self.name + 'inputraw' + str(self.counter / 500), rinput * 255)
-            if self.name:
-                for idx, s in enumerate(encodings):
-                    visinput = np.squeeze(s.data.cpu().numpy())
-                    visinput -= np.min(visinput)
-                    visinput /= np.max(visinput)
-                    gif(self.name + 'input' + str(self.counter / 500) + '_' + str(idx), visinput * 255)
-
-        self.counter += 1
-        residuals = [self.I]
-        field_so_far = self.I
-        for i in range(self.size - 1, target_level - 1, -1):
-            inputs_i = encodings[i]
-            resampled_source = grid_sample(inputs_i[:,0:inputs_i.size(1)//2], field_so_far, mode='bilinear')
-            new_input_i = torch.cat((resampled_source, inputs_i[:,inputs_i.size(1)//2:]), 1)
-            rfield = self.g(new_input_i)
-            residuals.append(rfield)
-            field_so_far = rfield + field_so_far
-            if i != target_level:
-                field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
-            
-        return field_so_far, residuals
-
 class PyramidTransformer(nn.Module):
     def __init__(self, size=4, dim=192, skip=0, k=7, dilate=False, amp=False, unet=False, num_targets=1, name=None, ep=True):
         super(PyramidTransformer, self).__init__()
-        if ep:
-            self.pyramid = EPyramid(size, dim, skip, k, dilate, amp, unet, num_targets, name=name)
-        else:
-            self.pyramid = Pyramid(size, dim, skip, k, dilate, amp, unet, num_targets)
+        self.pyramid = EPyramid(size, dim, skip, k, dilate, amp, unet, num_targets, name=name)
             
     def open_layer(self):
         if self.pyramid.skip > 0:

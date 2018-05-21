@@ -8,7 +8,10 @@ import random
 from helpers import reverse_dim
 
 def rotate_and_scale(imslice, size=0.003, scale=0.005, grid=None):
-    theta = np.random.normal(0, size)
+    if size is None:
+        theta = np.random.uniform(0, 2 * np.pi)
+    else:
+        theta = np.random.normal(0, size)
     scale = np.random.normal(1, scale)
     if grid is None:
         mat = torch.FloatTensor([[[np.cos(theta),-np.sin(theta),0],[np.sin(theta),np.cos(theta),0]]]) * scale
@@ -50,7 +53,7 @@ def crack(imslice, width_range=(1,2)):
 
 def jitter_stack(X, displacement=1, cut_range=(32,72)):
     should_rotate = random.randint(0,1) == 0
-    srcX = rotate_and_scale(X, 1)[0] if should_rotate else X
+    srcX = rotate_and_scale(X, size=None)[0] if should_rotate else X
     X_ = Variable(torch.zeros(X.size()))
     if X.is_cuda:
         X_ = X_.cuda()
@@ -87,14 +90,14 @@ def jitter_stack(X, displacement=1, cut_range=(32,72)):
             X_[:,i,:,-cut:] = 0
         X_[:,i:i+1] = rotate_and_scale(X_[:,i:i+1])[0]
 
-    return rotate_and_scale(X_, 1)[0] if should_rotate else X_
+    return rotate_and_scale(X_, size=None)[0] if should_rotate else X_
 
 def aug_brightness(X):
     r = random.randint(0,1)
     if r == 0:
-        return X / np.random.uniform(1,4)
+        return X / np.random.uniform(1,5)
     else:
-        return 1 - (1 - X) / np.random.uniform(1,4)
+        return 1 - (1 - X) / np.random.uniform(1,5)
 
 def aug_input(x):
     idx = random.randint(0,x.size()[0]-1)

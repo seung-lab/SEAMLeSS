@@ -124,7 +124,7 @@ if __name__ == '__main__':
 
     def opt(layer):
         params = []
-        if layer >= skiplayers and not (fine_tuning or args.fine_tuning):
+        if layer >= skiplayers and not fine_tuning:
             print('training only layer ' + str(layer))
             try:
                 params.extend(model.pyramid.mlist[layer].parameters())
@@ -135,7 +135,7 @@ if __name__ == '__main__':
             print('training all residual networks')
             params.extend(model.parameters())
 
-        if ep and ((fine_tuning or args.fine_tuning) or epoch < fall_time - 1):
+        if ep and (fine_tuning or epoch < fall_time - 1):
             print('training ep params')
             try:
                 params.extend(model.pyramid.enclist.parameters())
@@ -146,8 +146,8 @@ if __name__ == '__main__':
         else:
             print('freezing ep params')
 
-        lr_ = lr if not (fine_tuning or args.fine_tuning) else lr * 0.2
-        print('building optimizer for layer', layer, 'fine tuning', (fine_tuning or args.fine_tuning), 'lr', lr_)
+        lr_ = lr if not fine_tuning else lr * 0.2
+        print('building optimizer for layer', layer, 'fine tuning', fine_tuning, 'lr', lr_)
         return torch.optim.Adam(params, lr=lr_)
 
     downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
@@ -172,7 +172,7 @@ if __name__ == '__main__':
             # random flip
             should_rotate = random.randint(0,1) == 0
             if should_rotate:
-                src, grid = rotate_and_scale(src.unsqueeze(0).unsqueeze(0), 1)
+                src, grid = rotate_and_scale(src.unsqueeze(0).unsqueeze(0), None)
                 target = rotate_and_scale(target.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
                 if crack_mask is not None:
                     crack_mask = rotate_and_scale(crack_mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
@@ -212,7 +212,7 @@ if __name__ == '__main__':
             for t, X in enumerate(train_loader):
                 if t == 0:
                     if epoch % fall_time == 0 and (trunclayer > 0 or args.trunc == 0):
-                        fine_tuning = False
+                        fine_tuning = False or args.fine_tuning # only fine tune if running a tuning session
                         if epoch > 0 and trunclayer > 0:
                             trunclayer -= 1
                         optimizer = opt(trunclayer)

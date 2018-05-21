@@ -6,7 +6,6 @@ import sys
 import ast
 
 name = sys.argv[1]
-
 parser = argparse.ArgumentParser()
 parser.add_argument('name')
 parser.add_argument('--count', type=int)
@@ -17,21 +16,19 @@ parser.add_argument('--dim', type=int, default=1152)
 parser.add_argument('--coords', type=str, default=None)
 parser.add_argument('--source', type=str)
 args = parser.parse_args()
-is_test = args.test
-N = args.count
-print('Parameters:', is_test, N)
-dim = args.dim
-mip = args.mip
-stack_height = args.stack_height
-#sampler = Sampler(source='gs://neuroglancer/pinky40_v11/image', dim=dim, mip=mip, height=stack_height)
-#sampler = Sampler(source='gs://neuroglancer/pinky40_alignment/prealigned', dim=dim, mip=mip, height=stack_height)
-sampler = Sampler(source=args.source, dim=dim, mip=mip, height=stack_height)
+print args
+
+# gs://neuroglancer/pinky40_v11/image
+# gs://neuroglancer/pinky40_alignment/prealigned
+# gs://neuroglancer/basil_v0/raw_image
+
+sampler = Sampler(source=('gs://' + args.source), dim=args.dim, mip=args.mip, height=args.stack_height)
 
 def get_chunk(coords=None, coords_=None):    
     chunk = None
     if coords is None:
         while chunk is None:
-            chunk, coords = sampler.random_sample(train=not is_test)
+            chunk, coords = sampler.random_sample(train=not args.test)
             if chunk is None:
                 print('None')
                 continue
@@ -45,12 +42,14 @@ if args.coords is not None:
         archived_coords = ast.literal_eval(coord_file.read())
 
 if archived_coords is not None:
-    print('Overwriting argument N ({}) with length of archived coordinates ({})'.format(N, len(archived_coords)))
+    print('Overwriting argument count ({}) with length of archived coordinates ({})'.format(args.count, len(archived_coords)))
     N = len(archived_coords)
     print('Using fixed coordinates: {}'.format(archived_coords))
+else:
+    N = args.count
 
 coord_record = []
-dataset = np.empty((N, stack_height, dim, dim))
+dataset = np.empty((N, stack_height, args.dim, args.dim))
 
 for i in range(N):
     coords = None
@@ -63,10 +62,10 @@ for i in range(N):
     dataset[i,:,:,:] = np.transpose(chunk, (2,0,1))
     print(i)
 
-record_file = open(args.name + '_' + ('test' if is_test else 'train') + '_mip' + str(mip) + 'coords.txt', 'w')
+record_file = open(args.name + '_' + ('test' if args.test else 'train') + '_mip' + str(args.mip) + 'coords.txt', 'w')
 record_file.write(str(coord_record))
 record_file.close()
 
-h5f = h5py.File(args.name + '_' + ('test' if is_test else 'train') + '_mip' + str(mip) + '.h5', 'w')
+h5f = h5py.File(args.name + '_' + ('test' if args.test else 'train') + '_mip' + str(args.mip) + '.h5', 'w')
 h5f.create_dataset('main', data=dataset)
 h5f.close()
