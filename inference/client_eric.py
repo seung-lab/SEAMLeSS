@@ -1,13 +1,16 @@
+import sys
 from aligner import Aligner, BoundingBox
 
-model_name = 'jacob'
+model_name = sys.argv[1]
+out_name = sys.argv[2]
 model_path = 'model_repository/' + model_name + '.pt'
 max_displacement = 2048
 net_crop  = 128
 mip_range = (3, 3)
 render_mip = 3
 high_mip_chunk = (1024, 1024)
-a = Aligner(model_path, max_displacement, net_crop, mip_range, high_mip_chunk, 'gs://neuroglancer/pinky40_alignment/prealigned_rechunked', 'gs://neuroglancer/nflow_tests/' + model_name+'_retrained_2_sergiy')
+
+a = Aligner(model_path, max_displacement, net_crop, mip_range, high_mip_chunk, 'gs://neuroglancer/pinky40_alignment/prealigned_rechunked', 'gs://neuroglancer/nflow_tests/' + model_name+'_'+out_name)
 
 v_off = (10240, 4096, 0)
 x_size = 57344

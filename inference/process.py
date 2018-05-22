@@ -16,7 +16,7 @@ class Process(object):
             self.skip = 0
             self.mip = 2
         else:
-            self.height = 5
+            self.height = 7
             self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=0, cuda=cuda)
             self.skip = self.model.pyramid.skip
             self.convs = self.model.pyramid.mlist
