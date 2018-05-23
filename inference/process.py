@@ -17,7 +17,7 @@ class Process(object):
             self.mip = 2
         else:
             self.height = 7
-            self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=0, cuda=cuda)
+            self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=0, cuda=cuda, dim=1280)
             self.skip = self.model.pyramid.skip
             self.convs = self.model.pyramid.mlist
             self.mip = 3 # hardcoded to be the mip that the model was trained at

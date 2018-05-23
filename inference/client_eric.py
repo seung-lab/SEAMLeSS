@@ -10,15 +10,15 @@ mip_range = (3, 3)
 render_mip = 3
 high_mip_chunk = (1024, 1024)
 
-a = Aligner(model_path, max_displacement, net_crop, mip_range, high_mip_chunk, 'gs://neuroglancer/pinky40_alignment/prealigned_rechunked', 'gs://neuroglancer/nflow_tests/' + model_name+'_'+out_name)
+a = Aligner(model_path, max_displacement, net_crop, mip_range, high_mip_chunk, 'gs://neuroglancer/nflow_tests/prod_crack_fixed2_v1/image', 'gs://neuroglancer/nflow_tests/' + 'prod_crack_fixed2_v1')#model_name+'_'+out_name)
 
 v_off = (10240, 4096, 0)
 x_size = 57344
 y_size = 40960
 bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=9)
 
-stack_start = 18
+stack_start = 57
 stack_size  = 100
-a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=True)
+a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=False)
 stack_start += stack_size
 a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=False)
