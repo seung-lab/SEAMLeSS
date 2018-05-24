@@ -79,14 +79,14 @@ class Optimizer():
         s, t = torch.FloatTensor(s), torch.FloatTensor(t)
         src = Variable((s - torch.mean(s)) / torch.std(s)).cuda().unsqueeze(0).unsqueeze(0)
         target = Variable((t - torch.mean(t)) / torch.std(t)).cuda().unsqueeze(0).unsqueeze(0)
-        mask = Variable(torch.FloatTensor(mask)).cuda().unsqueeze(0)
+        mask = Variable(torch.FloatTensor(mask)).cuda().unsqueeze(0).unsqueeze(0)
         dim = int(src.size()[-1] / (2 ** (self.ndownsamples - 1)))
         field = Variable(torch.zeros((1,dim,dim,2))).cuda().detach()
         field.requires_grad = True
         updates = 0
         for downsamples in reversed(range(self.ndownsamples)):
             src_, target_ = downsample(downsamples)(src).detach(), downsample(downsamples)(target).detach()
-            mask_ = downsample(downsamples)(mask).detach() if masking else mask.detach()
+            mask_ = downsample(downsamples)(mask).detach()
             mask_.requires_grad = False
             src_.requires_grad = False
             target_.requires_grad = False
@@ -100,9 +100,9 @@ class Optimizer():
             while True:
                 updates += 1
                 pred = F.grid_sample(src_, field + self.get_identity_grid(field.size(2)))
-                penalty1 = self.penalty([self.center(field, (1,2), 128 / (2**downsamples))], self.center(mask_, (1,2), 128 / (2**downsamples)))
-                warped_mask = F.grid_sample(mask_, field + self.get_identity_grid(field.size(2)))
-                diff = torch.mean(self.center(torch.mul((pred - target_)**2, warped_mask), (-1,-2), 128 / (2**downsamples)))
+                pred_mask = F.grid_sample(mask_, field + self.get_identity_grid(field.size(2)))
+                penalty1 = self.penalty([self.center(field, (1,2), 128 / (2**downsamples))], self.center(mask_.squeeze(0), (1,2), 128 / (2**downsamples)))
+                diff = torch.mean(self.center(torch.mul(pred - target_, pred_mask)**2, (-1,-2), 128 / (2**downsamples)))
                 cost = diff + penalty1 * self.lambda1/(downsamples+1)
                 print(cost.data.cpu().numpy())
                 costs.append(cost)
