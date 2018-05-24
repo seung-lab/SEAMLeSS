@@ -72,7 +72,7 @@ class Optimizer():
         y =  F.grid_sample(src, field + self.get_identity_grid(field.size(2)))
         return  y.data.cpu().numpy()
 
-    def process(self, s, t, crop=0, mask=1):
+    def process(self, s, t, mask, crop=0):
         print(s.shape, t.shape)
         downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
         upsample = nn.Upsample(scale_factor=2, mode='bilinear')
@@ -84,7 +84,6 @@ class Optimizer():
         field = Variable(torch.zeros((1,dim,dim,2))).cuda().detach()
         field.requires_grad = True
         updates = 0
-        masking = not list(mask.shape)[-1] == 1
         for downsamples in reversed(range(self.ndownsamples)):
             src_, target_ = downsample(downsamples)(src).detach(), downsample(downsamples)(target).detach()
             mask_ = downsample(downsamples)(mask).detach() if masking else mask.detach()
@@ -101,11 +100,9 @@ class Optimizer():
             while True:
                 updates += 1
                 pred = F.grid_sample(src_, field + self.get_identity_grid(field.size(2)))
-                if masking:
-                    penalty1 = self.penalty([self.center(field, (1,2), 128 / (2**downsamples))], self.center(mask_, (1,2), 128 / (2**downsamples)))
-                else:
-                    penalty1 = self.penalty([self.center(field, (1,2), 128 / (2**downsamples))])
-                diff = torch.mean(self.center((pred - target_)**2, (-1,-2), 128 / (2**downsamples)))
+                penalty1 = self.penalty([self.center(field, (1,2), 128 / (2**downsamples))], self.center(mask_, (1,2), 128 / (2**downsamples)))
+                warped_mask = F.grid_sample(mask_, field + self.get_identity_grid(field.size(2)))
+                diff = torch.mean(self.center(torch.mul((pred - target_)**2, warped_mask), (-1,-2), 128 / (2**downsamples)))
                 cost = diff + penalty1 * self.lambda1/(downsamples+1)
                 print(cost.data.cpu().numpy())
                 costs.append(cost)
