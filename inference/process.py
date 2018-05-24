@@ -5,7 +5,7 @@ from model.xmas import Xmas
 
 class Process(object):
     """docstring for Process."""
-    def __init__(self, path='model_repository/epf6.pt', cuda=True, is_Xmas=False):
+    def __init__(self, path='model_repository/epf6.pt', cuda=True, is_Xmas=False, dim=1280):
         super(Process, self).__init__()
         self.cuda = cuda
         self.is_Xmas = is_Xmas
@@ -17,7 +17,7 @@ class Process(object):
             self.mip = 2
         else:
             self.height = 7
-            self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=0, cuda=cuda, dim=1280)
+            self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=0, cuda=cuda, dim=dim)
             self.skip = self.model.pyramid.skip
             self.convs = self.model.pyramid.mlist
             self.mip = 3 # hardcoded to be the mip that the model was trained at
@@ -41,7 +41,7 @@ class Process(object):
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
         if not self.is_Xmas:
-            res *= (1280 / 2) * (2 ** (self.mip)) * 2 # why do we need the extra factor of two?
+            res *= (res.shape[-1] / 2) * (2 ** self.mip) * 2 # why do we need the extra factor of two?
         return res.data.cpu().numpy()
 
 #Simple test

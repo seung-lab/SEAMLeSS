@@ -39,7 +39,7 @@ class Aligner:
     self.x_res_ng_paths = [os.path.join(r, 'x') for r in self.res_ng_paths]
     self.y_res_ng_paths = [os.path.join(r, 'y') for r in self.res_ng_paths]
 
-    self.net = Process(model_path, is_Xmas=is_Xmas, cuda=True)
+    self.net = Process(model_path, is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2)
 
     self.dst_chunk_sizes   = []
     self.dst_voxel_offsets = []
