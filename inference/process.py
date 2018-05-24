@@ -27,9 +27,7 @@ class Process(object):
             return None
         if level < self.mip + self.skip or level > self.mip + self.height - 1:
             return None
-            #return np.zeros((1,s.shape[2]-crop*2,s.shape[2] - crop*2,2), dtype=np.float32)
         level -= self.mip
-        #print("~ Level: ", level) #FU davit
         x = (t, s) if self.is_Xmas else (s, t)
         x = torch.from_numpy(np.stack(x, axis=1))
         if self.cuda:
@@ -38,10 +36,10 @@ class Process(object):
         res = self.model(x)[1] - self.model.pyramid.get_identity_grid(x.size(3))
         if self.is_Xmas:
             res = res.permute(0,2,3,1)
+        if not self.is_Xmas:
+            res *= (res.shape[-2] / 2) * (2 ** self.mip) * 2 # why do we need the extra factor of two?
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
-        if not self.is_Xmas:
-            res *= (res.shape[-1] / 2) * (2 ** self.mip) * 2 # why do we need the extra factor of two?
         return res.data.cpu().numpy()
 
 #Simple test
