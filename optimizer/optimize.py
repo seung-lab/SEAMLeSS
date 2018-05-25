@@ -102,7 +102,7 @@ class Optimizer():
       This field represents the derived vector field that transforms the 
       src_image subject to the contraints of the minimization.
     """
-    print(src_image.shape, len(dst_images), len(img_masks))
+    print(src_image.shape, len(dst_images), src_mask.shape, len(dst_masks))
     downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
     upsample = nn.Upsample(scale_factor=2, mode='bilinear')
     s = torch.FloatTensor(src_image)
@@ -112,12 +112,12 @@ class Optimizer():
     dst_mask_vars = []
     for d, m in zip(dst_images, dst_masks):
       d = torch.FloatTensor(d)
-      dst_var = Variable((d - torch.mean(d)) / torch.std(d)).cuda().unsqueeze(0).unsqueeze(0))
-      dst_vars.append(dst)
+      dst_var = Variable((d - torch.mean(d)) / torch.std(d)).cuda().unsqueeze(0).unsqueeze(0)
+      dst_vars.append(dst_var)
       mask_var = Variable(torch.FloatTensor(m)).cuda().unsqueeze(0).unsqueeze(0)
       dst_mask_vars.append(mask_var)
       
-    dim = int(src.size()[-1] / (2 ** (self.ndownsamples - 1)))
+    dim = int(src_var.size()[-1] / (2 ** (self.ndownsamples - 1)))
     field = Variable(torch.zeros((1,dim,dim,2))).cuda().detach()
     field.requires_grad = True
     updates = 0
@@ -140,7 +140,7 @@ class Optimizer():
       #sched = lr_scheduler.StepLR(opt, step_size=1, gamma=0.995)
       costs = []
       start_updates = updates
-      print('Downsample factor 2^{0}x'.format(k))
+      print('Downsample factor {0}x'.format(2**k))
       while True:
         updates += 1
         I = self.get_identity_grid(field.size(2))
@@ -149,7 +149,8 @@ class Optimizer():
         centered_mask = self.center(src_mask_.squeeze(0), (1,2), 128/(2**k))
         centered_field = self.center(field, (1,2), 128/(2**k))
         penalty1 = self.penalty([centered_field], centered_mask)
-        diff = torch.tensor(0)
+        diff = Variable(torch.zeros((1))).cuda().detach(
+        diff.requires_grad = True
         for d, m in zip(dst_list_, dst_mask_list_):
           mask = torch.mul(pred_mask, m)
           mse = torch.mul(pred - d, mask)**2
