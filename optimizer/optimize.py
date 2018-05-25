@@ -72,38 +72,83 @@ class Optimizer():
         y =  F.grid_sample(src, field + self.get_identity_grid(field.size(2)))
         return  y.data.cpu().numpy()
 
-    def process(self, s, t, mask, crop=0):
-        print(s.shape, t.shape)
+    def process(self, src_image, dst_images, src_mask, dst_masks, crop=0):
+	"""Compute vector field that minimizes mean squared error (MSE) between transformed 
+	src_image & all dst_images regularized by the smoothness of the vector field subject
+	to masks that allow the vector field to not be smooth. The minimization uses SGD.
+
+	Args:
+	* src_image: nxm float64 ndarry normalized between [0,1]
+		This is the image to be transformed by the returned vector field.
+	* dst_images: list of nxm float64 ndarrays normalized between [0,1]
+		This is the set of images that the transformed src_image will be compared to.
+	* src_mask: nxm float64 ndarray normalized between [0,1]
+		The weight represents that degree to which a pixel participates in a smooth
+		deformation (0: not at all; 1: completely).
+		1. This mask is used to reduce the smoothness penalty for pixels that 
+		participate in a non-smooth deformation.
+		2. This mask is transformed by the vector field and used to reduce the MSE for
+		pixels that participate in a non-smooth deformation.
+	* dst_mask: list of nxm float64 ndarrays normalized between [0,1]
+		Exactly like the src_mask above. These masks are only used to reduce the MSE
+		for pixels that participate in a non-smooth deformation.
+	
+	Returns:
+	* field: A nxmx2 float64 torch tensor normalized between [0,1]
+		This field represents the derived vector field that transforms the src_image
+		subject to the contraints of the minimization.
+	"""
+        print(src_image.shape, len(dst_images), len(img_masks))
         downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
         upsample = nn.Upsample(scale_factor=2, mode='bilinear')
-        s, t = torch.FloatTensor(s), torch.FloatTensor(t)
-        src = Variable((s - torch.mean(s)) / torch.std(s)).cuda().unsqueeze(0).unsqueeze(0)
-        target = Variable((t - torch.mean(t)) / torch.std(t)).cuda().unsqueeze(0).unsqueeze(0)
-        mask = Variable(torch.FloatTensor(mask)).cuda().unsqueeze(0).unsqueeze(0)
-        dim = int(src.size()[-1] / (2 ** (self.ndownsamples - 1)))
+        s = torch.FloatTensor(src_image)
+        src_var = Variable((s - torch.mean(s)) / torch.std(s)).cuda().unsqueeze(0).unsqueeze(0)
+	src_mask_var = Variable(torch.FloatTensor(src_mask)).cuda().unsqueeze(0).unsqueeze(0)
+	dst_vars = []
+	dst_mask_vars = []
+	for d, m in zip(dst_images, dst_masks):
+		d = torch.FloatTensor(d)
+		dst_var = Variable((d - torch.mean(d)) / torch.std(d)).cuda().unsqueeze(0).unsqueeze(0))
+		dst_vars.append(dst)
+		mask_var = Variable(torch.FloatTensor(m)).cuda().unsqueeze(0).unsqueeze(0)
+		dst_mask_vars.append(mask_var)
+        
+	dim = int(src.size()[-1] / (2 ** (self.ndownsamples - 1)))
         field = Variable(torch.zeros((1,dim,dim,2))).cuda().detach()
         field.requires_grad = True
         updates = 0
-        for downsamples in reversed(range(self.ndownsamples)):
-            src_, target_ = downsample(downsamples)(src).detach(), downsample(downsamples)(target).detach()
-            mask_ = downsample(downsamples)(mask).detach()
-            mask_.requires_grad = False
+        for k in reversed(range(self.ndownsamples)):
+            src_ = downsample(k)(src_var).detach()
             src_.requires_grad = False
-            target_.requires_grad = False
+	    src_mask_ = downsample(k)(src_mask_var).detach()
+            src_mask_.requires_grad = False
+	    dst_list_, dst_mask_list_ = [], []
+	    for d, m in zip(dst_vars, dst_mask_vars):
+		dst_ = downsample(k)(d).detach()
+		dst_.requires_grad = False
+		dst_list_.append(dst_)
+		mask_ = downsample(k)(m).detach()
+		mask_.requires_grad = False
+		dst_mask_list_.append(mask_)
             field = field.detach()
             field.requires_grad = True
-            opt = torch.optim.SGD([field], lr=self.lr/(downsamples+1))
+            opt = torch.optim.SGD([field], lr=self.lr/(k+1))
             #sched = lr_scheduler.StepLR(opt, step_size=1, gamma=0.995)
             costs = []
             start_updates = updates
-            print(downsamples)
+            print(k)
             while True:
                 updates += 1
                 pred = F.grid_sample(src_, field + self.get_identity_grid(field.size(2)))
-                pred_mask = F.grid_sample(mask_, field + self.get_identity_grid(field.size(2)))
-                penalty1 = self.penalty([self.center(field, (1,2), 128 / (2**downsamples))], self.center(mask_.squeeze(0), (1,2), 128 / (2**downsamples)))
-                diff = torch.mean(self.center(torch.mul(pred - target_, pred_mask)**2, (-1,-2), 128 / (2**downsamples)))
-                cost = diff + penalty1 * self.lambda1/(downsamples+1)
+                pred_mask = F.grid_sample(src_mask_, field + self.get_identity_grid(field.size(2)))
+		centered_mask = self.center(src_mask_.squeeze(0), (1,2), 128 / (2**k))
+                penalty1 = self.penalty([self.center(field, (1,2), 128 / (2**k))], centered_mask)
+		diff = torch.tensor(0)
+		for d, m in zip(dst_list_, dst_mask_list_):
+			mask = torch.mul(pred_mask, m)
+			mse = torch.mul(pred - d, mask)**2
+			diff += torch.mean(self.center(mse, (-1,-2), 128 / (2**k)))
+                cost = diff + penalty1 * self.lambda1/(k+1)
                 print(cost.data.cpu().numpy())
                 costs.append(cost)
                 cost.backward()
@@ -113,10 +158,10 @@ class Optimizer():
                 if len(costs) > self.avgn + self.currn and len(costs)>self.min_iter:
                     hist = sum(costs[-(self.avgn+self.currn):-self.currn]).data[0] / self.avgn
                     curr = sum(costs[-self.currn:]).data[0] / self.currn
-                    if abs((hist-curr)/hist) < self.eps/(2**downsamples) or len(costs)>self.max_iter:
+                    if abs((hist-curr)/hist) < self.eps/(2**k) or len(costs)>self.max_iter:
                         break
             #print downsamples, updates - start_updates
-            if downsamples > 0:
+            if k > 0:
                 field = upsample(field.permute(0,3,1,2)).permute(0,2,3,1)
         #print(cost.data[0], diff.data[0], penalty1.data[0])
         print('done:', updates)
