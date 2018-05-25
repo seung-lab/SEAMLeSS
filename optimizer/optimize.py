@@ -76,46 +76,46 @@ class Optimizer():
       return  y.data.cpu().numpy()
 
   def process(self, src_image, dst_images, src_mask, dst_masks, crop=0):
-  """Compute vector field that minimizes mean squared error (MSE) between 
-  transformed src_image & all dst_images regularized by the smoothness of the 
-  vector field subject to masks that allow the vector field to not be smooth. 
-  The minimization uses SGD.
+    """Compute vector field that minimizes mean squared error (MSE) between 
+    transformed src_image & all dst_images regularized by the smoothness of the 
+    vector field subject to masks that allow the vector field to not be smooth. 
+    The minimization uses SGD.
 
-  Args:
-  * src_image: nxm float64 ndarry normalized between [0,1]
-    This is the image to be transformed by the returned vector field.
-  * dst_images: list of nxm float64 ndarrays normalized between [0,1]
-    This is the set of images that transformed src_image will be compared to.
-  * src_mask: nxm float64 ndarray normalized between [0,1]
-    The weight represents that degree to which a pixel participates in a smooth
-    deformation (0: not at all; 1: completely).
-    1. This mask is used to reduce the smoothness penalty for pixels that 
-    participate in a non-smooth deformation.
-    2. This mask is transformed by the vector field & used to reduce the MSE for
-    pixels that participate in a non-smooth deformation.
-  * dst_mask: list of nxm float64 ndarrays normalized between [0,1]
-    Exactly like the src_mask above. These masks are only used to reduce the MSE
-    for pixels that participate in a non-smooth deformation.
-  
-  Returns:
-  * field: A nxmx2 float64 torch tensor normalized between [0,1]
-    This field represents the derived vector field that transforms the src_image
-    subject to the contraints of the minimization.
-  """
-  print(src_image.shape, len(dst_images), len(img_masks))
-  downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
-  upsample = nn.Upsample(scale_factor=2, mode='bilinear')
-  s = torch.FloatTensor(src_image)
-  src_var = Variable((s - torch.mean(s)) / torch.std(s)).cuda().unsqueeze(0).unsqueeze(0)
-  src_mask_var = Variable(torch.FloatTensor(src_mask)).cuda().unsqueeze(0).unsqueeze(0)
-  dst_vars = []
-  dst_mask_vars = []
-  for d, m in zip(dst_images, dst_masks):
-    d = torch.FloatTensor(d)
-    dst_var = Variable((d - torch.mean(d)) / torch.std(d)).cuda().unsqueeze(0).unsqueeze(0))
-    dst_vars.append(dst)
-    mask_var = Variable(torch.FloatTensor(m)).cuda().unsqueeze(0).unsqueeze(0)
-    dst_mask_vars.append(mask_var)
+    Args:
+    * src_image: nxm float64 ndarry normalized between [0,1]
+      This is the image to be transformed by the returned vector field.
+    * dst_images: list of nxm float64 ndarrays normalized between [0,1]
+      This is the set of images that transformed src_image will be compared to.
+    * src_mask: nxm float64 ndarray normalized between [0,1]
+      The weight represents that degree to which a pixel participates in smooth
+      deformation (0: not at all; 1: completely).
+      1. This mask is used to reduce the smoothness penalty for pixels that 
+      participate in a non-smooth deformation.
+      2. This mask is transformed by the vector field and used to reduce the MSE
+      for pixels that participate in a non-smooth deformation.
+    * dst_mask: list of nxm float64 ndarrays normalized between [0,1]
+      Exactly like the src_mask above. These masks are only used to reduce the 
+      MSE for pixels that participate in a non-smooth deformation.
+    
+    Returns:
+    * field: A nxmx2 float64 torch tensor normalized between [0,1]
+      This field represents the derived vector field that transforms the 
+      src_image subject to the contraints of the minimization.
+    """
+    print(src_image.shape, len(dst_images), len(img_masks))
+    downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
+    upsample = nn.Upsample(scale_factor=2, mode='bilinear')
+    s = torch.FloatTensor(src_image)
+    src_var = Variable((s - torch.mean(s)) / torch.std(s)).cuda().unsqueeze(0).unsqueeze(0)
+    src_mask_var = Variable(torch.FloatTensor(src_mask)).cuda().unsqueeze(0).unsqueeze(0)
+    dst_vars = []
+    dst_mask_vars = []
+    for d, m in zip(dst_images, dst_masks):
+      d = torch.FloatTensor(d)
+      dst_var = Variable((d - torch.mean(d)) / torch.std(d)).cuda().unsqueeze(0).unsqueeze(0))
+      dst_vars.append(dst)
+      mask_var = Variable(torch.FloatTensor(m)).cuda().unsqueeze(0).unsqueeze(0)
+      dst_mask_vars.append(mask_var)
       
     dim = int(src.size()[-1] / (2 ** (self.ndownsamples - 1)))
     field = Variable(torch.zeros((1,dim,dim,2))).cuda().detach()
