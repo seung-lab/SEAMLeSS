@@ -149,13 +149,12 @@ class Optimizer():
         centered_mask = self.center(src_mask_.squeeze(0), (1,2), 128/(2**k))
         centered_field = self.center(field, (1,2), 128/(2**k))
         penalty1 = self.penalty([centered_field], centered_mask)
-        diff = Variable(torch.zeros((1))).cuda().detach(
-        diff.requires_grad = True
+        cost = penalty1 * self.lambda1/(k+1)
         for d, m in zip(dst_list_, dst_mask_list_):
           mask = torch.mul(pred_mask, m)
           mse = torch.mul(pred - d, mask)**2
-          diff += torch.mean(self.center(mse, (-1,-2), 128 / (2**k)))
-        cost = diff + penalty1 * self.lambda1/(k+1)
+          cost += torch.mean(self.center(mse, (-1,-2), 128 / (2**k)))
+        #cost = diff + penalty1 * self.lambda1/(k+1)
         print(cost.data.cpu().numpy())
         costs.append(cost)
         cost.backward()
@@ -169,8 +168,8 @@ class Optimizer():
             if abs((hist-curr)/hist) < self.eps/(2**k) or len(costs)>self.max_iter:
                 break
         #print downsamples, updates - start_updates
-        if k > 0:
-            field = upsample(field.permute(0,3,1,2)).permute(0,2,3,1)
+      if k > 0:
+        field = upsample(field.permute(0,3,1,2)).permute(0,2,3,1)
     #print(cost.data[0], diff.data[0], penalty1.data[0])
     print('done:', updates)
     print(field.shape)
