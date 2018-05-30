@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-
+from helpers import save_chunk
+import numpy as np
 
 def lap(fields):
     def dx(f):
@@ -44,7 +45,7 @@ def tv(fields):
     return field
 
 def smoothness_penalty(ptype):
-    def penalty(fields, crack_mask, border_mask):
+    def penalty(fields, crack_mask, border_mask, weights=None):
         if ptype ==     'lap': field = lap(fields)
         elif ptype == 'jacob': field = jacob(fields)
         elif ptype ==    'tv': field = tv(fields)
@@ -55,6 +56,8 @@ def smoothness_penalty(ptype):
         mask = (border_mask * crack_mask).view(field.size())
         if mask is not None:
             field = field * mask
+        if weights is not None:
+            field = field * weights
         return torch.sum(field)
     return penalty
     

@@ -86,6 +86,7 @@ def display_img(a, b, c):
     plt.show()
 
 def display_v(V_pred, name):
+    plt.figure(figsize=(6,6))
     X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
     U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
     colors = np.arctan2(U,V)   # true angle

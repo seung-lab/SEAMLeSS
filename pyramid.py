@@ -80,25 +80,28 @@ class GS(nn.Module):
         super(GS, self).__init__()
         print('building GS with kernel', k)
         p = (k-1)/2
-        self.conv1 = nn.Conv2d(infm, 32, 7, padding=3)
-        self.conv2 = nn.Conv2d(32, 64, 7, padding=3)
-        self.conv3 = nn.Conv2d(64, 32, 5, padding=2)
-        self.conv4 = nn.Conv2d(32, 16, 5, padding=2)
-        self.conv5 = nn.Conv2d(16, 2, 3, padding=1)
+        self.conv1 = nn.Conv2d(infm, 64, 9, padding=4)
+        self.conv2 = nn.Conv2d(64, 32, 7, padding=3)
+        self.conv3 = nn.Conv2d(32, 32, 5, padding=2)
+        self.conv4 = nn.Conv2d(32, 32, 3, padding=1)
+        self.conv5 = nn.Conv2d(32, 16, 3, padding=1)
+        self.conv6 = nn.Conv2d(16, 2, 3, padding=1)
         self.seq = nn.Sequential(self.conv1, f,
                                  self.conv2, f,
                                  self.conv3, f,
                                  self.conv4, f,
-                                 self.conv5)
+                                 self.conv5, f,
+                                 self.conv6)
         self.initc(self.conv1)
         self.initc(self.conv2)
         self.initc(self.conv3)
         self.initc(self.conv4)
         self.initc(self.conv5)
+        self.initc(self.conv6)
         
     def forward(self, x):
-        return self.seq(x).permute(0,2,3,1) / 10
-
+        return self.seq(x).permute(0,2,3,1)
+    
 class MPG(nn.Module):
     def __init__(self, k=7, f=nn.ReLU()):
         super(MPG, self).__init__()
@@ -304,15 +307,15 @@ class EPyramid(nn.Module):
         self.down = nn.MaxPool2d(2)
         self.enclist = nn.ModuleList([Enc(level==0, infm=fm*(level+1), outfm=fm*(level+2)) for level in range(size)])
         self.I = self.get_identity_grid(rdim)
-        self.Zero = self.I - self.I
         self.counter = 0
+        self.TRAIN_SIZE = 1280
 
     def forward(self, stack, target_level, vis=False):
         encodings = [self.enclist[0](stack)]
         for idx in range(1, self.size):
             encodings.append(self.enclist[idx](self.down(encodings[-1])))
 
-        if self.counter % 10000 == 0:
+        if self.counter % 1000 == 0 and self.counter > 0:
             rinput = np.squeeze(stack.data.cpu().numpy())
             rinput -= np.min(rinput)
             rinput /= np.max(rinput)
@@ -332,73 +335,13 @@ class EPyramid(nn.Module):
                 inputs_i = encodings[i]
                 resampled_source = grid_sample(inputs_i[:,0:inputs_i.size(1)//2], field_so_far, mode='bilinear')
                 new_input_i = torch.cat((resampled_source, inputs_i[:,inputs_i.size(1)//2:]), 1)
-                rfield = self.mlist[i](new_input_i)
+                factor = ((self.TRAIN_SIZE / (2. ** i)) / new_input_i.size()[-1])
+                rfield = self.mlist[i](new_input_i) * factor
                 residuals.append(rfield)
                 field_so_far = rfield + field_so_far
             if i != target_level:
                 field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
         
-        return field_so_far, residuals
-
-class SPyramid(nn.Module):
-    def get_identity_grid(self, dim):
-        if dim not in self.identities:
-            gx, gy = np.linspace(-1, 1, dim), np.linspace(-1, 1, dim)
-            I = np.stack(np.meshgrid(gx, gy))
-            I = np.expand_dims(I, 0)
-            I = torch.FloatTensor(I)
-            I = torch.autograd.Variable(I, requires_grad=False)
-            I = I.permute(0,2,3,1)
-            self.identities[dim] = I.cuda()
-        return self.identities[dim]
-    
-    def __init__(self, size, dim, skip, k, dilate=False, amp=False, unet=False, num_targets=1, name=None):
-        super(SPyramid, self).__init__()
-        rdim = dim // (2 ** (size - 1))
-        print('------- Constructing SPyramidNet with size', size, '(' + str(size-1) + ' downsamples) ' + str(dim))
-        if name:
-            self.name = name
-        fm = 12
-        self.identities = {}
-        self.skip = skip
-        self.size = size
-        self.g = G(k=k, infm=fm*2)
-        self.up = nn.Upsample(scale_factor=2, mode='bilinear')
-        self.down = nn.MaxPool2d(2)
-        self.enclist = nn.ModuleList([Enc(level==0, infm=fm, outfm=fm) for level in range(size)])
-        self.I = self.get_identity_grid(rdim)
-        self.Zero = self.I - self.I
-        self.counter = 0
-
-    def forward(self, stack, target_level, vis=False):
-        encodings = [self.enclist[0](stack)]
-        for idx in range(1, self.size):
-            encodings.append(self.enclist[idx](self.down(encodings[-1])))
-
-        if self.counter % 1000 == 0:
-            rinput = np.squeeze(stack.data.cpu().numpy())
-            rinput -= np.min(rinput)
-            rinput /= np.max(rinput)
-            gif(self.name + 'inputraw' + str(self.counter / 500), rinput * 255)
-            if self.name:
-                for idx, s in enumerate(encodings):
-                    visinput = np.squeeze(s.data.cpu().numpy())
-                    visinput -= np.min(visinput)
-                    visinput /= np.max(visinput)
-                    gif(self.name + 'input' + str(self.counter / 500) + '_' + str(idx), visinput * 255)
-
-        self.counter += 1
-        residuals = [self.I]
-        field_so_far = self.I
-        for i in range(self.size - 1, target_level - 1, -1):
-            inputs_i = encodings[i]
-            resampled_source = grid_sample(inputs_i[:,0:inputs_i.size(1)//2], field_so_far, mode='bilinear')
-            new_input_i = torch.cat((resampled_source, inputs_i[:,inputs_i.size(1)//2:]), 1)
-            rfield = self.g(new_input_i)
-            residuals.append(rfield)
-            field_so_far = rfield + field_so_far
-            if i != target_level:
-                field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
         return field_so_far, residuals
 
 class PyramidTransformer(nn.Module):
@@ -422,11 +365,6 @@ class PyramidTransformer(nn.Module):
 
     def forward(self, x, idx=0, vis=None):
         field, residuals = self.pyramid(x, idx, vis)
-        #factor = 8
-        #I =  self.pyramid.get_identity_grid(field.size()[2])
-        #irfield = field - I
-        #irfield_smooth = nn.AvgPool2d(2**factor+1, stride=1, padding=2**(factor-1), count_include_pad=False)(irfield.permute(0,3,1,2)).permute(0,2,3,1)
-        #field = irfield_smooth + I
         return grid_sample(x[:,0:1,:,:], field, mode='nearest'), field, residuals
 
     ################################################################
@@ -434,7 +372,7 @@ class PyramidTransformer(nn.Module):
     ################################################################
 
     @staticmethod
-    def load(archive_path=None, height=5, dim=1024, skips=0, k=7, cuda=True, dilate=False, amp=False, unet=False, num_targets=1, name=None, ep=True):
+    def load(archive_path=None, height=5, dim=1024, skips=0, k=7, cuda=True, dilate=False, amp=False, unet=False, num_targets=1, name=None):
         """
         Builds and load a model with the specified architecture from
         an archive.
@@ -449,7 +387,7 @@ class PyramidTransformer(nn.Module):
         """
         assert archive_path is not None, "Must provide an archive"
 
-        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=name, ep=ep)
+        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=name)
         if cuda:
             model = model.cuda()
         for p in model.parameters():
