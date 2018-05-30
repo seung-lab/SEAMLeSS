@@ -75,7 +75,7 @@ class Optimizer():
       y =  F.grid_sample(src, field + self.get_identity_grid(field.size(2)))
       return  y.data.cpu().numpy()
 
-  def process(self, src_image, dst_images, src_mask, dst_masks, crop=0):
+  def process(self, src_image, dst_images, src_mask, dst_masks, field=None, crop=0):
     """Compute vector field that minimizes mean squared error (MSE) between 
     transformed src_image & all dst_images regularized by the smoothness of the 
     vector field subject to masks that allow the vector field to not be smooth. 
@@ -118,7 +118,10 @@ class Optimizer():
       dst_mask_vars.append(mask_var)
       
     dim = int(src_var.size()[-1] / (2 ** (self.ndownsamples - 1)))
-    field = Variable(torch.zeros((1,dim,dim,2))).cuda().detach()
+    if field is None:
+        field = Variable(torch.zeros((1,dim,dim,2))).cuda().detach()
+    else:
+        field = Variable(field).cuda().detach()
     field.requires_grad = True
     updates = 0
     for k in reversed(range(self.ndownsamples)):
