@@ -14,13 +14,13 @@ parser.add_argument('--mip', type=int, default=5)
 parser.add_argument('--stack_height', type=int, default=50)
 parser.add_argument('--dim', type=int, default=1152)
 parser.add_argument('--coords', type=str, default=None)
-parser.add_argument('--source', type=str)
+parser.add_argument('--source', type=str, default='neuroglancer/basil_v0/raw_image_cropped')
 args = parser.parse_args()
 print args
 
-# gs://neuroglancer/pinky40_v11/image
-# gs://neuroglancer/pinky40_alignment/prealigned
-# gs://neuroglancer/basil_v0/raw_image
+# neuroglancer/pinky40_v11/image
+# neuroglancer/pinky40_alignment/prealigned
+# neuroglancer/basil_v0/raw_image
 
 sampler = Sampler(source=('gs://' + args.source), dim=args.dim, mip=args.mip, height=args.stack_height)
 
@@ -49,10 +49,10 @@ else:
     N = args.count
 
 coord_record = []
-dataset = np.empty((N, stack_height, args.dim, args.dim))
+dataset = np.empty((N, args.stack_height, args.dim, args.dim))
 
 for i in range(N):
-    coords = None
+    coords, coords_ = None, None
     if archived_coords is not None:
         ac = archived_coords[i]
         coords = (ac[0], ac[1], ac[2])

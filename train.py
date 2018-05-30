@@ -21,6 +21,8 @@ import h5py
 
 from analysis_helpers import display_v
 from pyramid import PyramidTransformer
+from dnet import UNet
+from disc import D
 from helpers import gif, save_chunk, center
 from aug import aug_stack, aug_input, rotate_and_scale, crack
 
@@ -41,6 +43,8 @@ if __name__ == '__main__':
  
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
+    parser.add_argument('--unflow', type=float, default=1)
+    parser.add_argument('--alpha', type=float, default=1)
     parser.add_argument('--crack', action='store_true')
     parser.add_argument('--num_targets', type=int, default=1)
     parser.add_argument('--lambda1', type=float, default=0.1)
@@ -65,6 +69,10 @@ if __name__ == '__main__':
     parser.add_argument('--fine_tuning', action='store_true')
     parser.add_argument('--penalty', type=str, default='jacob')
     parser.add_argument('--crack_mask', action='store_false')
+    parser.add_argument('--pred', action='store_true')
+    parser.add_argument('--disc', action='store_true')
+    parser.add_argument('--paired', action='store_true')
+    parser.add_argument('--skip_sample_aug', action='store_true')
     args = parser.parse_args()
 
     name = args.name
@@ -96,6 +104,15 @@ if __name__ == '__main__':
     if not os.path.isdir(log_path):
         os.makedirs(log_path)
 
+    if args.pred:
+        print('Loading prednet...')
+        prednet = UNet(3,1).cuda()
+        prednet.load_state_dict(torch.load('../framenet/pt/dnet.pt'))
+
+    if args.disc:
+        print('Loading discriminator...')
+        disc = D(dim)
+        
     if args.state_archive is None:
         model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=log_path + name).cuda()
     else:
@@ -138,7 +155,6 @@ if __name__ == '__main__':
     mse = similarity_score(should_reduce=False)
     penalty = smoothness_penalty('jacob')
     history = []
-    updates = 0
     print('=========== BEGIN TRAIN LOOP ============')
 
     def run_sample(X, train=True):
@@ -146,15 +162,17 @@ if __name__ == '__main__':
         src, target = X[0,0], torch.squeeze(X[0,1:])
         crack_mask = None
         
-        if train:
+        if train and not args.skip_sample_aug:
             # add an artificial crack
+            did_crack = False
             if args.crack:
                 if random.randint(0,1) == 0:
-                    src, crack_mask = crack(src, width_range=(4,64))
+                    did_crack = True
+                    src, crack_mask = crack(src, width_range=(8,48))
                     
             # random flip
             should_rotate = random.randint(0,1) == 0
-            if should_rotate:
+            if should_rotate or did_crack:
                 src, grid = rotate_and_scale(src.unsqueeze(0).unsqueeze(0), None)
                 target = rotate_and_scale(target.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
                 if crack_mask is not None:
@@ -163,11 +181,15 @@ if __name__ == '__main__':
                 
         input_src = src.clone()
         input_target = target.clone()
-        if train:
+
+        if train and not args.skip_sample_aug:
             if random.randint(0,1) == 0:
                 input_src = aug_input(input_src)
             if random.randint(0,1) == 0:
                 input_target = aug_input(input_target)
+        else:
+            print 'Skipping sample-wise augmentation...'
+                
         pred, field, residuals = model.apply(input_src, input_target, trunclayer)
 
         # resample some stuff with our new field prediction
@@ -181,13 +203,14 @@ if __name__ == '__main__':
 
         err = mse(pred.squeeze(0).expand(num_targets, pred.size()[-1], pred.size()[-1]), target)
         merr = err * border_mask
-        return src, target, pred, rfield, torch.mean(merr), residuals, crack_mask, (pred != 0).float()
-    
+        return input_src, target, pred, rfield, torch.mean(merr), residuals, crack_mask, (pred != 0).float()
+
     X_test = None
-    for X in test_loader:
+    for idxx, X in enumerate(test_loader):
         X_test = Variable(X).cuda().detach()
         X_test.volatile = True
-        break
+        if idxx > 1:
+            break
 
     for epoch in range(args.epoch, it):
         print('epoch', epoch)
@@ -211,55 +234,69 @@ if __name__ == '__main__':
 
                 errs = []
                 penalties = []
+                consensus_list = []
                 smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
-                for sample_idx, i in enumerate(random.sample(range(X.size()[1]-1, num_targets - 1, -1), 32)):
-                    X_ = torch.cat((X[:,i:i+1], X[:,i-num_targets:i]), 1)
-                    a, b, pred_, field, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), train=True)
-                    penalty1 = lambda1 * penalty([field], crack_mask, border_mask)
-                    cost = err_train + smooth_factor * penalty1
-                    (cost/2).backward()
-                    errs.append(err_train)
-                    penalties.append(penalty1)
-
-                    if sample_idx == 31 and random.randint(0,3) == 0:
-                        a_, b_ = downsample(trunclayer)(a.unsqueeze(0).unsqueeze(0)), b.unsqueeze(0).unsqueeze(0)
-                        gif(log_path + name + 'stack' + str(epoch) + '_' + str(t), 255 * np.squeeze(torch.cat((a_,b_,pred_), 1).data.cpu().numpy()))
-                        [display_v(residuals[idx].data.cpu().numpy()[:,::2**(idx),::2**(idx),:], log_path + name + 'rfield' + str(epoch) + '_' + str(t) + '_' + str(idx)) for idx in range(1, len(residuals))]
-
-
-                    if random.randint(0,1) == 0:
-                        X_ = torch.cat((X[:,i-num_targets:i-num_targets+1], X[:,i-num_targets+1:i+1]), 1)
+                hist_length = 1
+                batch = 30
+                for sample_idx, i in enumerate(random.sample(range(X.size()[1]-1, num_targets + hist_length - 1, -1), batch//hist_length)):
+                    for offset in range(hist_length):
+                        X_ = torch.cat((X[:,i:i+1], X[:,i-num_targets-offset:i-offset]), 1)
                         a, b, pred_, field, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), train=True)
                         penalty1 = lambda1 * penalty([field], crack_mask, border_mask)
                         cost = err_train + smooth_factor * penalty1
-                        (cost/2).backward()
-                        errs.append(err_train)
-                        penalties.append(penalty1)
-                    else:
-                        X_ = torch.cat((X[:,i-num_targets:i-num_targets+1], X[:,i-num_targets:i-num_targets+1]), 1)
-                        a, b, pred_, field, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), train=True)
-                        penalty1 = lambda1 * penalty([field], crack_mask, border_mask)
+                        (cost/2).backward(retain_graph=True)
+                        errs.append(err_train.data[0])
+                        penalties.append(penalty1.data[0])
+                        
+                        if sample_idx == batch//hist_length-1 and (t % 4 == 0 or args.state_archive is not None):
+                            a_, b_ = downsample(trunclayer)(a.unsqueeze(0).unsqueeze(0)), b.unsqueeze(0).unsqueeze(0)
+                            npstack = np.squeeze(torch.cat((a_,b_,pred_), 1).data.cpu().numpy())
+                            npstack = (npstack - np.min(npstack)) / (np.max(npstack) - np.min(npstack))
+                            gif(log_path + name + 'stack' + str(epoch) + '_' + str(t) + '_' + str(offset), 255 * npstack)
+                            display_v(field.data.cpu().numpy()[:,::8,::8,:], log_path + name + '_field' + str(epoch) + '_' + str(t) + '_' + str(offset))
+                            #[display_v(residuals[idx].data.cpu().numpy()[:,::2**(idx),::2**(idx),:], log_path + name + 'rfield' + str(epoch) + '_' + str(t) + '_' + str(idx)) for idx in range(1, len(residuals))]
+
+                        #if random.randint(0,1) == 0:
+                        X_ = torch.cat((X[:,i-num_targets-offset:i-num_targets-offset+1], X[:,i-num_targets+1:i+1]), 1)
+                        a, b, pred_, field2, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), train=True)
+                        v = var_chunk(pred_)
+                        penalty1 = lambda1 * penalty([field2], crack_mask, border_mask, v)
                         cost = err_train + smooth_factor * penalty1
-                        (cost/2).backward()
-                    
-                    optimizer.step()
-                    model.zero_grad()
-                    
+                        (cost/2).backward(retain_graph=True)
+                        errs.append(err_train.data[0])
+                        penalties.append(penalty1.data[0])
+
+                        consensus = args.unflow * torch.mean(mse(field, -field2))
+                        print consensus.data[0]
+                        consensus.backward()
+                        consensus_list.append(consensus.data[0])
+                        
+                        #else:
+                        #    X_ = torch.cat((X[:,i-num_targets:i-num_targets+1], X[:,i-num_targets:i-num_targets+1]), 1)
+                        #    a, b, pred_, field, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), train=True)
+                        #    v = var_chunk(pred_)
+                        #    penalty1 = lambda1 * penalty([field], crack_mask, border_mask, v)
+                        #    cost = err_train + smooth_factor * penalty1
+                        #    (cost/2).backward()
+
+                        optimizer.step()
+                        model.zero_grad()
+
                 # Save some info
                 mean_err_train = sum(errs) / len(errs)
                 mean_penalty_train = sum(penalties) / len(penalties)
-                print(t, smooth_factor, trunclayer, mean_err_train.data[0] + mean_penalty_train.data[0] * smooth_factor, mean_err_train.data[0], mean_penalty_train.data[0])
-                history.append((time.time() - start_time, mean_err_train.data[0] + mean_penalty_train.data[0] * smooth_factor, mean_err_train.data[0], mean_penalty_train.data[0]))
-                updates += 1
+                mean_consensus = sum(consensus_list) / len(consensus_list)
+                print(t, smooth_factor, trunclayer, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus)
+                history.append((time.time() - start_time, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus))
                 torch.save(model.state_dict(), 'pt/' + name + '.pt')
 
-            print('Writing status to: ', log_file)
-            with open(log_file, 'a') as log:
-                for tr in history:
-                    for val in tr:
-                        log.write(str(val) + ', ')
-                    log.write('\n')
-                history = []
+                print('Writing status to: ', log_file)
+                with open(log_file, 'a') as log:
+                    for tr in history:
+                        for val in tr:
+                            log.write(str(val) + ', ')
+                        log.write('\n')
+                    history = []
 
         if trunclayer > 0:
             continue
@@ -277,13 +314,16 @@ if __name__ == '__main__':
         errs = []
         for i in reversed(range(1,X.size()[1] - (num_targets - 1))):
             target_ = torch.cat(preds[-num_targets:], 1)
+            if len(preds) >= 3 and args.pred:
+                target_ = target_ * args.alpha + prednet(torch.cat(preds[-3:], 1)).squeeze(0) * (1 - args.alpha)
             X_ = torch.cat((X[:,i-1:i], target_), 1)
             a, b, pred, field, err, residuals, crack_mask, border_mask = run_sample(X_, train=False)
-
+            penalty([field], crack_mask, border_mask)
             if args.inference_only and args.archive_fields:
                 step = len(residuals) - 1 - skiplayers
                 print('Archiving vector fields...')
-                display_v(field.data.cpu().numpy()[:,::4,::4,:], log_path + name + '_field' + str(i) + '_' + str(epoch))
+                save_chunk(np.squeeze(pred.data.cpu().numpy()),  log_path + name + '_pred' + str(i) + '_' + str(epoch))
+                display_v(field.data.cpu().numpy() * 2, log_path + name + '_field' + str(i) + '_' + str(epoch))
 
             errs.append(err.data[0])
             a = np.squeeze(a.data.cpu().numpy())

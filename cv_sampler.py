@@ -36,11 +36,7 @@ class Sampler(object):
         if size is None:
             size = self.vol_size
         print('params:', offsets, size)
-        if 'basil' in self.source:
-            offsets = (offsets[0] + 50000, offsets[1] + 50000, offsets[2])
-            size = (size[0] / 2, size[1] / 2, size[2])
-        print('adjusted params:', offsets, size)
-        
+
         x = np.random.randint(offsets[0], offsets[0] + size[0] - self.adj_dim)
         y = np.random.randint(offsets[1], offsets[1] + size[1] - self.adj_dim)
         trainf = lambda x: x < 700
