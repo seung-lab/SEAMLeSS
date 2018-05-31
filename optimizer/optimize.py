@@ -75,7 +75,8 @@ class Optimizer():
       y =  F.grid_sample(src, field + self.get_identity_grid(field.size(2)))
       return  y.data.cpu().numpy()
 
-  def process(self, src_image, dst_images, src_mask, dst_masks, field=None, crop=0):
+  def process(self, src_image, dst_images, src_mask_smooth, src_mask_loss, 
+						dst_masks_loss, field=None, crop=0):
     """Compute vector field that minimizes mean squared error (MSE) between 
     transformed src_image & all dst_images regularized by the smoothness of the 
     vector field subject to masks that allow the vector field to not be smooth. 
@@ -86,31 +87,35 @@ class Optimizer():
       This is the image to be transformed by the returned vector field.
     * dst_images: list of nxm float64 ndarrays normalized between [0,1]
       This is the set of images that transformed src_image will be compared to.
-    * src_mask: nxm float64 ndarray normalized between [0,1]
+    * src_mask_smooth: nxm float64 ndarray normalized between [0,1]
       The weight represents that degree to which a pixel participates in smooth
-      deformation (0: not at all; 1: completely).
-      1. This mask is used to reduce the smoothness penalty for pixels that 
-      participate in a non-smooth deformation.
-      2. This mask is transformed by the vector field and used to reduce the MSE
-      for pixels that participate in a non-smooth deformation.
-    * dst_mask: list of nxm float64 ndarrays normalized between [0,1]
-      Exactly like the src_mask above. These masks are only used to reduce the 
-      MSE for pixels that participate in a non-smooth deformation.
-    
-    Returns:
-    * field: A nxmx2 float64 torch tensor normalized between [0,1]
+      deformation (0: not at all; 1: completely). This mask is used to reduce 
+      the smoothness penalty for pixels that participate in a non-smooth 
+      deformation.
+    * src_mask_loss: nxm float64 ndarray normalized between [0,1]
+      This mask is transformed by the vector field and used to reduce the MSE
+      for pixels that participate in a defect.
+    * dst_masks_loss: list of nxm float64 ndarrays normalized between [0,1]
+      Exactly like the src_mask_loss above. These masks are only used to reduce the 
+      MSE for pixels that participate in a defect.
+    * field: nxmx2 float64 torch tensor normalized between [0,1]
       This field represents the derived vector field that transforms the 
       src_image subject to the contraints of the minimization.
+    
+    Returns:
+    * field: nxmx2 float64 torch tensor normalized between [0,1]
     """
-    print(src_image.shape, len(dst_images), src_mask.shape, len(dst_masks))
+    print(src_image.shape, len(dst_images), src_mask_smooth.shape, 
+						src_mask_loss.shape, len(dst_masks_loss))
     downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
     upsample = nn.Upsample(scale_factor=2, mode='bilinear')
     s = torch.FloatTensor(src_image)
     src_var = Variable((s - torch.mean(s)) / torch.std(s)).cuda().unsqueeze(0).unsqueeze(0)
-    src_mask_var = Variable(torch.FloatTensor(src_mask)).cuda().unsqueeze(0).unsqueeze(0)
+    src_mask_smooth_var = Variable(torch.FloatTensor(src_mask_smooth)).cuda().unsqueeze(0).unsqueeze(0)
+    src_mask_loss_var = Variable(torch.FloatTensor(src_mask_loss)).cuda().unsqueeze(0).unsqueeze(0)
     dst_vars = []
     dst_mask_vars = []
-    for d, m in zip(dst_images, dst_masks):
+    for d, m in zip(dst_images, dst_masks_loss):
       d = torch.FloatTensor(d)
       dst_var = Variable((d - torch.mean(d)) / torch.std(d)).cuda().unsqueeze(0).unsqueeze(0)
       dst_vars.append(dst_var)
@@ -127,8 +132,10 @@ class Optimizer():
     for k in reversed(range(self.ndownsamples)):
       src_ = downsample(k)(src_var).detach()
       src_.requires_grad = False
-      src_mask_ = downsample(k)(src_mask_var).detach()
-      src_mask_.requires_grad = False
+      src_mask_smooth_ = downsample(k)(src_mask_smooth_var).detach()
+      src_mask_smooth_.requires_grad = False
+      src_mask_loss_ = downsample(k)(src_mask_loss_var).detach()
+      src_mask_loss_.requires_grad = False
       dst_list_, dst_mask_list_ = [], []
       for d, m in zip(dst_vars, dst_mask_vars):
         dst_ = downsample(k)(d).detach()
@@ -148,8 +155,8 @@ class Optimizer():
         updates += 1
         I = self.get_identity_grid(field.size(2))
         pred = F.grid_sample(src_, field + I)
-        pred_mask = F.grid_sample(src_mask_, field + I)
-        centered_mask = self.center(src_mask_.squeeze(0), (1,2), 128/(2**k))
+        pred_mask = F.grid_sample(src_mask_loss_, field + I)
+        centered_mask = self.center(src_mask_smooth_.squeeze(0), (1,2), 128/(2**k))
         centered_field = self.center(field, (1,2), 128/(2**k))
         penalty1 = self.penalty([centered_field], centered_mask)
         cost = penalty1 * self.lambda1/(k+1)
