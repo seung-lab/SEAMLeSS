@@ -22,3 +22,9 @@ self-documented within `train.py`. (TODO: document them here)
 ## Testing
 
 To test a trained pyramid, run `python train.py --inference_only --state_archive pt/YOUR_ARCHIVE.pt NAME_OF_RUN`.
+
+
+## TODO:
+
+- Change training to train iteratively on entire stacks instead of training on individual pairs "in a vacuum."
+- Convert residual networks from predicting PyTorch grid sampler units to absolute pixel displacements

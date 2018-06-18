@@ -291,15 +291,16 @@ class EPyramid(nn.Module):
             self.identities[dim] = I.cuda()
         return self.identities[dim]
     
-    def __init__(self, size, dim, skip, k, dilate=False, amp=False, unet=False, num_targets=1, name=None):
+    def __init__(self, size, dim, skip, topskips, k, dilate=False, amp=False, unet=False, num_targets=1, name=None):
         super(EPyramid, self).__init__()
-        rdim = dim // (2 ** (size - 1))
+        rdim = dim // (2 ** (size - 1 - topskips))
         print('------- Constructing EPyramid with size', size, '(' + str(size-1) + ' downsamples) ' + str(dim))
         if name:
             self.name = name
         fm = 6
         self.identities = {}
         self.skip = skip
+        self.topskips = topskips
         print 'init', self.skip
         self.size = size
         self.mlist = nn.ModuleList([G(k=k, infm=fm*(level+2)*2) for level in range(size)])
@@ -312,7 +313,7 @@ class EPyramid(nn.Module):
 
     def forward(self, stack, target_level, vis=False):
         encodings = [self.enclist[0](stack)]
-        for idx in range(1, self.size):
+        for idx in range(1, self.size-self.topskips):
             encodings.append(self.enclist[idx](self.down(encodings[-1])))
 
         if self.counter % 1000 == 0 and self.counter > 0:
@@ -330,7 +331,7 @@ class EPyramid(nn.Module):
         self.counter += 1
         residuals = [self.I]
         field_so_far = self.I
-        for i in range(self.size - 1, target_level - 1, -1):
+        for i in range(self.size - 1 - self.topskips, target_level - 1, -1):
             if i >= self.skip:
                 inputs_i = encodings[i]
                 resampled_source = grid_sample(inputs_i[:,0:inputs_i.size(1)//2], field_so_far, mode='bilinear')
@@ -341,13 +342,13 @@ class EPyramid(nn.Module):
                 field_so_far = rfield + field_so_far
             if i != target_level:
                 field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
-        
+            print(field_so_far.size())
         return field_so_far, residuals
 
 class PyramidTransformer(nn.Module):
-    def __init__(self, size=4, dim=192, skip=0, k=7, dilate=False, amp=False, unet=False, num_targets=1, name=None):
+    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, dilate=False, amp=False, unet=False, num_targets=1, name=None):
         super(PyramidTransformer, self).__init__()
-        self.pyramid = EPyramid(size, dim, skip, k, dilate, amp, unet, num_targets, name=name)
+        self.pyramid = EPyramid(size, dim, skip, topskips, k, dilate, amp, unet, num_targets, name=name)
             
     def open_layer(self):
         if self.pyramid.skip > 0:
@@ -372,7 +373,7 @@ class PyramidTransformer(nn.Module):
     ################################################################
 
     @staticmethod
-    def load(archive_path=None, height=5, dim=1024, skips=0, k=7, cuda=True, dilate=False, amp=False, unet=False, num_targets=1, name=None):
+    def load(archive_path=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True, dilate=False, amp=False, unet=False, num_targets=1, name=None):
         """
         Builds and load a model with the specified architecture from
         an archive.
@@ -387,7 +388,7 @@ class PyramidTransformer(nn.Module):
         """
         assert archive_path is not None, "Must provide an archive"
 
-        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=name)
+        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, topskips=topskips, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=name)
         if cuda:
             model = model.cuda()
         for p in model.parameters():

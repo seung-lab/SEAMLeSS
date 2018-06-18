@@ -25,9 +25,9 @@ class Sampler(object):
         try:
             squeezed = np.squeeze(self.vol[x:x_, y:y_, z:z_])
         except Exception as e:
-            print(e)
+            print('Exception {}'.format(e))
         if squeezed is not None:
-            print(squeezed.shape)
+            print('Squeezed shape {}'.format(squeezed.shape))
         return squeezed
 
     def random_sample(self, train=True, offsets=None, size=None, split=True):

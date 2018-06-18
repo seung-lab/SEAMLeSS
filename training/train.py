@@ -24,7 +24,7 @@ from pyramid import PyramidTransformer
 from dnet import UNet
 from disc import D
 from helpers import gif, save_chunk, center
-from aug import aug_stack, aug_input, rotate_and_scale, crack
+from aug import aug_stacks, aug_input, rotate_and_scale, crack
 
 from loss import similarity_score, smoothness_penalty
 
@@ -43,7 +43,7 @@ if __name__ == '__main__':
  
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
-    parser.add_argument('--unflow', type=float, default=1)
+    parser.add_argument('--unflow', type=float, default=0)
     parser.add_argument('--alpha', type=float, default=1)
     parser.add_argument('--crack', action='store_true')
     parser.add_argument('--num_targets', type=int, default=1)
@@ -73,6 +73,8 @@ if __name__ == '__main__':
     parser.add_argument('--disc', action='store_true')
     parser.add_argument('--paired', action='store_true')
     parser.add_argument('--skip_sample_aug', action='store_true')
+    parser.add_argument('--crack_masks', type=str, default=None)
+    parser.add_argument('--fold_masks', type=str, default=None)
     args = parser.parse_args()
 
     name = args.name
@@ -103,6 +105,8 @@ if __name__ == '__main__':
 
     if not os.path.isdir(log_path):
         os.makedirs(log_path)
+    if not os.path.isdir('pt'):
+        os.makedirs('pt')
 
     if args.pred:
         print('Loading prednet...')
@@ -122,8 +126,8 @@ if __name__ == '__main__':
         p.requires_grad = not args.inference_only
     model.train(not args.inference_only)
 
-    train_dataset = StackDataset(os.path.expanduser('~/../eam6/fullq_train_mip3.h5'))
-    test_dataset = StackDataset(os.path.expanduser('~/../eam6/fullqq_test_mip3.h5'))
+    train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser('~/../eam6/basil_raw_cropped_crack_train_mip5.h5'), basil=True, mask_smooth_factor=31)
+    test_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser('~/../eam6/basil_raw_cropped_crack_train_mip5.h5'), basil=True)
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
@@ -157,19 +161,18 @@ if __name__ == '__main__':
     history = []
     print('=========== BEGIN TRAIN LOOP ============')
 
-    def run_sample(X, train=True):
+    def run_sample(X, crack_mask=None, train=True):
         model.train(train)
         src, target = X[0,0], torch.squeeze(X[0,1:])
-        crack_mask = None
         
         if train and not args.skip_sample_aug:
             # add an artificial crack
             did_crack = False
-            if args.crack:
+            if args.crack and crack_mask is None:
                 if random.randint(0,1) == 0:
                     did_crack = True
                     src, crack_mask = crack(src, width_range=(8,48))
-                    
+            
             # random flip
             should_rotate = random.randint(0,1) == 0
             if should_rotate or did_crack:
@@ -178,7 +181,7 @@ if __name__ == '__main__':
                 if crack_mask is not None:
                     crack_mask = rotate_and_scale(crack_mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
                 src = src.squeeze()
-                
+        
         input_src = src.clone()
         input_target = target.clone()
 
@@ -206,7 +209,7 @@ if __name__ == '__main__':
         return input_src, target, pred, rfield, torch.mean(merr), residuals, crack_mask, (pred != 0).float()
 
     X_test = None
-    for idxx, X in enumerate(test_loader):
+    for idxx, (X, mask_test) in enumerate(test_loader):
         X_test = Variable(X).cuda().detach()
         X_test.volatile = True
         if idxx > 1:
@@ -215,7 +218,7 @@ if __name__ == '__main__':
     for epoch in range(args.epoch, it):
         print('epoch', epoch)
         if not args.inference_only:
-            for t, X in enumerate(train_loader):
+            for t, (X, crack_stack) in enumerate(train_loader):
                 if t == 0:
                     if epoch % fall_time == 0 and (trunclayer > 0 or args.trunc == 0):
                         fine_tuning = False or args.fine_tuning # only fine tune if running a tuning session
@@ -229,19 +232,24 @@ if __name__ == '__main__':
 
                 # Get inputs
                 X = Variable(X, requires_grad=False)
-                X = X.cuda()
-                X = aug_stack(X, padding=padding)
-
+                crack_stack = Variable(crack_stack, requires_grad=False)
+                X, crack_stack = X.cuda(), crack_stack.cuda()
+                stacks, top, left = aug_stacks([X, crack_stack], padding=padding)
+                X, crack_stack = stacks[0], stacks[1]
+                
                 errs = []
                 penalties = []
                 consensus_list = []
                 smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
                 hist_length = 1
-                batch = 30
+                batch = 6
                 for sample_idx, i in enumerate(random.sample(range(X.size()[1]-1, num_targets + hist_length - 1, -1), batch//hist_length)):
                     for offset in range(hist_length):
                         X_ = torch.cat((X[:,i:i+1], X[:,i-num_targets-offset:i-offset]), 1)
-                        a, b, pred_, field, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), train=True)
+                        if args.crack_masks is not None:
+                            crack_mask = crack_stack[0,i].cuda()
+                        a, b, pred_, field, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), crack_mask, train=True)
+                        
                         penalty1 = lambda1 * penalty([field], crack_mask, border_mask)
                         cost = err_train + smooth_factor * penalty1
                         (cost/2).backward(retain_graph=True)
@@ -252,33 +260,27 @@ if __name__ == '__main__':
                             a_, b_ = downsample(trunclayer)(a.unsqueeze(0).unsqueeze(0)), b.unsqueeze(0).unsqueeze(0)
                             npstack = np.squeeze(torch.cat((a_,b_,pred_), 1).data.cpu().numpy())
                             npstack = (npstack - np.min(npstack)) / (np.max(npstack) - np.min(npstack))
+                            if args.crack_masks:
+                                save_chunk(np.squeeze(crack_mask.data.cpu().numpy()), log_path + name + 'mask' + str(epoch) + '_' + str(t) + '_' + str(offset))
                             gif(log_path + name + 'stack' + str(epoch) + '_' + str(t) + '_' + str(offset), 255 * npstack)
                             display_v(field.data.cpu().numpy()[:,::8,::8,:], log_path + name + '_field' + str(epoch) + '_' + str(t) + '_' + str(offset))
                             #[display_v(residuals[idx].data.cpu().numpy()[:,::2**(idx),::2**(idx),:], log_path + name + 'rfield' + str(epoch) + '_' + str(t) + '_' + str(idx)) for idx in range(1, len(residuals))]
 
-                        #if random.randint(0,1) == 0:
                         X_ = torch.cat((X[:,i-num_targets-offset:i-num_targets-offset+1], X[:,i-num_targets+1:i+1]), 1)
-                        a, b, pred_, field2, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), train=True)
-                        v = var_chunk(pred_)
-                        penalty1 = lambda1 * penalty([field2], crack_mask, border_mask, v)
+                        if args.crack_masks is not None:
+                            crack_mask = crack_stack[0,i-num_targets-offset].cuda()
+                        a, b, pred_, field2, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), crack_mask, train=True)
+                        
+                        penalty1 = lambda1 * penalty([field2], crack_mask, border_mask)
                         cost = err_train + smooth_factor * penalty1
                         (cost/2).backward(retain_graph=True)
                         errs.append(err_train.data[0])
                         penalties.append(penalty1.data[0])
 
                         consensus = args.unflow * torch.mean(mse(field, -field2))
-                        print consensus.data[0]
                         consensus.backward()
                         consensus_list.append(consensus.data[0])
                         
-                        #else:
-                        #    X_ = torch.cat((X[:,i-num_targets:i-num_targets+1], X[:,i-num_targets:i-num_targets+1]), 1)
-                        #    a, b, pred_, field, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), train=True)
-                        #    v = var_chunk(pred_)
-                        #    penalty1 = lambda1 * penalty([field], crack_mask, border_mask, v)
-                        #    cost = err_train + smooth_factor * penalty1
-                        #    (cost/2).backward()
-
                         optimizer.step()
                         model.zero_grad()
 
@@ -303,7 +305,8 @@ if __name__ == '__main__':
 
         preds = []
         ys = []
-        X = aug_stack(X_test, jitter=False, padding=padding)
+        stacks, top, left = aug_stacks([X_test], jitter=False, padding=padding)
+        X = stacks[0]
         for i in range(num_targets):
             if i == num_targets - 1:
                 preds.append(X[:,-1:])
