@@ -44,7 +44,7 @@ if args.coords is not None:
 if archived_coords is not None:
     print('Overwriting argument count ({}) with length of archived coordinates ({})'.format(args.count, len(archived_coords)))
     N = len(archived_coords)
-    print('Using fixed coordinates: {}'.format(archived_coords))
+    print('Using fixed coordinates')
 else:
     N = args.count
 
@@ -59,7 +59,12 @@ for i in range(N):
         coords_ = (ac[0] + ac[3], ac[1] + ac[3], ac[2] + ac[4])
     chunk, coords = get_chunk(coords, coords_)
     coord_record.append(coords)
-    dataset[i,:,:,:] = np.transpose(chunk, (2,0,1))
+    if chunk is not None:
+        dataset[i,:,:,:] = np.transpose(chunk, (2,0,1))
+    else:
+        print 'None chunk'
+        dataset[i,:,:,:] = 0
+
     print(i)
 
 record_file = open(args.name + '_' + ('test' if args.test else 'train') + '_mip' + str(args.mip) + 'coords.txt', 'w')
