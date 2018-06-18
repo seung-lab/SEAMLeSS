@@ -342,7 +342,6 @@ class EPyramid(nn.Module):
                 field_so_far = rfield + field_so_far
             if i != target_level:
                 field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
-            print(field_so_far.size())
         return field_so_far, residuals
 
 class PyramidTransformer(nn.Module):

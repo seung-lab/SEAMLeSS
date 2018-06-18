@@ -120,8 +120,8 @@ if __name__ == '__main__':
         p.requires_grad = not args.inference_only
     model.train(not args.inference_only)
 
-    train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser('~/../eam6/basil_raw_cropped_crack_train_mip5.h5'), basil=True, mask_smooth_factor=31)
-    test_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser('~/../eam6/basil_raw_cropped_crack_train_mip5.h5'), basil=True)
+    train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser('~/../eam6/basil_raw_cropped_crack_train_mip5.h5'), None, basil=True, mask_smooth_factor=31)
+    test_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser('~/../eam6/basil_raw_cropped_crack_train_mip5.h5'), None, basil=True)
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
@@ -203,7 +203,8 @@ if __name__ == '__main__':
         return input_src, target, pred, rfield, torch.mean(merr), residuals, crack_mask, (pred != 0).float()
 
     X_test = None
-    for idxx, (X, mask_test) in enumerate(test_loader):
+    for idxx, tensor_dict in enumerate(test_loader):
+        X = tensor_dict['X']
         X_test = Variable(X).cuda().detach()
         X_test.volatile = True
         if idxx > 1:
@@ -212,7 +213,7 @@ if __name__ == '__main__':
     for epoch in range(args.epoch, it):
         print('epoch', epoch)
         if not args.inference_only:
-            for t, (X, crack_stack) in enumerate(train_loader):
+            for t, tensor_dict in enumerate(train_loader):
                 if t == 0:
                     if epoch % fall_time == 0 and (trunclayer > 0 or args.trunc == 0):
                         fine_tuning = False or args.fine_tuning # only fine tune if running a tuning session
@@ -224,6 +225,8 @@ if __name__ == '__main__':
                             fine_tuning = True
                             optimizer = opt(trunclayer)
 
+                
+                X, crack_stack, fold_stack = tensor_dict['X'], tensor_dict['cm'], tensor_dict['fm']
                 # Get inputs
                 X = Variable(X, requires_grad=False)
                 crack_stack = Variable(crack_stack, requires_grad=False)
