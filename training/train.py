@@ -22,7 +22,6 @@ import h5py
 from analysis_helpers import display_v
 from pyramid import PyramidTransformer
 from dnet import UNet
-from disc import D
 from helpers import gif, save_chunk, center
 from aug import aug_stacks, aug_input, rotate_and_scale, crack
 
@@ -70,7 +69,6 @@ if __name__ == '__main__':
     parser.add_argument('--penalty', type=str, default='jacob')
     parser.add_argument('--crack_mask', action='store_false')
     parser.add_argument('--pred', action='store_true')
-    parser.add_argument('--disc', action='store_true')
     parser.add_argument('--paired', action='store_true')
     parser.add_argument('--skip_sample_aug', action='store_true')
     parser.add_argument('--crack_masks', type=str, default=None)
@@ -112,10 +110,6 @@ if __name__ == '__main__':
         print('Loading prednet...')
         prednet = UNet(3,1).cuda()
         prednet.load_state_dict(torch.load('../framenet/pt/dnet.pt'))
-
-    if args.disc:
-        print('Loading discriminator...')
-        disc = D(dim)
         
     if args.state_archive is None:
         model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=log_path + name).cuda()
