@@ -242,6 +242,8 @@ if __name__ == '__main__':
                         X_ = torch.cat((X[:,i:i+1], X[:,i-num_targets-offset:i-offset]), 1)
                         if args.crack_masks is not None:
                             crack_mask = crack_stack[0,i].cuda()
+                        else:
+                            crack_mask = None
                         a, b, pred_, field, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), crack_mask, train=True)
                         
                         penalty1 = lambda1 * penalty([field], crack_mask, border_mask)
@@ -263,6 +265,8 @@ if __name__ == '__main__':
                         X_ = torch.cat((X[:,i-num_targets-offset:i-num_targets-offset+1], X[:,i-num_targets+1:i+1]), 1)
                         if args.crack_masks is not None:
                             crack_mask = crack_stack[0,i-num_targets-offset].cuda()
+                        else:
+                            crack_mask = None
                         a, b, pred_, field2, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), crack_mask, train=True)
                         
                         penalty1 = lambda1 * penalty([field2], crack_mask, border_mask)
