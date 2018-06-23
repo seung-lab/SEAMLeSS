@@ -1,9 +1,8 @@
 # SEAMLeSS
-SEAMLeSS (under active development)
 
 Working repository for active development of the SEAMLeSS architecture for the purposes of aligning Basil. This codebase is 
 not intended to remain consistent with the 2018 NIPS submission "Siamese Encoding and Alignment by Multiscale Learning with 
-Self-Supervision" as it develops.
+Self-Supervision."
 
 ## Generating Data
 
@@ -23,8 +22,3 @@ self-documented within `train.py`. (TODO: document them here)
 
 To test a trained pyramid, run `python train.py --inference_only --state_archive pt/YOUR_ARCHIVE.pt NAME_OF_RUN`.
 
-
-## TODO:
-
-- Change training to train iteratively on entire stacks instead of training on individual pairs "in a vacuum."
-- Convert residual networks from predicting PyTorch grid sampler units to absolute pixel displacements

@@ -127,7 +127,7 @@ if __name__ == '__main__':
 
     hm_train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser(args.crack_masks) if args.crack_masks is not None else None, os.path.expanduser(args.fold_masks) if args.fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True)
     lm_train_dataset = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), os.path.expanduser(args.lm_crack_masks) if args.lm_crack_masks is not None else None, os.path.expanduser(args.lm_fold_masks) if args.lm_fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True, lm=True)
-    train_dataset = ConcatDataset([lm_train_dataset, lm_train_dataset])
+    train_dataset = ConcatDataset([lm_train_dataset])
     #test_dataset = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), os.path.expanduser(args.crack_masks) if args.crack_masks is not None else None, os.path.expanduser(args.fold_masks) if args.fold_masks is not None else None, basil=True)
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
     test_loader = train_loader# = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
@@ -274,7 +274,7 @@ if __name__ == '__main__':
                         
                         penalty1 = lambda1 * penalty([field], weights=smoothness_mask)
                         cost = err_train + smooth_factor * torch.sum(penalty1)
-                        (cost/2).backward(retain_graph=True)
+                        (cost/2).backward(retain_graph=args.unflow>0)
                         errs.append(err_train.data[0])
                         penalties.append(torch.sum(penalty1).data[0])
                         ##################################
@@ -313,7 +313,7 @@ if __name__ == '__main__':
                         
                         penalty1 = lambda1 * penalty([field2], weights=smoothness_mask)
                         cost = err_train + smooth_factor * torch.sum(penalty1)
-                        (cost/2).backward(retain_graph=True)
+                        (cost/2).backward(retain_graph=args.unflow>0)
                         errs.append(err_train.data[0])
                         penalties.append(torch.sum(penalty1).data[0])
                         ##################################

@@ -7,7 +7,6 @@ import numpy as np
 from unet2d import UNet
 from helpers import save_chunk, gif
 import random
-from analysis_helpers import display_v
 
 class Dense(nn.Module):
     def __init__(self, k=7, layers=4, fm=32, outfm=None, f=nn.ReLU(inplace=True)):
