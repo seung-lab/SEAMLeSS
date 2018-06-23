@@ -1,7 +1,5 @@
 import cloudvolume as cv
 import numpy as np
-import torch
-from torch.autograd import Variable
 
 class Sampler(object):
     def __init__(self, source='gs://neuroglancer/pinky40_v11/image', mip=1, dim=512, height=128):
@@ -27,7 +25,7 @@ class Sampler(object):
         except Exception as e:
             print('Exception {}'.format(e))
         if squeezed is not None:
-            print('Squeezed shape {}'.format(squeezed.shape))
+            print('Chunk shape {}'.format(squeezed.shape))
         return squeezed
 
     def random_sample(self, train=True, offsets=None, size=None, split=True):
@@ -35,7 +33,7 @@ class Sampler(object):
             offsets = self.vol_offsets
         if size is None:
             size = self.vol_size
-        print('params:', offsets, size)
+        #print('params:', offsets, size)
 
         x = np.random.randint(offsets[0], offsets[0] + size[0] - self.adj_dim)
         y = np.random.randint(offsets[1], offsets[1] + size[1] - self.adj_dim)
