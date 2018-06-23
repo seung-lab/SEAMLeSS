@@ -16,10 +16,10 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import random
 from stack_dataset import StackDataset
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 import h5py
 
-from analysis_helpers import display_v
+from helpers import display_v
 from pyramid import PyramidTransformer
 from dnet import UNet
 from helpers import gif, save_chunk, center
@@ -43,10 +43,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
     parser.add_argument('--unflow', type=float, default=0)
-    parser.add_argument('--alpha', type=float, default=1)
-    parser.add_argument('--crack', action='store_true')
+    parser.add_argument('--alpha', help='proportion of prediction to use for alignment when aligning to predictions', type=float, default=1)
+    parser.add_argument('--blank_var_threshold', type=float, default=0.005)
     parser.add_argument('--num_targets', type=int, default=1)
-    parser.add_argument('--lambda1', type=float, default=0.1)
+    parser.add_argument('--lambda1', help='total smoothness penalty coefficient', type=float, default=0.1)
+    parser.add_argument('--lambda2', help='smoothness penalty reduction around cracks/folds', type=float, default=0.3)
+    parser.add_argument('--lambda3', help='smoothness penalty reduction on top of cracks/folds', type=float, default=0.00001)
+    parser.add_argument('--lambda4', help='MSE multiplier in regions around folds', type=float, default=10)
     parser.add_argument('--skip', type=int, default=0)
     parser.add_argument('--no_anneal', action='store_true')
     parser.add_argument('--size', type=int, default=5)
@@ -71,8 +74,10 @@ if __name__ == '__main__':
     parser.add_argument('--pred', action='store_true')
     parser.add_argument('--paired', action='store_true')
     parser.add_argument('--skip_sample_aug', action='store_true')
-    parser.add_argument('--crack_masks', type=str, default=None)
-    parser.add_argument('--fold_masks', type=str, default=None)
+    parser.add_argument('--crack_masks', type=str, default='~/../eam6/basil_raw_cropped_crack_train_mip5.h5')
+    parser.add_argument('--fold_masks', type=str, default='~/../eam6/basil_raw_cropped_crack_train_mip5.h5')
+    parser.add_argument('--lm_crack_masks', type=str, default='~/../eam6/full_father_crack_train_mip5.h5')
+    parser.add_argument('--lm_fold_masks', type=str, default='~/../eam6/full_father_fold_train_mip5.h5')
     args = parser.parse_args()
 
     name = args.name
@@ -120,10 +125,12 @@ if __name__ == '__main__':
         p.requires_grad = not args.inference_only
     model.train(not args.inference_only)
 
-    train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser('~/../eam6/basil_raw_cropped_crack_train_mip5.h5'), None, basil=True, mask_smooth_factor=31)
-    test_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser('~/../eam6/basil_raw_cropped_crack_train_mip5.h5'), None, basil=True)
+    hm_train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser(args.crack_masks) if args.crack_masks is not None else None, os.path.expanduser(args.fold_masks) if args.fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True)
+    lm_train_dataset = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), os.path.expanduser(args.lm_crack_masks) if args.lm_crack_masks is not None else None, os.path.expanduser(args.lm_fold_masks) if args.lm_fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True, lm=True)
+    train_dataset = ConcatDataset([lm_train_dataset, lm_train_dataset])
+    #test_dataset = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), os.path.expanduser(args.crack_masks) if args.crack_masks is not None else None, os.path.expanduser(args.fold_masks) if args.fold_masks is not None else None, basil=True)
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
+    test_loader = train_loader# = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
 
     def opt(layer):
         params = []
@@ -155,25 +162,20 @@ if __name__ == '__main__':
     history = []
     print('=========== BEGIN TRAIN LOOP ============')
 
-    def run_sample(X, crack_mask=None, train=True):
+    def run_sample(X, mask=None, target_mask=None, train=True, vis=False):
         model.train(train)
         src, target = X[0,0], torch.squeeze(X[0,1:])
         
         if train and not args.skip_sample_aug:
-            # add an artificial crack
-            did_crack = False
-            if args.crack and crack_mask is None:
-                if random.randint(0,1) == 0:
-                    did_crack = True
-                    src, crack_mask = crack(src, width_range=(8,48))
-            
             # random flip
             should_rotate = random.randint(0,1) == 0
-            if should_rotate or did_crack:
+            if should_rotate:
                 src, grid = rotate_and_scale(src.unsqueeze(0).unsqueeze(0), None)
                 target = rotate_and_scale(target.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
-                if crack_mask is not None:
-                    crack_mask = rotate_and_scale(crack_mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
+                if mask is not None:
+                    mask = rotate_and_scale(mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
+                    target_mask = rotate_and_scale(target_mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
+                    
                 src = src.squeeze()
         
         input_src = src.clone()
@@ -189,18 +191,33 @@ if __name__ == '__main__':
                 
         pred, field, residuals = model.apply(input_src, input_target, trunclayer)
 
-        # resample some stuff with our new field prediction
-        pred = F.grid_sample(downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)).squeeze().unsqueeze(0).unsqueeze(0), field)
-        if crack_mask is not None:
-            crack_mask = F.grid_sample(downsample(trunclayer)(crack_mask.unsqueeze(0).unsqueeze(0)), field)
+        # resample with our new field prediction
+        pred = F.grid_sample(downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
+        if mask is not None:
+            mask = F.grid_sample(downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0)), field)
 
         rfield = field - get_identity_grid(field.size()[-2])
         target = downsample(trunclayer)(target.unsqueeze(0).unsqueeze(0)).squeeze()
-        border_mask = -nn.MaxPool2d(5,1,2)(-Variable((pred.data != 0) * (target.data != 0)).float())
+        
+        border_mse_mask = -nn.MaxPool2d(11,1,5)(-Variable((pred.data != 0) * (target.data != 0)).float())
+        crack_fold_mse_mask = (mask <= 1.0).float() if mask is not None else Variable(torch.ones(border_mse_mask.size())).cuda()
+        if target_mask is not None:
+            crack_fold_mse_mask[target_mask > 1] = 0
+        mse_weights = border_mse_mask * crack_fold_mse_mask
+        if mask is not None and args.lambda4 > 1:
+            mse_weights = mse_weights * (1 + (args.lambda4-1) * (mask == 1).float())
 
         err = mse(pred.squeeze(0).expand(num_targets, pred.size()[-1], pred.size()[-1]), target)
-        merr = err * border_mask
-        return input_src, target, pred, rfield, torch.mean(merr), residuals, crack_mask, (pred != 0).float()
+        merr = err * mse_weights
+        if vis:
+            save_chunk(np.squeeze(merr.data.cpu().numpy()), log_path + name + 'merr' + str(epoch) + '_' + str(t))
+        smoothness_mask = torch.max(mask, 2 * (pred == 0).float())
+
+        smoothness_weights = Variable(torch.ones(smoothness_mask.size()).cuda())
+        smoothness_weights[(smoothness_mask > 0).data] = args.lambda2 # everywhere we have non-standard smoothness, slightly reduce the smoothness penalty
+        smoothness_weights[(smoothness_mask > 1).data] = args.lambda3 # on top of cracks and folds only, significantly reduce the smoothness penalty
+
+        return input_src, input_target, pred, rfield, torch.mean(merr), residuals, smoothness_weights, mse_weights
 
     X_test = None
     for idxx, tensor_dict in enumerate(test_loader):
@@ -225,14 +242,13 @@ if __name__ == '__main__':
                             fine_tuning = True
                             optimizer = opt(trunclayer)
 
-                
-                X, crack_stack, fold_stack = tensor_dict['X'], tensor_dict['cm'], tensor_dict['fm']
+                X, mask_stack = tensor_dict['X'], tensor_dict['m']
                 # Get inputs
                 X = Variable(X, requires_grad=False)
-                crack_stack = Variable(crack_stack, requires_grad=False)
-                X, crack_stack = X.cuda(), crack_stack.cuda()
-                stacks, top, left = aug_stacks([X, crack_stack], padding=padding)
-                X, crack_stack = stacks[0], stacks[1]
+                mask_stack = Variable(mask_stack, requires_grad=False)
+                X, mask_stack = X.cuda(), mask_stack.cuda()
+                stacks, top, left = aug_stacks([X, mask_stack], padding=padding)
+                X, mask_stack = stacks[0], stacks[1]
                 
                 errs = []
                 penalties = []
@@ -242,64 +258,96 @@ if __name__ == '__main__':
                 batch = 6
                 for sample_idx, i in enumerate(random.sample(range(X.size()[1]-1, num_targets + hist_length - 1, -1), batch//hist_length)):
                     for offset in range(hist_length):
+                        ##################################
+                        # RUN SAMPLE FORWARD #############
+                        ##################################
                         X_ = torch.cat((X[:,i:i+1], X[:,i-num_targets-offset:i-offset]), 1)
-                        if args.crack_masks is not None:
-                            crack_mask = crack_stack[0,i].cuda()
+                        if min(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]) < args.blank_var_threshold:
+                            print "Skipping blank sections", torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]
+                            continue
+
+                        if args.crack_masks is not None or args.fold_masks is not None:
+                            mask = mask_stack[0,i].cuda()
                         else:
-                            crack_mask = None
-                        a, b, pred_, field, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), crack_mask, train=True)
+                            mask = None
+                        a, b, pred_, field, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_.detach(), mask, mask_stack[0,i-num_targets-offset:i-offset].squeeze().cuda(), train=True, vis=sample_idx == batch//hist_length-1 and (t % 4 == 0 or args.state_archive is not None))
                         
-                        penalty1 = lambda1 * penalty([field], crack_mask, border_mask)
-                        cost = err_train + smooth_factor * penalty1
+                        penalty1 = lambda1 * penalty([field], weights=smoothness_mask)
+                        cost = err_train + smooth_factor * torch.sum(penalty1)
                         (cost/2).backward(retain_graph=True)
                         errs.append(err_train.data[0])
-                        penalties.append(penalty1.data[0])
+                        penalties.append(torch.sum(penalty1).data[0])
+                        ##################################
                         
+                        ##################################
+                        # VISUALIZATION ##################
+                        ##################################
                         if sample_idx == batch//hist_length-1 and (t % 4 == 0 or args.state_archive is not None):
                             a_, b_ = downsample(trunclayer)(a.unsqueeze(0).unsqueeze(0)), b.unsqueeze(0).unsqueeze(0)
                             npstack = np.squeeze(torch.cat((a_,b_,pred_), 1).data.cpu().numpy())
                             npstack = (npstack - np.min(npstack)) / (np.max(npstack) - np.min(npstack))
-                            if args.crack_masks:
-                                save_chunk(np.squeeze(crack_mask.data.cpu().numpy()), log_path + name + 'mask' + str(epoch) + '_' + str(t) + '_' + str(offset))
+                            if args.crack_masks is not None or args.fold_masks is not None:
+                                save_chunk(np.squeeze(mask.data.cpu().numpy()), log_path + name + 'mask' + str(epoch) + '_' + str(t) + '_' + str(offset))
+                                save_chunk(np.squeeze(smoothness_mask.data.cpu().numpy()), log_path + name + 'smask' + str(epoch) + '_' + str(t) + '_' + str(offset))
+                                save_chunk(np.squeeze(mse_mask.data.cpu().numpy()), log_path + name + 'mmask' + str(epoch) + '_' + str(t) + '_' + str(offset))
                             gif(log_path + name + 'stack' + str(epoch) + '_' + str(t) + '_' + str(offset), 255 * npstack)
-                            display_v(field.data.cpu().numpy()[:,::8,::8,:], log_path + name + '_field' + str(epoch) + '_' + str(t) + '_' + str(offset))
-                            #[display_v(residuals[idx].data.cpu().numpy()[:,::2**(idx),::2**(idx),:], log_path + name + 'rfield' + str(epoch) + '_' + str(t) + '_' + str(idx)) for idx in range(1, len(residuals))]
+                            npfield = field.data.cpu().numpy()
+                            display_v(npfield, log_path + name + '_field' + str(epoch) + '_' + str(t) + '_' + str(offset))
+                            npfield[:,:,:,0] = npfield[:,:,:,0] - np.mean(npfield[:,:,:,0])
+                            npfield[:,:,:,1] = npfield[:,:,:,1] - np.mean(npfield[:,:,:,1])
+                            display_v(npfield, log_path + name + '_cfield' + str(epoch) + '_' + str(t) + '_' + str(offset))
+                            np_sp = np.squeeze(penalty1.data.cpu().numpy())
+                            np_sp = (np_sp - np.min(np_sp)) / (np.max(np_sp) - np.min(np_sp))
+                            save_chunk(np_sp, log_path + name + 'ferr' + str(epoch) + '_' + str(t) + '_' + str(offset))
+                        ##################################
 
+                        ##################################
+                        # RUN SAMPLE BACKWARD ###
+                        ##################################
                         X_ = torch.cat((X[:,i-num_targets-offset:i-num_targets-offset+1], X[:,i-num_targets+1:i+1]), 1)
-                        if args.crack_masks is not None:
-                            crack_mask = crack_stack[0,i-num_targets-offset].cuda()
+                        if args.crack_masks is not None or args.fold_masks is not None:
+                            mask = mask_stack[0,i-num_targets-offset].cuda()
                         else:
-                            crack_mask = None
-                        a, b, pred_, field2, err_train, residuals, crack_mask, border_mask = run_sample(X_.detach(), crack_mask, train=True)
+                            mask = None
+                        a, b, pred_, field2, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_.detach(), mask, mask_stack[0,i-num_targets+1:i+1].squeeze().cuda(), train=True)
                         
-                        penalty1 = lambda1 * penalty([field2], crack_mask, border_mask)
-                        cost = err_train + smooth_factor * penalty1
+                        penalty1 = lambda1 * penalty([field2], weights=smoothness_mask)
+                        cost = err_train + smooth_factor * torch.sum(penalty1)
                         (cost/2).backward(retain_graph=True)
                         errs.append(err_train.data[0])
-                        penalties.append(penalty1.data[0])
+                        penalties.append(torch.sum(penalty1).data[0])
+                        ##################################
 
+                        ##################################
+                        # CONSENSUS PENALTY COMPUTATION ##
+                        ##################################
                         consensus = args.unflow * torch.mean(mse(field, -field2))
-                        consensus.backward()
+                        if args.unflow > 0:
+                            consensus.backward()
                         consensus_list.append(consensus.data[0])
+                        ##################################
                         
                         optimizer.step()
                         model.zero_grad()
 
                 # Save some info
-                mean_err_train = sum(errs) / len(errs)
-                mean_penalty_train = sum(penalties) / len(penalties)
-                mean_consensus = sum(consensus_list) / len(consensus_list)
-                print(t, smooth_factor, trunclayer, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus)
-                history.append((time.time() - start_time, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus))
-                torch.save(model.state_dict(), 'pt/' + name + '.pt')
+                if len(errs) > 0:
+                    mean_err_train = sum(errs) / len(errs)
+                    mean_penalty_train = sum(penalties) / len(penalties)
+                    mean_consensus = sum(consensus_list) / len(consensus_list)
+                    print(t, smooth_factor, trunclayer, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus)
+                    history.append((time.time() - start_time, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus))
+                    torch.save(model.state_dict(), 'pt/' + name + '.pt')
 
-                print('Writing status to: ', log_file)
-                with open(log_file, 'a') as log:
-                    for tr in history:
-                        for val in tr:
-                            log.write(str(val) + ', ')
-                        log.write('\n')
-                    history = []
+                    print('Writing status to: ', log_file)
+                    with open(log_file, 'a') as log:
+                        for tr in history:
+                            for val in tr:
+                                log.write(str(val) + ', ')
+                            log.write('\n')
+                        history = []
+                else:
+                    print "Skipped writing status for blank stack"
 
         if trunclayer > 0:
             continue
@@ -321,8 +369,7 @@ if __name__ == '__main__':
             if len(preds) >= 3 and args.pred:
                 target_ = target_ * args.alpha + prednet(torch.cat(preds[-3:], 1)).squeeze(0) * (1 - args.alpha)
             X_ = torch.cat((X[:,i-1:i], target_), 1)
-            a, b, pred, field, err, residuals, crack_mask, border_mask = run_sample(X_, train=False)
-            penalty([field], crack_mask, border_mask)
+            a, b, pred, field, err, residuals, smoothness_mask, mse_mask = run_sample(X_, train=False)
             if args.inference_only and args.archive_fields:
                 step = len(residuals) - 1 - skiplayers
                 print('Archiving vector fields...')

@@ -6,8 +6,7 @@ import numpy as np
 import random
 import time
 
-from helpers import reverse_dim
-from helpers import save_chunk
+from helpers import reverse_dim, save_chunk, gif
 
 def apply_grid(stack, grid):
     for sliceidx in range(stack.size(1)):
@@ -89,19 +88,21 @@ def jitter_stacks(Xs, displacement=32, cut_range=(32,72)):
                     Xs_[ii][:,i,:xoff,:yoff] = srcXs[ii][:,i,-xoff:,-yoff:]
 
             Xs_[ii][:,i:i+1] = rotate_and_scale(Xs_[ii][:,i:i+1])[0]
-            cut = random.randint(cut_range[0], cut_range[1])
-            r = random.randint(4,7)
-            if r == 4:
-                Xs_[ii][:,i,:cut,:] = 0
-            elif r == 5:
-                Xs_[ii][:,i,-cut:,:] = 0
-            elif r == 6:
-                Xs_[ii][:,i,:,:cut] = 0
-            elif r == 7:
-                Xs_[ii][:,i,:,-cut:] = 0
+            if ii == 0: # we only want to cut our images; we're assuming the images are first in Xs_, then masks 
+                cut = random.randint(cut_range[0], cut_range[1])
+                r = random.randint(4,7)
+                if r == 4:
+                    Xs_[ii][:,i,:cut,:] = 0
+                elif r == 5:
+                    Xs_[ii][:,i,-cut:,:] = 0
+                elif r == 6:
+                    Xs_[ii][:,i,:,:cut] = 0
+                elif r == 7:
+                    Xs_[ii][:,i,:,-cut:] = 0
             Xs_[ii][:,i:i+1] = rotate_and_scale(Xs_[ii][:,i:i+1])[0]
 
-    return rotate_and_scale(Xs_, size=None)[0] if should_rotate else Xs_
+    Xs_ = rotate_and_scale(Xs_, size=None)[0] if should_rotate else Xs_
+    return Xs_
 
 def gen_gradient(size, flip=True, periods=1, peak=0.5):
     grad = torch.zeros(size)

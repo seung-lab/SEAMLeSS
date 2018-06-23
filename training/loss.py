@@ -45,20 +45,15 @@ def tv(fields):
     return field
 
 def smoothness_penalty(ptype):
-    def penalty(fields, crack_mask, border_mask, weights=None):
+    def penalty(fields, weights=None):
         if ptype ==     'lap': field = lap(fields)
         elif ptype == 'jacob': field = jacob(fields)
         elif ptype ==    'tv': field = tv(fields)
         else: crash # invalid penalty
         
-        crack_mask = -nn.MaxPool2d(9,1,4)(-crack_mask) if crack_mask is not None else Variable(torch.ones(border_mask.size())).cuda()
-        border_mask = nn.MaxPool2d(5,1,2)(border_mask)
-        mask = (border_mask * crack_mask).view(field.size())
-        if mask is not None:
-            field = field * mask
         if weights is not None:
             field = field * weights
-        return torch.sum(field)
+        return field
     return penalty
     
 def similarity_score(should_reduce=False):
