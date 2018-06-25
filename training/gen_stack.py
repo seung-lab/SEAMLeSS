@@ -4,7 +4,6 @@ import h5py
 import argparse
 import sys
 import ast
-from helpers import gif
 import time
 
 name = sys.argv[1]
@@ -62,9 +61,6 @@ def get_chunk(coords=None, coords_=None):
                     print('Zero chunk')
                     chunk = None
                     continue
-            #gif('chunk', np.transpose(chunk, (2,0,1)))
-            #gif('mask', np.transpose(mask, (2,0,1)))
-            #time.sleep(3)
             return chunk, coords, mask
     else:
         chunk = sampler.chunk_at_global_coords(coords, coords_)

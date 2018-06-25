@@ -33,6 +33,8 @@ def jacob(fields):
     field = torch.sum(torch.cat(fields, -1) ** 2, -1)
     return field
 
+
+
 def tv(fields):
     def dx(f):
         p = Variable(torch.zeros((1,1,f.size(1),2))).cuda()
