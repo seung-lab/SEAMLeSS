@@ -33,6 +33,11 @@ class Sampler(object):
             offsets = self.vol_offsets
         if size is None:
             size = self.vol_size
+        print 'b', offsets,size
+        if 'basil' in self.source:
+            offsets = (184000, 35500, offsets[2])
+            size = (16000, 14000, size[2])
+        print 'a', offsets,size
         #print('params:', offsets, size)
 
         x = np.random.randint(offsets[0], offsets[0] + size[0] - self.adj_dim)

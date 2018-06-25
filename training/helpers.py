@@ -6,29 +6,77 @@ from moviepy.editor import ImageSequenceClip
 import collections
 import torch
 from torch.autograd import Variable
+from skimage.transform import rescale
 
 def get_colors(angles, f, c):
     colors = f(angles)
     colors = c(colors)
     return colors
 
-def display_v(vfield, name):
+def dv(vfield, name=None):
     dim = vfield.shape[-2]
     assert type(vfield) == np.ndarray
-
+    
     lengths = np.squeeze(np.sqrt(vfield[:,:,:,0] ** 2 + vfield[:,:,:,1] ** 2))
     lengths = (lengths - np.min(lengths)) / (np.max(lengths) - np.min(lengths))
     angles = np.squeeze(np.angle(vfield[:,:,:,0] + vfield[:,:,:,1]*1j))
 
-    scolors = get_colors(angles, f=np.sin, c=cm.magma)
-    ccolors = get_colors(angles, f=np.cos, c=cm.Wistia)
+    angles = (angles - np.min(angles)) / (np.max(angles) - np.min(angles)) * np.pi
+    angles -= np.pi/8
+    angles[angles<0] += np.pi
+    off_angles = angles + np.pi/4
+    off_angles[off_angles>np.pi] -= np.pi
+    
+    scolors = get_colors(angles, f=lambda x: np.sin(x) ** 1.4, c=cm.viridis)
+    ccolors = get_colors(off_angles, f=lambda x: np.sin(x) ** 1.4, c=cm.magma)
 
     # mix
     scolors[:,:,0] = ccolors[:,:,0]
-    scolors[:,:,2] = (ccolors[:,:,2] + scolors[:,:,2]) / 2
-    scolors[:,:,-1] = lengths
+    scolors[:,:,1] = (ccolors[:,:,1] + scolors[:,:,1]) / 2
+    scolors = scolors[:,:,:-1] #
+    scolors = 1 - (1 - scolors) * lengths.reshape((dim, dim, 1)) ** .8 #
 
-    plt.imsave(name + '.png', scolors)
+    if name is not None:
+        plt.imsave(name + '.png', scolors)
+    else:
+        return scolors
+
+def np_upsample(img, factor):
+    if img.ndim == 2:
+        return rescale(img, factor)
+    elif img.ndim == 3:
+        b = np.empty((img.shape[0] * factor, img.shape[1] * factor, img.shape[2]))
+        for idx in range(img.shape[2]):
+            b[:,:,idx] = np_upsample(img[:,:,idx], factor)
+        return b
+    else:
+        crash
+                     
+def display_v(vfield, name=None):
+    if type(vfield) == list:
+        dim = max([vf.shape[-2] for vf in vfield])
+        vlist = [np.expand_dims(np_upsample(vf[0], dim/vf.shape[-2]), axis=0) for vf in vfield]
+        for idx, _ in enumerate(vlist[1:]):
+            vlist[idx+1] += vlist[idx]
+        imgs = [dv(vf) for vf in vlist]
+        gif(name, np.stack(imgs) * 255)
+    else:
+        assert (name is not None)
+        dv(vfield, name)
+    
+def dvl(V_pred, name):
+    plt.figure(figsize=(6,6))
+    X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
+    U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
+    colors = np.arctan2(U,V)   # true angle
+    plt.title('V_pred')
+    plt.gca().invert_yaxis()
+    Q = plt.quiver(X, Y, U, V, colors, scale=6, width=0.002, angles='uv', pivot='tail')
+    qk = plt.quiverkey(Q, 10.0, 10.0, 2, r'$2 \frac{m}{s}$', labelpos='E', \
+                       coordinates='figure')
+
+    plt.savefig(name + '.png')
+    plt.clf()
 
 def reverse_dim(var, dim):
     idx = range(var.size()[dim] - 1, -1, -1)

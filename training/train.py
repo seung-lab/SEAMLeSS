@@ -17,12 +17,14 @@ import matplotlib.pyplot as plt
 import random
 from stack_dataset import StackDataset
 from torch.utils.data import DataLoader, ConcatDataset
-import h5py
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore",category=FutureWarning)
+    import h5py
 
-from helpers import display_v
 from pyramid import PyramidTransformer
 from dnet import UNet
-from helpers import gif, save_chunk, center
+from helpers import gif, save_chunk, center, display_v, dvl
 from aug import aug_stacks, aug_input, rotate_and_scale, crack
 
 from loss import similarity_score, smoothness_penalty
@@ -43,7 +45,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
     parser.add_argument('--unflow', type=float, default=0)
-    parser.add_argument('--alpha', help='proportion of prediction to use for alignment when aligning to predictions', type=float, default=1)
+    parser.add_argument('--alpha', help='(1 - proportion) of prediction to use for alignment when aligning to predictions', type=float, default=1)
     parser.add_argument('--blank_var_threshold', type=float, default=0.005)
     parser.add_argument('--num_targets', type=int, default=1)
     parser.add_argument('--lambda1', help='total smoothness penalty coefficient', type=float, default=0.1)
@@ -111,6 +113,9 @@ if __name__ == '__main__':
     if not os.path.isdir('pt'):
         os.makedirs('pt')
 
+    with open(log_path + 'args.txt', 'a') as f:
+        f.write(str(args))
+    
     if args.pred:
         print('Loading prednet...')
         prednet = UNet(3,1).cuda()
@@ -126,8 +131,9 @@ if __name__ == '__main__':
     model.train(not args.inference_only)
 
     hm_train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser(args.crack_masks) if args.crack_masks is not None else None, os.path.expanduser(args.fold_masks) if args.fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True)
-    lm_train_dataset = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), os.path.expanduser(args.lm_crack_masks) if args.lm_crack_masks is not None else None, os.path.expanduser(args.lm_fold_masks) if args.lm_fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True, lm=True)
-    train_dataset = ConcatDataset([lm_train_dataset])
+    lm_train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), os.path.expanduser(args.lm_crack_masks) if args.lm_crack_masks is not None else None, os.path.expanduser(args.lm_fold_masks) if args.lm_fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True, lm=True)
+    lm_train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/dense_folds_train_mip2.h5'), os.path.expanduser('~/../eam6/dense_folds_crack_train_mip5.h5'), os.path.expanduser('~/../eam6/dense_folds_fold_train_mip5.h5'), basil=True, threshold_masks=True, combine_masks=True, lm=True)
+    train_dataset = ConcatDataset([lm_train_dataset1, lm_train_dataset2, lm_train_dataset2])
     #test_dataset = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), os.path.expanduser(args.crack_masks) if args.crack_masks is not None else None, os.path.expanduser(args.fold_masks) if args.fold_masks is not None else None, basil=True)
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
     test_loader = train_loader# = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
@@ -205,19 +211,21 @@ if __name__ == '__main__':
             crack_fold_mse_mask[target_mask > 1] = 0
         mse_weights = border_mse_mask * crack_fold_mse_mask
         if mask is not None and args.lambda4 > 1:
-            mse_weights = mse_weights * (1 + (args.lambda4-1) * (mask == 1).float())
-
+            mse_weights = mse_weights * (1 + (args.lambda4-1) * (mask > 0).float() * (mask < 2).float())
+            if target_mask is not None:
+                mse_weights = mse_weights * (1 + (args.lambda4-1) * (target_mask > 0).float() * (target_mask < 2).float())
         err = mse(pred.squeeze(0).expand(num_targets, pred.size()[-1], pred.size()[-1]), target)
         merr = err * mse_weights
         if vis:
             save_chunk(np.squeeze(merr.data.cpu().numpy()), log_path + name + 'merr' + str(epoch) + '_' + str(t))
-        smoothness_mask = torch.max(mask, 2 * (pred == 0).float())
+        smoothness_mask = torch.max(mask, 2 * (pred == 0).float()) if mask is not None else 2 * (pred == 0).float()
 
         smoothness_weights = Variable(torch.ones(smoothness_mask.size()).cuda())
         smoothness_weights[(smoothness_mask > 0).data] = args.lambda2 # everywhere we have non-standard smoothness, slightly reduce the smoothness penalty
         smoothness_weights[(smoothness_mask > 1).data] = args.lambda3 # on top of cracks and folds only, significantly reduce the smoothness penalty
-
-        return input_src, input_target, pred, rfield, torch.mean(merr), residuals, smoothness_weights, mse_weights
+        hpred = pred.clone().detach()
+        hpred[(mask > 1).detach()] = torch.min(pred).data[0]
+        return input_src, input_target, pred, hpred, rfield, torch.mean(merr), residuals, smoothness_weights, mse_weights
 
     X_test = None
     for idxx, tensor_dict in enumerate(test_loader):
@@ -270,7 +278,7 @@ if __name__ == '__main__':
                             mask = mask_stack[0,i].cuda()
                         else:
                             mask = None
-                        a, b, pred_, field, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_.detach(), mask, mask_stack[0,i-num_targets-offset:i-offset].squeeze().cuda(), train=True, vis=sample_idx == batch//hist_length-1 and (t % 4 == 0 or args.state_archive is not None))
+                        a, b, pred_, hpred_, field, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_.detach(), mask, mask_stack[0,i-num_targets-offset:i-offset].squeeze().cuda(), train=True, vis=sample_idx == batch//hist_length-1 and (t % 4 == 0 or args.state_archive is not None))
                         
                         penalty1 = lambda1 * penalty([field], weights=smoothness_mask)
                         cost = err_train + smooth_factor * torch.sum(penalty1)
@@ -286,16 +294,22 @@ if __name__ == '__main__':
                             a_, b_ = downsample(trunclayer)(a.unsqueeze(0).unsqueeze(0)), b.unsqueeze(0).unsqueeze(0)
                             npstack = np.squeeze(torch.cat((a_,b_,pred_), 1).data.cpu().numpy())
                             npstack = (npstack - np.min(npstack)) / (np.max(npstack) - np.min(npstack))
+                            nphstack = np.squeeze(torch.cat((a_,b_,hpred_), 1).data.cpu().numpy())
+                            nphstack = (nphstack - np.min(nphstack)) / (np.max(nphstack) - np.min(nphstack))
                             if args.crack_masks is not None or args.fold_masks is not None:
                                 save_chunk(np.squeeze(mask.data.cpu().numpy()), log_path + name + 'mask' + str(epoch) + '_' + str(t) + '_' + str(offset))
                                 save_chunk(np.squeeze(smoothness_mask.data.cpu().numpy()), log_path + name + 'smask' + str(epoch) + '_' + str(t) + '_' + str(offset))
                                 save_chunk(np.squeeze(mse_mask.data.cpu().numpy()), log_path + name + 'mmask' + str(epoch) + '_' + str(t) + '_' + str(offset))
                             gif(log_path + name + 'stack' + str(epoch) + '_' + str(t) + '_' + str(offset), 255 * npstack)
+                            gif(log_path + name + 'hstack' + str(epoch) + '_' + str(t) + '_' + str(offset), 255 * nphstack)
+                            
                             npfield = field.data.cpu().numpy()
                             display_v(npfield, log_path + name + '_field' + str(epoch) + '_' + str(t) + '_' + str(offset))
                             npfield[:,:,:,0] = npfield[:,:,:,0] - np.mean(npfield[:,:,:,0])
                             npfield[:,:,:,1] = npfield[:,:,:,1] - np.mean(npfield[:,:,:,1])
                             display_v(npfield, log_path + name + '_cfield' + str(epoch) + '_' + str(t) + '_' + str(offset))
+                            display_v([r.data.cpu().numpy() for r in residuals[1:]], log_path + name + '_rfield' + str(epoch) + '_' + str(t) + '_' + str(offset))
+
                             np_sp = np.squeeze(penalty1.data.cpu().numpy())
                             np_sp = (np_sp - np.min(np_sp)) / (np.max(np_sp) - np.min(np_sp))
                             save_chunk(np_sp, log_path + name + 'ferr' + str(epoch) + '_' + str(t) + '_' + str(offset))
@@ -309,7 +323,7 @@ if __name__ == '__main__':
                             mask = mask_stack[0,i-num_targets-offset].cuda()
                         else:
                             mask = None
-                        a, b, pred_, field2, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_.detach(), mask, mask_stack[0,i-num_targets+1:i+1].squeeze().cuda(), train=True)
+                        a, b, pred_, hpred_, field2, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_.detach(), mask, mask_stack[0,i-num_targets+1:i+1].squeeze().cuda(), train=True)
                         
                         penalty1 = lambda1 * penalty([field2], weights=smoothness_mask)
                         cost = err_train + smooth_factor * torch.sum(penalty1)
@@ -369,7 +383,7 @@ if __name__ == '__main__':
             if len(preds) >= 3 and args.pred:
                 target_ = target_ * args.alpha + prednet(torch.cat(preds[-3:], 1)).squeeze(0) * (1 - args.alpha)
             X_ = torch.cat((X[:,i-1:i], target_), 1)
-            a, b, pred, field, err, residuals, smoothness_mask, mse_mask = run_sample(X_, train=False)
+            a, b, pred, hpred, field, err, residuals, smoothness_mask, mse_mask = run_sample(X_, train=False)
             if args.inference_only and args.archive_fields:
                 step = len(residuals) - 1 - skiplayers
                 print('Archiving vector fields...')

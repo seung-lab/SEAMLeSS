@@ -1,4 +1,7 @@
-import h5py
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore",category=FutureWarning)
+    import h5py
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
@@ -67,7 +70,7 @@ class StackDataset(Dataset):
         fm_px = np.zeros(fm.shape)
         for i in range(fm_px.shape[0]):
             fmi = fm[i].astype(np.uint8) * 255
-            fmis = self.mean_filter(fmi, radius=3 if not self.lm else 23) / 255.0 # 22
+            fmis = self.mean_filter(fmi, radius=3 if not self.lm else 23) / 255.0
             fmis[fmis < 0.85] = 0
             fmis[fmis >= 0.85] = 1
             fm_px[i] = fmis
