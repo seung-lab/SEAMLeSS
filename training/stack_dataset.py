@@ -27,8 +27,8 @@ class StackDataset(Dataset):
 
     def contrast(self, t):
         zeromask = (t == 0)
-        t[t < 150] = 150
-        t[t > 200] = 200
+        t[t < 145] = 145
+        t[t > 210] = 210
         t *= 255.0 / 50
         t = t - np.min(t) + 1
         t[zeromask] = 0
