@@ -44,6 +44,7 @@ if __name__ == '__main__':
  
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
+    parser.add_argument('--hm', action='store_true', default=True)
     parser.add_argument('--unflow', type=float, default=0)
     parser.add_argument('--alpha', help='(1 - proportion) of prediction to use for alignment when aligning to predictions', type=float, default=1)
     parser.add_argument('--blank_var_threshold', type=float, default=0.005)
@@ -130,13 +131,16 @@ if __name__ == '__main__':
         p.requires_grad = not args.inference_only
     model.train(not args.inference_only)
 
-    hm_train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser(args.crack_masks) if args.crack_masks is not None else None, os.path.expanduser(args.fold_masks) if args.fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True)
-    lm_train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), os.path.expanduser(args.lm_crack_masks) if args.lm_crack_masks is not None else None, os.path.expanduser(args.lm_fold_masks) if args.lm_fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True, lm=True)
-    lm_train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/dense_folds_train_mip2.h5'), os.path.expanduser('~/../eam6/dense_folds_crack_train_mip5.h5'), os.path.expanduser('~/../eam6/dense_folds_fold_train_mip5.h5'), basil=True, threshold_masks=True, combine_masks=True, lm=True)
-    train_dataset = ConcatDataset([lm_train_dataset1, lm_train_dataset2, lm_train_dataset2])
-    #test_dataset = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), os.path.expanduser(args.crack_masks) if args.crack_masks is not None else None, os.path.expanduser(args.fold_masks) if args.fold_masks is not None else None, basil=True)
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
-    test_loader = train_loader# = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0, pin_memory=True)
+    if args.hm:
+        train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser(args.crack_masks) if args.crack_masks is not None else None, os.path.expanduser(args.fold_masks) if args.fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True)
+        train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
+    else:
+        lm_train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), os.path.expanduser(args.lm_crack_masks) if args.lm_crack_masks is not None else None, os.path.expanduser(args.lm_fold_masks) if args.lm_fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True, lm=True) # dataset pulled from all of Basil
+        lm_train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/dense_folds_train_mip2.h5'), os.path.expanduser('~/../eam6/dense_folds_crack_train_mip5.h5'), os.path.expanduser('~/../eam6/dense_folds_fold_train_mip5.h5'), basil=True, threshold_masks=True, combine_masks=True, lm=True) # dataset focused on extreme folds
+        train_dataset = ConcatDataset([lm_train_dataset2, lm_train_dataset2, lm_train_dataset1])
+        train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
+
+    test_loader = train_loader
 
     def opt(layer):
         params = []
