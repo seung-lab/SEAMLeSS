@@ -5,39 +5,42 @@ from model.xmas import Xmas
 
 class Process(object):
     """docstring for Process."""
-    def __init__(self, path='model_repository/epf6.pt', cuda=True, is_Xmas=False, dim=1280):
+    def __init__(self, path, mip, cuda=True, is_Xmas=False, dim=1280, skip=0, topskip=0, contrast=True):
         super(Process, self).__init__()
         self.cuda = cuda
-        self.is_Xmas = is_Xmas
-        if self.is_Xmas:
-            self.height = 4
-            self.model = Xmas().load(archive_path=path, height=self.height, skips=0, cuda=cuda)
-            self.convs = self.model.G_level
-            self.skip = 0
-            self.mip = 2
-        else:
-            self.height = 7
-            self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=0, cuda=cuda, dim=dim)
-            self.skip = self.model.pyramid.skip
-            self.convs = self.model.pyramid.mlist
-            self.mip = 3 # hardcoded to be the mip that the model was trained at
+        self.height = 7
+        self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=skip, topskips=topskip, cuda=cuda, dim=dim)
+        self.skip = self.model.pyramid.skip
+        self.convs = self.model.pyramid.mlist
+        self.mip = mip
+        self.dim = dim
+        self.should_contrast = contrast
 
-    def process(self, s, t, level=0, crop=0):
+    def contrast(self, t):
+        print('b', np.min(t), np.max(t))
+        zeromask = (t == 0)
+        l,h = 150.0, 200.0
+        t[t < l/255.0] = l/255.0
+        t[t > h/255.0] = h/255.0
+        t *= 255.0 / (h-l)
+        t -= np.min(t)
+        t += 1.0/255.0
+        t[zeromask] = 0
+        print('a', np.min(t), np.max(t))
+        
+    def process(self, s, t, level=0, crop=0):        
         if level != self.mip:
             return None
-        if level < self.mip + self.skip or level > self.mip + self.height - 1:
-            return None
+        if self.should_contrast:
+            self.contrast(s)
+            self.contrast(t)
         level -= self.mip
-        x = (t, s) if self.is_Xmas else (s, t)
-        x = torch.from_numpy(np.stack(x, axis=1))
+        x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
         x = torch.autograd.Variable(x, requires_grad=False)
         res = self.model(x)[1] - self.model.pyramid.get_identity_grid(x.size(3))
-        if self.is_Xmas:
-            res = res.permute(0,2,3,1)
-        if not self.is_Xmas:
-            res *= (res.shape[-2] / 2) * (2 ** self.mip) * 2 # why do we need the extra factor of two?
+        res *= (res.shape[-2] / 2) * (2 ** self.mip) * 2 # why do we need the extra factor of two?
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
         return res.data.cpu().numpy()

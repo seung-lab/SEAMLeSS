@@ -14,8 +14,8 @@ from pathos.multiprocessing import ProcessPool, ThreadPool
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
-               render_low_mip=2, render_high_mip=8, is_Xmas=False, threads = 10,
-               max_chunk = (1024, 1024), max_render_chunk = (2048*2, 2048*2)):
+               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads = 10,
+               max_chunk = (1024, 1024), max_render_chunk = (2048*2, 2048*2), skip=0, topskip=0, should_contrast=True):
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip  = render_low_mip
@@ -39,7 +39,7 @@ class Aligner:
     self.x_res_ng_paths = [os.path.join(r, 'x') for r in self.res_ng_paths]
     self.y_res_ng_paths = [os.path.join(r, 'y') for r in self.res_ng_paths]
 
-    self.net = Process(model_path, is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2)
+    self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip)
 
     self.dst_chunk_sizes   = []
     self.dst_voxel_offsets = []
@@ -262,7 +262,7 @@ class Aligner:
 
     #preprocess divides by 256 and puts it into right dimensions
     #this data range is good already, so mult by 256
-    return self.preprocess_data(result * 256)
+    return self.preprocess_data(result * 255)
 
   def downsample_patch(self, ng_path, z, bbox, mip):
     in_data = self.get_image_data(ng_path, z, bbox, mip - 1)
@@ -274,7 +274,7 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = float_patch[0, :, :, np.newaxis]
-    uint_patch = (np.multiply(patch, 256)).astype(np.uint8)
+    uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
     cv(ng_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
                                   progress=False)[x_range[0]:x_range[1],
                                                   y_range[0]:y_range[1], z] = uint_patch
@@ -304,7 +304,7 @@ class Aligner:
   def preprocess_data(self, data):
     sd = np.squeeze(data)
     ed = np.expand_dims(sd, 0)
-    nd = np.divide(ed, float(256.0), dtype=np.float32)
+    nd = np.divide(ed, float(255.0), dtype=np.float32)
     return nd
 
   def get_image_data(self, path, z, bbox, mip):
