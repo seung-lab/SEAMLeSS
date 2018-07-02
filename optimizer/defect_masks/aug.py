@@ -4,8 +4,14 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 import random
+import time
 
 from helpers import reverse_dim
+
+def apply_grid(stack, grid):
+    for sliceidx in range(stack.size(1)):
+        stack[:,sliceidx:sliceidx+1] = F.grid_sample(stack[:,sliceidx:sliceidx+1], grid)
+    return stack
 
 def rotate_and_scale(imslice, size=0.003, scale=0.005, grid=None):
     if size is None:
@@ -15,18 +21,19 @@ def rotate_and_scale(imslice, size=0.003, scale=0.005, grid=None):
     scale = np.random.normal(1, scale)
     if grid is None:
         mat = torch.FloatTensor([[[np.cos(theta),-np.sin(theta),0],[np.sin(theta),np.cos(theta),0]]]) * scale
-        grid = F.affine_grid(mat, imslice.size())
-        if imslice.is_cuda:
+        grid = F.affine_grid(mat, imslice.size() if type(imslice) != list else imslice[0].size())
+        if (imslice.is_cuda if type(imslice) != list else imslice[0].is_cuda):
             grid = grid.cuda()
-    output = Variable(torch.zeros(imslice.size())).cuda()
-    for sliceidx in range(output.size(1)):
-        output[:,sliceidx:sliceidx+1] = F.grid_sample(imslice[:,sliceidx:sliceidx+1], grid)
+    if type(imslice) == list:
+        output = [apply_grid(o.clone(), grid) for o in imslice]
+    else:
+        output = apply_grid(imslice.clone(), grid)
     return output, grid
 
-def crack(imslice, width_range=(1,2)):
+def crack(imslice, width_range=(4,32)):
     width = np.random.randint(width_range[0], width_range[1])
-    pos = [random.randint(width+1,imslice.size()[-1]-1)]
-    prob = random.randint(2,10)
+    pos = [random.randint(imslice.size()[-1]/4,imslice.size()[-1]-imslice.size()[-1]/4)]
+    prob = random.randint(4,10)
     left = random.randint(0,1) == 0
     for _ in range(imslice.size()[-1]-1):
         r = random.randint(0,prob)
@@ -40,69 +47,112 @@ def crack(imslice, width_range=(1,2)):
         if pos[-1] <= width or pos[-1] >= imslice.size()[-1]:
             pos.pop()
             break
-    black = random.randint(0,1) == 0
+    #black = random.randint(0,1) == 0
+    color_mean = np.random.uniform()
     outslice = imslice.clone()
     mask = Variable(torch.ones(outslice.size())).cuda()
     for idx, p in enumerate(pos):
         outslice.data[idx,:p-width] = outslice.data[idx,width:p]
-        color = np.random.uniform(0.01, 0.15) if black else np.random.uniform(0.85, 0.99)
+        color = torch.cuda.FloatTensor(np.random.normal(color_mean, 0.2, width)).clamp(min=0,max=1)
         if torch.max(outslice.data[idx,width:p]) > 0:
             outslice.data[idx,p-width:p] = color
         mask.data[idx,p-width:p] = 0
     return outslice, mask
 
-def jitter_stack(X, displacement=1, cut_range=(32,72)):
+def jitter_stacks(Xs, displacement=32, cut_range=(32,72)):
+    assert len(Xs) > 0
     should_rotate = random.randint(0,1) == 0
-    srcX = rotate_and_scale(X, size=None)[0] if should_rotate else X
-    X_ = Variable(torch.zeros(X.size()))
-    if X.is_cuda:
-        X_ = X_.cuda()
-
-    X_[:,-1] = X[:,-1]
-    for i in range(X.size()[1] - 1, -1, -1):
+    srcXs = rotate_and_scale(Xs, size=None)[0] if should_rotate else Xs
+    Xs_ = [Variable(torch.zeros(X.size())) for X in Xs]
+    if Xs[0].is_cuda:
+        Xs_ = [X_.cuda() for X_ in Xs_]
+    for i in range(len(Xs)):
+        Xs_[i][:,-1] = Xs[i][:,-1]
+    for i in range(Xs[0].size()[1] - 1, -1, -1):
         xoff = 0
         while xoff == 0:
             xoff = random.randint(-displacement, displacement)
         yoff = 0
         while yoff == 0:
             yoff = random.randint(-displacement, displacement)
-        if xoff >= 0:
-            if yoff >= 0:
-                X_[:,i,xoff:,yoff:] = srcX[:,i,:-xoff,:-yoff]
+        for ii in range(len(Xs_)):
+            if xoff >= 0:
+                if yoff >= 0:
+                    Xs_[ii][:,i,xoff:,yoff:] = srcXs[ii][:,i,:-xoff,:-yoff]
+                else:
+                    Xs_[ii][:,i,xoff:,:yoff] = srcXs[ii][:,i,:-xoff,-yoff:]
             else:
-                X_[:,i,xoff:,:yoff] = srcX[:,i,:-xoff,-yoff:]
-        else:
-            if yoff >= 0:
-                X_[:,i,:xoff,yoff:] = srcX[:,i,-xoff:,:-yoff]
+                if yoff >= 0:
+                    Xs_[ii][:,i,:xoff,yoff:] = srcXs[ii][:,i,-xoff:,:-yoff]
+                else:
+                    Xs_[ii][:,i,:xoff,:yoff] = srcXs[ii][:,i,-xoff:,-yoff:]
+
+            Xs_[ii][:,i:i+1] = rotate_and_scale(Xs_[ii][:,i:i+1])[0]
+            if ii == 0: # we only want to cut our images; we're assuming the images are first in Xs_, then masks 
+                cut = random.randint(cut_range[0], cut_range[1])
+                r = random.randint(4,7)
+                if r == 4:
+                    Xs_[ii][:,i,:cut,:] = 0
+                elif r == 5:
+                    Xs_[ii][:,i,-cut:,:] = 0
+                elif r == 6:
+                    Xs_[ii][:,i,:,:cut] = 0
+                elif r == 7:
+                    Xs_[ii][:,i,:,-cut:] = 0
+            Xs_[ii][:,i:i+1] = rotate_and_scale(Xs_[ii][:,i:i+1])[0]
+
+    Xs_ = rotate_and_scale(Xs_, size=None)[0] if should_rotate else Xs_
+    return Xs_
+
+def gen_gradient(size, flip=True, periods=1, peak=0.5):
+    grad = torch.zeros(size)
+    peak *= np.random.uniform(0,1)
+    for period in range(periods):
+        for idx in range(size[-1] // periods):
+            if period % 2 == 0:
+                grad[idx + period * (size[-1] // periods),:] = (float(idx) / (size[-1] / periods)) * peak
             else:
-                X_[:,i,:xoff,:yoff] = srcX[:,i,-xoff:,-yoff:]
+                grad[idx + period * (size[-1] // periods),:] = peak - (float(idx) / (size[-1] / periods)) * peak
+    grad -= torch.mean(grad)
+    grad = Variable(grad)
+    if flip:
+        grad = grad.permute(1,0)
+    if random.randint(0,1) == 0:
+        grad = reverse_dim(grad, 0)
+    if random.randint(0,1) == 0:
+        grad = reverse_dim(grad, 1)
+    if random.randint(0,1) == 0:
+        grad = -grad
+    grad = rotate_and_scale(grad.unsqueeze(0).unsqueeze(0), None, 0.1)[0].squeeze()
+    return grad.cuda()
 
-        X_[:,i:i+1] = rotate_and_scale(X_[:,i:i+1])[0]
-        cut = random.randint(cut_range[0], cut_range[1])
-        r = random.randint(4,7)
-        if r == 4:
-            X_[:,i,:cut,:] = 0
-        elif r == 5:
-            X_[:,i,-cut:,:] = 0
-        elif r == 6:
-            X_[:,i,:,:cut] = 0
-        elif r == 7:
-            X_[:,i,:,-cut:] = 0
-        X_[:,i:i+1] = rotate_and_scale(X_[:,i:i+1])[0]
+def aug_brightness(X, factor=3.0):
+    zero_mask = X==0
+    if random.randint(0,1) == 0:
+        flip = random.randint(0,1) == 0
+        periods = random.randint(1,10)
+        X = X + gen_gradient(X.size(), flip, periods)
 
-    return rotate_and_scale(X_, size=None)[0] if should_rotate else X_
-
-def aug_brightness(X):
-    r = random.randint(0,1)
+    r = random.randint(0,3)
     if r == 0:
-        return X / np.random.uniform(1,5)
-    else:
-        return 1 - (1 - X) / np.random.uniform(1,5)
+        X = X / np.random.uniform(1,factor)
+    elif r == 1:
+        X = 1 - (1 - X) / np.random.uniform(1,factor)
+    elif r == 2:
+        X = X / np.random.uniform(1/factor,1)
+    elif r == 3:
+        X = 1 - (1 - X) / np.random.uniform(1/factor,1)
+    if random.randint(0,1) == 0:
+        flip = random.randint(0,1) == 0
+        periods = random.randint(1,10)
+        X = X + gen_gradient(X.size(), flip, periods)
+    X[zero_mask] = 0
+    return X
 
-def aug_input(x):
+def aug_input(x, factor=3.0):
     idx = random.randint(0,x.size()[0]-1)
     out = x if len(x.size()) == 2 else x[idx].clone()
-    squares = random.randint(0,3)
+    squares = random.randint(0,5)
     for _ in range(squares):
         dimx = random.randint(1,x.size()[-2]/4)
         dimy = random.randint(1,x.size()[-2]/4)
@@ -110,9 +160,9 @@ def aug_input(x):
         ry = random.randint(0, x.size()[-2] - dimy)
         r = random.randint(0,3)
         if r == 0:
-            out[rx:rx+dimx,ry:ry+dimy] = out[rx:rx+dimx,ry:ry+dimy] / np.random.uniform(1,5)
+            out[rx:rx+dimx,ry:ry+dimy] = out[rx:rx+dimx,ry:ry+dimy] / np.random.uniform(1,factor)
         elif r == 1:
-            out[rx:rx+dimx,ry:ry+dimy] = 1 - (1 - out[rx:rx+dimx,ry:ry+dimy]) / np.random.uniform(1,5)
+            out[rx:rx+dimx,ry:ry+dimy] = 1 - (1 - out[rx:rx+dimx,ry:ry+dimy]) / np.random.uniform(1,factor)
         elif r == 2:
             out[rx:rx+dimx,ry:ry+dimy] = 0
         elif r == 3:
@@ -123,33 +173,33 @@ def aug_input(x):
         out2[idx] = out
         out = out2
 
-    if random.randint(0,1) == 0:
-        out = aug_brightness(out)
+    out = aug_brightness(out, factor)
 
     return out
 
-def pad_stack(stack, total_padding):
-    dim = stack.size()[-1]
+def pad_stacks(stacks, total_padding):
+    dim = stacks[0].size()[-1]
     top, left = random.randint(total_padding//4, total_padding-total_padding//4), random.randint(total_padding//4, total_padding-total_padding//4)
     padder = nn.ConstantPad2d((left, total_padding - left, top, total_padding - top), 0)
-    return padder(stack)
+    return [padder(stack) for stack in stacks], top, left
 
-def flip_stack(X):
+def flip_stacks(Xs):
     if random.randint(0,1) == 0:
-        X = reverse_dim(X, 1)
+        Xs = [reverse_dim(X, 1) for X in Xs]
     if random.randint(0,1) == 0:
-        X = reverse_dim(X, 2)
+        Xs = [reverse_dim(X, 2) for X in Xs]
     if random.randint(0,1) == 0:
-        X = reverse_dim(X, 3)
+        Xs = [reverse_dim(X, 3) for X in Xs]
     if random.randint(0,1) == 0:
-        X = X.permute(0,1,3,2)
-    return X
+        Xs = [X.permute(0,1,3,2) for X in Xs]
+    return Xs
 
-def aug_stack(X, jitter=True, pad=True, flip=True, padding=128):
+def aug_stacks(Xs, jitter=True, pad=True, flip=True, padding=128, jitter_displacement=32):
     if jitter:
-        X = jitter_stack(X)
+        Xs = jitter_stacks(Xs, displacement=jitter_displacement)
+    top, left = 0, 0
     if pad:
-        X = pad_stack(X, padding)
+        Xs, top, left = pad_stacks(Xs, padding)
     if flip:
-        X = flip_stack(X)
-    return X
+        Xs = flip_stacks(Xs)
+    return Xs, top, left
