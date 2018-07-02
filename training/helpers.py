@@ -8,12 +8,64 @@ import torch
 from torch.autograd import Variable
 from skimage.transform import rescale
 
+size_map = [
+    'number of out channels',
+    'number of in channels',
+    'kernel x dimension',
+    'kernel y dimension'
+]
+
+def copy_state_to_model(archive_params, model):
+    model_params = dict(model.named_parameters())
+    archive_keys = archive_params.keys()
+    model_keys = sorted(model_params.keys())
+    archive_keys = sorted([k for k in archive_keys if 'seq' not in k])
+    assert len(archive_keys) <= len(model_keys)
+
+    approx = 0
+    skipped = 0
+    for key in archive_keys:
+        if key not in model_keys:
+            print('[WARNING]   Key ' + key + ' present in archive but not in model; skipping.')
+            skipped += 1
+            continue
+
+        min_size = [min(mdim,adim) for mdim, adim in zip(list(model_params[key].size()), list(archive_params[key].size()))]
+        msize, asize = model_params[key].size(), archive_params[key].size()
+        if msize != asize:
+            approx += 1
+            wrong_dim = -1
+            for dim in range(len(msize)):
+                if msize[dim] != asize[dim]:
+                    wrong_dim = dim
+                    break
+            print('[WARNING]   ' + key + ' has different ' + size_map[wrong_dim] + ' in model and archive: ' + str(model_params[key].size()) + ', ' + str(archive_params[key].size()))
+            varchive = torch.std(archive_params[key])
+            vmodel = torch.std(model_params[key])
+            model_params[key].data -= torch.mean(model_params[key].data)
+            model_params[key].data *= ((varchive / 5) / vmodel).data[0]
+            model_params[key].data += torch.mean(archive_params[key])
+
+        min_size_slices = tuple([slice(*(s,)) for s in min_size])
+        model_params[key].data[min_size_slices] = archive_params[key][min_size_slices]
+        
+        if 'enc' not in key and msize != asize and wrong_dim == 1:
+            fm_count = asize[1]/2
+            chunks = (msize[1]-fm_count)/(asize[1]-fm_count)
+            for i in range(1,chunks+1):
+                model_params[key].data[:,i*fm_count:(i+1)*fm_count] = archive_params[key][:,fm_count:] / (i+1)
+            model_params[key].data[:,fm_count:] /= sum([1.0/k for k in range(2,chunks+2)])
+            means = torch.zeros(model_params[key].data[:,fm_count:].size())
+            std = varchive/5
+            model_params[key].data[:,fm_count:] += torch.normal(means, std).cuda()
+    print('Copied ' + str(len(model_keys) - approx) + ' parameters exactly, ' + str(approx) + ' parameters partially. Skipped ' + str(skipped) + ' parameters.')
+
 def get_colors(angles, f, c):
     colors = f(angles)
     colors = c(colors)
     return colors
 
-def dv(vfield, name=None):
+def dv(vfield, name=None, downsample=0.25):
     dim = vfield.shape[-2]
     assert type(vfield) == np.ndarray
     
@@ -36,16 +88,18 @@ def dv(vfield, name=None):
     scolors = scolors[:,:,:-1] #
     scolors = 1 - (1 - scolors) * lengths.reshape((dim, dim, 1)) ** .8 #
 
+    img = np_upsample(scolors, downsample) if downsample is not None else scolors
+    
     if name is not None:
-        plt.imsave(name + '.png', scolors)
+        plt.imsave(name + '.png', img)
     else:
-        return scolors
+        return img
 
 def np_upsample(img, factor):
     if img.ndim == 2:
         return rescale(img, factor)
     elif img.ndim == 3:
-        b = np.empty((img.shape[0] * factor, img.shape[1] * factor, img.shape[2]))
+        b = np.empty((int(img.shape[0] * factor), int(img.shape[1] * factor), img.shape[2]))
         for idx in range(img.shape[2]):
             b[:,:,idx] = np_upsample(img[:,:,idx], factor)
         return b
@@ -98,9 +152,25 @@ def center(var, dims, d):
         var = var.narrow(dim, d[idx]/2, var.size()[dim] - d[idx])
     return var
 
-def save_chunk(chunk, name):
-    plt.imsave(name + '.png', 1 - chunk, cmap='Greys')
-
+def save_chunk(chunk, name, norm=True):
+    if type(chunk) != np.ndarray:
+        try:
+            if chunk.is_cuda:
+                chunk = chunk.data.cpu().numpy()
+            else:
+                chunk = chunk.data.numpy()
+        except Exception as e:
+            if chunk.is_cuda:
+                chunk = chunk.cpu().numpy()
+            else:
+                chunk = chunk.numpy()
+    if norm:
+        chunk[:50,:50] = 0
+        chunk[:10,:10] = 1
+        chunk[-50:,-50:] = 1
+        chunk[-10:,-10:] = 0
+    plt.imsave(name + '.png', 1 - np.squeeze(chunk), cmap='Greys')
+        
 def gif(filename, array, fps=8, scale=1.0):
     """Creates a gif given a stack of images using moviepy
     >>> X = randn(100, 64, 64)
@@ -125,6 +195,12 @@ def gif(filename, array, fps=8, scale=1.0):
     if array.ndim == 3:
         array = array[..., np.newaxis] * np.ones(3)
 
+    # add 'signature' block to top left and bottom right
+    array[:,:50,:50] = 0
+    array[:,:10,:10] = 255
+    array[:,-50:,-50:] = 255
+    array[:,-10:,-10:] = 0
+        
     # make the moviepy clip
     clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
     clip.write_gif(filename, fps=fps, verbose=False)
