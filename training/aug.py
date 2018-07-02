@@ -14,12 +14,18 @@ def apply_grid(stack, grid):
     return stack
 
 def rotate_and_scale(imslice, size=0.003, scale=0.005, grid=None):
-    if size is None:
-        theta = np.random.uniform(0, 2 * np.pi)
+    if type(imslice) == list:
+        for _ in range(4 - len(imslice[0].size())):
+            imslice = [o.unsqueeze(0) for o in imslice]
     else:
-        theta = np.random.normal(0, size)
-    scale = np.random.normal(1, scale)
+        for _ in range(4 - len(imslice.size())):
+            imslice = imslice.unsqueeze(0)
     if grid is None:
+        if size is None:
+            theta = np.random.uniform(0, 2 * np.pi)
+        else:
+            theta = np.random.normal(0, size)
+        scale = np.random.normal(1, scale)
         mat = torch.FloatTensor([[[np.cos(theta),-np.sin(theta),0],[np.sin(theta),np.cos(theta),0]]]) * scale
         grid = F.affine_grid(mat, imslice.size() if type(imslice) != list else imslice[0].size())
         if (imslice.is_cuda if type(imslice) != list else imslice[0].is_cuda):
@@ -47,7 +53,7 @@ def crack(imslice, width_range=(4,32)):
         if pos[-1] <= width or pos[-1] >= imslice.size()[-1]:
             pos.pop()
             break
-    #black = random.randint(0,1) == 0
+
     color_mean = np.random.uniform()
     outslice = imslice.clone()
     mask = Variable(torch.ones(outslice.size())).cuda()
@@ -59,7 +65,7 @@ def crack(imslice, width_range=(4,32)):
         mask.data[idx,p-width:p] = 0
     return outslice, mask
 
-def jitter_stacks(Xs, displacement=32, cut_range=(32,72)):
+def jitter_stacks(Xs, displacement=32, min_cut=32):
     assert len(Xs) > 0
     should_rotate = random.randint(0,1) == 0
     srcXs = rotate_and_scale(Xs, size=None)[0] if should_rotate else Xs
@@ -88,6 +94,7 @@ def jitter_stacks(Xs, displacement=32, cut_range=(32,72)):
                     Xs_[ii][:,i,:xoff,:yoff] = srcXs[ii][:,i,-xoff:,-yoff:]
 
             Xs_[ii][:,i:i+1] = rotate_and_scale(Xs_[ii][:,i:i+1])[0]
+            cut_range = (min_cut, Xs_[ii].size(-1)//3)
             if ii == 0: # we only want to cut our images; we're assuming the images are first in Xs_, then masks 
                 cut = random.randint(cut_range[0], cut_range[1])
                 r = random.randint(4,7)
@@ -104,7 +111,10 @@ def jitter_stacks(Xs, displacement=32, cut_range=(32,72)):
     Xs_ = rotate_and_scale(Xs_, size=None)[0] if should_rotate else Xs_
     return Xs_
 
-def gen_gradient(size, flip=True, periods=1, peak=0.5):
+def gen_gradient(size, flip=None, period_median=25, peak=1):
+    if flip is None:
+        flip = random.randint(0,1) == 0
+    periods = int(1 + np.random.exponential(-np.log(.5)*period_median))
     grad = torch.zeros(size)
     peak *= np.random.uniform(0,1)
     for period in range(periods):
@@ -126,47 +136,87 @@ def gen_gradient(size, flip=True, periods=1, peak=0.5):
     grad = rotate_and_scale(grad.unsqueeze(0).unsqueeze(0), None, 0.1)[0].squeeze()
     return grad.cuda()
 
-def aug_brightness(X, factor=3.0):
-    zero_mask = X==0
-    if random.randint(0,1) == 0:
-        flip = random.randint(0,1) == 0
-        periods = random.randint(1,10)
-        X = X + gen_gradient(X.size(), flip, periods)
+def aug_brightness(X, factor=3.0, mask=False):
+    # Assuming we get an input within [0,1]
+    assert torch.min(X).data[0] >= 0
+    assert torch.max(X).data[0] <= 1
+    
+    gradients = random.randint(0,2)
+    for _ in range(gradients):
+        X = X + gen_gradient(X.size())
 
-    r = random.randint(0,3)
-    if r == 0:
-        X = X / np.random.uniform(1,factor)
-    elif r == 1:
-        X = 1 - (1 - X) / np.random.uniform(1,factor)
-    elif r == 2:
-        X = X / np.random.uniform(1/factor,1)
-    elif r == 3:
-        X = 1 - (1 - X) / np.random.uniform(1/factor,1)
-    if random.randint(0,1) == 0:
-        flip = random.randint(0,1) == 0
-        periods = random.randint(1,10)
-        X = X + gen_gradient(X.size(), flip, periods)
-    X[zero_mask] = 0
+    X = X.clamp(min=0,max=1)
+    compress = random.randint(0,1) == 0
+    severity = np.random.uniform(1,factor)
+    if compress:
+        X = X / severity
+    else:
+        X = X * severity
+
     return X
+
+"""
+# Historical note:
+# I don't understand why this doesn't work- an issue with PyTorch in-place operations?
+def translate(chunk, x, y):
+    chunk[:,:,x:] = chunk[:,:,:-x]
+    chunk[:,:,:x] = 0
+    chunk[:,:,:,y:] = chunk[:,:,:,:-y]
+    chunk[:,:,:,:y] = 0
+
+    return chunk
+"""
+
+def translate(chunk, x, y):
+    out = torch.zeros(chunk.size())
+    if chunk.is_cuda:
+        out = out.cuda()
+    out[:,:,:-x,:-y] = chunk[:,:,x:,y:]
+    return out
+
+def displace_slice(stack, slice_idx, aux, displacement=32):
+    stack, grid = rotate_and_scale(stack, None)
+    aux = [rotate_and_scale(a, grid=grid)[0] for a in aux]
+    x = random.randint(1, displacement)
+    y = random.randint(1, displacement)
+    stack[:,slice_idx:slice_idx+1] = Variable(translate(stack.data[:,slice_idx:slice_idx+1], x, y))
+    aux = [Variable(translate(a.data, x, y)) for a in aux]
+    stack, grid = rotate_and_scale(stack, None)
+    aux = [rotate_and_scale(a, grid=grid)[0].squeeze() for a in aux]
+    return stack, aux
+                      
+def random_rect_mask(size):
+    dimx = random.randint(1,size[-2]/2)
+    dimy = random.randint(1,size[-2]/2)
+    mx = size[-2]/2-dimx/2
+    my = size[-2]/2-dimy/2
+    prerotated_centered = Variable(torch.zeros(size)).cuda()
+    prerotated_centered[mx:mx+dimx,my:my+dimy] = 1
+    rotated_centered, _ = rotate_and_scale(prerotated_centered, None, 0)
+    upper_bound = int(size[-2]/2 - max(dimx,dimy) / np.sqrt(2))
+    dx = random.randint(1, upper_bound)
+    dy = random.randint(1, upper_bound)
+    off_centered = Variable(translate(rotated_centered.data, dx, dy))
+    output, _ = rotate_and_scale(off_centered, None, 0)
+    output[output > 0] = 1
+    return output.byte()
 
 def aug_input(x, factor=3.0):
     idx = random.randint(0,x.size()[0]-1)
     out = x if len(x.size()) == 2 else x[idx].clone()
-    squares = random.randint(0,5)
-    for _ in range(squares):
-        dimx = random.randint(1,x.size()[-2]/4)
-        dimy = random.randint(1,x.size()[-2]/4)
-        rx = random.randint(0, x.size()[-2] - dimx)
-        ry = random.randint(0, x.size()[-2] - dimy)
-        r = random.randint(0,3)
-        if r == 0:
-            out[rx:rx+dimx,ry:ry+dimy] = out[rx:rx+dimx,ry:ry+dimy] / np.random.uniform(1,factor)
-        elif r == 1:
-            out[rx:rx+dimx,ry:ry+dimy] = 1 - (1 - out[rx:rx+dimx,ry:ry+dimy]) / np.random.uniform(1,factor)
-        elif r == 2:
-            out[rx:rx+dimx,ry:ry+dimy] = 0
-        elif r == 3:
-            out[rx:rx+dimx,ry:ry+dimy] = 1
+    contrast_cutouts = random.randint(0,5)
+    missing_cutouts = random.randint(0,2)
+    for _ in range(contrast_cutouts):
+        mask = random_rect_mask(x.size())
+        out[mask] = out[mask] / np.random.uniform(1,factor)
+        out[mask] = out[mask] + np.random.uniform(0,1-torch.max(out[mask]).data[0])
+
+    missing_masks = []
+            
+    for _ in range(missing_cutouts):
+        mask = random_rect_mask(x.size())
+        missing_masks.append(mask)
+        out[mask] = np.random.uniform(0,1)
 
     if len(x.size()) == 3:
         out2 = x.clone()
@@ -175,7 +225,7 @@ def aug_input(x, factor=3.0):
 
     out = aug_brightness(out, factor)
 
-    return out
+    return out, missing_masks
 
 def pad_stacks(stacks, total_padding):
     dim = stacks[0].size()[-1]

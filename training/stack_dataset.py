@@ -25,11 +25,11 @@ class StackDataset(Dataset):
     def __len__(self):
         return self.dataset.shape[0]
 
-    def contrast(self, t):
+    def contrast(self, t, l=145, h=210):
         zeromask = (t == 0)
-        t[t < 145] = 145
-        t[t > 210] = 210
-        t *= 255.0 / 50
+        t[t < l] = l
+        t[t > h] = h
+        t *= 255.0 / (h-l+1)
         t = t - np.min(t) + 1
         t[zeromask] = 0
         return t
@@ -70,7 +70,7 @@ class StackDataset(Dataset):
         fm_px = np.zeros(fm.shape)
         for i in range(fm_px.shape[0]):
             fmi = fm[i].astype(np.uint8) * 255
-            fmis = self.mean_filter(fmi, radius=3 if not self.lm else 23) / 255.0
+            fmis = self.mean_filter(fmi, radius=1 if not self.lm else 23) / 255.0
             fmis[fmis < 0.85] = 0
             fmis[fmis >= 0.85] = 1
             fm_px[i] = fmis
@@ -78,7 +78,7 @@ class StackDataset(Dataset):
                 fmi = self.mean_filter(fmi, radius=150) / 255.0
                 fmi[fmi > 0.05] = 1
                 fmi[fmi <= 0.05] = 0
-            fm[i] = fmi
+                fm[i] = fmi
         return fm + fm_px
 
     def np_upsample(self, a):
@@ -114,7 +114,7 @@ class StackDataset(Dataset):
         t = torch.FloatTensor(t)
 
         # Returns masks of the same size as the image tensor, where a 0 in the mask
-        #  indicated 'normal', a 1 in the mask indicates the neighborhood impacted
+        #  indicates unaffected locations, a 1 in the mask indicates the neighborhood impacted
         #  by the crack or fold, and a 2 indicates the location of the crack or fold itself
 
         if self.combine_masks:
