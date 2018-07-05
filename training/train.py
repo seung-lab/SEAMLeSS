@@ -15,6 +15,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import random
+
 from stack_dataset import StackDataset
 from torch.utils.data import DataLoader, ConcatDataset
 import warnings
@@ -23,7 +24,8 @@ with warnings.catch_warnings():
     import h5py
 
 from pyramid import PyramidTransformer
-from dnet import UNet
+#from dnet import UNet
+from defect_net import *
 from helpers import gif, save_chunk, center, display_v, dvl, copy_state_to_model, reverse_dim
 from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
 
@@ -131,22 +133,27 @@ if __name__ == '__main__':
         print('Loading prednet...')
         prednet = UNet(3,1).cuda()
         prednet.load_state_dict(torch.load('../framenet/pt/dnet.pt'))
-        
+
     if args.state_archive is None:
         model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=log_path + name, target_weights=(tuple(args.target_weights) if args.target_weights is not None else None)).cuda()
     else:
         model = PyramidTransformer.load(args.state_archive, height=size, dim=dim, skips=skiplayers, k=kernel_size, dilate=dilate, unet=unet, num_targets=num_targets, name=log_path + name, target_weights=(tuple(args.target_weights) if args.target_weights is not None else None))
 
+    defect_net = torch.load('basil_defect_unet_mip518070305').cpu().cuda() if args.hm else torch.load('basil_defect_unet18070201').cpu().cuda()
+
     for p in model.parameters():
         p.requires_grad = not args.inference_only
     model.train(not args.inference_only)
 
+    for p in defect_net.parameters():
+        p.requires_grad = False
+    
     if args.hm:
-        train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), os.path.expanduser(args.crack_masks) if args.crack_masks is not None else None, os.path.expanduser(args.fold_masks) if args.fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True)
+        train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'))
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
     else:
-        lm_train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), os.path.expanduser(args.lm_crack_masks) if args.lm_crack_masks is not None else None, os.path.expanduser(args.lm_fold_masks) if args.lm_fold_masks is not None else None, basil=True, threshold_masks=True, combine_masks=True, lm=True) # dataset pulled from all of Basil
-        lm_train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/dense_folds_train_mip2.h5'), os.path.expanduser('~/../eam6/dense_folds_crack_train_mip5.h5'), os.path.expanduser('~/../eam6/dense_folds_fold_train_mip5.h5'), basil=True, threshold_masks=True, combine_masks=True, lm=True) # dataset focused on extreme folds
+        lm_train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5')) # dataset pulled from all of Basil
+        lm_train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/dense_folds_train_mip2.h5')) # dataset focused on extreme folds
         train_dataset = ConcatDataset([lm_train_dataset1, lm_train_dataset2])
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
 
@@ -182,6 +189,52 @@ if __name__ == '__main__':
     history = []
     print('=========== BEGIN TRAIN LOOP ============')
 
+    def contrast(t, l=145, h=210):
+        zeromask = (t == 0)
+        t[t < l] = l
+        t[t > h] = h
+        t *= 255.0 / (h-l+1)
+        t = (t - torch.min(t) + 1) / 255.
+        t[zeromask] = 0
+        return t
+    
+    def net_preprocess(stack):
+        weights = np.array(
+            [[1./48, 1./24, 1./48],
+             [1./24, 3./4,  1./24],
+             [1./48, 1./24, 1./48]]
+        )
+
+        kernel = Variable(torch.FloatTensor(weights).expand(10,1,3,3), requires_grad=False).cuda()
+        stack = F.conv2d(stack, kernel, padding=1, groups=10) / 255.0
+
+        for idx in range(stack.size(1)):
+            stack[:,idx] = stack[:,idx] - torch.mean(stack[:,idx])
+            stack[:,idx] = stack[:,idx] / (torch.std(stack[:,idx]) + 1e-6)
+        stack = stack.detach()
+        stack.volatile = True
+        return stack
+
+    def net_postprocess(raw_output, binary_threshold=0.4, minor_dilation_radius=1, major_dilation_radius=75):
+        sigmoided = F.sigmoid(raw_output)
+        pooled = F.max_pool2d(sigmoided, minor_dilation_radius*2+1, stride=1, padding=minor_dilation_radius)
+        smoothed = F.avg_pool2d(pooled, minor_dilation_radius*2+1, stride=1, padding=minor_dilation_radius, count_include_pad=False)
+        smoothed[smoothed > binary_threshold] = 1
+        smoothed[smoothed <= binary_threshold] = 0
+        dilated = F.max_pool2d(smoothed, major_dilation_radius*2+1, stride=1, padding=major_dilation_radius)
+        final_output = smoothed + dilated
+        final_output.volatile = False
+        return final_output
+
+    def cfm_from_stack(stack):
+        stack = net_preprocess(stack).detach()
+        raw_output = torch.cat([torch.max(defect_net(stack[:,i:i+1]),1,keepdim=True)[0] for i in range(stack.size(1))], 1)
+        final_output = net_postprocess(raw_output)
+        gif('stack', np.squeeze(stack.data.cpu().numpy()))
+        gif('raw', np.squeeze(raw_output.data.cpu().numpy()))
+        gif('final', np.squeeze(final_output.data.cpu().numpy()))
+        return final_output
+        
     def run_sample(X, mask=None, target_mask=None, train=True, vis=False):
         model.train(train)
         src, target = X[0,0], torch.squeeze(X[0,1:])
@@ -205,30 +258,24 @@ if __name__ == '__main__':
         target_cutout_masks = []
 
         if train and not args.skip_sample_aug:
-            if random.randint(0,1) == 0:
-                input_src, src_cutout_masks = aug_input(input_src)
-            if random.randint(0,1) == 0:
-                if num_targets > 1:
-                    good_slice = random.randint(0, num_targets - 1)
-                    black_slice = random.randint(0, num_targets - 1)
-                    input_targets, target_cutout_mask_arrays = [], []
-                    for target_idx in range(num_targets):
-                        if target_idx != good_slice:
-                            aug_target, target_cutout_masks = aug_input(input_target[target_idx].clone())
-                            input_targets.append(aug_target)
-                            target_cutout_mask_arrays.append(target_cutout_masks)
-                        else:
-                            input_targets.append(input_target[target_idx])
-                            target_cutout_masks.append([])
-                        if target_idx == black_slice and random.randint(0,1) == 0:
-                            input_targets[target_idx] = Variable(torch.zeros(input_targets[target_idx].size())).cuda()
-                    target_cutout_masks = [inner for outer in target_cutout_mask_arrays for inner in outer]
-                    target_cutout_masks = []
-                    input_target = torch.cat([s.unsqueeze(0) for s in input_targets], 0)
-                else:
-                    input_target, target_cutout_masks = aug_input(input_target)
+            input_src, src_cutout_masks = aug_input(input_src)
+            if num_targets > 1:
+                black_slice = random.randint(0, num_targets - 1)
+                input_targets, target_cutout_mask_arrays = [], []
+                for target_idx in range(num_targets):
+                    aug_target, target_cutout_masks = aug_input(input_target[target_idx].clone())
+                    input_targets.append(aug_target)
+                    target_cutout_mask_arrays.append(target_cutout_masks)
+
+                    if target_idx == black_slice and random.randint(0,1) == 0:
+                        input_targets[target_idx] = Variable(torch.zeros(input_targets[target_idx].size())).cuda()
+                target_cutout_masks = [inner for outer in target_cutout_mask_arrays for inner in outer]
+                input_target = torch.cat([s.unsqueeze(0) for s in input_targets], 0)
+            else:
+                input_target, target_cutout_masks = aug_input(input_target)
         else:
             print 'Skipping sample-wise augmentation...'
+
         pred, field, residuals = model.apply(input_src, input_target, trunclayer)
 
         # resample with our new field prediction
@@ -266,6 +313,8 @@ if __name__ == '__main__':
         merr = err * mse_weights
 
         if vis:
+            save_chunk(np.squeeze(mask.data.cpu().numpy()), log_path + name + 'src_mask' + str(epoch) + '_' + str(t), norm=False)
+            save_chunk(np.squeeze(target_mask.data.cpu().numpy()), log_path + name + 'target_mask' + str(epoch) + '_' + str(t), norm=False)
             save_chunk(np.squeeze(merr.data.cpu().numpy()), log_path + name + 'merr' + str(epoch) + '_' + str(t), norm=False)
 
         smoothness_mask = torch.max(mask, 2 * (pred == 0).float()) if mask is not None else 2 * (pred == 0).float()
@@ -282,8 +331,7 @@ if __name__ == '__main__':
 
     X_test = None
     for idxx, tensor_dict in enumerate(test_loader):
-        X = tensor_dict['X']
-        X_test = Variable(X).cuda().detach()
+        X_test = Variable(tensor_dict['X']).cuda().detach()
         X_test.volatile = True
         if idxx > 1:
             break
@@ -303,14 +351,12 @@ if __name__ == '__main__':
                             fine_tuning = True
                             optimizer = opt(trunclayer)
 
-                X, mask_stack = tensor_dict['X'], tensor_dict['m']
                 # Get inputs
-                X = Variable(X, requires_grad=False)
-                mask_stack = Variable(mask_stack, requires_grad=False)
-                X, mask_stack = X.cuda(), mask_stack.cuda()
-                stacks, top, left = aug_stacks([X, mask_stack], padding=padding, jitter=not args.no_jitter)
+                X = Variable(tensor_dict['X'], requires_grad=False).cuda()
+                mask_stack = cfm_from_stack(X)
+                stacks, top, left = aug_stacks([contrast(X), mask_stack], padding=padding, jitter=not args.no_jitter)
                 X, mask_stack = stacks[0], stacks[1]
-                
+
                 errs = []
                 penalties = []
                 consensus_list = []
@@ -357,7 +403,6 @@ if __name__ == '__main__':
                         nphstack = np.squeeze(torch.cat((reverse_dim(b_,1),hpred_,a_), 1).data.cpu().numpy())
                         nphstack = (nphstack - np.min(nphstack)) / (np.max(nphstack) - np.min(nphstack))
                         if args.crack_masks is not None or args.fold_masks is not None:
-                            save_chunk(np.squeeze(mask.data.cpu().numpy()), log_path + name + 'mask' + str(epoch) + '_' + str(t), norm=False)
                             save_chunk(np.squeeze(smoothness_mask.data.cpu().numpy()), log_path + name + 'smask' + str(epoch) + '_' + str(t), norm=False)
                             save_chunk(np.squeeze(mse_mask.data.cpu().numpy()), log_path + name + 'mmask' + str(epoch) + '_' + str(t), norm=False)
                         gif(log_path + name + 'stack' + str(epoch) + '_' + str(t), 255 * npstack)
@@ -397,10 +442,14 @@ if __name__ == '__main__':
                     ##################################
                     # CONSENSUS PENALTY COMPUTATION ##
                     ##################################
-                    consensus = args.unflow * torch.mean(mse(field, -field2))
                     if args.unflow > 0:
+                        print 'Computing consensus'
+                        consensus_forward = torch.mean((F.grid_sample(field.permute(0,3,1,2), field2).permute(0,2,3,1) + field2) ** 2)
+                        consensus_backward = torch.mean((F.grid_sample(field2.permute(0,3,1,2), field).permute(0,2,3,1) + field) ** 2)
+                        consensus_unweighted = consensus_forward + consensus_backward
+                        consensus = args.unflow * consensus_unweighted
                         consensus.backward()
-                    consensus_list.append(consensus.data[0])
+                        consensus_list.append(consensus.data[0])
                     ##################################
                     
                     optimizer.step()
@@ -410,7 +459,7 @@ if __name__ == '__main__':
                 if len(errs) > 0:
                     mean_err_train = sum(errs) / len(errs)
                     mean_penalty_train = sum(penalties) / len(penalties)
-                    mean_consensus = sum(consensus_list) / len(consensus_list)
+                    mean_consensus = (sum(consensus_list) / len(consensus_list)) if len(consensus_list) > 0 else 0
                     print(t, smooth_factor, trunclayer, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus)
                     history.append((time.time() - start_time, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus))
                     torch.save(model.state_dict(), 'pt/' + name + '.pt')
