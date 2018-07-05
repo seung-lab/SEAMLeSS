@@ -186,7 +186,8 @@ def gif(filename, array, fps=8, scale=1.0):
     scale : float
         how much to rescale each image by (default: 1.0)
     """
-
+    array = (array - np.min(array)) / (np.max(array) - np.min(array))
+    array *= 255
     # ensure that the file has the .gif extension
     fname, _ = os.path.splitext(filename)
     filename = fname + '.gif'

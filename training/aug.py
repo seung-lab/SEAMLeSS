@@ -8,6 +8,9 @@ import time
 
 from helpers import reverse_dim, save_chunk, gif
 
+def half(a,b):
+    return a if random.randint(0,1) == 0 else b
+
 def apply_grid(stack, grid):
     for sliceidx in range(stack.size(1)):
         stack[:,sliceidx:sliceidx+1] = F.grid_sample(stack[:,sliceidx:sliceidx+1], grid)
@@ -75,12 +78,8 @@ def jitter_stacks(Xs, displacement=32, min_cut=32):
     for i in range(len(Xs)):
         Xs_[i][:,-1] = Xs[i][:,-1]
     for i in range(Xs[0].size()[1] - 1, -1, -1):
-        xoff = 0
-        while xoff == 0:
-            xoff = random.randint(-displacement, displacement)
-        yoff = 0
-        while yoff == 0:
-            yoff = random.randint(-displacement, displacement)
+        xoff = half(random.randint(-displacement,-1), random.randint(1,displacement))
+        yoff = half(random.randint(-displacement,-1), random.randint(1,displacement))
         for ii in range(len(Xs_)):
             if xoff >= 0:
                 if yoff >= 0:
@@ -94,26 +93,26 @@ def jitter_stacks(Xs, displacement=32, min_cut=32):
                     Xs_[ii][:,i,:xoff,:yoff] = srcXs[ii][:,i,-xoff:,-yoff:]
 
             Xs_[ii][:,i:i+1] = rotate_and_scale(Xs_[ii][:,i:i+1])[0]
-            cut_range = (min_cut, Xs_[ii].size(-1)//3)
+            cut_range = (min_cut, Xs_[ii].size(-1)//5)
             if ii == 0: # we only want to cut our images; we're assuming the images are first in Xs_, then masks 
                 cut = random.randint(cut_range[0], cut_range[1])
-                r = random.randint(4,7)
-                if r == 4:
+                if random.randint(0,1) == 0:
                     Xs_[ii][:,i,:cut,:] = 0
-                elif r == 5:
+                else:
                     Xs_[ii][:,i,-cut:,:] = 0
-                elif r == 6:
+
+                cut = random.randint(cut_range[0], cut_range[1])
+                if random.randint(0,1) == 0:
                     Xs_[ii][:,i,:,:cut] = 0
-                elif r == 7:
+                else:
                     Xs_[ii][:,i,:,-cut:] = 0
-            Xs_[ii][:,i:i+1] = rotate_and_scale(Xs_[ii][:,i:i+1])[0]
 
     Xs_ = rotate_and_scale(Xs_, size=None)[0] if should_rotate else Xs_
     return Xs_
 
-def gen_gradient(size, flip=None, period_median=25, peak=1):
+def gen_gradient(size, flip=None, period_median=25, peak=0.5):
     if flip is None:
-        flip = random.randint(0,1) == 0
+        flip = half(True,False)
     periods = int(1 + np.random.exponential(-np.log(.5)*period_median))
     grad = torch.zeros(size)
     peak *= np.random.uniform(0,1)
@@ -136,7 +135,7 @@ def gen_gradient(size, flip=None, period_median=25, peak=1):
     grad = rotate_and_scale(grad.unsqueeze(0).unsqueeze(0), None, 0.1)[0].squeeze()
     return grad.cuda()
 
-def aug_brightness(X, factor=3.0, mask=False):
+def aug_brightness(X, factor=2.0, mask=False):
     # Assuming we get an input within [0,1]
     assert torch.min(X).data[0] >= 0
     assert torch.max(X).data[0] <= 1
@@ -148,6 +147,8 @@ def aug_brightness(X, factor=3.0, mask=False):
     X = X.clamp(min=0,max=1)
     compress = random.randint(0,1) == 0
     severity = np.random.uniform(1,factor)
+
+    X = X 
     if compress:
         X = X / severity
     else:
@@ -201,11 +202,12 @@ def random_rect_mask(size):
     output[output > 0] = 1
     return output.byte()
 
-def aug_input(x, factor=3.0):
+def aug_input(x, factor=2.0):
+    zm = x == 0
     idx = random.randint(0,x.size()[0]-1)
     out = x if len(x.size()) == 2 else x[idx].clone()
-    contrast_cutouts = random.randint(0,5)
-    missing_cutouts = random.randint(0,2)
+    contrast_cutouts = half(0, random.randint(1,5))
+    missing_cutouts = half(0, random.randint(1,2))
     for _ in range(contrast_cutouts):
         mask = random_rect_mask(x.size())
         out[mask] = out[mask] / np.random.uniform(1,factor)
@@ -225,6 +227,8 @@ def aug_input(x, factor=3.0):
 
     out = aug_brightness(out, factor)
 
+    out[zm] = 0
+    
     return out, missing_masks
 
 def pad_stacks(stacks, total_padding):
