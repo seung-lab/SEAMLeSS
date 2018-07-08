@@ -38,10 +38,10 @@ def visualize_outputs(path, outputs):
         display_v(field, path.format('field'))
         display_v(field, path.format('cfield'), center=True)
 
-    if residuals is not None and len(residuals) > 1:
-        residuals = [r.data.cpu().numpy() for r in residuals[1:]]
-        display_v(residuals, path.format('rfield'))
-        display_v(residuals, path.format('crfield'), center=True)
+    #if residuals is not None and len(residuals) > 1:
+    #    residuals = [r.data.cpu().numpy() for r in residuals[1:]]
+    #    display_v(residuals, path.format('rfield'))
+    #    display_v(residuals, path.format('crfield'), center=True)
 
     if similarity_error_field is not None:
         save_chunk(norm(similarity_error_field.data.cpu().numpy()), path.format('similarity_error_field'), norm=False)  
