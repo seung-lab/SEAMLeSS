@@ -104,7 +104,7 @@ def get_colors(angles, f, c):
     colors = c(colors)
     return colors
 
-def dv(vfield, name=None, downsample=0.25):
+def dv(vfield, name=None, downsample=0.5):
     dim = vfield.shape[-2]
     assert type(vfield) == np.ndarray
     
@@ -135,6 +135,9 @@ def dv(vfield, name=None, downsample=0.25):
         return img
 
 def np_upsample(img, factor):
+    if factor == 1:
+        return img
+
     if img.ndim == 2:
         return rescale(img, factor)
     elif img.ndim == 3:
