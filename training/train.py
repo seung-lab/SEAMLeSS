@@ -73,7 +73,6 @@ if __name__ == '__main__':
     parser.add_argument('--lr', help='starting learning rate', type=float, default=0.0002)
     parser.add_argument('--it', help='number of training epochs', type=int, default=1000)
     parser.add_argument('--state_archive', help='saved model to initialize with', type=str, default=None)
-    parser.add_argument('--inference_only', help='whether or not to skip training', action='store_true')
     parser.add_argument('--archive_fields', help='whether or not to include residual fields in output', action='store_true')
     parser.add_argument('--batch_size', help='size of batch', type=int, default=1)
     parser.add_argument('--k', help='kernel size', type=int, default=7)
@@ -118,9 +117,6 @@ if __name__ == '__main__':
     epoch = args.epoch
     print(args)
 
-    if args.inference_only:
-        trunclayer = 0
-
     if not os.path.isdir(log_path):
         os.makedirs(log_path)
     if not os.path.isdir('pt'):
@@ -141,13 +137,12 @@ if __name__ == '__main__':
 
     defect_net = torch.load('basil_defect_unet_mip518070305').cpu().cuda() if args.hm else torch.load('basil_defect_unet18070201').cpu().cuda()
 
+    model.train()
     for p in model.parameters():
-        p.requires_grad = not args.inference_only
-    model.train(not args.inference_only)
-
+        p.requires_grad = True
     for p in defect_net.parameters():
         p.requires_grad = False
-    
+
     if args.hm:
         train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'))
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
@@ -230,9 +225,9 @@ if __name__ == '__main__':
         stack = net_preprocess(stack).detach()
         raw_output = torch.cat([torch.max(defect_net(stack[:,i:i+1]),1,keepdim=True)[0] for i in range(stack.size(1))], 1)
         final_output = net_postprocess(raw_output)
-        gif('stack', np.squeeze(stack.data.cpu().numpy()))
-        gif('raw', np.squeeze(raw_output.data.cpu().numpy()))
-        gif('final', np.squeeze(final_output.data.cpu().numpy()))
+        #gif('stack', np.squeeze(stack.data.cpu().numpy()))
+        #gif('raw', np.squeeze(raw_output.data.cpu().numpy()))
+        #gif('final', np.squeeze(final_output.data.cpu().numpy()))
         return final_output
         
     def run_sample(X, mask=None, target_mask=None, train=True, vis=False):
@@ -338,178 +333,137 @@ if __name__ == '__main__':
 
     for epoch in range(args.epoch, it):
         print('epoch', epoch)
-        if not args.inference_only:
-            for t, tensor_dict in enumerate(train_loader):
-                if t == 0:
-                    if epoch % fall_time == 0 and (trunclayer > 0 or args.trunc == 0):
-                        fine_tuning = False or args.fine_tuning # only fine tune if running a tuning session
-                        if epoch > 0 and trunclayer > 0:
-                            trunclayer -= 1
+        for t, tensor_dict in enumerate(train_loader):
+            if t == 0:
+                if epoch % fall_time == 0 and (trunclayer > 0 or args.trunc == 0):
+                    fine_tuning = False or args.fine_tuning # only fine tune if running a tuning session
+                    if epoch > 0 and trunclayer > 0:
+                        trunclayer -= 1
+                    optimizer = opt(trunclayer)
+                elif epoch >= fall_time * size - 1 or epoch % fall_time == fall_time - 1:
+                    if not fine_tuning:
+                        fine_tuning = True
                         optimizer = opt(trunclayer)
-                    elif epoch >= fall_time * size - 1 or epoch % fall_time == fall_time - 1:
-                        if not fine_tuning:
-                            fine_tuning = True
-                            optimizer = opt(trunclayer)
 
-                # Get inputs
-                X = Variable(tensor_dict['X'], requires_grad=False).cuda()
-                mask_stack = cfm_from_stack(X)
-                stacks, top, left = aug_stacks([contrast(X), mask_stack], padding=padding, jitter=not args.no_jitter)
-                X, mask_stack = stacks[0], stacks[1]
+            # Get inputs
+            X = Variable(tensor_dict['X'], requires_grad=False).cuda()
+            mask_stack = cfm_from_stack(X)
+            stacks, top, left = aug_stacks([contrast(X), mask_stack], padding=padding, jitter=not args.no_jitter)
+            X, mask_stack = stacks[0], stacks[1]
 
-                errs = []
-                penalties = []
-                consensus_list = []
-                smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
-                batch = 3
-                for sample_idx, i in enumerate(range(num_targets,X.size(1)-num_targets)):
-                    ##################################
-                    # RUN SAMPLE FORWARD #############
-                    ##################################
-                    X_ = X[:,i:i+num_targets+1].detach()
+            errs = []
+            penalties = []
+            consensus_list = []
+            smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
+            batch = 3
+            for sample_idx, i in enumerate(range(num_targets,X.size(1)-num_targets)):
+                ##################################
+                # RUN SAMPLE FORWARD #############
+                ##################################
+                X_ = X[:,i:i+num_targets+1].detach()
 
-                    if num_targets == 1 and min(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]) < args.blank_var_threshold:
-                        print "Skipping blank sections", torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]
-                        continue
+                if num_targets == 1 and min(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]) < args.blank_var_threshold:
+                    print "Skipping blank sections", torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]
+                    continue
 
-                    if args.crack_masks is not None or args.fold_masks is not None:
-                        mask = mask_stack[0,i]
-                        target_mask = mask_stack[0,i+1]
-                    else:
-                        mask = None
-                        target_mask = None
-
-                    if args.num_targets > 1:
-                        X_, displaced_masks = displace_slice(X_, 0, [mask, target_mask])
-                    else:
-                        displaced_masks = [mask, target_mask]
-
-                    a, b, pred_, hpred_, field, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, displaced_masks[0], displaced_masks[1], train=True, vis=(sample_idx == batch-1) and t % 3 == 0)
-                        
-                    penalty1 = lambda1 * penalty([field], weights=smoothness_mask)
-                    cost = err_train + smooth_factor * torch.sum(penalty1)
-                    (cost/2).backward(retain_graph=args.unflow>0)
-                    errs.append(err_train.data[0])
-                    penalties.append(torch.sum(penalty1).data[0])
-                    ##################################
-                    
-                    ##################################
-                    # VISUALIZATION ##################
-                    ##################################
-                    if (sample_idx == batch-1) and t % 3 == 0:
-                        a_, b_ = downsample(trunclayer)(a.unsqueeze(0).unsqueeze(0)), (b.unsqueeze(0).unsqueeze(0) if num_targets == 1 else b.unsqueeze(0))
-                        npstack = np.squeeze(torch.cat((reverse_dim(b_,1),pred_,a_), 1).data.cpu().numpy())
-                        npstack = (npstack - np.min(npstack)) / (np.max(npstack) - np.min(npstack))
-                        nphstack = np.squeeze(torch.cat((reverse_dim(b_,1),hpred_,a_), 1).data.cpu().numpy())
-                        nphstack = (nphstack - np.min(nphstack)) / (np.max(nphstack) - np.min(nphstack))
-                        if args.crack_masks is not None or args.fold_masks is not None:
-                            save_chunk(np.squeeze(smoothness_mask.data.cpu().numpy()), log_path + name + 'smask' + str(epoch) + '_' + str(t), norm=False)
-                            save_chunk(np.squeeze(mse_mask.data.cpu().numpy()), log_path + name + 'mmask' + str(epoch) + '_' + str(t), norm=False)
-                        gif(log_path + name + 'stack' + str(epoch) + '_' + str(t), 255 * npstack)
-                        gif(log_path + name + 'hstack' + str(epoch) + '_' + str(t), 255 * nphstack)
-                            
-                        npfield = field.data.cpu().numpy()
-                        display_v(npfield, log_path + name + '_field' + str(epoch) + '_' + str(t))
-                        npfield[:,:,:,0] = npfield[:,:,:,0] - np.mean(npfield[:,:,:,0])
-                        npfield[:,:,:,1] = npfield[:,:,:,1] - np.mean(npfield[:,:,:,1])
-                        display_v(npfield, log_path + name + '_cfield' + str(epoch) + '_' + str(t))
-                        display_v([r.data.cpu().numpy() for r in residuals[1:]], log_path + name + '_rfield' + str(epoch) + '_' + str(t))
-                        
-                        np_sp = np.squeeze(penalty1.data.cpu().numpy())
-                        np_sp = (np_sp - np.min(np_sp)) / (np.max(np_sp) - np.min(np_sp))
-                        save_chunk(np_sp, log_path + name + 'ferr' + str(epoch) + '_' + str(t), norm=False)
-                    ##################################
-                    
-                    ##################################
-                    # RUN SAMPLE BACKWARD ###
-                    ##################################
-                    X_ = reverse_dim(X[:,i-num_targets+1:i+2],1)
-                    mask, target_mask = target_mask, mask
-
-                    if args.num_targets > 1:
-                        X_, displaced_masks = displace_slice(X_, 0, [mask, target_mask])
-                    else:
-                        displaced_masks = [mask, target_mask]
-                    a, b, pred_, hpred_, field2, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, displaced_masks[0], displaced_masks[1], train=True)
-                    
-                    penalty1 = lambda1 * penalty([field2], weights=smoothness_mask)
-                    cost = err_train + smooth_factor * torch.sum(penalty1)
-                    (cost/2).backward(retain_graph=args.unflow>0)
-                    errs.append(err_train.data[0])
-                    penalties.append(torch.sum(penalty1).data[0])
-                    ##################################
-                    
-                    ##################################
-                    # CONSENSUS PENALTY COMPUTATION ##
-                    ##################################
-                    if args.unflow > 0:
-                        print 'Computing consensus'
-                        consensus_forward = torch.mean((F.grid_sample(field.permute(0,3,1,2), field2).permute(0,2,3,1) + field2) ** 2)
-                        consensus_backward = torch.mean((F.grid_sample(field2.permute(0,3,1,2), field).permute(0,2,3,1) + field) ** 2)
-                        consensus_unweighted = consensus_forward + consensus_backward
-                        consensus = args.unflow * consensus_unweighted
-                        consensus.backward()
-                        consensus_list.append(consensus.data[0])
-                    ##################################
-                    
-                    optimizer.step()
-                    model.zero_grad()
-
-                # Save some info
-                if len(errs) > 0:
-                    mean_err_train = sum(errs) / len(errs)
-                    mean_penalty_train = sum(penalties) / len(penalties)
-                    mean_consensus = (sum(consensus_list) / len(consensus_list)) if len(consensus_list) > 0 else 0
-                    print(t, smooth_factor, trunclayer, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus)
-                    history.append((time.time() - start_time, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus))
-                    torch.save(model.state_dict(), 'pt/' + name + '.pt')
-
-                    print('Writing status to: ', log_file)
-                    with open(log_file, 'a') as log:
-                        for tr in history:
-                            for val in tr:
-                                log.write(str(val) + ', ')
-                            log.write('\n')
-                        history = []
+                if args.crack_masks is not None or args.fold_masks is not None:
+                    mask = mask_stack[0,i]
+                    target_mask = mask_stack[0,i+1]
                 else:
-                    print "Skipped writing status for blank stack"
+                    mask = None
+                    target_mask = None
 
-        if trunclayer > 0:
-            continue
+                if args.num_targets > 1:
+                    X_, displaced_masks = displace_slice(X_, 0, [mask, target_mask])
+                else:
+                    displaced_masks = [mask, target_mask]
 
-        preds = []
-        ys = []
-        stacks, top, left = aug_stacks([X_test], jitter=False, padding=padding)
-        X = stacks[0]
-        for i in range(num_targets):
-            if i == num_targets - 1:
-                preds.append(X[:,-1:])
+                a, b, pred_, hpred_, field, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, displaced_masks[0], displaced_masks[1], train=True, vis=(sample_idx == batch-1) and t % 3 == 0)
+
+                penalty1 = lambda1 * penalty([field], weights=smoothness_mask)
+                cost = err_train + smooth_factor * torch.sum(penalty1)
+                (cost/2).backward(retain_graph=args.unflow>0)
+                errs.append(err_train.data[0])
+                penalties.append(torch.sum(penalty1).data[0])
+                ##################################
+
+                ##################################
+                # VISUALIZATION ##################
+                ##################################
+                if (sample_idx == batch-1) and t % 3 == 0:
+                    a_, b_ = downsample(trunclayer)(a.unsqueeze(0).unsqueeze(0)), (b.unsqueeze(0).unsqueeze(0) if num_targets == 1 else b.unsqueeze(0))
+                    npstack = np.squeeze(torch.cat((reverse_dim(b_,1),pred_,a_), 1).data.cpu().numpy())
+                    npstack = (npstack - np.min(npstack)) / (np.max(npstack) - np.min(npstack))
+                    nphstack = np.squeeze(torch.cat((reverse_dim(b_,1),hpred_,a_), 1).data.cpu().numpy())
+                    nphstack = (nphstack - np.min(nphstack)) / (np.max(nphstack) - np.min(nphstack))
+                    if args.crack_masks is not None or args.fold_masks is not None:
+                        save_chunk(np.squeeze(smoothness_mask.data.cpu().numpy()), log_path + name + 'smask' + str(epoch) + '_' + str(t), norm=False)
+                        save_chunk(np.squeeze(mse_mask.data.cpu().numpy()), log_path + name + 'mmask' + str(epoch) + '_' + str(t), norm=False)
+                    gif(log_path + name + 'stack' + str(epoch) + '_' + str(t), 255 * npstack)
+                    gif(log_path + name + 'hstack' + str(epoch) + '_' + str(t), 255 * nphstack)
+
+                    npfield = field.data.cpu().numpy()
+                    display_v(npfield, log_path + name + '_field' + str(epoch) + '_' + str(t))
+                    npfield[:,:,:,0] = npfield[:,:,:,0] - np.mean(npfield[:,:,:,0])
+                    npfield[:,:,:,1] = npfield[:,:,:,1] - np.mean(npfield[:,:,:,1])
+                    display_v(npfield, log_path + name + '_cfield' + str(epoch) + '_' + str(t))
+                    display_v([r.data.cpu().numpy() for r in residuals[1:]], log_path + name + '_rfield' + str(epoch) + '_' + str(t))
+
+                    np_sp = np.squeeze(penalty1.data.cpu().numpy())
+                    np_sp = (np_sp - np.min(np_sp)) / (np.max(np_sp) - np.min(np_sp))
+                    save_chunk(np_sp, log_path + name + 'ferr' + str(epoch) + '_' + str(t), norm=False)
+                ##################################
+
+                ##################################
+                # RUN SAMPLE BACKWARD ###
+                ##################################
+                X_ = reverse_dim(X[:,i-num_targets+1:i+2],1)
+                mask, target_mask = target_mask, mask
+
+                if args.num_targets > 1:
+                    X_, displaced_masks = displace_slice(X_, 0, [mask, target_mask])
+                else:
+                    displaced_masks = [mask, target_mask]
+                a, b, pred_, hpred_, field2, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, displaced_masks[0], displaced_masks[1], train=True)
+
+                penalty1 = lambda1 * penalty([field2], weights=smoothness_mask)
+                cost = err_train + smooth_factor * torch.sum(penalty1)
+                (cost/2).backward(retain_graph=args.unflow>0)
+                errs.append(err_train.data[0])
+                penalties.append(torch.sum(penalty1).data[0])
+                ##################################
+
+                ##################################
+                # CONSENSUS PENALTY COMPUTATION ##
+                ##################################
+                if args.unflow > 0:
+                    print 'Computing consensus'
+                    consensus_forward = torch.mean((F.grid_sample(field.permute(0,3,1,2), field2).permute(0,2,3,1) + field2) ** 2)
+                    consensus_backward = torch.mean((F.grid_sample(field2.permute(0,3,1,2), field).permute(0,2,3,1) + field) ** 2)
+                    consensus_unweighted = consensus_forward + consensus_backward
+                    consensus = args.unflow * consensus_unweighted
+                    consensus.backward()
+                    consensus_list.append(consensus.data[0])
+                ##################################
+
+                optimizer.step()
+                model.zero_grad()
+
+            # Save some info
+            if len(errs) > 0:
+                mean_err_train = sum(errs) / len(errs)
+                mean_penalty_train = sum(penalties) / len(penalties)
+                mean_consensus = (sum(consensus_list) / len(consensus_list)) if len(consensus_list) > 0 else 0
+                print(t, smooth_factor, trunclayer, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus)
+                history.append((time.time() - start_time, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus))
+                torch.save(model.state_dict(), 'pt/' + name + '.pt')
+
+                print('Writing status to: ', log_file)
+                with open(log_file, 'a') as log:
+                    for tr in history:
+                        for val in tr:
+                            log.write(str(val) + ', ')
+                        log.write('\n')
+                    history = []
             else:
-                preds.append(X[:, -(num_targets-i):-(num_targets-i-1)])
-
-        ys.append(np.squeeze(preds[-1].data.cpu().numpy()))
-        errs = []
-        for i in reversed(range(1,X.size()[1] - (num_targets - 1))):
-            target_ = torch.cat(preds[-num_targets:], 1)
-            if len(preds) >= 3 and args.pred:
-                target_ = target_ * args.alpha + prednet(torch.cat(preds[-3:], 1)).squeeze(0) * (1 - args.alpha)
-            X_ = torch.cat((X[:,i-1:i], target_), 1)
-            a, b, pred, hpred, field, err, residuals, smoothness_mask, mse_mask = run_sample(X_, train=False)
-            if args.inference_only and args.archive_fields:
-                step = len(residuals) - 1 - skiplayers
-                print('Archiving vector fields...')
-                save_chunk(np.squeeze(pred.data.cpu().numpy()),  log_path + name + '_pred' + str(i) + '_' + str(epoch))
-                display_v(field.data.cpu().numpy() * 2, log_path + name + '_field' + str(i) + '_' + str(epoch))
-
-            errs.append(err.data[0])
-            a = np.squeeze(a.data.cpu().numpy())
-            preds.append(pred)
-            ys.append(a)
-        
-        if args.inference_only:
-            print(np.mean(errs))
-        skip = 2 ** (size - 1 - trunclayer)
-        gif(log_path + name + 'ys' + str(epoch), np.stack(ys) * 255)
-        gif(log_path + name + 'pred' + str(epoch), np.squeeze(torch.cat(preds, 1).data.cpu().numpy()) * 255)
-        display_v(field.data[:,::skip,::skip].cpu().numpy(), log_path + name + '_field' + str(epoch))
-
+                print "Skipped writing status for blank stack"
