@@ -75,9 +75,6 @@ if __name__ == '__main__':
     parser.add_argument('--archive_fields', help='whether or not to include residual fields in output', action='store_true')
     parser.add_argument('--batch_size', help='size of batch', type=int, default=1)
     parser.add_argument('--k', help='kernel size', type=int, default=7)
-    parser.add_argument('--dilate', help='use dilation for G_i', action='store_true')
-    parser.add_argument('--amp', help='amplify G_i', action='store_true')
-    parser.add_argument('--unet', help='use unet for G_i', action='store_true')
     parser.add_argument('--fall_time', help='epochs between layers', type=int, default=2)
     parser.add_argument('--epoch', type=int, default=0)
     parser.add_argument('--padding', type=int, default=128)
@@ -94,9 +91,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     name = args.name
-    amp = args.amp
-    unet = args.unet
-    dilate = args.dilate
     trunclayer = args.trunc
     skiplayers = args.skip
     size = args.size
@@ -129,9 +123,9 @@ if __name__ == '__main__':
         prednet.load_state_dict(torch.load('../framenet/pt/dnet.pt'))
 
     if args.state_archive is None:
-        model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size, dilate=dilate, amp=amp, unet=unet, name=log_path + name)).cuda()
+        model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size).cuda()
     else:
-        model = PyramidTransformer.load(args.state_archive, height=size, dim=dim, skips=skiplayers, k=kernel_size, dilate=dilate, unet=unet, name=log_path + name))
+        model = PyramidTransformer.load(args.state_archive, height=size, dim=dim, skips=skiplayers, k=kernel_size)
         for p in model.parameters():
             p.requires_grad = True
         model.train(True)

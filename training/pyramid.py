@@ -85,12 +85,10 @@ class EPyramid(nn.Module):
             self.identities[dim] = I.cuda()
         return self.identities[dim]
     
-    def __init__(self, size, dim, skip, topskips, k, dilate=False, amp=False, unet=False, name=None, train_size=1280):
+    def __init__(self, size, dim, skip, topskips, k, train_size=1280):
         super(EPyramid, self).__init__()
         rdim = dim // (2 ** (size - 1 - topskips))
         print('------- Constructing EPyramid with size', size, '(' + str(size-1) + ' downsamples) ' + str(dim))
-        if name:
-            self.name = name
         fm_0 = 12
         fm_coef = 6
         self.identities = {}
@@ -131,10 +129,10 @@ class EPyramid(nn.Module):
 
     
 class PyramidTransformer(nn.Module):
-    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, dilate=False, amp=False, unet=False, name=None, student=False):
+    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, student=False):
         super(PyramidTransformer, self).__init__()
         if not student:
-            self.pyramid = EPyramid(size, dim, skip, topskips, k, dilate, amp, unet, name=name)
+            self.pyramid = EPyramid(size, dim, skip, topskips, k)
         else:
             assert False # TODO: add student network
 
@@ -151,7 +149,7 @@ class PyramidTransformer(nn.Module):
     ################################################################
 
     @staticmethod
-    def load(archive_path=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True, dilate=False, amp=False, unet=False, name=None):
+    def load(archive_path=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True):
         """
         Builds and load a model with the specified architecture from
         an archive.
@@ -166,7 +164,7 @@ class PyramidTransformer(nn.Module):
         """
         assert archive_path is not None, "Must provide an archive"
 
-        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, topskips=topskips, dilate=dilate, amp=amp, unet=unet, name=name)
+        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, topskips=topskips)
         if cuda:
             model = model.cuda()
         for p in model.parameters():
