@@ -54,13 +54,11 @@ if __name__ == '__main__':
  
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
-    parser.add_argument('--target_weights', type=arg_as_list, default=None)
     parser.add_argument('--no_jitter', action='store_true')
     parser.add_argument('--hm', action='store_true')
     parser.add_argument('--unflow', type=float, default=0)
     parser.add_argument('--alpha', help='(1 - proportion) of prediction to use for alignment when aligning to predictions', type=float, default=1)
     parser.add_argument('--blank_var_threshold', type=float, default=0.001)
-    parser.add_argument('--num_targets', type=int, default=1)
     parser.add_argument('--lambda1', help='total smoothness penalty coefficient', type=float, default=0.1)
     parser.add_argument('--lambda2', help='smoothness penalty reduction around cracks/folds', type=float, default=0.3)
     parser.add_argument('--lambda3', help='smoothness penalty reduction on top of cracks/folds', type=float, default=0.00001)
@@ -101,7 +99,6 @@ if __name__ == '__main__':
     dilate = args.dilate
     trunclayer = args.trunc
     skiplayers = args.skip
-    num_targets = args.num_targets
     size = args.size
     padding = args.padding
     dim = args.dim + padding
@@ -132,9 +129,9 @@ if __name__ == '__main__':
         prednet.load_state_dict(torch.load('../framenet/pt/dnet.pt'))
 
     if args.state_archive is None:
-        model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=log_path + name, target_weights=(tuple(args.target_weights) if args.target_weights is not None else None)).cuda()
+        model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size, dilate=dilate, amp=amp, unet=unet, name=log_path + name)).cuda()
     else:
-        model = PyramidTransformer.load(args.state_archive, height=size, dim=dim, skips=skiplayers, k=kernel_size, dilate=dilate, unet=unet, num_targets=num_targets, name=log_path + name, target_weights=(tuple(args.target_weights) if args.target_weights is not None else None))
+        model = PyramidTransformer.load(args.state_archive, height=size, dim=dim, skips=skiplayers, k=kernel_size, dilate=dilate, unet=unet, name=log_path + name))
         for p in model.parameters():
             p.requires_grad = True
         model.train(True)
@@ -240,7 +237,7 @@ if __name__ == '__main__':
             should_rotate = random.randint(0,1) == 0
             if should_rotate:
                 src, grid = rotate_and_scale(src.unsqueeze(0).unsqueeze(0), None)
-                target = rotate_and_scale(target.unsqueeze(0).unsqueeze(0) if num_targets == 1 else target.unsqueeze(0), grid=grid)[0].squeeze()
+                target = rotate_and_scale(target.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
                 if mask is not None:
                     mask = rotate_and_scale(mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
                     target_mask = rotate_and_scale(target_mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
@@ -255,20 +252,7 @@ if __name__ == '__main__':
 
         if train and not args.skip_sample_aug:
             input_src, src_cutout_masks = aug_input(input_src)
-            if num_targets > 1:
-                black_slice = random.randint(0, num_targets - 1)
-                input_targets, target_cutout_mask_arrays = [], []
-                for target_idx in range(num_targets):
-                    aug_target, target_cutout_masks = aug_input(input_target[target_idx].clone())
-                    input_targets.append(aug_target)
-                    target_cutout_mask_arrays.append(target_cutout_masks)
-
-                    if target_idx == black_slice and random.randint(0,1) == 0:
-                        input_targets[target_idx] = Variable(torch.zeros(input_targets[target_idx].size())).cuda()
-                target_cutout_masks = [inner for outer in target_cutout_mask_arrays for inner in outer]
-                input_target = torch.cat([s.unsqueeze(0) for s in input_targets], 0)
-            else:
-                input_target, target_cutout_masks = aug_input(input_target)
+            input_target, target_cutout_masks = aug_input(input_target)
         else:
             print 'Skipping sample-wise augmentation...'
 
@@ -282,7 +266,7 @@ if __name__ == '__main__':
             src_cutout_masks = [F.grid_sample(m.float(), field).byte() for m in src_cutout_masks]
         
         rfield = field - get_identity_grid(field.size()[-2])
-        target = downsample(trunclayer)((target[0] if num_targets > 1 else target).unsqueeze(0).unsqueeze(0))
+        target = downsample(trunclayer)((target).unsqueeze(0).unsqueeze(0))
 
         border_mse_mask = -nn.MaxPool2d(11,1,5)(-Variable((pred.data != 0) * (target.data != 0)).float())
         cutout_mse_masks = src_cutout_masks + target_cutout_masks
@@ -370,11 +354,11 @@ if __name__ == '__main__':
             penalties = []
             consensus_list = []
             smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
-            for sample_idx, i in enumerate(range(num_targets,X.size(1)-num_targets)):
+            for sample_idx, i in enumerate(range(1,X.size(1)-1)):
                 ##################################
                 # RUN SAMPLE FORWARD #############
                 ##################################
-                X_ = X[:,i:i+num_targets+1].detach()
+                X_ = X[:,i:i+2].detach()
                 src_mask, target_mask = mask_stack[0,i], mask_stack[0,i+1]
 
                 if min(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]) < args.blank_var_threshold:
@@ -392,7 +376,7 @@ if __name__ == '__main__':
                 ##################################
                 # RUN SAMPLE BACKWARD ############
                 ##################################
-                X_ = reverse_dim(X[:,i-num_targets+1:i+2],1)
+                X_ = reverse_dim(X_,1)
                 src_mask, target_mask = target_mask, src_mask
 
                 rb = run_sample(X_, src_mask, target_mask, train=True)

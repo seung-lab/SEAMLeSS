@@ -57,7 +57,7 @@ for start_idx in range(0, len(folders), display_length):
 name = strip_name(name)    
 
 ARCHIVE_KEY = 'state_archive'
-OTHER_PARAMS = ['lambda1', 'lambda2', 'lambda3', 'lambda4', 'lambda5', 'num_targets', 'lr']
+OTHER_PARAMS = ['lambda1', 'lambda2', 'lambda3', 'lambda4', 'lambda5', 'lr']
 
 files = []
 aux_info_printouts = []
