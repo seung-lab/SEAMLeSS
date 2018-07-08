@@ -134,22 +134,22 @@ if __name__ == '__main__':
         model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=log_path + name, target_weights=(tuple(args.target_weights) if args.target_weights is not None else None)).cuda()
     else:
         model = PyramidTransformer.load(args.state_archive, height=size, dim=dim, skips=skiplayers, k=kernel_size, dilate=dilate, unet=unet, num_targets=num_targets, name=log_path + name, target_weights=(tuple(args.target_weights) if args.target_weights is not None else None))
+        for p in model.parameters():
+            p.requires_grad = True
+        model.train(True)
 
     defect_net = torch.load('basil_defect_unet_mip518070305').cpu().cuda() if args.hm else torch.load('basil_defect_unet18070201').cpu().cuda()
 
-    model.train()
-    for p in model.parameters():
-        p.requires_grad = True
     for p in defect_net.parameters():
         p.requires_grad = False
-
+        
     if args.hm:
         train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'))
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
     else:
         lm_train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5')) # dataset pulled from all of Basil
-        lm_train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/dense_folds_train_mip2.h5')) # dataset focused on extreme folds
-        train_dataset = ConcatDataset([lm_train_dataset1, lm_train_dataset2])
+        #lm_train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/dense_folds_train_mip2.h5')) # dataset focused on extreme folds
+        train_dataset = ConcatDataset([lm_train_dataset1])
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
 
     test_loader = train_loader
@@ -355,7 +355,6 @@ if __name__ == '__main__':
             penalties = []
             consensus_list = []
             smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
-            batch = 3
             for sample_idx, i in enumerate(range(num_targets,X.size(1)-num_targets)):
                 ##################################
                 # RUN SAMPLE FORWARD #############
@@ -378,7 +377,7 @@ if __name__ == '__main__':
                 else:
                     displaced_masks = [mask, target_mask]
 
-                a, b, pred_, hpred_, field, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, displaced_masks[0], displaced_masks[1], train=True, vis=(sample_idx == batch-1) and t % 3 == 0)
+                a, b, pred_, hpred_, field, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, displaced_masks[0], displaced_masks[1], train=True, vis=(sample_idx == 0) and t % 3 == 0)
 
                 penalty1 = lambda1 * penalty([field], weights=smoothness_mask)
                 cost = err_train + smooth_factor * torch.sum(penalty1)
@@ -390,7 +389,7 @@ if __name__ == '__main__':
                 ##################################
                 # VISUALIZATION ##################
                 ##################################
-                if (sample_idx == batch-1) and t % 3 == 0:
+                if (sample_idx == 0) and t % 3 == 0:
                     a_, b_ = downsample(trunclayer)(a.unsqueeze(0).unsqueeze(0)), (b.unsqueeze(0).unsqueeze(0) if num_targets == 1 else b.unsqueeze(0))
                     npstack = np.squeeze(torch.cat((reverse_dim(b_,1),pred_,a_), 1).data.cpu().numpy())
                     npstack = (npstack - np.min(npstack)) / (np.max(npstack) - np.min(npstack))
