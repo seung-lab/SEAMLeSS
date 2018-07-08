@@ -206,8 +206,8 @@ def aug_input(x, factor=2.0):
     zm = x == 0
     idx = random.randint(0,x.size()[0]-1)
     out = x if len(x.size()) == 2 else x[idx].clone()
-    contrast_cutouts = half(0, random.randint(1,5))
-    missing_cutouts = half(0, random.randint(1,2))
+    contrast_cutouts = half(0, random.randint(1,4))
+    missing_cutouts = half(0, half(0,1))
     for _ in range(contrast_cutouts):
         mask = random_rect_mask(x.size())
         out[mask] = out[mask] / np.random.uniform(1,factor)
