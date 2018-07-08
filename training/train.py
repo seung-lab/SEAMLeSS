@@ -285,9 +285,6 @@ if __name__ == '__main__':
         target = downsample(trunclayer)((target[0] if num_targets > 1 else target).unsqueeze(0).unsqueeze(0))
 
         border_mse_mask = -nn.MaxPool2d(11,1,5)(-Variable((pred.data != 0) * (target.data != 0)).float())
-        crack_fold_mse_mask = Variable(torch.ones(border_mse_mask.size())).cuda()
-        if target_mask is not None:
-            crack_fold_mse_mask[target_mask > 1] = 0
         cutout_mse_masks = src_cutout_masks + target_cutout_masks
         if len(cutout_mse_masks) > 0:
             cutout_mse_mask = torch.sum(torch.cat(cutout_mse_masks,0),0)
@@ -297,14 +294,17 @@ if __name__ == '__main__':
             cutout_mse_mask = Variable(~cutout_mse_mask.byte().data).float()
             cutout_mse_mask = nn.MaxPool2d(3,1,1)(cutout_mse_mask).detach()
         else:
-            cutout_mse_mask = Variable(torch.ones(crack_fold_mse_mask.size())).cuda().float()
+            cutout_mse_mask = Variable(torch.ones(border_mse_mask.size())).cuda().float()
 
-        mse_weights = border_mse_mask * crack_fold_mse_mask * cutout_mse_mask
+        mse_weights = border_mse_mask * cutout_mse_mask
+
         # reweight for focus areas if necessary
-        if mask is not None and args.lambda4 > 1:
+        if mask is not None:
             mse_weights.data[mask.data == 1] = mse_weights.data[mask.data == 1] * args.lambda4
             mse_weights.data[mask.data > 1] = mse_weights.data[mask.data > 1] * args.lambda5
-                
+        if target_mask is not None:
+            mse_weights.data[target_mask.data > 1] = 0
+
         err = mse(pred, target)
         merr = err * mse_weights
 
