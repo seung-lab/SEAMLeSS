@@ -24,20 +24,11 @@ with warnings.catch_warnings():
     import h5py
 
 from pyramid import PyramidTransformer
-#from dnet import UNet
 from defect_net import *
-from helpers import gif, save_chunk, center, display_v, dvl, copy_state_to_model, reverse_dim
+from helpers import gif, save_chunk, center, display_v, dvl, copy_state_to_model, reverse_dim, dilate_mask, contract_mask, invert_mask, union_masks, intersection_masks
 from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
 from vis import visualize_outputs
-
 from loss import similarity_score, smoothness_penalty
-import ast
-
-def arg_as_list(s):
-    v = ast.literal_eval(s)
-    if type(v) is not list:
-        raise argparse.ArgumentTypeError("Argument \"%s\" is not a list" % (s))
-    return v
 
 if __name__ == '__main__':
     identities = {}
@@ -54,10 +45,10 @@ if __name__ == '__main__':
  
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
+    parser.add_argument('--eps', help='epsilon value to avoid divide-by-zero', type=float, default=1e-6)
     parser.add_argument('--no_jitter', action='store_true')
     parser.add_argument('--hm', action='store_true')
     parser.add_argument('--unflow', type=float, default=0)
-    parser.add_argument('--alpha', help='(1 - proportion) of prediction to use for alignment when aligning to predictions', type=float, default=1)
     parser.add_argument('--blank_var_threshold', type=float, default=0.001)
     parser.add_argument('--lambda1', help='total smoothness penalty coefficient', type=float, default=0.1)
     parser.add_argument('--lambda2', help='smoothness penalty reduction around cracks/folds', type=float, default=0.3)
@@ -97,7 +88,6 @@ if __name__ == '__main__':
     padding = args.padding
     dim = args.dim + padding
     kernel_size = args.k
-    lambda1 = args.lambda1
     anneal = not args.no_anneal
     log_path = 'out/' + name + '/'
     log_file = log_path + name + '.log'
@@ -117,11 +107,6 @@ if __name__ == '__main__':
     with open(log_path + 'args.txt', 'a') as f:
         f.write(str(args))
     
-    if args.pred:
-        print('Loading prednet...')
-        prednet = UNet(3,1).cuda()
-        prednet.load_state_dict(torch.load('../framenet/pt/dnet.pt'))
-
     if args.state_archive is None:
         model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size).cuda()
     else:
@@ -217,17 +202,16 @@ if __name__ == '__main__':
         stack = net_preprocess(stack).detach()
         raw_output = torch.cat([torch.max(defect_net(stack[:,i:i+1]),1,keepdim=True)[0] for i in range(stack.size(1))], 1)
         final_output = net_postprocess(raw_output)
-        #gif('stack', np.squeeze(stack.data.cpu().numpy()))
-        #gif('raw', np.squeeze(raw_output.data.cpu().numpy()))
-        #gif('final', np.squeeze(final_output.data.cpu().numpy()))
         return final_output
         
     def run_sample(X, mask=None, target_mask=None, train=True, vis=False):
         model.train(train)
+
+        # our convention here is that X is 4D PyTorch convolution shape, while src and target are in squeezed shape (2D)
         src, target = X[0,0], torch.squeeze(X[0,1:])
         
         if train and not args.skip_sample_aug:
-            # random flip
+            # random rotation
             should_rotate = random.randint(0,1) == 0
             if should_rotate:
                 src, grid = rotate_and_scale(src.unsqueeze(0).unsqueeze(0), None)
@@ -247,44 +231,58 @@ if __name__ == '__main__':
         if train and not args.skip_sample_aug:
             input_src, src_cutout_masks = aug_input(input_src)
             input_target, target_cutout_masks = aug_input(input_target)
-        else:
+        elif train:
             print 'Skipping sample-wise augmentation...'
 
         pred, field, residuals = model.apply(input_src, input_target, trunclayer)
 
-        # resample with our new field prediction
+        # resample tensors that are in our source coordinate space with our new field prediction
+        # to move them into target coordinate space so we can compare things fairly
         pred = F.grid_sample(downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
         if mask is not None:
-            mask = F.grid_sample(downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0)), field)
+            mask = torch.ceil(F.grid_sample(downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0)), field))
         if len(src_cutout_masks) > 0:
-            src_cutout_masks = [F.grid_sample(m.float(), field).byte() for m in src_cutout_masks]
+            src_cutout_masks = [torch.ceil(F.grid_sample(m.float(), field)).byte() for m in src_cutout_masks]
         
-        rfield = field - get_identity_grid(field.size()[-2])
         target = downsample(trunclayer)((target).unsqueeze(0).unsqueeze(0))
 
-        border_mse_mask = -nn.MaxPool2d(11,1,5)(-Variable((pred.data != 0) * (target.data != 0)).float())
+        # mask away similarity error from pixels outside the boundary of either prediction or target
+        # in other words, we need valid data in both the target and prediction to count the error from
+        # that pixel
+        border_mse_mask = (pred != 0) * (target != 0)
+        border_mse_mask, no_valid_pixels = contract_mask(border_mse_mask, 5)
+        border_mse_mask = border_mse_mask.float()
+        if no_valid_pixels:
+            print('Empty mask, skipping!')
+            return None
+
+        # mask away similarity error from pixels within cutouts in either the source or target
         cutout_mse_masks = src_cutout_masks + target_cutout_masks
         if len(cutout_mse_masks) > 0:
-            cutout_mse_mask = torch.sum(torch.cat(cutout_mse_masks,0),0)
-            cutout_mse_mask[(cutout_mse_mask>0).detach()] = 1
-            cutout_mse_mask = nn.MaxPool2d(3,1,1)(cutout_mse_mask.float()).detach()
-            cutout_mse_mask[(cutout_mse_mask>0).detach()] = 1
-            cutout_mse_mask = Variable(~cutout_mse_mask.byte().data).float()
-            cutout_mse_mask = nn.MaxPool2d(3,1,1)(cutout_mse_mask).detach()
+            cutout_mse_mask = union_masks(cutout_mse_masks)
+            cutout_mse_mask = invert_mask(cutout_mse_mask).float()
         else:
-            cutout_mse_mask = Variable(torch.ones(border_mse_mask.size())).cuda().float()
+            cutout_mse_mask = border_mse_mask
 
-        mse_weights = border_mse_mask * cutout_mse_mask
+        # mask away similarity error for pixels within a defect in the target image
+        if target_mask is not None:
+            target_defect_mse_mask = (target_mask < 2).float().detach()
+        else:
+            target_defect_mse_mask = border_mse_mask
+            
+        mse_weights = border_mse_mask * cutout_mse_mask * target_defect_mse_mask
 
-        # reweight for focus areas if necessary
+        # reweight for focus areas
         if mask is not None:
             mse_weights.data[mask.data == 1] = mse_weights.data[mask.data == 1] * args.lambda4
             mse_weights.data[mask.data > 1] = mse_weights.data[mask.data > 1] * args.lambda5
-        if target_mask is not None:
-            mse_weights.data[target_mask.data > 1] = 0
-            
+
         err = mse(pred, target)
         mse_mask_factor = (torch.sum(mse_weights[border_mse_mask.byte().detach()]) / torch.sum(border_mse_mask)).data[0]
+        if mse_mask_factor < args.eps:
+            print('Similarity mask factor zero; skipping!')
+            return None
+
         merr = err * (mse_weights / mse_mask_factor)
 
         smoothness_mask = torch.max(mask, 2 * (pred == 0).float()) if mask is not None else 2 * (pred == 0).float()
@@ -293,7 +291,12 @@ if __name__ == '__main__':
         smoothness_weights[(smoothness_mask > 0).data] = args.lambda2 # everywhere we have non-standard smoothness, slightly reduce the smoothness penalty
         smoothness_weights[(smoothness_mask > 1).data] = args.lambda3 # on top of cracks and folds only, significantly reduce the smoothness penalty
         smoothness_mask_factor = (torch.sum(smoothness_weights[border_mse_mask.byte().detach()]) / torch.sum(border_mse_mask)).data[0]
+        if smoothness_mask_factor < args.eps:
+            print('Smoothness mask factor zero; skipping!')
+            return None
+
         smoothness_weights = smoothness_weights / smoothness_mask_factor
+
         print mse_mask_factor, smoothness_mask_factor
         
         if mask is not None:
@@ -306,7 +309,8 @@ if __name__ == '__main__':
             'input_src' : input_src,
             'input_target' : input_target,
             'pred' : pred,
-            'field' : rfield,
+            'field' : field,
+            'rfield' : field - get_identity_grid(field.size()[-2]),
             'residuals' : residuals,
             'similarity_error' : torch.mean(merr),
             'smoothness_weights' : smoothness_weights,
@@ -360,12 +364,13 @@ if __name__ == '__main__':
                     continue
 
                 rf = run_sample(X_, src_mask, target_mask, train=True)
-                smoothness_error_field = lambda1 * penalty([rf['field']], weights=rf['smoothness_weights'])
-                rf['smoothness_error_field'] = smoothness_error_field
-                cost = rf['similarity_error'] + smooth_factor * torch.sum(smoothness_error_field)
-                (cost/2).backward(retain_graph=args.unflow>0)
-                errs.append(rf['similarity_error'].data[0])
-                penalties.append(torch.sum(smoothness_error_field).data[0])
+                if rf is not None:
+                    smoothness_error_field = args.lambda1 * penalty([rf['rfield']], weights=rf['smoothness_weights'])
+                    rf['smoothness_error_field'] = smoothness_error_field
+                    cost = rf['similarity_error'] + smooth_factor * torch.sum(smoothness_error_field)
+                    (cost/2).backward(retain_graph=args.unflow>0)
+                    errs.append(rf['similarity_error'].data[0])
+                    penalties.append(torch.sum(smoothness_error_field).data[0])
 
                 ##################################
                 # RUN SAMPLE BACKWARD ############
@@ -374,12 +379,13 @@ if __name__ == '__main__':
                 src_mask, target_mask = target_mask, src_mask
 
                 rb = run_sample(X_, src_mask, target_mask, train=True)
-                smoothness_error_field = lambda1 * penalty([rb['field']], weights=rb['smoothness_weights'])
-                rb['smoothness_error_field'] = smoothness_error_field
-                cost = rb['similarity_error'] + smooth_factor * torch.sum(smoothness_error_field)
-                (cost/2).backward(retain_graph=args.unflow>0)
-                errs.append(rb['similarity_error'].data[0])
-                penalties.append(torch.sum(smoothness_error_field).data[0])
+                if rb is not None:
+                    smoothness_error_field = args.lambda1 * penalty([rb['rfield']], weights=rb['smoothness_weights'])
+                    rb['smoothness_error_field'] = smoothness_error_field
+                    cost = rb['similarity_error'] + smooth_factor * torch.sum(smoothness_error_field)
+                    (cost/2).backward(retain_graph=args.unflow>0)
+                    errs.append(rb['similarity_error'].data[0])
+                    penalties.append(torch.sum(smoothness_error_field).data[0])
 
                 ##################################
                 # VISUALIZATION ##################
@@ -392,10 +398,12 @@ if __name__ == '__main__':
                 ##################################
                 # CONSENSUS PENALTY COMPUTATION ##
                 ##################################
-                if args.unflow > 0:
+                if args.unflow > 0 and rf is not None and rb is not None:
                     print 'Computing consensus'
-                    consensus_forward = torch.mean((F.grid_sample(field.permute(0,3,1,2), field2).permute(0,2,3,1) + field2) ** 2)
-                    consensus_backward = torch.mean((F.grid_sample(field2.permute(0,3,1,2), field).permute(0,2,3,1) + field) ** 2)
+                    ffield, rffield = rf['field'], rf['rfield']
+                    bfield, rbfield = rb['field'], rb['rfield']
+                    consensus_forward = torch.mean((F.grid_sample(rbfield.permute(0,3,1,2), ffield).permute(0,2,3,1) + rffield) ** 2)
+                    consensus_backward = torch.mean((F.grid_sample(rffield.permute(0,3,1,2), bfield).permute(0,2,3,1) + rbfield) ** 2)
                     consensus_unweighted = consensus_forward + consensus_backward
                     consensus = args.unflow * consensus_unweighted
                     consensus.backward()
