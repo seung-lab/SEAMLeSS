@@ -304,26 +304,40 @@ if __name__ == '__main__':
             mse_weights.data[mask.data > 1] = mse_weights.data[mask.data > 1] * args.lambda5
         if target_mask is not None:
             mse_weights.data[target_mask.data > 1] = 0
-
+            
         err = mse(pred, target)
-        merr = err * mse_weights
-
-        if vis:
-            save_chunk(np.squeeze(mask.data.cpu().numpy()), log_path + name + 'src_mask' + str(epoch) + '_' + str(t), norm=False)
-            save_chunk(np.squeeze(target_mask.data.cpu().numpy()), log_path + name + 'target_mask' + str(epoch) + '_' + str(t), norm=False)
-            save_chunk(np.squeeze(merr.data.cpu().numpy()), log_path + name + 'merr' + str(epoch) + '_' + str(t), norm=False)
+        mse_mask_factor = (torch.sum(mse_weights[border_mse_mask.byte().detach()]) / torch.sum(border_mse_mask)).data[0]
+        merr = err * (mse_weights / mse_mask_factor)
 
         smoothness_mask = torch.max(mask, 2 * (pred == 0).float()) if mask is not None else 2 * (pred == 0).float()
 
         smoothness_weights = Variable(torch.ones(smoothness_mask.size()).cuda())
         smoothness_weights[(smoothness_mask > 0).data] = args.lambda2 # everywhere we have non-standard smoothness, slightly reduce the smoothness penalty
         smoothness_weights[(smoothness_mask > 1).data] = args.lambda3 # on top of cracks and folds only, significantly reduce the smoothness penalty
+        smoothness_mask_factor = (torch.sum(smoothness_weights[border_mse_mask.byte().detach()]) / torch.sum(border_mse_mask)).data[0]
+        smoothness_weights = smoothness_weights / smoothness_mask_factor
+        print mse_mask_factor, smoothness_mask_factor
+        
         if mask is not None:
             hpred = pred.clone().detach()
             hpred[(mask > 1).detach()] = torch.min(pred).data[0]
         else:
             hpred = pred
-        return input_src, input_target, pred, hpred, rfield, torch.mean(merr), residuals, smoothness_weights, mse_weights
+
+        return {
+            'input_src' : input_src,
+            'input_target' : input_target,
+            'pred' : pred,
+            'field' : rfield,
+            'residuals' : residuals,
+            'similarity_error' : torch.mean(merr),
+            'smoothness_weights' : smoothness_weights,
+            'similarity_weights' : mse_weights,
+            'hpred' : hpred,
+            'src_mask' : mask,
+            'target_mask' : target_mask,
+            'similarity_error_field' : merr
+        }
 
     X_test = None
     for idxx, tensor_dict in enumerate(test_loader):
@@ -363,59 +377,40 @@ if __name__ == '__main__':
                 X_ = X[:,i:i+num_targets+1].detach()
                 src_mask, target_mask = mask_stack[0,i], mask_stack[0,i+1]
 
-                if num_targets == 1 and min(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]) < args.blank_var_threshold:
+                if min(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]) < args.blank_var_threshold:
                     print "Skipping blank sections", torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]
                     continue
 
-                a, b, pred_, hpred_, field, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, src_mask, target_mask, train=True, vis=(sample_idx == 0) and t % 3 == 0)
-
-                penalty1 = lambda1 * penalty([field], weights=smoothness_mask)
-                cost = err_train + smooth_factor * torch.sum(penalty1)
+                rf = run_sample(X_, src_mask, target_mask, train=True)
+                smoothness_error_field = lambda1 * penalty([rf['field']], weights=rf['smoothness_weights'])
+                rf['smoothness_error_field'] = smoothness_error_field
+                cost = rf['similarity_error'] + smooth_factor * torch.sum(smoothness_error_field)
                 (cost/2).backward(retain_graph=args.unflow>0)
-                errs.append(err_train.data[0])
-                penalties.append(torch.sum(penalty1).data[0])
-                ##################################
+                errs.append(rf['similarity_error'].data[0])
+                penalties.append(torch.sum(smoothness_error_field).data[0])
 
                 ##################################
-                # VISUALIZATION ##################
-                ##################################
-                if (sample_idx == 0) and t % 3 == 0:
-                    a_, b_ = downsample(trunclayer)(a.unsqueeze(0).unsqueeze(0)), (b.unsqueeze(0).unsqueeze(0) if num_targets == 1 else b.unsqueeze(0))
-                    npstack = np.squeeze(torch.cat((reverse_dim(b_,1),pred_,a_), 1).data.cpu().numpy())
-                    npstack = (npstack - np.min(npstack)) / (np.max(npstack) - np.min(npstack))
-                    nphstack = np.squeeze(torch.cat((reverse_dim(b_,1),hpred_,a_), 1).data.cpu().numpy())
-                    nphstack = (nphstack - np.min(nphstack)) / (np.max(nphstack) - np.min(nphstack))
-                    if args.crack_masks is not None or args.fold_masks is not None:
-                        save_chunk(np.squeeze(smoothness_mask.data.cpu().numpy()), log_path + name + 'smask' + str(epoch) + '_' + str(t), norm=False)
-                        save_chunk(np.squeeze(mse_mask.data.cpu().numpy()), log_path + name + 'mmask' + str(epoch) + '_' + str(t), norm=False)
-                    gif(log_path + name + 'stack' + str(epoch) + '_' + str(t), 255 * npstack)
-                    gif(log_path + name + 'hstack' + str(epoch) + '_' + str(t), 255 * nphstack)
-
-                    npfield = field.data.cpu().numpy()
-                    display_v(npfield, log_path + name + '_field' + str(epoch) + '_' + str(t))
-                    display_v(npfield, log_path + name + '_cfield' + str(epoch) + '_' + str(t), center=True)
-                    display_v([r.data.cpu().numpy() for r in residuals[1:]], log_path + name + '_rfield' + str(epoch) + '_' + str(t))
-
-                    np_sp = np.squeeze(penalty1.data.cpu().numpy())
-                    np_sp = (np_sp - np.min(np_sp)) / (np.max(np_sp) - np.min(np_sp))
-                    save_chunk(np_sp, log_path + name + 'ferr' + str(epoch) + '_' + str(t), norm=False)
-                ##################################
-
-                ##################################
-                # RUN SAMPLE BACKWARD ###
+                # RUN SAMPLE BACKWARD ############
                 ##################################
                 X_ = reverse_dim(X[:,i-num_targets+1:i+2],1)
                 src_mask, target_mask = target_mask, src_mask
 
-                a, b, pred_, hpred_, field2, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, src_mask, target_mask, train=True)
-
-                penalty1 = lambda1 * penalty([field2], weights=smoothness_mask)
-                cost = err_train + smooth_factor * torch.sum(penalty1)
+                rb = run_sample(X_, src_mask, target_mask, train=True)
+                smoothness_error_field = lambda1 * penalty([rb['field']], weights=rb['smoothness_weights'])
+                rb['smoothness_error_field'] = smoothness_error_field
+                cost = rb['similarity_error'] + smooth_factor * torch.sum(smoothness_error_field)
                 (cost/2).backward(retain_graph=args.unflow>0)
-                errs.append(err_train.data[0])
-                penalties.append(torch.sum(penalty1).data[0])
-                ##################################
+                errs.append(rb['similarity_error'].data[0])
+                penalties.append(torch.sum(smoothness_error_field).data[0])
 
+                ##################################
+                # VISUALIZATION ##################
+                ##################################
+                if sample_idx == 0 and t % 6 == 0:
+                    prefix = '{}{}_e{}_t{}'.format(log_path, name, epoch, t)
+                    visualize_outputs(prefix + '_forward_{}', rf)
+                    visualize_outputs(prefix + '_backward_{}', rb)
+                
                 ##################################
                 # CONSENSUS PENALTY COMPUTATION ##
                 ##################################
