@@ -361,24 +361,13 @@ if __name__ == '__main__':
                 # RUN SAMPLE FORWARD #############
                 ##################################
                 X_ = X[:,i:i+num_targets+1].detach()
+                src_mask, target_mask = mask_stack[0,i], mask_stack[0,i+1]
 
                 if num_targets == 1 and min(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]) < args.blank_var_threshold:
                     print "Skipping blank sections", torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]
                     continue
 
-                if args.crack_masks is not None or args.fold_masks is not None:
-                    mask = mask_stack[0,i]
-                    target_mask = mask_stack[0,i+1]
-                else:
-                    mask = None
-                    target_mask = None
-
-                if args.num_targets > 1:
-                    X_, displaced_masks = displace_slice(X_, 0, [mask, target_mask])
-                else:
-                    displaced_masks = [mask, target_mask]
-
-                a, b, pred_, hpred_, field, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, displaced_masks[0], displaced_masks[1], train=True, vis=(sample_idx == 0) and t % 3 == 0)
+                a, b, pred_, hpred_, field, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, src_mask, target_mask, train=True, vis=(sample_idx == 0) and t % 3 == 0)
 
                 penalty1 = lambda1 * penalty([field], weights=smoothness_mask)
                 cost = err_train + smooth_factor * torch.sum(penalty1)
@@ -416,13 +405,9 @@ if __name__ == '__main__':
                 # RUN SAMPLE BACKWARD ###
                 ##################################
                 X_ = reverse_dim(X[:,i-num_targets+1:i+2],1)
-                mask, target_mask = target_mask, mask
+                src_mask, target_mask = target_mask, src_mask
 
-                if args.num_targets > 1:
-                    X_, displaced_masks = displace_slice(X_, 0, [mask, target_mask])
-                else:
-                    displaced_masks = [mask, target_mask]
-                a, b, pred_, hpred_, field2, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, displaced_masks[0], displaced_masks[1], train=True)
+                a, b, pred_, hpred_, field2, err_train, residuals, smoothness_mask, mse_mask = run_sample(X_, src_mask, target_mask, train=True)
 
                 penalty1 = lambda1 * penalty([field2], weights=smoothness_mask)
                 cost = err_train + smooth_factor * torch.sum(penalty1)
