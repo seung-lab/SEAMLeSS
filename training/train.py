@@ -28,6 +28,7 @@ from pyramid import PyramidTransformer
 from defect_net import *
 from helpers import gif, save_chunk, center, display_v, dvl, copy_state_to_model, reverse_dim
 from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
+from vis import visualize_outputs
 
 from loss import similarity_score, smoothness_penalty
 import ast
@@ -403,9 +404,7 @@ if __name__ == '__main__':
 
                     npfield = field.data.cpu().numpy()
                     display_v(npfield, log_path + name + '_field' + str(epoch) + '_' + str(t))
-                    npfield[:,:,:,0] = npfield[:,:,:,0] - np.mean(npfield[:,:,:,0])
-                    npfield[:,:,:,1] = npfield[:,:,:,1] - np.mean(npfield[:,:,:,1])
-                    display_v(npfield, log_path + name + '_cfield' + str(epoch) + '_' + str(t))
+                    display_v(npfield, log_path + name + '_cfield' + str(epoch) + '_' + str(t), center=True)
                     display_v([r.data.cpu().numpy() for r in residuals[1:]], log_path + name + '_rfield' + str(epoch) + '_' + str(t))
 
                     np_sp = np.squeeze(penalty1.data.cpu().numpy())

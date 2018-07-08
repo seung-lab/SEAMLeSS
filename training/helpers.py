@@ -104,9 +104,22 @@ def np_upsample(img, factor):
             b[:,:,idx] = np_upsample(img[:,:,idx], factor)
         return b
     else:
-        crash
-                     
-def display_v(vfield, name=None):
+        assert False
+
+def center_field(field):
+    wrap = type(field) == np.ndarray
+    if wrap:
+        field = [field]
+    for idx, vfield in enumerate(field):
+        vfield[:,:,:,0] = vfield[:,:,:,0] - np.mean(vfield[:,:,:,0])
+        vfield[:,:,:,1] = vfield[:,:,:,1] - np.mean(vfield[:,:,:,1])
+        field[idx] = vfield
+    return field[0] if wrap else field
+        
+def display_v(vfield, name=None, center=False):
+    if center:
+        center_field(vfield)
+
     if type(vfield) == list:
         dim = max([vf.shape[-2] for vf in vfield])
         vlist = [np.expand_dims(np_upsample(vf[0], dim/vf.shape[-2]), axis=0) for vf in vfield]

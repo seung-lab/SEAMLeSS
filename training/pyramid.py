@@ -286,15 +286,6 @@ class PyramidTransformer(nn.Module):
         else:
             self.pyramid = SEPyramid(size, dim, skip, topskips, k)
 
-    def select_module(self, idx):
-        for g in self.pyramid.mlist:
-            g.requires_grad = False
-        self.pyramid.mlist[idx].requires_grad = True
-
-    def select_all(self):
-        for g in self.pyramid.mlist:
-            g.requires_grad = True
-
     def forward(self, x, idx=0, vis=None):
         field, residuals = self.pyramid(x, idx, vis)
         return grid_sample(x[:,0:1,:,:], field, mode='nearest'), field, residuals
