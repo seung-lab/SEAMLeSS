@@ -124,9 +124,9 @@ if __name__ == '__main__':
         train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'))
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
     else:
-        lm_train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5')) # dataset pulled from all of Basil
-        #lm_train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/dense_folds_train_mip2.h5')) # dataset focused on extreme folds
-        train_dataset = ConcatDataset([lm_train_dataset1])
+        #lm_train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5')) # dataset pulled from all of Basil
+        lm_train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/dense_folds_train_mip2.h5')) # dataset focused on extreme folds
+        train_dataset = ConcatDataset([lm_train_dataset2])
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
 
     test_loader = train_loader
@@ -276,6 +276,8 @@ if __name__ == '__main__':
         if mask is not None:
             mse_weights.data[mask.data == 1] = mse_weights.data[mask.data == 1] * args.lambda4
             mse_weights.data[mask.data > 1] = mse_weights.data[mask.data > 1] * args.lambda5
+        if target_mask is not None:
+            mse_weights.data[target_mask.data == 1] = mse_weights.data[target_mask.data == 1] * args.lambda4
 
         err = mse(pred, target)
         mse_mask_factor = (torch.sum(mse_weights[border_mse_mask.byte().detach()]) / torch.sum(border_mse_mask)).data[0]
