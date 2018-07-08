@@ -185,7 +185,7 @@ def displace_slice(stack, slice_idx, aux, displacement=32):
     stack, grid = rotate_and_scale(stack, None)
     aux = [rotate_and_scale(a, grid=grid)[0].squeeze() for a in aux]
     return stack, aux
-                      
+
 def random_rect_mask(size):
     dimx = random.randint(1,size[-2]/2)
     dimy = random.randint(1,size[-2]/2)
@@ -198,8 +198,7 @@ def random_rect_mask(size):
     dx = random.randint(1, upper_bound)
     dy = random.randint(1, upper_bound)
     off_centered = Variable(translate(rotated_centered.data, dx, dy))
-    output, _ = rotate_and_scale(off_centered, None, 0)
-    output[output > 0] = 1
+    output = torch.ceil(rotate_and_scale(off_centered, None, 0)[0])
     return output.byte()
 
 def aug_input(x, factor=2.0):

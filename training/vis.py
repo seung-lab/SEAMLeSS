@@ -7,10 +7,14 @@ def norm(stack, factor=1):
     return factor * ((stack - np.min(stack)) / (np.max(stack) - np.min(stack)))
 
 def visualize_outputs(path, outputs):
+    if outputs is None:
+        print('Skipping visualization of empty outputs.')
+        return
+
     src = outputs['input_src'].unsqueeze(0).unsqueeze(0) if 'input_src' in outputs else None
     target = outputs['input_target'].unsqueeze(0).unsqueeze(0) if 'input_target' in outputs else None
     pred = outputs['pred'] if 'pred' in outputs else None
-    field = outputs['field'] if 'field' in outputs else None
+    field = outputs['rfield'] if 'rfield' in outputs else None
     residuals = outputs['residuals'] if 'residuals' in outputs else None
     similarity_error_field = outputs['similarity_error_field'] if 'similarity_error_field' in outputs else None
     smoothness_error_field = outputs['smoothness_error_field'] if 'smoothness_error_field' in outputs else None

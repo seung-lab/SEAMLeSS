@@ -1,3 +1,5 @@
+import torch
+import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -60,6 +62,43 @@ def copy_state_to_model(archive_params, model):
             model_params[key].data[:,fm_count:] += torch.normal(means, std).cuda()
     print('Copied ' + str(len(model_keys) - approx) + ' parameters exactly, ' + str(approx) + ' parameters partially. Skipped ' + str(skipped) + ' parameters.')
 
+def check_mask(mask, binary):
+    if binary:
+        assert torch.max(mask).data[0] == 1
+        assert torch.min(mask).data[0] == 0
+    else:
+        assert torch.min(mask).data[0] >= 0
+
+def union_masks(masks):
+    return reduce(torch.max, masks)
+
+def intersection_masks(masks):
+    return reduce(torch.min, masks)
+
+def invert_mask(mask):
+    check_mask(mask, False)
+    if type(mask.data) == torch.FloatTensor:
+        return torch.max(mask) - mask
+    else:
+        return (torch.max(mask).float() - mask.float()).byte()
+        
+def dilate_mask(mask, radius, binary=True):
+    check_mask(mask, binary)
+    mask = mask.detach()
+    if type(mask.data) == torch.FloatTensor:
+        return F.max_pool2d(mask, radius*2+1, stride=1, padding=radius).detach()
+    else:
+        return F.max_pool2d(mask.float(), radius*2+1, stride=1, padding=radius).byte().detach()
+
+def contract_mask(mask, radius, binary=True):
+    check_mask(mask, binary)
+    mask = mask.detach()
+    if type(mask.data) == torch.FloatTensor:
+        contracted = torch.ceil(-F.max_pool2d(-mask, radius*2+1, stride=1, padding=radius)).detach()
+    else:
+        contracted = torch.ceil(-F.max_pool2d(-(mask.float()), radius*2+1, stride=1, padding=radius)).byte().detach()
+    return contracted, torch.sum(contracted).data[0] <= 0
+        
 def get_colors(angles, f, c):
     colors = f(angles)
     colors = c(colors)
