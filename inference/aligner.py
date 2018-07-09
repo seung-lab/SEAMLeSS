@@ -4,43 +4,49 @@ import numpy as np
 import os
 import json
 from time import time
-from copy import deepcopy
+from copy import deepcopy, copy
+from helpers import save_chunk
+
+from skimage.morphology import disk as skdisk
+from skimage.filters.rank import maximum as skmaximum
 
 from util import crop, warp, upsample_flow, downsample_mip
 from boundingbox import BoundingBox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
+from threading import Lock
 
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
-               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads = 10,
-               max_chunk = (1024, 1024), max_render_chunk = (2048*2, 2048*2), skip=0, topskip=0, should_contrast=True):
+               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads = 5,
+               max_chunk = (1024, 1024), max_render_chunk = (2048*2, 2048*2), skip=0, topskip=0, should_contrast=True, num_targets=1):
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
-    self.render_low_mip  = render_low_mip
-    self.render_high_mip = render_high_mip
-    self.high_mip = max(self.render_high_mip, self.process_high_mip)
-    self.high_mip_chunk  = high_mip_chunk
-    self.max_chunk       = max_chunk
+    self.render_low_mip   = render_low_mip
+    self.render_high_mip  = render_high_mip
+    self.high_mip         = max(self.render_high_mip, self.process_high_mip)
+    self.high_mip_chunk   = high_mip_chunk
+    self.max_chunk        = max_chunk
     self.max_render_chunk = max_render_chunk
-
+    self.num_targets      = num_targets
+    
     self.max_displacement = max_displacement
-    self.crop_amount = crop
-    self.org_ng_path = src_ng_path
-    self.src_ng_path = self.org_ng_path
+    self.crop_amount      = crop
+    self.org_ng_path      = src_ng_path
+    self.src_ng_path      = self.org_ng_path
 
     self.dst_ng_path = os.path.join(dst_ng_path, 'image')
     self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
 
 
-    self.res_ng_paths  = [os.path.join(dst_ng_path, 'vec/{}'.format(i))
+    self.res_ng_paths   = [os.path.join(dst_ng_path, 'vec/{}'.format(i))
                                                     for i in range(self.process_high_mip + 10)] #TODO
     self.x_res_ng_paths = [os.path.join(r, 'x') for r in self.res_ng_paths]
     self.y_res_ng_paths = [os.path.join(r, 'y') for r in self.res_ng_paths]
 
     self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip)
-
+    
     self.dst_chunk_sizes   = []
     self.dst_voxel_offsets = []
     self.vec_chunk_sizes   = []
@@ -49,6 +55,10 @@ class Aligner:
     self._create_info_files(max_displacement)
     self.pool = ThreadPool(threads)
 
+    self.img_cache = {}
+
+    self.img_cache_lock = Lock()
+    
     #if not chunk_size[0] :
     #  raise Exception("The chunk size has to be aligned with ng chunk size")
 
@@ -220,7 +230,7 @@ class Aligner:
     else:
       src_patch = self.get_image_data(self.tmp_ng_path, source_z, precrop_patch_bbox, mip)
 
-    tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip)
+    tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
 
     abs_residual = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
@@ -240,21 +250,23 @@ class Aligner:
 
   ## Patch manipulation
   def warp_patch(self, ng_path, z, bbox, res_mip_range, mip):
-    influence_bbox =  deepcopy(bbox)
+    influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
 
     agg_flow = influence_bbox.identity(mip=mip)
     agg_flow = np.expand_dims(agg_flow, axis=0)
+    start = time()
     agg_res  = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
-    agg_flow += agg_res
 
+    agg_flow += agg_res
     raw_data = self.get_image_data(ng_path, z, influence_bbox, mip)
+
     #no need to warp if flow is identity
     #warp introduces noise
     if not influence_bbox.is_identity_flow(agg_flow, mip=mip):
       warped   = warp(raw_data, agg_flow)
     else:
-      #print ("not warping")
+      print ("not warping")
       warped = raw_data[0]
 
     mip_disp = int(self.max_displacement / 2**mip)
@@ -262,8 +274,10 @@ class Aligner:
 
     #preprocess divides by 256 and puts it into right dimensions
     #this data range is good already, so mult by 256
-    return self.preprocess_data(result * 255)
+    preprocessed = self.preprocess_data(result * 255)
 
+    return preprocessed
+    
   def downsample_patch(self, ng_path, z, bbox, mip):
     in_data = self.get_image_data(ng_path, z, bbox, mip - 1)
     result  = downsample_mip(in_data)
@@ -307,13 +321,83 @@ class Aligner:
     nd = np.divide(ed, float(255.0), dtype=np.float32)
     return nd
 
-  def get_image_data(self, path, z, bbox, mip):
+  def dilate_mask(self, mask, radius=5):
+    return skmaximum(np.squeeze(mask), skdisk(radius)).reshape(mask.shape)
+    
+  def missing_data_mask(self, img, bbox, mip):
+    (img_xs, img_xe), (img_ys, img_ye) = bbox.x_range(mip=mip), bbox.y_range(mip=mip)
+    (total_xs, total_xe), (total_ys, total_ye) = self.total_bbox.x_range(mip=mip), self.total_bbox.y_range(mip=mip)
+
+    xs_inset = max(0, total_xs - img_xs)
+    xe_inset = max(0, img_xe - total_xe)
+    ys_inset = max(0, total_ys - img_ys)
+    ye_inset = max(0, img_ye - total_ye)
+    
+    mask = np.logical_or(img == 0, img >= 253)
+    mask = self.dilate_mask(mask)
+    if xs_inset > 0:
+      mask[:xs_inset] = False
+    if xe_inset > 0:
+      mask[xe_inset:] = False
+    if ys_inset > 0:
+      mask[:,:ys_inset] = False
+    if ye_inset > 0:
+      mask[:,ye_inset:] = False
+    return mask
+    
+  def supplement_target_with_backup(self, target, still_missing_mask, backup, bbox, mip):
+    backup_missing_mask = self.missing_data_mask(backup, bbox, mip)
+    fill_in = backup_missing_mask < still_missing_mask
+    target[fill_in] = backup[fill_in]
+
+  def check_image_cache(self, path, bbox, mip):
+    with self.img_cache_lock:
+      output = -1 * np.ones((1,1,bbox.x_size(mip), bbox.y_size(mip)))
+      for key in self.img_cache:
+        other_path, other_bbox, other_mip = key[0], key[1], key[2]
+        if other_mip == mip and other_path == path:
+          if bbox.intersects(other_bbox):
+            xs, ys, xsz, ysz = other_bbox.insets(bbox, mip)
+            output[:,:,xs:xs+xsz,ys:ys+ysz] = self.img_cache[key]
+    if np.min(output > -1):
+      print('hit')
+      return output
+    else:
+      return None
+
+  def add_to_image_cache(self, path, bbox, mip, data):
+    with self.img_cache_lock:
+      self.img_cache[(path, bbox, mip)] = data
+
+  def get_image_data(self, path, z, bbox, mip, should_backtrack=False):
+    #data = self.check_image_cache(path, bbox, mip)
+    #if data is not None:
+    #  return data
+    data = None
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
+    while data is None:
+      try:
+        data_ = cv(path, mip=mip, progress=False,
+                   bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
+        data = data_
+      except AttributeError as e:
+        print('*****************************')
+        print(e)
+    
+    if self.num_targets > 1 and should_backtrack:
+      for backtrack in range(1, self.num_targets):
+        still_missing_mask = self.missing_data_mask(data, bbox, mip)
+        if not np.any(still_missing_mask):
+          break # we've got a full slice
+        backup = cv(path, mip=mip, progress=False,
+                    bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z-backtrack]
+        self.supplement_target_with_backup(data, still_missing_mask, backup, bbox, mip)
 
-    data = cv(path, mip=mip, progress=False,
-              bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
-    return self.preprocess_data(data)
+    data = self.preprocess_data(data)
+    #self.add_to_image_cache(path, bbox, mip, data)
+
+    return data
 
   def get_vector_data(self, path, z, bbox, mip):
     x_range = bbox.x_range(mip=mip)
@@ -376,11 +460,8 @@ class Aligner:
 
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
-    #for patch_bbox in chunks:
+
     def chunkwise(patch_bbox):
-      #print ("Preparing future source {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-      #        end='', flush=True)
-      #start = time()
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                      (mip + 1, self.process_high_mip), mip)
       self.save_image_patch(self.tmp_ng_path, warped_patch, z, patch_bbox, mip)
@@ -395,10 +476,7 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
 
-    #for patch_bbox in chunks:
     def chunkwise(patch_bbox):
-      #print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-      #          end='', flush=True)
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                     (mip, self.process_high_mip), mip)
       self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
@@ -407,9 +485,6 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def render_section_all_mips(self, z, bbox):
-    #total_bbox = self.get_upchunked_bbox(bbox, self.dst_chunk_sizes[self.process_high_mip],
-    #                                           self.dst_voxel_offsets[self.process_high_mip],
-    #                                           mip=self.process_high_mip)
     self.render(z, bbox, self.render_low_mip)
     self.downsample(z, bbox, self.render_low_mip, self.render_high_mip)
 
@@ -418,7 +493,6 @@ class Aligner:
       chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
                                       self.dst_voxel_offsets[m], mip=m, render=True)
 
-      #for patch_bbox in chunks:
       def chunkwise(patch_bbox):
         print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
         downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
@@ -432,12 +506,12 @@ class Aligner:
       start = time()
       chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[m],
                                       self.vec_voxel_offsets[m], mip=m)
-      for patch_bbox in chunks:
-      #def chunkwise(patch_bbox):
+      #for patch_bbox in chunks:
+      def chunkwise(patch_bbox):
       #FIXME Torch runs out of memory
       #FIXME batchify download and upload
         self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
-      #self.pool.map(chunkwise, chunks)
+      self.pool.map(chunkwise, chunks)
       end = time()
       print (": {} sec".format(end - start))
 
@@ -452,12 +526,28 @@ class Aligner:
       raise Exception("Not all parameters are set")
     #if not bbox.is_chunk_aligned(self.dst_ng_path):
     #  raise Exception("Have to align a chunkaligned size")
+
+    (xs,xe),(ys,ye) = bbox.x_range(mip=0), bbox.y_range(mip=0)
+    for b in self.break_into_chunks(bbox, self.vec_chunk_sizes[self.process_high_mip], self.vec_voxel_offsets[self.process_high_mip], self.process_high_mip):
+      (xs_, xe_), (ys_, ye_) = b.x_range(mip=0), b.y_range(mip=0)
+      if xs_ < xs:
+        xs = xs_
+      if xe_ > xe:
+        xe = xe_
+      if ys_ < ys:
+        ys = ys_
+      if ye_ > ye:
+        ye = ye_
+    #self.total_bbox = BoundingBox(xs,xe,ys,ye,0)
+    self.total_bbox = bbox
+    
     start = time()
     if move_anchor:
       for m in range(self.render_low_mip, self.high_mip):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
 
     for z in range(start_section, end_section):
+      self.img_cache = {}
       self.compute_section_pair_residuals(z + 1, z, bbox)
       self.render_section_all_mips(z + 1, bbox)
     end = time()

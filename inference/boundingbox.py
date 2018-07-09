@@ -7,6 +7,44 @@ class BoundingBox:
     scale_factor = 2**mip
     self.set_m0(xs*scale_factor, xe*scale_factor, ys*scale_factor, ye*scale_factor)
 
+  def contains(self, other):
+    assert type(other) == type(self)
+
+    dxs = other.m0_x[0] >= self.m0_x[0]
+    dys = other.m0_y[0] >= self.m0_y[0]
+    dxe = self.m0_x[1] >= other.m0_x[1]
+    dye = self.m0_y[1] >= other.m0_y[1]
+
+    return dxs and dys and dxe and dye
+
+  def intersects(self, other):
+    assert type(other) == type(self)
+
+    if other.m0_x[1] < self.m0_x[0]:
+      return False
+
+    if other.m0_y[1] < self.m0_y[0]:
+      return False
+
+    if self.m0_x[1] < other.m0_x[0]:
+      return False
+
+    if self.m0_y[1] < other.m0_y[0]:
+      return False
+
+    return True
+
+  def insets(self, other, mip):
+    assert type(other) == type(self)
+    assert mip <= self.max_mip
+
+    xs, xe = self.x_range(mip)
+    ys, ye = self.y_range(mip)
+    oxs, oxe = other.x_range(mip)
+    oys, oye = other.y_range(mip)
+
+    return max(xs - oxs, 0), max(ys - oys, 0), xe-xs, ye-ys
+    
   def set_m0(self, xs, xe, ys, ye):
     self.m0_x = (int(xs), int(xe))
     self.m0_y = (int(ys), int(ye))

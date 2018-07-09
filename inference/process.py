@@ -17,16 +17,14 @@ class Process(object):
         self.should_contrast = contrast
 
     def contrast(self, t):
-        print('b', np.min(t), np.max(t))
         zeromask = (t == 0)
-        l,h = 150.0, 200.0
+        l,h = 145.0, 210.0
         t[t < l/255.0] = l/255.0
         t[t > h/255.0] = h/255.0
-        t *= 255.0 / (h-l)
+        t *= 255.0 / (h-l+1)
         t -= np.min(t)
         t += 1.0/255.0
         t[zeromask] = 0
-        print('a', np.min(t), np.max(t))
         
     def process(self, s, t, level=0, crop=0):        
         if level != self.mip:
