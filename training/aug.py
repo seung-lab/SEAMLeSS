@@ -5,6 +5,7 @@ from torch.autograd import Variable
 import numpy as np
 import random
 import time
+import itertools
 
 from helpers import reverse_dim, save_chunk, gif
 
@@ -186,6 +187,12 @@ def displace_slice(stack, slice_idx, aux, displacement=32):
     aux = [rotate_and_scale(a, grid=grid)[0].squeeze() for a in aux]
     return stack, aux
 
+def weighted_draw(l,h):
+    vals = range(l,h+1)
+    weighted_vals_nested = map(lambda x: int((x-l+1) ** 0.7) * [x], vals)
+    weighted_vals = list(itertools.chain.from_iterable(weighted_vals_nested))
+    return random.choice(weighted_vals)
+    
 def random_rect_mask(size):
     dimx = random.randint(1,size[-2]/2)
     dimy = random.randint(1,size[-2]/2)
@@ -195,8 +202,8 @@ def random_rect_mask(size):
     prerotated_centered[mx:mx+dimx,my:my+dimy] = 1
     rotated_centered, _ = rotate_and_scale(prerotated_centered, None, 0)
     upper_bound = int(size[-2]/2 - max(dimx,dimy) / np.sqrt(2))
-    dx = random.randint(1, upper_bound)
-    dy = random.randint(1, upper_bound)
+    dx = weighted_draw(1,upper_bound)
+    dy = weighted_draw(1,upper_bound)
     off_centered = Variable(translate(rotated_centered.data, dx, dy))
     output = torch.ceil(rotate_and_scale(off_centered, None, 0)[0])
     return output.byte()

@@ -77,7 +77,7 @@ def intersection_masks(masks):
 
 def invert_mask(mask):
     check_mask(mask, False)
-    if type(mask.data) == torch.FloatTensor:
+    if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
         return torch.max(mask) - mask
     else:
         return (torch.max(mask).float() - mask.float()).byte()
@@ -85,19 +85,24 @@ def invert_mask(mask):
 def dilate_mask(mask, radius, binary=True):
     check_mask(mask, binary)
     mask = mask.detach()
-    if type(mask.data) == torch.FloatTensor:
+    if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
         return F.max_pool2d(mask, radius*2+1, stride=1, padding=radius).detach()
     else:
         return F.max_pool2d(mask.float(), radius*2+1, stride=1, padding=radius).byte().detach()
 
-def contract_mask(mask, radius, binary=True):
+def contract_mask(mask, radius, binary=True, ceil=True):
     check_mask(mask, binary)
     mask = mask.detach()
-    if type(mask.data) == torch.FloatTensor:
-        contracted = torch.ceil(-F.max_pool2d(-mask, radius*2+1, stride=1, padding=radius)).detach()
+    if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
+        contracted = -F.max_pool2d(-mask, radius*2+1, stride=1, padding=radius)
+        if ceil:
+            contracted = torch.ceil(contracted)
     else:
-        contracted = torch.ceil(-F.max_pool2d(-(mask.float()), radius*2+1, stride=1, padding=radius)).byte().detach()
-    return contracted, torch.sum(contracted).data[0] <= 0
+        contracted = -F.max_pool2d(-(mask.float()), radius*2+1, stride=1, padding=radius)
+        if ceil:
+            contracted = torch.ceil(contracted)
+        contracted = contracted.byte()
+    return contracted.detach(), torch.sum(contracted).data[0] <= 0
         
 def get_colors(angles, f, c):
     colors = f(angles)
@@ -219,12 +224,13 @@ def save_chunk(chunk, name, norm=True):
                 chunk = chunk.cpu().numpy()
             else:
                 chunk = chunk.numpy()
+    chunk = np.squeeze(chunk)
     if norm:
         chunk[:50,:50] = 0
         chunk[:10,:10] = 1
         chunk[-50:,-50:] = 1
         chunk[-10:,-10:] = 0
-    plt.imsave(name + '.png', 1 - np.squeeze(chunk), cmap='Greys')
+    plt.imsave(name + '.png', 1 - chunk, cmap='Greys')
         
 def gif(filename, array, fps=8, scale=1.0):
     """Creates a gif given a stack of images using moviepy
