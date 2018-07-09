@@ -322,7 +322,7 @@ class Aligner:
     return nd
 
   def dilate_mask(self, mask, radius=5):
-    return skmaximum(np.squeeze(mask), skdisk(radius)).reshape(mask.shape)
+    return skmaximum(np.squeeze(mask).astype(np.uint8), skdisk(radius)).reshape(mask.shape).astype(np.bool)
     
   def missing_data_mask(self, img, bbox, mip):
     (img_xs, img_xe), (img_ys, img_ye) = bbox.x_range(mip=mip), bbox.y_range(mip=mip)
@@ -332,9 +332,9 @@ class Aligner:
     xe_inset = max(0, img_xe - total_xe)
     ys_inset = max(0, total_ys - img_ys)
     ye_inset = max(0, img_ye - total_ye)
-    
     mask = np.logical_or(img == 0, img >= 253)
     mask = self.dilate_mask(mask)
+    return mask
     if xs_inset > 0:
       mask[:xs_inset] = False
     if xe_inset > 0:
@@ -382,18 +382,19 @@ class Aligner:
                    bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
         data = data_
       except AttributeError as e:
-        print('*****************************')
-        print(e)
+        pass
     
     if self.num_targets > 1 and should_backtrack:
       for backtrack in range(1, self.num_targets):
         still_missing_mask = self.missing_data_mask(data, bbox, mip)
+        #save_chunk(still_missing_mask, 'mask{}{}'.format(bbox.__str__(mip=0),z))
+        #save_chunk(data, 'data{}{}'.format(bbox.__str__(mip=0), z))
         if not np.any(still_missing_mask):
           break # we've got a full slice
         backup = cv(path, mip=mip, progress=False,
                     bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z-backtrack]
         self.supplement_target_with_backup(data, still_missing_mask, backup, bbox, mip)
-
+        
     data = self.preprocess_data(data)
     #self.add_to_image_cache(path, bbox, mip, data)
 
@@ -506,12 +507,12 @@ class Aligner:
       start = time()
       chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[m],
                                       self.vec_voxel_offsets[m], mip=m)
-      #for patch_bbox in chunks:
-      def chunkwise(patch_bbox):
+      for patch_bbox in chunks:
+      #def chunkwise(patch_bbox):
       #FIXME Torch runs out of memory
       #FIXME batchify download and upload
         self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
-      self.pool.map(chunkwise, chunks)
+      #self.pool.map(chunkwise, chunks)
       end = time()
       print (": {} sec".format(end - start))
 
