@@ -30,19 +30,7 @@ from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
 from vis import visualize_outputs
 from loss import similarity_score, smoothness_penalty
 
-if __name__ == '__main__':
-    identities = {}
-    def get_identity_grid(dim):
-        if dim not in identities:
-            gx, gy = np.linspace(-1, 1, dim), np.linspace(-1, 1, dim)
-            I = np.stack(np.meshgrid(gx, gy))
-            I = np.expand_dims(I, 0)
-            I = torch.FloatTensor(I)
-            I = torch.autograd.Variable(I, requires_grad=False)
-            I = I.permute(0,2,3,1).cuda()
-            identities[dim] = I
-        return identities[dim]
- 
+if __name__ == '__main__': 
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
     parser.add_argument('--mask_smooth_radius', help='smooth smoothness penalty weights', type=int, default=20)
@@ -74,6 +62,7 @@ if __name__ == '__main__':
     parser.add_argument('--lm_defect_net', help='mip2 defect net archive', type=str, default='basil_defect_unet18070201')
     parser.add_argument('--hm_defect_net', help='mip5 defect net archive', type=str, default='basil_defect_unet_mip518070305')
     args = parser.parse_args()
+    print(args)
 
     name = args.name
     trunclayer = args.trunc
@@ -89,7 +78,6 @@ if __name__ == '__main__':
     batch_size = args.batch_size
     fine_tuning = args.fine_tuning
     epoch = args.epoch
-    print(args)
 
     if not os.path.isdir(log_path):
         os.makedirs(log_path)
@@ -123,6 +111,11 @@ if __name__ == '__main__':
 
     test_loader = train_loader
 
+    downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
+    start_time = time.time()
+    mse = similarity_score(should_reduce=False)
+    penalty = smoothness_penalty('jacob')
+    history = []
     def opt(layer):
         params = []
         if layer >= skiplayers and not fine_tuning:
@@ -145,13 +138,6 @@ if __name__ == '__main__':
         lr_ = lr if not fine_tuning else lr * 0.2
         print('Building optimizer for layer', layer, 'fine tuning', fine_tuning, 'lr', lr_)
         return torch.optim.Adam(params, lr=lr_)
-
-    downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
-    start_time = time.time()
-    mse = similarity_score(should_reduce=False)
-    penalty = smoothness_penalty('jacob')
-    history = []
-    print('=========== BEGIN TRAIN LOOP ============')
 
     def contrast(t, l=145, h=210):
         zeromask = (t == 0)
@@ -301,7 +287,7 @@ if __name__ == '__main__':
 
         smoothness_weights /= smoothness_mask_factor
 
-        rfield = field - get_identity_grid(field.size()[-2])
+        rfield = field - model.pyramid.get_identity_grid(field.size()[-2])
         smoothness_error_field = penalty([rfield], weights=smoothness_weights)
         
         if mask is not None:
@@ -328,6 +314,7 @@ if __name__ == '__main__':
             'smoothness_error_field' : smoothness_error_field
         }
 
+    print('=========== BEGIN TRAIN LOOP ============')
     X_test = None
     for idxx, tensor_dict in enumerate(test_loader):
         X_test = Variable(tensor_dict['X']).cuda().detach()
