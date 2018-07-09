@@ -23,7 +23,8 @@ def visualize_outputs(path, outputs):
     hpred = outputs['hpred'] if 'hpred' in outputs else None
     src_mask = outputs['src_mask'] if 'src_mask' in outputs else None
     target_mask = outputs['target_mask'] if 'target_mask' in outputs else None
-
+    consensus = outputs['consensus'] if 'consensus' in outputs else None
+    
     if src is not None and target is not None and pred is not None:
         stack = np.squeeze(torch.cat((reverse_dim(target,1),pred,src), 1).data.cpu().numpy())
         stack = norm(stack, 255)
@@ -38,6 +39,10 @@ def visualize_outputs(path, outputs):
         display_v(field, path.format('field'))
         display_v(field, path.format('cfield'), center=True)
 
+    if consensus is not None:
+        cfield = consensus.data.cpu().numpy()
+        display_v(cfield, path.format('consensus'))
+        
     #if residuals is not None and len(residuals) > 1:
     #    residuals = [r.data.cpu().numpy() for r in residuals[1:]]
     #    display_v(residuals, path.format('rfield'))
