@@ -62,23 +62,17 @@ if __name__ == '__main__':
     parser.add_argument('--dim', type=int, default=1152)
     parser.add_argument('--trunc', type=int, default=4)
     parser.add_argument('--lr', help='starting learning rate', type=float, default=0.0002)
-    parser.add_argument('--it', help='number of training epochs', type=int, default=1000)
+    parser.add_argument('--num_epochs', help='number of training epochs', type=int, default=1000)
     parser.add_argument('--state_archive', help='saved model to initialize with', type=str, default=None)
-    parser.add_argument('--archive_fields', help='whether or not to include residual fields in output', action='store_true')
     parser.add_argument('--batch_size', help='size of batch', type=int, default=1)
     parser.add_argument('--k', help='kernel size', type=int, default=7)
     parser.add_argument('--fall_time', help='epochs between layers', type=int, default=2)
     parser.add_argument('--epoch', type=int, default=0)
     parser.add_argument('--padding', type=int, default=128)
     parser.add_argument('--fine_tuning', action='store_true')
-    parser.add_argument('--penalty', type=str, default='jacob')
-    parser.add_argument('--crack_mask', action='store_false')
-    parser.add_argument('--pred', action='store_true')
     parser.add_argument('--skip_sample_aug', action='store_true')
-    parser.add_argument('--crack_masks', type=str, default='~/../eam6/basil_raw_cropped_crack_train_mip5.h5')
-    parser.add_argument('--fold_masks', type=str, default='~/../eam6/basil_raw_cropped_fold_train_mip5.h5')
-    parser.add_argument('--lm_crack_masks', type=str, default='~/../eam6/full_father_crack_train_mip5.h5')
-    parser.add_argument('--lm_fold_masks', type=str, default='~/../eam6/full_father_fold_train_mip5.h5')
+    parser.add_argument('--lm_defect_net', help='mip2 defect net archive', type=str, default='basil_defect_unet18070201')
+    parser.add_argument('--hm_defect_net', help='mip5 defect net archive', type=str, default='basil_defect_unet_mip518070305')
     args = parser.parse_args()
 
     name = args.name
@@ -91,10 +85,8 @@ if __name__ == '__main__':
     anneal = not args.no_anneal
     log_path = 'out/' + name + '/'
     log_file = log_path + name + '.log'
-    it = args.it
     lr = args.lr
     batch_size = args.batch_size
-    fall_time = args.fall_time
     fine_tuning = args.fine_tuning
     epoch = args.epoch
     print(args)
@@ -115,11 +107,11 @@ if __name__ == '__main__':
             p.requires_grad = True
         model.train(True)
 
-    defect_net = torch.load('basil_defect_unet_mip518070305').cpu().cuda() if args.hm else torch.load('basil_defect_unet18070201').cpu().cuda()
+    defect_net = torch.load(args.hm_defect_net if args.hm else args.lm_defect_net).cpu().cuda() 
 
     for p in defect_net.parameters():
         p.requires_grad = False
-        
+
     if args.hm:
         train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'))
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
@@ -343,7 +335,7 @@ if __name__ == '__main__':
         if idxx > 1:
             break
 
-    for epoch in range(args.epoch, it):
+    for epoch in range(args.epoch, args.num_epochs):
         print('epoch', epoch)
         for t, tensor_dict in enumerate(train_loader):
             if t == 0:
