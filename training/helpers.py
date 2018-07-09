@@ -64,10 +64,8 @@ def copy_state_to_model(archive_params, model):
 
 def check_mask(mask, binary):
     if binary:
-        assert torch.max(mask).data[0] == 1
-        assert torch.min(mask).data[0] == 0
-    else:
-        assert torch.min(mask).data[0] >= 0
+        assert torch.max(mask).data[0] <= 1
+    assert torch.min(mask).data[0] >= 0
 
 def union_masks(masks):
     return reduce(torch.max, masks)

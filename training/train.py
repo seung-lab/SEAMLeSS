@@ -45,7 +45,7 @@ if __name__ == '__main__':
  
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
-    parser.add_argument('--mask_smooth_radius', help='smooth smoothness penalty weights', type=int, default=0)
+    parser.add_argument('--mask_smooth_radius', help='smooth smoothness penalty weights', type=int, default=20)
     parser.add_argument('--eps', help='epsilon value to avoid divide-by-zero', type=float, default=1e-6)
     parser.add_argument('--no_jitter', action='store_true')
     parser.add_argument('--hm', action='store_true')
@@ -216,8 +216,8 @@ if __name__ == '__main__':
                 src, grid = rotate_and_scale(src.unsqueeze(0).unsqueeze(0), None)
                 target = rotate_and_scale(target.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
                 if mask is not None:
-                    mask = rotate_and_scale(mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
-                    target_mask = rotate_and_scale(target_mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
+                    mask = torch.ceil(rotate_and_scale(mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze())
+                    target_mask = torch.ceil(rotate_and_scale(target_mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze())
                     
                 src = src.squeeze()
         
@@ -241,6 +241,8 @@ if __name__ == '__main__':
         pred = F.grid_sample(downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
         if mask is not None:
             mask = torch.ceil(F.grid_sample(downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0)), field))
+        if target_mask is not None:
+            target_mask = dilate_mask(target_mask.unsqueeze(0).unsqueeze(0), 1, binary=False)
         if len(src_cutout_masks) > 0:
             src_cutout_masks = [torch.ceil(F.grid_sample(m.float(), field)).byte() for m in src_cutout_masks]
         
@@ -309,7 +311,6 @@ if __name__ == '__main__':
 
         rfield = field - get_identity_grid(field.size()[-2])
         smoothness_error_field = penalty([rfield], weights=smoothness_weights)
-        print mse_mask_factor, smoothness_mask_factor
         
         if mask is not None:
             hpred = pred.clone().detach()
@@ -398,26 +399,27 @@ if __name__ == '__main__':
                     penalties.append(rb['smoothness_error'].data[0])
 
                 ##################################
+                # CONSENSUS PENALTY COMPUTATION ##
+                ##################################
+                if args.unflow > 0 and rf is not None and rb is not None:
+                    ffield, rffield = rf['field'], rf['rfield']
+                    bfield, rbfield = rb['field'], rb['rfield']
+                    consensus_forward = (F.grid_sample(rbfield.permute(0,3,1,2), ffield).permute(0,2,3,1) + rffield) ** 2 * rf['similarity_weights'].permute(0,2,3,1)
+                    consensus_backward = (F.grid_sample(rffield.permute(0,3,1,2), bfield).permute(0,2,3,1) + rbfield) ** 2  * rb['similarity_weights'].permute(0,2,3,1)
+                    rf['consensus'] = consensus_forward
+                    rb['consensus'] = consensus_backward
+                    consensus_unweighted = torch.mean(consensus_forward) + torch.mean(consensus_backward)
+                    consensus = args.unflow * consensus_unweighted
+                    consensus.backward()
+                    consensus_list.append(consensus.data[0])
+
+                ##################################
                 # VISUALIZATION ##################
                 ##################################
                 if sample_idx == 0 and t % 6 == 0:
                     prefix = '{}{}_e{}_t{}'.format(log_path, name, epoch, t)
                     visualize_outputs(prefix + '_forward_{}', rf)
                     visualize_outputs(prefix + '_backward_{}', rb)
-                
-                ##################################
-                # CONSENSUS PENALTY COMPUTATION ##
-                ##################################
-                if args.unflow > 0 and rf is not None and rb is not None:
-                    print 'Computing consensus'
-                    ffield, rffield = rf['field'], rf['rfield']
-                    bfield, rbfield = rb['field'], rb['rfield']
-                    consensus_forward = torch.mean((F.grid_sample(rbfield.permute(0,3,1,2), ffield).permute(0,2,3,1) + rffield) ** 2)
-                    consensus_backward = torch.mean((F.grid_sample(rffield.permute(0,3,1,2), bfield).permute(0,2,3,1) + rbfield) ** 2)
-                    consensus_unweighted = consensus_forward + consensus_backward
-                    consensus = args.unflow * consensus_unweighted
-                    consensus.backward()
-                    consensus_list.append(consensus.data[0])
                 ##################################
 
                 optimizer.step()
