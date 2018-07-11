@@ -33,7 +33,25 @@ def jacob(fields):
     field = torch.sum(torch.cat(fields, -1) ** 2, -1)
     return field
 
+def cjacob(fields):
+    def center(f):
+        fmean_x, fmean_y = torch.mean(f[:,:,:,0]).data[0], torch.mean(f[:,:,:,1]).data[0]
+        fmean = torch.cat((fmean_x * torch.ones((1,f.size(1), f.size(2),1)), fmean_y * torch.ones((1,f.size(1), f.size(2),1))), 3)
+        fmean = Variable(fmean).cuda()
+        return f - fmean
+        
+    def dx(f):
+        p = Variable(torch.zeros((1,1,f.size(1),2))).cuda()
+        d = torch.cat((p, f[:,2:,:,:] - f[:,:-2,:,:], p), 1)
+        return center(d)
+    def dy(f):
+        p = Variable(torch.zeros((1,f.size(1),1,2))).cuda()
+        d = torch.cat((p, f[:,:,2:,:] - f[:,:,:-2,:], p), 2)
+        return center(d)
 
+    fields = sum(map(lambda f: [dx(f), dy(f)], fields), [])
+    field = torch.sum(torch.cat(fields, -1) ** 2, -1)
+    return field
 
 def tv(fields):
     def dx(f):
@@ -50,6 +68,7 @@ def smoothness_penalty(ptype):
     def penalty(fields, weights=None):
         if ptype ==     'lap': field = lap(fields)
         elif ptype == 'jacob': field = jacob(fields)
+        elif ptype == 'cjacob': field = cjacob(fields)
         elif ptype ==    'tv': field = tv(fields)
         else: crash # invalid penalty
         

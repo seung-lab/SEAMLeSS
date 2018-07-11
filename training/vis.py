@@ -2,10 +2,19 @@ import numpy as np
 from helpers import save_chunk, gif, reverse_dim, display_v
 import torch
 import torch.nn
+import torch.nn.functional as F
+from torch.autograd import Variable
 
 def norm(stack, factor=1):
     return factor * ((stack - np.min(stack)) / (np.max(stack) - np.min(stack)))
 
+def distortion_lines(field, spacing=12, thickness=4):
+    grid = Variable(torch.ones((1,1,field.size(-2), field.size(-2)))).cuda()
+    for idx in range(thickness):
+        grid[:,:,:,idx::spacing] = 0
+        grid[:,:,idx::spacing,:] = 0
+    return grid, F.grid_sample(grid, field).data.cpu().numpy()
+    
 def visualize_outputs(path, outputs):
     if outputs is None:
         print('Skipping visualization of empty outputs.')
@@ -14,7 +23,8 @@ def visualize_outputs(path, outputs):
     src = outputs['input_src'].unsqueeze(0).unsqueeze(0) if 'input_src' in outputs else None
     target = outputs['input_target'].unsqueeze(0).unsqueeze(0) if 'input_target' in outputs else None
     pred = outputs['pred'] if 'pred' in outputs else None
-    field = outputs['rfield'] if 'rfield' in outputs else None
+    field = outputs['field'] if 'field' in outputs else None
+    rfield = outputs['rfield'] if 'rfield' in outputs else None
     residuals = outputs['residuals'] if 'residuals' in outputs else None
     similarity_error_field = outputs['similarity_error_field'] if 'similarity_error_field' in outputs else None
     smoothness_error_field = outputs['smoothness_error_field'] if 'smoothness_error_field' in outputs else None
@@ -22,6 +32,7 @@ def visualize_outputs(path, outputs):
     smoothness_weights = outputs['smoothness_weights'] if 'smoothness_weights' in outputs else None
     hpred = outputs['hpred'] if 'hpred' in outputs else None
     src_mask = outputs['src_mask'] if 'src_mask' in outputs else None
+    raw_src_mask = outputs['raw_src_mask'] if 'raw_src_mask' in outputs else None
     target_mask = outputs['target_mask'] if 'target_mask' in outputs else None
     consensus = outputs['consensus'] if 'consensus' in outputs else None
     
@@ -35,9 +46,13 @@ def visualize_outputs(path, outputs):
             gif(path.format('hstack'), hstack)
 
     if field is not None:
-        field = field.data.cpu().numpy()
-        display_v(field, path.format('field'))
-        display_v(field, path.format('cfield'), center=True)
+        grid, distorted_grid = distortion_lines(field)
+        save_chunk(grid, path.format('grid'))
+        save_chunk(distorted_grid, path.format('dgrid'))
+        
+        rfield = field.data.cpu().numpy()
+        display_v(rfield, path.format('field'))
+        display_v(rfield, path.format('cfield'), center=True)
 
     if consensus is not None:
         cfield = consensus.data.cpu().numpy()
@@ -63,5 +78,8 @@ def visualize_outputs(path, outputs):
     if src_mask is not None:
         save_chunk(np.squeeze(src_mask.data.cpu().numpy()), path.format('src_mask'), norm=False)
 
+    if raw_src_mask is not None:
+        save_chunk(np.squeeze(raw_src_mask.data.cpu().numpy()), path.format('raw_src_mask'), norm=False)
+        
     if target_mask is not None:
         save_chunk(np.squeeze(target_mask.data.cpu().numpy()), path.format('target_mask'), norm=False)

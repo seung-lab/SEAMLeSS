@@ -33,7 +33,7 @@ from loss import similarity_score, smoothness_penalty
 if __name__ == '__main__': 
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
-    parser.add_argument('--mask_smooth_radius', help='smooth smoothness penalty weights', type=int, default=20)
+    parser.add_argument('--mask_smooth_radius', help='radius of average pooling kernel for smoothing smoothness penalty weights', type=int, default=20)
     parser.add_argument('--eps', help='epsilon value to avoid divide-by-zero', type=float, default=1e-6)
     parser.add_argument('--no_jitter', action='store_true')
     parser.add_argument('--hm', action='store_true')
@@ -59,15 +59,17 @@ if __name__ == '__main__':
     parser.add_argument('--padding', type=int, default=128)
     parser.add_argument('--fine_tuning', action='store_true')
     parser.add_argument('--skip_sample_aug', action='store_true')
+    parser.add_argument('--penalty', help='type of smoothness penalty (lap, jacob, cjacob, tv)', type=str, default='jacob')
     parser.add_argument('--lm_defect_net', help='mip2 defect net archive', type=str, default='basil_defect_unet18070201')
     parser.add_argument('--hm_defect_net', help='mip5 defect net archive', type=str, default='basil_defect_unet_mip518070305')
+    parser.add_argument('--fine_tuning_lr_factor', help='factor by which to reduce learning rate during fine tuning', type=float, default=0.2)
     args = parser.parse_args()
-    print(args)
 
     name = args.name
     trunclayer = args.trunc
     skiplayers = args.skip
     size = args.size
+    fall_time = args.fall_time
     padding = args.padding
     dim = args.dim + padding
     kernel_size = args.k
@@ -114,29 +116,26 @@ if __name__ == '__main__':
     downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
     start_time = time.time()
     mse = similarity_score(should_reduce=False)
-    penalty = smoothness_penalty('jacob')
+    penalty = smoothness_penalty(args.penalty)
     history = []
+
     def opt(layer):
         params = []
         if layer >= skiplayers and not fine_tuning:
-            print('training only layer ' + str(layer))
-            try:
-                params.extend(model.pyramid.mlist[layer].parameters())
-            except Exception as e:
-                print('Training shared G')
-                params.extend(model.pyramid.g.parameters())
+            print('Training only layer {}'.format(layer))
+            params.extend(model.pyramid.mlist[layer].parameters())
         else:
-            print('training all residual networks')
-            params.extend(model.parameters())
+            print('Training all residual networks.')
+            params.extend(model.pyramid.mlist.parameters())
 
         if fine_tuning or epoch < fall_time - 1:
-            print('training ep params')
+            print('Training all encoder parameters.')
             params.extend(model.pyramid.enclist.parameters())
         else:
-            print('freezing ep params')
+            print('Freezing encoder parameters.')
 
-        lr_ = lr if not fine_tuning else lr * 0.2
-        print('Building optimizer for layer', layer, 'fine tuning', fine_tuning, 'lr', lr_)
+        lr_ = lr if not fine_tuning else lr * args.fine_tuning_lr_factor
+        print('Building optimizer for layer {} (fine tuning: {}, lr: {})'.format(layer, fine_tuning, lr_))
         return torch.optim.Adam(params, lr=lr_)
 
     def contrast(t, l=145, h=210):
@@ -165,7 +164,7 @@ if __name__ == '__main__':
         stack.volatile = True
         return stack
 
-    def net_postprocess(raw_output, binary_threshold=0.5, minor_dilation_radius=1, major_dilation_radius=50):
+    def net_postprocess(raw_output, binary_threshold=0.4, minor_dilation_radius=1, major_dilation_radius=50):
         sigmoided = F.sigmoid(raw_output)
         pooled = F.max_pool2d(sigmoided, minor_dilation_radius*2+1, stride=1, padding=minor_dilation_radius)
         smoothed = F.avg_pool2d(pooled, minor_dilation_radius*2+1, stride=1, padding=minor_dilation_radius, count_include_pad=False)
@@ -217,6 +216,7 @@ if __name__ == '__main__':
         # resample tensors that are in our source coordinate space with our new field prediction
         # to move them into target coordinate space so we can compare things fairly
         pred = F.grid_sample(downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
+        raw_mask = mask
         if mask is not None:
             mask = torch.ceil(F.grid_sample(downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0)), field))
         if target_mask is not None:
@@ -262,7 +262,7 @@ if __name__ == '__main__':
         mse_weights *= mse_binary_mask.float()        
         mse_mask_factor = (torch.sum(mse_weights[border_mse_mask.detach()]) / torch.sum(border_mse_mask.float())).data[0]
         if mse_mask_factor < args.eps:
-            print('Similarity mask factor zero; skipping!')
+            print('Similarity mask factor zero; skipping')
             return None
 
         # compute raw similarity error and masked/weighted similarity error
@@ -273,19 +273,20 @@ if __name__ == '__main__':
         smoothness_binary_mask = pred != 0
         smoothness_weights = Variable(torch.ones(smoothness_binary_mask.size())).cuda()
         if mask is not None:
-            smoothness_weights[mask.data > 0] = args.lambda2 # everywhere we have non-standard smoothness, slightly reduce the smoothness penalty
-            smoothness_weights[mask.data > 1] = args.lambda3 # on top of cracks and folds only, significantly reduce the smoothness penalty
+            smoothness_weights[raw_mask.data > 0] = args.lambda2 # everywhere we have non-standard smoothness, slightly reduce the smoothness penalty
+            smoothness_weights[raw_mask.data > 1] = args.lambda3 # on top of cracks and folds only, significantly reduce the smoothness penalty
         smoothness_weights = contract_mask(smoothness_weights, args.mask_smooth_radius//2, ceil=False, binary=False)[0]
-        smoothness_weights = F.avg_pool2d(smoothness_weights**.5, 2*args.mask_smooth_radius+1, stride=1, padding=args.mask_smooth_radius)**2
+        smoothness_weights = F.avg_pool2d(smoothness_weights, 2*args.mask_smooth_radius+1, stride=1, padding=args.mask_smooth_radius)
         if mask is not None:
-            smoothness_weights[mask.data > 1] = args.lambda3 # reset the most significant smoothness penalty relaxation
+            smoothness_weights[raw_mask.data > 1] = args.lambda3 # reset the most significant smoothness penalty relaxation
         smoothness_weights *= smoothness_binary_mask.float()
-        smoothness_mask_factor = (torch.sum(smoothness_weights[border_mse_mask.byte().detach()]) / torch.sum(smoothness_binary_mask.float())).data[0]
+        smoothness_mask_factor = (torch.sum(smoothness_weights[smoothness_binary_mask.byte().detach()]) / torch.sum(smoothness_binary_mask.float())).data[0]
         if smoothness_mask_factor < args.eps:
-            print('Smoothness mask factor zero; skipping!')
+            print('Smoothness mask factor zero; skipping')
             return None
 
         smoothness_weights /= smoothness_mask_factor
+        smoothness_weights = F.grid_sample(smoothness_weights.detach(), field)
 
         rfield = field - model.pyramid.get_identity_grid(field.size()[-2])
         smoothness_error_field = penalty([rfield], weights=smoothness_weights)
@@ -305,6 +306,7 @@ if __name__ == '__main__':
             'pred' : pred,
             'hpred' : hpred,
             'src_mask' : mask,
+            'raw_src_mask' : raw_mask,
             'target_mask' : target_mask,
             'similarity_error' : torch.mean(weighted_similarity_error_field),
             'smoothness_error' : torch.sum(smoothness_error_field),
@@ -323,7 +325,7 @@ if __name__ == '__main__':
             break
 
     for epoch in range(args.epoch, args.num_epochs):
-        print('epoch', epoch)
+        print('Beginning training epoch: {}'.format(epoch))
         for t, tensor_dict in enumerate(train_loader):
             if t == 0:
                 if epoch % fall_time == 0 and (trunclayer > 0 or args.trunc == 0):
@@ -351,10 +353,10 @@ if __name__ == '__main__':
                 # RUN SAMPLE FORWARD #############
                 ##################################
                 X_ = X[:,i:i+2].detach()
-                src_mask, target_mask = mask_stack[0,i], mask_stack[0,i+1]
+                src_mask, target_mask = (mask_stack[0,i], mask_stack[0,i+1]) if trunclayer == 0 else (None, None)
 
                 if min(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]) < args.blank_var_threshold:
-                    print "Skipping blank sections", torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]
+                    print("Skipping blank sections: ({}, {})".format(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]))
                     continue
 
                 rf = run_sample(X_, src_mask, target_mask, train=True)
@@ -383,8 +385,8 @@ if __name__ == '__main__':
                 if args.unflow > 0 and rf is not None and rb is not None:
                     ffield, rffield = rf['field'], rf['rfield']
                     bfield, rbfield = rb['field'], rb['rfield']
-                    consensus_forward = (F.grid_sample(rbfield.permute(0,3,1,2), ffield).permute(0,2,3,1) + rffield) ** 2 * rf['similarity_weights'].permute(0,2,3,1)
-                    consensus_backward = (F.grid_sample(rffield.permute(0,3,1,2), bfield).permute(0,2,3,1) + rbfield) ** 2  * rb['similarity_weights'].permute(0,2,3,1)
+                    consensus_forward = (F.grid_sample(rbfield.permute(0,3,1,2), ffield).permute(0,2,3,1) + rffield) ** 2
+                    consensus_backward = (F.grid_sample(rffield.permute(0,3,1,2), bfield).permute(0,2,3,1) + rbfield) ** 2
                     rf['consensus'] = consensus_forward
                     rb['consensus'] = consensus_backward
                     consensus_unweighted = torch.mean(consensus_forward) + torch.mean(consensus_backward)
@@ -395,7 +397,7 @@ if __name__ == '__main__':
                 ##################################
                 # VISUALIZATION ##################
                 ##################################
-                if sample_idx == 0 and t % 6 == 0:
+                if sample_idx == 0 and t % 10 == 0:
                     prefix = '{}{}_e{}_t{}'.format(log_path, name, epoch, t)
                     visualize_outputs(prefix + '_forward_{}', rf)
                     visualize_outputs(prefix + '_backward_{}', rb)
@@ -413,7 +415,7 @@ if __name__ == '__main__':
                 history.append((time.time() - start_time, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus))
                 torch.save(model.state_dict(), 'pt/' + name + '.pt')
 
-                print('Writing status to: ', log_file)
+                print('Writing status to: {}'.format(log_file))
                 with open(log_file, 'a') as log:
                     for tr in history:
                         for val in tr:
@@ -421,4 +423,4 @@ if __name__ == '__main__':
                         log.write('\n')
                     history = []
             else:
-                print "Skipped writing status for blank stack"
+                print("Skipped writing status for blank stack...")

@@ -91,6 +91,8 @@ def dilate_mask(mask, radius, binary=True):
 def contract_mask(mask, radius, binary=True, ceil=True):
     check_mask(mask, binary)
     mask = mask.detach()
+    while mask.dim() < 4:
+        mask = mask.unsqueeze(0)
     if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
         contracted = -F.max_pool2d(-mask, radius*2+1, stride=1, padding=radius)
         if ceil:

@@ -88,7 +88,7 @@ class EPyramid(nn.Module):
     def __init__(self, size, dim, skip, topskips, k, train_size=1280):
         super(EPyramid, self).__init__()
         rdim = dim // (2 ** (size - 1 - topskips))
-        print('------- Constructing EPyramid with size', size, '(' + str(size-1) + ' downsamples) ' + str(dim))
+        print('Constructing EPyramid with size {} ({} downsamples, input size {})...'.format(size, size-1, dim))
         fm_0 = 12
         fm_coef = 6
         self.identities = {}
@@ -171,9 +171,9 @@ class PyramidTransformer(nn.Module):
             p.requires_grad = False
         model.train(False)
 
-        print('Loading model state from ' + archive_path + '...')
+        print('Loading model state from {}...'.format(archive_path))
         state_dict = torch.load(archive_path)
-        copy_state_to_model(state_dict, model) #model.load_state_dict(state_dict)
+        copy_state_to_model(state_dict, model)
         print('Successfully loaded model state.')
         return model
 
