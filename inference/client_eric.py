@@ -67,5 +67,4 @@ print(bbox.x_range(mip=0), bbox.y_range(mip=0))
 
 stack_start = v_off[2]
 a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=True)
-stack_start += stack_size
-a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=False)
+

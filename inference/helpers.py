@@ -164,6 +164,7 @@ def save_chunk(chunk, name):
                 chunk = chunk.cpu().numpy()
             else:
                 chunk = chunk.numpy()
+    chunk = np.squeeze(chunk).transpose(1,0)
     chunk[:50,:50] = 0
     chunk[:10,:10] = 1
     chunk[-50:,-50:] = 1

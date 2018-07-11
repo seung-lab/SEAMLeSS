@@ -231,7 +231,7 @@ class Aligner:
       src_patch = self.get_image_data(self.tmp_ng_path, source_z, precrop_patch_bbox, mip)
 
     tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
-
+    save_chunk(tgt_patch, 'tgt{} {}'.format(out_patch_bbox.__str__(mip=mip), target_z))
     abs_residual = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
@@ -327,23 +327,29 @@ class Aligner:
   def missing_data_mask(self, img, bbox, mip):
     (img_xs, img_xe), (img_ys, img_ye) = bbox.x_range(mip=mip), bbox.y_range(mip=mip)
     (total_xs, total_xe), (total_ys, total_ye) = self.total_bbox.x_range(mip=mip), self.total_bbox.y_range(mip=mip)
-
     xs_inset = max(0, total_xs - img_xs)
     xe_inset = max(0, img_xe - total_xe)
     ys_inset = max(0, total_ys - img_ys)
     ye_inset = max(0, img_ye - total_ye)
+    print(bbox.__str__(mip=mip), self.total_bbox.__str__(mip=mip))
+    print('[{}:-{},{}:-{}]'.format(xs_inset, xe_inset, ys_inset, ye_inset))
     mask = np.logical_or(img == 0, img >= 253)
-    mask = self.dilate_mask(mask)
-    return mask
+    #mask = self.dilate_mask(mask)
+    save_chunk(img, 'data{}'.format(bbox.__str__(mip=5)))
+    save_chunk(mask, 'mask{}'.format(bbox.__str__(mip=5)))
+    
+    fov_mask = np.ones(mask.shape).astype(np.bool)
     if xs_inset > 0:
-      mask[:xs_inset] = False
+      fov_mask[:xs_inset] = False
     if xe_inset > 0:
-      mask[xe_inset:] = False
+      fov_mask[-xe_inset:] = False
     if ys_inset > 0:
-      mask[:,:ys_inset] = False
+      fov_mask[:,:ys_inset] = False
     if ye_inset > 0:
-      mask[:,ye_inset:] = False
-    return mask
+      fov_mask[:,-ye_inset:] = False
+
+    save_chunk(fov_mask, 'fov{}'.format(bbox.__str__(mip=5)))
+    return np.logical_and(fov_mask, mask)
     
   def supplement_target_with_backup(self, target, still_missing_mask, backup, bbox, mip):
     backup_missing_mask = self.missing_data_mask(backup, bbox, mip)
@@ -386,6 +392,8 @@ class Aligner:
     
     if self.num_targets > 1 and should_backtrack:
       for backtrack in range(1, self.num_targets):
+        if z-backtrack < self.zs:
+          break
         still_missing_mask = self.missing_data_mask(data, bbox, mip)
         #save_chunk(still_missing_mask, 'mask{}{}'.format(bbox.__str__(mip=0),z))
         #save_chunk(data, 'data{}{}'.format(bbox.__str__(mip=0), z))
@@ -546,7 +554,7 @@ class Aligner:
     if move_anchor:
       for m in range(self.render_low_mip, self.high_mip):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
-
+    self.zs = start_section
     for z in range(start_section, end_section):
       self.img_cache = {}
       self.compute_section_pair_residuals(z + 1, z, bbox)
