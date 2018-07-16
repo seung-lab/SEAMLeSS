@@ -2,12 +2,26 @@ from cloudvolume import CloudVolume
 from cloudvolume.lib import Bbox, Vec
 import numpy as np
 from copy import copy
+from PIL import Image
 
 import argparse
 
-def get_image(vol, origin, block):
-  bbox = Bbox(origin, origin+block)
+def get_bbox(origin, block):
+  return Bbox(origin, origin+block)
+
+def get_image(vol, bbox):
   return vol[bbox.to_slices()]
+
+def get_composite_image(vol, bbox):
+  """Collapse 3D image into a 2D image, replacing black pixels in the first 
+      z slice with the nearest nonzero pixel in other slices.
+  """
+  img = vol[bbox.to_slices()]
+  o = img[:,:,0]
+  for z in range(1, img.shape[2]):
+    o[o <= 1] = img[:,:,z][o <= 1]
+    Image.fromarray(o[:,:,0]).save('/usr/people/tmacrina/Desktop/{0}.png'.format(z))
+  return o
 
 def normalize(img):
   return (img - np.mean(img)) / np.std(img)
@@ -24,70 +38,105 @@ def score(src_img, dst_img):
 def to_uint8(s):
   return (((s + 1) / 2)*255).astype(np.uint8)
 
-def grid_score(cv, bbox, block):
-  """Return image of score run at grid within bbox
+def grid_score(src_img, dst_img, block):
+  """Return image of score run at grid of blocks between src_img & dst_img
   """
-  src_img = cv[bbox.to_slices()][:,:,:,0]
-  dst_img = cv[(bbox+Vec(0,0,1)).to_slices()][:,:,:,0]
-  intervals = bbox.size3() // block
+  intervals = src_img.shape // block
   o = np.zeros(intervals)
   n = np.prod(intervals)
+  i = 0
   for x in range(intervals[0]):
     for y in range(intervals[1]):
       for z in range(intervals[2]):
-        print('{0} / {1}\r'.format((x+1)*(y+1)*(z+1), n), end='')
+        i += 1
+        print('{1} : {0}\r'.format(i, n), end='')
         src_origin = Vec(x,y,z)*block
-        src = get_image(src_img, src_origin, block)
-        dst = get_image(dst_img, src_origin, block)
+        src = get_image(src_img, get_bbox(src_origin, block))
+        dst = get_image(dst_img, get_bbox(src_origin, block))
         o[x,y,z] = score(src, dst)
   return o
 
-def main(src_path, src_mip, dst_path, dst_mip, bbox, bbox_mip):
-  """Run similarity score in a grid over bbox, compile as image & save. 
-  """
-  src = CloudVolume(src_path, mip=src_mip, fill_missing=True)
-  dst_info = copy(src.info)
-  dst_info['scales'] = dst_info['scales'][0:1]
-  each_factor = Vec(2,2,1)
-  factor = each_factor.clone()
-  for m in range(1, dst_mip+1):
-    src.add_scale(factor, info=dst_info)
-    factor *= each_factor
-  dst_info['data_type'] = 'uint8'
-  dst = CloudVolume(dst_path, mip=dst_mip, info=dst_info, 
-                  fill_missing=True, non_aligned_writes=True, cdn_cache=False)
-  dst.commit_info()
+def main(src_path, src_mip, dst_path, dst_mips, bbox, bbox_mip, composite_z):
+  """Run similarity score in a grid over req_bbox, compile as image & save. 
 
-  sds = 2**(dst_mip - src_mip)
-  dst_chunk = Vec(sds, sds, 1)
-  ssb = sdb = 2**(src_mip - bbox_mip)
-  src_bbox = bbox // Vec(ssb, ssb, 1)
-  src_bbox = src_bbox.shrink_to_chunk_size(dst_chunk)
-  # sdb = 2**(dst_mip - bbox_mip)
-  dst_bbox = src_bbox // Vec(sds, sds, 1)
-  o = grid_score(src, src_bbox, dst_chunk)
-  dst[dst_bbox.to_slices()] = to_uint8(o)[:,:,:,np.newaxis]
+  Args:
+    * src_path: path to CloudVolume with images to be scored
+    * src_mip: MIP level of images to be used in scoring
+    * dst_path: path to CloudVolume where score image to be written
+    * dst_mips: MIP levels of output to be used. This will dictate the blocksize
+        used in scoring: 2**(dst_mip - src_mip). 
+        Requires min(dst_mips) >= src_mip.
+    * bbox: Requested bbox of area to be scored.
+    * bbox_mip: MIP level of the req_bbox (typically 0)
+    * composite_z: The number of slices to use when making a composite
+        image to be scored against.
+
+  Outputs:
+    * Writes a CloudVolume at dst_path
+
+  """
+  assert(min(dst_mips) >= src_mip)
+  src = CloudVolume(src_path, mip=src_mip, fill_missing=True, parallel=2)
+
+  for z in range(bbox.minpt[2], bbox.maxpt[2]):
+    print('Scoring z={0}'.format(z))
+    bbox.minpt[2] = z
+    bbox.maxpt[2] = z+1
+
+    max_dst_mip = max(dst_mips)
+    sds = 2**(max_dst_mip - src_mip)
+    max_dst_chunk = Vec(sds, sds, 1)
+    ssb = sdb = 2**(src_mip - bbox_mip)
+    src_bbox = bbox // Vec(ssb, ssb, 1)
+    src_bbox = src_bbox.shrink_to_chunk_size(max_dst_chunk)
+    src_img = get_image(src, src_bbox)[:,:,:,0]
+    composite_bbox = Bbox(src_bbox.minpt+Vec(0,0,1), 
+                          src_bbox.maxpt+Vec(0,0,composite_z+1))
+    dst_img = get_composite_image(src, composite_bbox)
+
+    for dst_mip in dst_mips:
+      print('Compiling @ dst_mip={0}'.format(dst_mip))
+      sds = 2**(dst_mip - src_mip)
+      dst_chunk = Vec(sds, sds, 1)
+      dst_bbox = src_bbox // Vec(sds, sds, 1)
+      o = grid_score(src_img, dst_img, dst_chunk)
+
+      dst_info = copy(src.info)
+      dst_info['scales'] = dst_info['scales'][0:1]
+      each_factor = Vec(2,2,1)
+      factor = each_factor.clone()
+      for m in range(1, dst_mip+1):
+        src.add_scale(factor, info=dst_info)
+        factor *= each_factor
+      dst_info['data_type'] = 'uint8'
+      dst = CloudVolume(dst_path, mip=dst_mip, info=dst_info, 
+                    fill_missing=True, non_aligned_writes=True, cdn_cache=False)
+      dst.commit_info()
+      dst[dst_bbox.to_slices()] = to_uint8(o)[:,:,:,np.newaxis]
 
 if __name__ == '__main__':
 
   parser = argparse.ArgumentParser()
-  paraser.add_argument('--src_path', type=str)
-  paraser.add_argument('--dst_path', type=str)
-  paraser.add_argument('--src_mip', type=int)
-  paraser.add_argument('--dst_mip', type=int)
-  paraser.add_argument('--x_start', type=int)
-  paraser.add_argument('--x_stop', type=int)
-  paraser.add_argument('--y_start', type=int)
-  paraser.add_argument('--y_stop', type=int)
-  paraser.add_argument('--z_start', type=int)
-  paraser.add_argument('--z_stop', type=int)
-  paraser.add_argument('--bbox_mip', type=int)
+  parser.add_argument('--src_path', type=str)
+  parser.add_argument('--dst_path', type=str)
+  parser.add_argument('--src_mip', type=int)
+  parser.add_argument('--dst_mip_start', type=int)
+  parser.add_argument('--dst_mip_stop', type=int)
+  parser.add_argument('--x_start', type=int)
+  parser.add_argument('--x_stop', type=int)
+  parser.add_argument('--y_start', type=int)
+  parser.add_argument('--y_stop', type=int)
+  parser.add_argument('--z_start', type=int)
+  parser.add_argument('--z_stop', type=int)
+  parser.add_argument('--bbox_mip', type=int)
+  parser.add_argument('--composite_z', type=int)
   args = parser.parse_args()
 
   bbox = Bbox([args.x_start, args.y_start, args.z_start],
                 [args.x_stop, args.y_stop, args.z_stop])
-  main(args.src_path, args.src_mip, args.dst_path, args.dst_mip, 
-                                                bbox, args.bbox_mip)
+  dst_mips = range(args.dst_mip_start, args.dst_mip_stop)
+  main(args.src_path, args.src_mip, args.dst_path, dst_mips, 
+                                  bbox, args.bbox_mip, args.composite_z)
 
 # test
 # src_path = 'gs://neuroglancer/seamless/cprod_smooth4_mip8_full/image'
