@@ -1,3 +1,5 @@
+import torch
+import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -7,15 +9,21 @@ import collections
 import torch
 from torch.autograd import Variable
 from skimage.transform import rescale
+from functools import reduce
 
-size_map = [
-    'number of out channels',
-    'number of in channels',
-    'kernel x dimension',
-    'kernel y dimension'
-]
+def compose_functions(fseq):
+    def compose(f1, f2):
+        return lambda x: f2(f1(x))
+    return reduce(compose, fseq, lambda _: _)
 
 def copy_state_to_model(archive_params, model):
+    size_map = [
+        'number of out channels',
+        'number of in channels',
+        'kernel x dimension',
+        'kernel y dimension'
+    ]
+
     model_params = dict(model.named_parameters())
     archive_keys = archive_params.keys()
     model_keys = sorted(model_params.keys())
@@ -59,13 +67,13 @@ def copy_state_to_model(archive_params, model):
             std = varchive/5
             model_params[key].data[:,fm_count:] += torch.normal(means, std).cuda()
     print('Copied ' + str(len(model_keys) - approx) + ' parameters exactly, ' + str(approx) + ' parameters partially. Skipped ' + str(skipped) + ' parameters.')
-
+        
 def get_colors(angles, f, c):
     colors = f(angles)
     colors = c(colors)
     return colors
 
-def dv(vfield, name=None, downsample=0.25):
+def dv(vfield, name=None, downsample=0.5):
     dim = vfield.shape[-2]
     assert type(vfield) == np.ndarray
     
@@ -96,6 +104,9 @@ def dv(vfield, name=None, downsample=0.25):
         return img
 
 def np_upsample(img, factor):
+    if factor == 1:
+        return img
+
     if img.ndim == 2:
         return rescale(img, factor)
     elif img.ndim == 3:
@@ -104,9 +115,22 @@ def np_upsample(img, factor):
             b[:,:,idx] = np_upsample(img[:,:,idx], factor)
         return b
     else:
-        crash
-                     
-def display_v(vfield, name=None):
+        assert False
+
+def center_field(field):
+    wrap = type(field) == np.ndarray
+    if wrap:
+        field = [field]
+    for idx, vfield in enumerate(field):
+        vfield[:,:,:,0] = vfield[:,:,:,0] - np.mean(vfield[:,:,:,0])
+        vfield[:,:,:,1] = vfield[:,:,:,1] - np.mean(vfield[:,:,:,1])
+        field[idx] = vfield
+    return field[0] if wrap else field
+        
+def display_v(vfield, name=None, center=False):
+    if center:
+        center_field(vfield)
+
     if type(vfield) == list:
         dim = max([vf.shape[-2] for vf in vfield])
         vlist = [np.expand_dims(np_upsample(vf[0], dim/vf.shape[-2]), axis=0) for vf in vfield]
@@ -152,8 +176,8 @@ def center(var, dims, d):
         var = var.narrow(dim, d[idx]/2, var.size()[dim] - d[idx])
     return var
 
-def save_chunk(chunk, name):
-    if not isinstance(chunk, np.ndarray):
+def save_chunk(chunk, name, norm=True):
+    if type(chunk) != np.ndarray:
         try:
             if chunk.is_cuda:
                 chunk = chunk.data.cpu().numpy()
@@ -164,12 +188,13 @@ def save_chunk(chunk, name):
                 chunk = chunk.cpu().numpy()
             else:
                 chunk = chunk.numpy()
-    chunk = np.squeeze(chunk).transpose(1,0)
-    chunk[:50,:50] = 0
-    chunk[:10,:10] = 1
-    chunk[-50:,-50:] = 1
-    chunk[-10:,-10:] = 0
-    plt.imsave(name + '.png', 1 - np.squeeze(chunk), cmap='Greys')
+    chunk = np.squeeze(chunk).astype(np.float64)
+    if norm:
+        chunk[:50,:50] = 0
+        chunk[:10,:10] = 1
+        chunk[-50:,-50:] = 1
+        chunk[-10:,-10:] = 0
+    plt.imsave(name + '.png', 1 - chunk, cmap='Greys')
         
 def gif(filename, array, fps=8, scale=1.0):
     """Creates a gif given a stack of images using moviepy
@@ -186,7 +211,8 @@ def gif(filename, array, fps=8, scale=1.0):
     scale : float
         how much to rescale each image by (default: 1.0)
     """
-
+    array = (array - np.min(array)) / (np.max(array) - np.min(array))
+    array *= 255
     # ensure that the file has the .gif extension
     fname, _ = os.path.splitext(filename)
     filename = fname + '.gif'
@@ -195,7 +221,7 @@ def gif(filename, array, fps=8, scale=1.0):
     if array.ndim == 3:
         array = array[..., np.newaxis] * np.ones(3)
 
-    signature_width = 50
+    # add 'signature' block to top left and bottom right
     array[:,:50,:50] = 0
     array[:,:10,:10] = 255
     array[:,-50:,-50:] = 255

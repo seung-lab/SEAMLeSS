@@ -119,6 +119,9 @@ class Aligner:
     ##########################################################
     vec_info = deepcopy(src_info)
     vec_info["data_type"] = "float32"
+    for i in range(len(vec_info["scales"])):
+      vec_info["scales"][i]["chunk_sizes"][0][2] = 1
+    
     scales = deepcopy(vec_info["scales"])
     for i in range(len(scales)):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
@@ -231,7 +234,6 @@ class Aligner:
       src_patch = self.get_image_data(self.tmp_ng_path, source_z, precrop_patch_bbox, mip)
 
     tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
-    save_chunk(tgt_patch, 'tgt{} {}'.format(out_patch_bbox.__str__(mip=mip), target_z))
     abs_residual = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
@@ -331,12 +333,7 @@ class Aligner:
     xe_inset = max(0, img_xe - total_xe)
     ys_inset = max(0, total_ys - img_ys)
     ye_inset = max(0, img_ye - total_ye)
-    print(bbox.__str__(mip=mip), self.total_bbox.__str__(mip=mip))
-    print('[{}:-{},{}:-{}]'.format(xs_inset, xe_inset, ys_inset, ye_inset))
     mask = np.logical_or(img == 0, img >= 253)
-    #mask = self.dilate_mask(mask)
-    save_chunk(img, 'data{}'.format(bbox.__str__(mip=5)))
-    save_chunk(mask, 'mask{}'.format(bbox.__str__(mip=5)))
     
     fov_mask = np.ones(mask.shape).astype(np.bool)
     if xs_inset > 0:
@@ -348,7 +345,6 @@ class Aligner:
     if ye_inset > 0:
       fov_mask[:,-ye_inset:] = False
 
-    save_chunk(fov_mask, 'fov{}'.format(bbox.__str__(mip=5)))
     return np.logical_and(fov_mask, mask)
     
   def supplement_target_with_backup(self, target, still_missing_mask, backup, bbox, mip):
@@ -395,12 +391,17 @@ class Aligner:
         if z-backtrack < self.zs:
           break
         still_missing_mask = self.missing_data_mask(data, bbox, mip)
-        #save_chunk(still_missing_mask, 'mask{}{}'.format(bbox.__str__(mip=0),z))
-        #save_chunk(data, 'data{}{}'.format(bbox.__str__(mip=0), z))
         if not np.any(still_missing_mask):
           break # we've got a full slice
-        backup = cv(path, mip=mip, progress=False,
-                    bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z-backtrack]
+        backup = None
+        while backup is None:
+          try:
+            backup_ = cv(path, mip=mip, progress=False,
+                         bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z-backtrack]
+            backup = backup_
+          except AttributeError as e:
+            pass
+          
         self.supplement_target_with_backup(data, still_missing_mask, backup, bbox, mip)
         
     data = self.preprocess_data(data)
@@ -412,8 +413,14 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
 
-    data = cv(path, mip=mip, progress=False,
-              bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
+    data = None
+    while data is None:
+      try:
+        data_ = cv(path, mip=mip, progress=False,
+                   bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
+        data = data_
+      except AttributeError as e:
+        pass
     return data
 
   def get_abs_residual(self, z, bbox, mip):
@@ -552,7 +559,7 @@ class Aligner:
     
     start = time()
     if move_anchor:
-      for m in range(self.render_low_mip, self.high_mip):
+      for m in range(self.render_low_mip, self.high_mip+1):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
     self.zs = start_section
     for z in range(start_section, end_section):

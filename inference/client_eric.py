@@ -12,7 +12,7 @@ parser.add_argument('--render_mip', type=int)
 parser.add_argument('--should_contrast', type=int)
 parser.add_argument('--num_targets', type=int)
 parser.add_argument('--edge_crop', type=int, default=384)
-parser.add_argument('--max_displacement', type=int, default=2048)
+parser.add_argument('--max_displacement', help='the size of the largest displacement expected; should be 2^high_mip', type=int, default=2048)
 parser.add_argument('--max_mip', type=int, default=9)
 parser.add_argument('--xs', type=int)
 parser.add_argument('--xe', type=int)
@@ -20,6 +20,7 @@ parser.add_argument('--ys', type=int)
 parser.add_argument('--ye', type=int)
 parser.add_argument('--stack_size', type=int, default=100)
 parser.add_argument('--zs', type=int)
+parser.add_argument('--no_anchor', action='store_true')
 args = parser.parse_args()
 
 out_name = args.out_name
@@ -55,16 +56,15 @@ print('Source:', source)
 print('Coordinates:', (args.xs, args.ys, args.zs), (args.xe, args.ye, args.zs+args.stack_size))
 print('Mip:', mip)
 print('Contrast:', should_contrast)
-print('Max mip:', max_mip-1)
+print('Max mip:', max_mip)
 print('NG link:', ng_link(out_name, 'precomputed://' + 'gs://neuroglancer/seamless/' + model_name+'_'+out_name+'/image', source[source.rindex('/')+1:], 'precomputed://' + source, (xs+xe)//2, (ys+ye)//2, zs))
 
 a = Aligner(model_path, max_displacement, edge_crop, mip_range, high_mip_chunk, source,
-            'gs://neuroglancer/seamless/{}_{}'.format(model_name, out_name), render_low_mip=render_mip,
+            'gs://neuroglancer/seamless/{}_{}'.format(model_name, out_name), render_low_mip=render_mip, render_high_mip=max_mip,
             skip=0, topskip=0, should_contrast=should_contrast, num_targets=num_targets)
 
 bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=max_mip)
-print(bbox.x_range(mip=0), bbox.y_range(mip=0))
 
 stack_start = v_off[2]
-a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=True)
+a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=not args.no_anchor)
 

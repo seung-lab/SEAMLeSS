@@ -2,6 +2,8 @@ import torch
 import numpy as np
 from model.PyramidTransformer import PyramidTransformer
 from model.xmas import Xmas
+from normalizer import Normalizer
+from helpers import save_chunk
 
 class Process(object):
     """docstring for Process."""
@@ -15,7 +17,8 @@ class Process(object):
         self.mip = mip
         self.dim = dim
         self.should_contrast = contrast
-
+        self.normalizer = Normalizer(self.mip)
+        
     def contrast(self, t):
         zeromask = (t == 0)
         l,h = 145.0, 210.0
@@ -25,13 +28,15 @@ class Process(object):
         t -= np.min(t)
         t += 1.0/255.0
         t[zeromask] = 0
-        
+
     def process(self, s, t, level=0, crop=0):        
         if level != self.mip:
             return None
         if self.should_contrast:
-            self.contrast(s)
-            self.contrast(t)
+            s = self.normalizer.apply(s.squeeze()).reshape(t.shape)
+            t = self.normalizer.apply(t.squeeze()).reshape(t.shape)
+            #self.contrast_(s)
+            #self.contrast_(t)
         level -= self.mip
         x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
