@@ -1,5 +1,10 @@
-cavelab
 numpy
-pytorch
+torch
+torchvision
 matplotlib
-tensorboardX
+visdom
+cloud-volume
+pathos
+moviepy
+scikit-image
+#python3-tk
