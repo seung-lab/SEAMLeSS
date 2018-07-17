@@ -17,7 +17,7 @@ def apply_grid(stack, grid):
         stack[:,sliceidx:sliceidx+1] = F.grid_sample(stack[:,sliceidx:sliceidx+1], grid)
     return stack
 
-def rotate_and_scale(imslice, size=0.003, scale=0.005, grid=None):
+def rotate_and_scale(imslice, size=0.004, scale=0.005, grid=None):
     if type(imslice) == list:
         for _ in range(4 - len(imslice[0].size())):
             imslice = [o.unsqueeze(0) for o in imslice]
@@ -69,18 +69,19 @@ def crack(imslice, width_range=(4,32)):
         mask.data[idx,p-width:p] = 0
     return outslice, mask
 
-def jitter_stacks(Xs, displacement=32, min_cut=32):
+def jitter_stacks(Xs, max_displacement=2**6, min_cut=32):
     assert len(Xs) > 0
     should_rotate = random.randint(0,1) == 0
     srcXs = rotate_and_scale(Xs, size=None)[0] if should_rotate else Xs
     Xs_ = [Variable(torch.zeros(X.size())) for X in Xs]
+    d = int(max_displacement / (2. * np.sqrt(2)))
     if Xs[0].is_cuda:
         Xs_ = [X_.cuda() for X_ in Xs_]
     for i in range(len(Xs)):
         Xs_[i][:,-1] = Xs[i][:,-1]
     for i in range(Xs[0].size()[1] - 1, -1, -1):
-        xoff = half(random.randint(-displacement,-1), random.randint(1,displacement))
-        yoff = half(random.randint(-displacement,-1), random.randint(1,displacement))
+        xoff = half(weighted_draw(-d,-1), weighted_draw(1,d))
+        yoff = half(weighted_draw(-d,-1), weighted_draw(1,d))
         for ii in range(len(Xs_)):
             if xoff >= 0:
                 if yoff >= 0:
@@ -138,8 +139,8 @@ def gen_gradient(size, flip=None, period_median=25, peak=0.5):
 
 def aug_brightness(X, factor=2.0, mask=False):
     # Assuming we get an input within [0,1]
-    assert torch.min(X).data[0] >= 0
-    assert torch.max(X).data[0] <= 1
+    mi, ma = torch.min(X).data[0], torch.max(X).data[0]
+    assert mi >= -1e-6 and ma <= 1 + 1e-6, 'Data must fall in range [0,1] ({}, {})'.format(mi, ma)
     
     gradients = random.randint(0,2)
     for _ in range(gradients):
@@ -187,12 +188,19 @@ def displace_slice(stack, slice_idx, aux, displacement=32):
     aux = [rotate_and_scale(a, grid=grid)[0].squeeze() for a in aux]
     return stack, aux
 
-def weighted_draw(l,h):
+def weighted_draw(l,h,exp=2, wf=None):
+    """
+    Draw a value from the range [l,h] (inclusive) weighted such that
+    the probability of drawing a value k is roughly proportional to the value
+    itself (with an exponent to make the weighting less severe; exponent=0 gives
+    a uniform distribution).
+    """
+    weight_function = lambda x: (abs(x) - min(abs(l), abs(h)) + 1) ** float(exp) if wf is None else wf
     vals = range(l,h+1)
-    weighted_vals_nested = map(lambda x: int((x-l+1) ** 0.7) * [x], vals)
-    weighted_vals = list(itertools.chain.from_iterable(weighted_vals_nested))
-    return random.choice(weighted_vals)
-    
+    weights = np.array([weight_function(v) for v in vals])
+    weights /= np.sum(weights)
+    return np.random.choice(vals, p=weights)
+
 def random_rect_mask(size):
     dimx = random.randint(1,size[-2]/2)
     dimy = random.randint(1,size[-2]/2)
@@ -202,8 +210,8 @@ def random_rect_mask(size):
     prerotated_centered[mx:mx+dimx,my:my+dimy] = 1
     rotated_centered, _ = rotate_and_scale(prerotated_centered, None, 0)
     upper_bound = int(size[-2]/2 - max(dimx,dimy) / np.sqrt(2))
-    dx = weighted_draw(1,upper_bound)
-    dy = weighted_draw(1,upper_bound)
+    dx = weighted_draw(1,upper_bound,1)
+    dy = weighted_draw(1,upper_bound,1)
     off_centered = Variable(translate(rotated_centered.data, dx, dy))
     output = torch.ceil(rotate_and_scale(off_centered, None, 0)[0])
     return output.byte()
@@ -254,9 +262,9 @@ def flip_stacks(Xs):
         Xs = [X.permute(0,1,3,2) for X in Xs]
     return Xs
 
-def aug_stacks(Xs, jitter=True, pad=True, flip=True, padding=128, jitter_displacement=32):
+def aug_stacks(Xs, jitter=True, pad=True, flip=True, padding=128, jitter_displacement=64):
     if jitter:
-        Xs = jitter_stacks(Xs, displacement=jitter_displacement)
+        Xs = jitter_stacks(Xs, max_displacement=jitter_displacement)
     top, left = 0, 0
     if pad:
         Xs, top, left = pad_stacks(Xs, padding)

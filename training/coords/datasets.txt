@@ -1,0 +1,5 @@
+Minnie (large folds) [100,10,1152,1152]
+Basil (large cracks) [100,10,1152,1152]
+Basil (small pia folds) [100,10,1152,1152]
+Pinky100 (large folds, tiling) [100,10,1152,1152]
+Drosophila (contrasting) [100,10,1152,1152]
