@@ -5,6 +5,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--source', type=str)
+parser.add_argument('--size', type=int, default=7)
 parser.add_argument('--model_path', type=str)
 parser.add_argument('--out_name', type=str)
 parser.add_argument('--mip', type=int)
@@ -61,7 +62,7 @@ print('NG link:', ng_link(out_name, 'precomputed://' + 'gs://neuroglancer/seamle
 
 a = Aligner(model_path, max_displacement, edge_crop, mip_range, high_mip_chunk, source,
             'gs://neuroglancer/seamless/{}_{}'.format(model_name, out_name), render_low_mip=render_mip, render_high_mip=max_mip,
-            skip=0, topskip=0, should_contrast=should_contrast, num_targets=num_targets)
+            skip=0, topskip=0, size=args.size, should_contrast=should_contrast, num_targets=num_targets)
 
 bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=max_mip)
 

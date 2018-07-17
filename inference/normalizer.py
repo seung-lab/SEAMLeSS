@@ -34,7 +34,7 @@ class Normalizer(object):
         assert np.max(output) <= factor
         output[zm] = 0
         return output
-
+            
     def masked_gaussian_filter(self, img, r, mask):
         pre = img[~mask]
         img[~mask] = np.mean(img[mask])
@@ -42,23 +42,23 @@ class Normalizer(object):
         filtered[~mask] = 0
         img[~mask] = pre
         return filtered
-    
-    def highpass(self, img, radius=128, radius_func=lambda m, r: r // m**1.5):
+
+    def highpass(self, img, radius=18, radius_func=lambda m, r: r // (m+1)):
         zm = img == 0
         r = radius_func(self.mip, radius)
         smoothed = self.masked_gaussian_filter(img, r, (img!=0))
         filtered = img - smoothed
         filtered[zm] = 0
-        return filtered
+        return self.rescale(filtered)
 
-    def contrast(self, img, radius=512, radius_func=lambda m, r: r // m**1.5):
+    def contrast(self, img, radius=128, radius_func=lambda m, r: r // (m+1)):
         rescaled = self.rescale(img, factor=255., dtype=np.uint8)
         r = radius_func(self.mip, radius)
         equalized = rank.equalize(rescaled, disk(r), mask=(rescaled!=0))
         return self.rescale(equalized)
     
     def apply_slice(self, img):
-        return self.f(img).astype(np.float32)
+        return self.f(img)
 
     def apply_stack(self, img):
         slice_results = [np.expand_dims(self.apply_slice(img[0,i]), 0) for i in range(img.shape[1])]
