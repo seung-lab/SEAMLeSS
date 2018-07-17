@@ -1,42 +1,16 @@
-import os
-import sys
-import time
-import argparse
-import operator
-
-import torch
-import torch.nn.functional as F
-import torch.nn as nn
-from torch.optim import lr_scheduler
-from torch.autograd import Variable
-import numpy as np
-import collections
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import random
-
-from stack_dataset import StackDataset
-from torch.utils.data import DataLoader, ConcatDataset
-import warnings
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore",category=FutureWarning)
-    import h5py
-
-from pyramid import PyramidTransformer
-from defect_net import *
-from helpers import gif, save_chunk, center, display_v, dvl, copy_state_to_model, reverse_dim, dilate_mask, contract_mask, invert_mask, union_masks, intersection_masks
-from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
-from vis import visualize_outputs
-from loss import similarity_score, smoothness_penalty
-
 if __name__ == '__main__': 
+    import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
+    parser.add_argument('--dry_run', help='tests data loading when passed, skipping training', action='store_true')
+    parser.add_argument('--vis_interval', help='the number of stacks in between each visualization', type=int, default=10)
     parser.add_argument('--mask_smooth_radius', help='radius of average pooling kernel for smoothing smoothness penalty weights', type=int, default=20)
+    parser.add_argument('--mask_neighborhood_radius', help='radius (in pixels) of neighborhood effects of cracks and folds', type=int, default=20)
     parser.add_argument('--eps', help='epsilon value to avoid divide-by-zero', type=float, default=1e-6)
     parser.add_argument('--no_jitter', help='omit jitter when augmenting image stacks', action='store_true')
     parser.add_argument('--hm', help='do high mip (mip 5) training run; runs at mip 2 if flag is omitted', action='store_true')
+    parser.add_argument('--mm', help='mix mips while training (2,5,7,8)', action='store_true')
     parser.add_argument('--unflow', help='coefficient for \'unflow\' consensus loss in training (default=0)', type=float, default=0)
     parser.add_argument('--blank_var_threshold', help='variance threshold under which an image will be considered blank and omitted', type=float, default=0.001)
     parser.add_argument('--lambda1', help='total smoothness penalty coefficient', type=float, default=0.1)
@@ -58,12 +32,46 @@ if __name__ == '__main__':
     parser.add_argument('--epoch', help='training epoch to start from', type=int, default=0)
     parser.add_argument('--padding', help='amount of padding to add to training stacks', type=int, default=128)
     parser.add_argument('--fine_tuning', help='when passed, begin with fine tuning (reduce learning rate, train all parameters)', action='store_true')
-    parser.add_argument('--skip_sample_aug', help='skips slice-wise augmentation when passed (no contrasting, cutouts, etc)', action='store_true')
+    parser.add_argument('--skip_sample_aug', help='skips slice-wise augmentation when passed (no cutouts, etc)', action='store_true')
     parser.add_argument('--penalty', help='type of smoothness penalty (lap, jacob, cjacob, tv)', type=str, default='jacob')
     parser.add_argument('--lm_defect_net', help='mip2 defect net archive', type=str, default='basil_defect_unet18070201')
     parser.add_argument('--hm_defect_net', help='mip5 defect net archive', type=str, default='basil_defect_unet_mip518070305')
     parser.add_argument('--fine_tuning_lr_factor', help='factor by which to reduce learning rate during fine tuning', type=float, default=0.2)
     args = parser.parse_args()
+
+    import os
+    import sys
+    import time
+    import operator
+    
+    import torch
+    import torch.nn.functional as F
+    import torch.nn as nn
+    from torch.optim import lr_scheduler
+    from torch.autograd import Variable
+    import numpy as np
+    import collections
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import random
+    
+    from stack_dataset import StackDataset
+    from torch.utils.data import DataLoader, ConcatDataset
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore",category=FutureWarning)
+        import h5py
+        
+    from pyramid import PyramidTransformer
+    from defect_net import *
+    from defect_detector import DefectDetector
+    from helpers import gif, save_chunk, center, display_v, dvl, copy_state_to_model, reverse_dim
+    import masks
+    from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
+    from vis import visualize_outputs
+    from loss import similarity_score, smoothness_penalty
+    from normalizer import Normalizer
 
     name = args.name
     trunclayer = args.trunc
@@ -81,6 +89,38 @@ if __name__ == '__main__':
     fine_tuning = args.fine_tuning
     epoch = args.epoch
 
+    downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
+    start_time = time.time()
+    mse = similarity_score(should_reduce=False)
+    penalty = smoothness_penalty(args.penalty)
+    history = []
+
+    if args.mm or args.hm:
+        hm_defect_detector = DefectDetector(torch.load(args.hm_defect_net).cpu().cuda(),
+                                            major_dilation_radius=args.mask_neighborhood_radius,
+                                            sigmoid_threshold = 0.5 if args.hm else 0.4)
+    if args.mm or (not args.hm):
+        lm_defect_detector = DefectDetector(torch.load(args.lm_defect_net).cpu().cuda(),
+                                            major_dilation_radius=args.mask_neighborhood_radius,
+                                            sigmoid_threshold = 0.5 if args.hm else 0.4)
+    normalizer = Normalizer(5 if args.hm else 2)
+
+    if args.mm:
+        train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/mip5_mixed.h5'), mip=5)
+        train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/mip2_mixed.h5'), mip=2)
+        train_dataset3 = StackDataset(os.path.expanduser('~/../eam6/matriarch_mixed.h5'), mip=8)
+        train_dataset = ConcatDataset([train_dataset1, train_dataset2, train_dataset3])
+    else:
+        if args.hm:
+            train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/mip5_mixed.h5'), mip=5)
+            train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/matriarch_mixed.h5'), mip=5)
+            train_dataset = ConcatDataset([train_dataset1, train_dataset2])
+        else:
+            #train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5')) # dataset pulled from all of Basil
+            train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/mip2_mixed.h5'), mip=2) # dataset focused on extreme folds
+            train_dataset = ConcatDataset([train_dataset2])
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
+
     if not os.path.isdir(log_path):
         os.makedirs(log_path)
     if not os.path.isdir('pt'):
@@ -96,28 +136,6 @@ if __name__ == '__main__':
         for p in model.parameters():
             p.requires_grad = True
         model.train(True)
-
-    defect_net = torch.load(args.hm_defect_net if args.hm else args.lm_defect_net).cpu().cuda() 
-
-    for p in defect_net.parameters():
-        p.requires_grad = False
-
-    if args.hm:
-        train_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'))
-        train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
-    else:
-        #lm_train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5')) # dataset pulled from all of Basil
-        lm_train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/dense_folds_train_mip2.h5')) # dataset focused on extreme folds
-        train_dataset = ConcatDataset([lm_train_dataset2])
-        train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
-
-    test_loader = train_loader
-
-    downsample = lambda x: nn.AvgPool2d(2**x,2**x, count_include_pad=False) if x > 0 else (lambda y: y)
-    start_time = time.time()
-    mse = similarity_score(should_reduce=False)
-    penalty = smoothness_penalty(args.penalty)
-    history = []
 
     def opt(layer):
         params = []
@@ -138,54 +156,14 @@ if __name__ == '__main__':
         print('Building optimizer for layer {} (fine tuning: {}, lr: {})'.format(layer, fine_tuning, lr_))
         return torch.optim.Adam(params, lr=lr_)
 
-    def contrast(t, l=145, h=210):
-        zeromask = (t == 0)
-        t[t < l] = l
-        t[t > h] = h
-        t *= 255.0 / (h-l+1)
-        t = (t - torch.min(t) + 1) / 255.
-        t[zeromask] = 0
-        return t
-    
-    def net_preprocess(stack):
-        weights = np.array(
-            [[1./48, 1./24, 1./48],
-             [1./24, 3./4,  1./24],
-             [1./48, 1./24, 1./48]]
-        )
-
-        kernel = Variable(torch.FloatTensor(weights).expand(10,1,3,3), requires_grad=False).cuda()
-        stack = F.conv2d(stack, kernel, padding=1, groups=10) / 255.0
-
-        for idx in range(stack.size(1)):
-            stack[:,idx] = stack[:,idx] - torch.mean(stack[:,idx])
-            stack[:,idx] = stack[:,idx] / (torch.std(stack[:,idx]) + 1e-6)
-        stack = stack.detach()
-        stack.volatile = True
-        return stack
-
-    def net_postprocess(raw_output, binary_threshold=0.4, minor_dilation_radius=1, major_dilation_radius=50):
-        sigmoided = F.sigmoid(raw_output)
-        pooled = F.max_pool2d(sigmoided, minor_dilation_radius*2+1, stride=1, padding=minor_dilation_radius)
-        smoothed = F.avg_pool2d(pooled, minor_dilation_radius*2+1, stride=1, padding=minor_dilation_radius, count_include_pad=False)
-        smoothed[smoothed > binary_threshold] = 1
-        smoothed[smoothed <= binary_threshold] = 0
-        dilated = F.max_pool2d(smoothed, major_dilation_radius*2+1, stride=1, padding=major_dilation_radius)
-        final_output = smoothed + dilated
-        final_output.volatile = False
-        return final_output
-
-    def cfm_from_stack(stack):
-        stack = net_preprocess(stack).detach()
-        raw_output = torch.cat([torch.max(defect_net(stack[:,i:i+1]),1,keepdim=True)[0] for i in range(stack.size(1))], 1)
-        final_output = net_postprocess(raw_output)
-        return final_output
-        
     def run_sample(X, mask=None, target_mask=None, train=True):
         model.train(train)
 
         # our convention here is that X is 4D PyTorch convolution shape, while src and target are in squeezed shape (2D)
         src, target = X[0,0], torch.squeeze(X[0,1:])
+        src = Variable(torch.FloatTensor(normalizer.apply(src.data.cpu().numpy()))).cuda()
+        target = Variable(torch.FloatTensor(normalizer.apply(target.data.cpu().numpy()))).cuda()
+
         if train and not args.skip_sample_aug:
             # random rotation
             should_rotate = random.randint(0,1) == 0
@@ -212,7 +190,12 @@ if __name__ == '__main__':
         elif train:
             print('Skipping sample-wise augmentation...')
 
+        if args.dry_run:
+            print('Bailing for dry run [not an error].')
+            return None
+
         pred, field, residuals = model.apply(input_src, input_target, trunclayer)
+
         # resample tensors that are in our source coordinate space with our new field prediction
         # to move them into target coordinate space so we can compare things fairly
         pred = F.grid_sample(downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
@@ -220,7 +203,7 @@ if __name__ == '__main__':
         if mask is not None:
             mask = torch.ceil(F.grid_sample(downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0)), field))
         if target_mask is not None:
-            target_mask = dilate_mask(target_mask.unsqueeze(0).unsqueeze(0), 1, binary=False)
+            target_mask = masks.dilate(target_mask.unsqueeze(0).unsqueeze(0), 1, binary=False)
         if len(src_cutout_masks) > 0:
             src_cutout_masks = [torch.ceil(F.grid_sample(m.float(), field)).byte() for m in src_cutout_masks]
         
@@ -230,8 +213,8 @@ if __name__ == '__main__':
         # mask away similarity error from pixels outside the boundary of either prediction or target
         # in other words, we need valid data in both the target and prediction to count the error from
         # that pixel
-        border_mse_mask = intersection_masks([pred != 0, target != 0])
-        border_mse_mask, no_valid_pixels = contract_mask(border_mse_mask, 5)
+        border_mse_mask = masks.intersect([pred != 0, target != 0])
+        border_mse_mask, no_valid_pixels = masks.contract(border_mse_mask, 5, return_sum=True)
         if no_valid_pixels:
             print('Empty mask, skipping!')
             return None
@@ -240,24 +223,24 @@ if __name__ == '__main__':
         # mask away similarity error from pixels within cutouts in either the source or target
         cutout_mse_masks = src_cutout_masks + target_cutout_masks
         if len(cutout_mse_masks) > 0:
-            cutout_mse_mask = union_masks(cutout_mse_masks)
-            cutout_mse_mask = invert_mask(cutout_mse_mask)
+            cutout_mse_mask = masks.union(cutout_mse_masks)
+            cutout_mse_mask = masks.invert(cutout_mse_mask)
             mse_binary_masks.append(cutout_mse_mask)
 
         # mask away similarity error for pixels within a defect in the target image
         if target_mask is not None:
-            target_defect_mse_mask = (target_mask < 2).detach()
+            target_defect_mse_mask = masks.contract(target_mask < 2, 2).detach()
             mse_binary_masks.append(target_defect_mse_mask)
             
-        mse_binary_mask = intersection_masks(mse_binary_masks)
+        mse_binary_mask = masks.intersect(mse_binary_masks)
 
         # reweight remaining pixels for focus areas
         mse_weights = Variable(torch.ones(border_mse_mask.size())).cuda()
         if mask is not None:
-            mse_weights.data[mask.data > 0] = args.lambda4
-            mse_weights.data[mask.data > 1] = args.lambda5
-        if target_mask is not None:
-            mse_weights.data[union_masks([target_mask.data > 0, target_mask.data <= 1, mask.data <= 1])] *= args.lambda4
+            mse_weights.data[masks.intersect([mask > 0, mask <= 1]).data] = args.lambda4
+            mse_weights.data[masks.dilate(mask > 1, 2).data] = args.lambda5
+        #if target_mask is not None:
+        #    mse_weights.data[masks.intersect([target_mask.data > 0, target_mask.data <= 1, mask.data <= 1])] *= args.lambda4
 
         mse_weights *= mse_binary_mask.float()        
         mse_mask_factor = (torch.sum(mse_weights[border_mse_mask.detach()]) / torch.sum(border_mse_mask.float())).data[0]
@@ -270,16 +253,17 @@ if __name__ == '__main__':
         weighted_similarity_error_field = similarity_error_field * (mse_weights / mse_mask_factor)
 
         # perform masking/weighting for smoothness penalty
-        smoothness_binary_mask = pred != 0
+        smoothness_binary_mask = masks.intersect([src != 0, target != 0]).view(mse_binary_mask.size())
         smoothness_weights = Variable(torch.ones(smoothness_binary_mask.size())).cuda()
-        if mask is not None:
+        if raw_mask is not None:
             smoothness_weights[raw_mask.data > 0] = args.lambda2 # everywhere we have non-standard smoothness, slightly reduce the smoothness penalty
             smoothness_weights[raw_mask.data > 1] = args.lambda3 # on top of cracks and folds only, significantly reduce the smoothness penalty
-        smoothness_weights = contract_mask(smoothness_weights, args.mask_smooth_radius//2, ceil=False, binary=False)[0]
-        smoothness_weights = F.avg_pool2d(smoothness_weights, 2*args.mask_smooth_radius+1, stride=1, padding=args.mask_smooth_radius)
-        if mask is not None:
+        smoothness_weights = masks.contract(smoothness_weights, args.mask_smooth_radius, ceil=False, binary=False)
+        smoothness_weights *= smoothness_binary_mask.float().detach()
+        smoothness_weights = F.avg_pool2d(smoothness_weights, 2*args.mask_smooth_radius+1, stride=1, padding=args.mask_smooth_radius)**.5
+        if raw_mask is not None:
             smoothness_weights[raw_mask.data > 1] = args.lambda3 # reset the most significant smoothness penalty relaxation
-        smoothness_weights *= smoothness_binary_mask.float()
+        smoothness_weights = F.avg_pool2d(smoothness_weights, 5, stride=1, padding=2)
         smoothness_mask_factor = (torch.sum(smoothness_weights[smoothness_binary_mask.byte().detach()]) / torch.sum(smoothness_binary_mask.float())).data[0]
         if smoothness_mask_factor < args.eps:
             print('Smoothness mask factor zero; skipping')
@@ -287,7 +271,10 @@ if __name__ == '__main__':
 
         smoothness_weights /= smoothness_mask_factor
         smoothness_weights = F.grid_sample(smoothness_weights.detach(), field)
-
+        if args.hm:
+            smoothness_weights = smoothness_weights.detach()
+        smoothness_weights = smoothness_weights * border_mse_mask.float().detach()
+        
         rfield = field - model.pyramid.get_identity_grid(field.size()[-2])
         smoothness_error_field = penalty([rfield], weights=smoothness_weights)
         
@@ -317,13 +304,6 @@ if __name__ == '__main__':
         }
 
     print('=========== BEGIN TRAIN LOOP ============')
-    X_test = None
-    for idxx, tensor_dict in enumerate(test_loader):
-        X_test = Variable(tensor_dict['X']).cuda().detach()
-        X_test.volatile = True
-        if idxx > 1:
-            break
-
     for epoch in range(args.epoch, args.num_epochs):
         print('Beginning training epoch: {}'.format(epoch))
         for t, tensor_dict in enumerate(train_loader):
@@ -340,8 +320,10 @@ if __name__ == '__main__':
 
             # Get inputs
             X = Variable(tensor_dict['X'], requires_grad=False).cuda()
-            mask_stack = cfm_from_stack(X)
-            stacks, top, left = aug_stacks([contrast(X), mask_stack], padding=padding, jitter=not args.no_jitter)
+            this_mip = tensor_dict['mip'][0]
+            mask_stack = lm_defect_detector.masks_from_stack(X) if this_mip == 2 else hm_defect_detector.masks_from_stack(X)
+            #X = Variable(torch.FloatTensor(normalizer.apply(X.data.cpu().numpy()))).cuda()
+            stacks, top, left = aug_stacks([X, mask_stack], padding=padding, jitter=not args.no_jitter, jitter_displacement=2**(args.size-1))
             X, mask_stack = stacks[0], stacks[1]
 
             errs = []
@@ -397,7 +379,7 @@ if __name__ == '__main__':
                 ##################################
                 # VISUALIZATION ##################
                 ##################################
-                if sample_idx == 0 and t % 10 == 0:
+                if sample_idx == 0 and t % args.vis_interval == 0:
                     prefix = '{}{}_e{}_t{}'.format(log_path, name, epoch, t)
                     visualize_outputs(prefix + '_forward_{}', rf)
                     visualize_outputs(prefix + '_backward_{}', rb)

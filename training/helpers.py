@@ -10,14 +10,19 @@ import torch
 from torch.autograd import Variable
 from skimage.transform import rescale
 
-size_map = [
-    'number of out channels',
-    'number of in channels',
-    'kernel x dimension',
-    'kernel y dimension'
-]
+def compose_functions(fseq):
+    def compose(f1, f2):
+        return lambda x: f2(f1(x))
+    return reduce(compose, fseq, lambda _: _)
 
 def copy_state_to_model(archive_params, model):
+    size_map = [
+        'number of out channels',
+        'number of in channels',
+        'kernel x dimension',
+        'kernel y dimension'
+    ]
+
     model_params = dict(model.named_parameters())
     archive_keys = archive_params.keys()
     model_keys = sorted(model_params.keys())
@@ -26,6 +31,7 @@ def copy_state_to_model(archive_params, model):
 
     approx = 0
     skipped = 0
+    new = len(set(model_keys)) - len(set(archive_keys))
     for key in archive_keys:
         if key not in model_keys:
             print('[WARNING]   Key ' + key + ' present in archive but not in model; skipping.')
@@ -60,49 +66,8 @@ def copy_state_to_model(archive_params, model):
             means = torch.zeros(model_params[key].data[:,fm_count:].size())
             std = varchive/5
             model_params[key].data[:,fm_count:] += torch.normal(means, std).cuda()
-    print('Copied ' + str(len(model_keys) - approx) + ' parameters exactly, ' + str(approx) + ' parameters partially. Skipped ' + str(skipped) + ' parameters.')
-
-def check_mask(mask, binary):
-    if binary:
-        assert torch.max(mask).data[0] <= 1
-    assert torch.min(mask).data[0] >= 0
-
-def union_masks(masks):
-    return reduce(torch.max, masks)
-
-def intersection_masks(masks):
-    return reduce(torch.min, masks)
-
-def invert_mask(mask):
-    check_mask(mask, False)
-    if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
-        return torch.max(mask) - mask
-    else:
-        return (torch.max(mask).float() - mask.float()).byte()
-        
-def dilate_mask(mask, radius, binary=True):
-    check_mask(mask, binary)
-    mask = mask.detach()
-    if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
-        return F.max_pool2d(mask, radius*2+1, stride=1, padding=radius).detach()
-    else:
-        return F.max_pool2d(mask.float(), radius*2+1, stride=1, padding=radius).byte().detach()
-
-def contract_mask(mask, radius, binary=True, ceil=True):
-    check_mask(mask, binary)
-    mask = mask.detach()
-    while mask.dim() < 4:
-        mask = mask.unsqueeze(0)
-    if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
-        contracted = -F.max_pool2d(-mask, radius*2+1, stride=1, padding=radius)
-        if ceil:
-            contracted = torch.ceil(contracted)
-    else:
-        contracted = -F.max_pool2d(-(mask.float()), radius*2+1, stride=1, padding=radius)
-        if ceil:
-            contracted = torch.ceil(contracted)
-        contracted = contracted.byte()
-    return contracted.detach(), torch.sum(contracted).data[0] <= 0
+    print('Copied {} parameters exactly, {} parameters partially.'.format(len(model_keys) - approx - new, approx))
+    print('Skipped {} parameters in archive, found {} new parameters in model.'.format(skipped, new))
         
 def get_colors(angles, f, c):
     colors = f(angles)
@@ -224,7 +189,7 @@ def save_chunk(chunk, name, norm=True):
                 chunk = chunk.cpu().numpy()
             else:
                 chunk = chunk.numpy()
-    chunk = np.squeeze(chunk)
+    chunk = np.squeeze(chunk).astype(np.float64)
     if norm:
         chunk[:50,:50] = 0
         chunk[:10,:10] = 1

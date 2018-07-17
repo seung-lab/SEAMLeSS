@@ -4,16 +4,39 @@ import torch
 import torch.nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 def norm(stack, factor=1):
     return factor * ((stack - np.min(stack)) / (np.max(stack) - np.min(stack)))
 
-def distortion_lines(field, spacing=12, thickness=4):
+def distortion_lines(field, spacing=4, thickness=2):
     grid = Variable(torch.ones((1,1,field.size(-2), field.size(-2)))).cuda()
     for idx in range(thickness):
         grid[:,:,:,idx::spacing] = 0
         grid[:,:,idx::spacing,:] = 0
     return grid, F.grid_sample(grid, field).data.cpu().numpy()
+
+def graph(series, fname):
+    plt.plot(series)
+    plt.title(fname[fname.rindex('/')+1:])
+    plt.show()
+    plt.savefig(fname)
+    plt.clf()
+
+def show_weights(weights, path):
+    weights = np.squeeze(weights.data.cpu().numpy())
+    x_slice = weights[weights.shape[0]//2]
+    y_slice = weights[:,weights.shape[1]//2]
+
+    graph(x_slice, path.format('x_slice'))
+    graph(y_slice, path.format('y_slice'))
+
+    weights[weights.shape[0]//2] = np.mean(weights)
+    weights[:,weights.shape[0]//2] = np.mean(weights)
+
+    save_chunk(weights, path.format('weights'), norm=False)
     
 def visualize_outputs(path, outputs):
     if outputs is None:
@@ -50,7 +73,7 @@ def visualize_outputs(path, outputs):
         save_chunk(grid, path.format('grid'))
         save_chunk(distorted_grid, path.format('dgrid'))
         
-        rfield = field.data.cpu().numpy()
+        rfield = rfield.data.cpu().numpy()
         display_v(rfield, path.format('field'))
         display_v(rfield, path.format('cfield'), center=True)
 
@@ -70,10 +93,10 @@ def visualize_outputs(path, outputs):
         save_chunk(norm(smoothness_error_field.data.cpu().numpy()), path.format('smoothness_error_field'), norm=False)  
 
     if similarity_weights is not None:
-        save_chunk(similarity_weights.data.cpu().numpy(), path.format('similarity_weights'), norm=False)  
+        show_weights(similarity_weights, path.format('similarity_{}'))
 
     if smoothness_weights is not None:
-        save_chunk(smoothness_weights.data.cpu().numpy(), path.format('smoothness_weights'), norm=False)                     
+        show_weights(smoothness_weights, path.format('smoothness_{}'))
                    
     if src_mask is not None:
         save_chunk(np.squeeze(src_mask.data.cpu().numpy()), path.format('src_mask'), norm=False)
