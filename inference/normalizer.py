@@ -64,7 +64,7 @@ class Normalizer(object):
         slice_results = [np.expand_dims(self.apply_slice(img[0,i]), 0) for i in range(img.shape[1])]
         stacked = np.expand_dims(np.concatenate(slice_results), 0)
         return stacked
-        
+
     def apply(self, img):
         assert type(img) == np.ndarray, 'Can only contrast numpy arrays; received type \'{}\''.format(type(img))
         assert img.ndim == 4 or img.ndim == 2, 'Must pass either 2D or 4D images; received shape {}'.format(img.shape)
