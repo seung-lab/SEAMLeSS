@@ -38,6 +38,8 @@ class Process(object):
             #self.contrast_(s)
             #self.contrast_(t)
         level -= self.mip
+        s = np.flip(s,2)
+        t = np.flip(t,2)
         x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
@@ -46,7 +48,8 @@ class Process(object):
         res *= (res.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
-        return res.data.cpu().numpy()
+        res = res.data.cpu().numpy()
+        return np.flip(res,2)
 
 #Simple test
 if __name__ == "__main__":
