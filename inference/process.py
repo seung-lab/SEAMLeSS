@@ -38,7 +38,7 @@ class Process(object):
             #self.contrast_(s)
             #self.contrast_(t)
         level -= self.mip
-        x = torch.FloatTensor(np.stack((s,t), axis=1))
+        x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
         x = torch.autograd.Variable(x, requires_grad=False)

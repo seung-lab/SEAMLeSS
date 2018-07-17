@@ -58,7 +58,7 @@ class Normalizer(object):
         return self.rescale(equalized)
     
     def apply_slice(self, img):
-        return self.f(img)
+        return self.f(img).astype(np.float32)
 
     def apply_stack(self, img):
         slice_results = [np.expand_dims(self.apply_slice(img[0,i]), 0) for i in range(img.shape[1])]
