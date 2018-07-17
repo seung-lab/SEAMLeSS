@@ -7,4 +7,5 @@ cloud-volume
 pathos
 moviepy
 scikit-image
-#python3-tk
+pyshorteners
+h5py
