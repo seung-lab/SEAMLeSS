@@ -134,14 +134,10 @@ class EPyramid(nn.Module):
         self.enclist = nn.ModuleList([Enc(infm=infm, outfm=outfm) for infm, outfm in zip(enc_infms, enc_outfms)])
         self.I = self.get_identity_grid(rdim)
         self.TRAIN_SIZE = train_size
-        self.pe = PreEnc(fm_0)
 
     def forward(self, stack, target_level, vis=None):
         if vis is not None:
             gif(vis + 'input', gif_prep(stack))
-        stack = stack + self.pe(stack)
-        if vis is not None:
-            gif(vis + 'pre_enc_outut', gif_prep(stack))
         
         encodings = [self.enclist[0](stack)]
         for idx in range(1, self.size-self.topskips):
