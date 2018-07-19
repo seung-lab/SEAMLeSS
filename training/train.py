@@ -151,7 +151,6 @@ if __name__ == '__main__':
             if fine_tuning or epoch < fall_time - 1:
                 print('Training all encoder parameters.')
                 params.extend(model.pyramid.enclist.parameters())
-                params.extend(model.pyramid.pe.parameters())
             else:
                 print('Freezing encoder parameters.')
         else:
