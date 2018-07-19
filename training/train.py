@@ -151,12 +151,13 @@ if __name__ == '__main__':
             if fine_tuning or epoch < fall_time - 1:
                 print('Training all encoder parameters.')
                 params.extend(model.pyramid.enclist.parameters())
+                params.extend(model.pyramid.pe.parameters())
             else:
                 print('Freezing encoder parameters.')
         else:
             print('Training pre-encoder only.')
             params.extend(model.pyramid.pe.parameters())
-            #params.extend(model.pyramid.enclist.parameters())
+
         lr_ = lr if not fine_tuning else lr * args.fine_tuning_lr_factor
         print('Building optimizer for layer {} (fine tuning: {}, lr: {})'.format(layer, fine_tuning, lr_))
         return torch.optim.Adam(params, lr=lr_, weight_decay=0 if args.pe_only else 0)
