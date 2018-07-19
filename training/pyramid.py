@@ -32,7 +32,7 @@ class G(nn.Module):
         
     def forward(self, x):
         return self.seq(x).permute(0,2,3,1) / 10
-        
+    
 def gif_prep(s):
     if type(s) != np.ndarray:
         s = np.squeeze(s.data.cpu().numpy())
@@ -72,7 +72,38 @@ class Enc(nn.Module):
             gif(vis + '_out2_' + str(self.infm), visinput2)
             
         return out2
-    
+
+class PreEnc(nn.Module):
+    def initc(self, m):
+        m.weight.data *= np.sqrt(6)
+
+    def __init__(self, outfm=12):
+        super(PreEnc, self).__init__()
+        self.f = nn.LeakyReLU(inplace=True)
+        self.c1 = nn.Conv2d(1, outfm // 2, 7, padding=3)
+        self.c2 = nn.Conv2d(outfm // 2, outfm // 2, 7, padding=3)
+        self.c3 = nn.Conv2d(outfm // 2, outfm, 7, padding=3)
+        self.c4 = nn.Conv2d(outfm, outfm // 2, 7, padding=3)
+        self.c5 = nn.Conv2d(outfm // 2, 1, 7, padding=3)
+        self.initc(self.c1)
+        self.initc(self.c2)
+        self.initc(self.c3)
+        self.initc(self.c4)
+        self.initc(self.c5)
+        self.pelist = nn.ModuleList([self.c1, self.c2, self.c3, self.c4, self.c5])
+
+    def forward(self, x, vis=None):
+        outputs = []
+        for x_ch in range(x.size(1)):
+            out = x[:,x_ch:x_ch+1]
+            for idx, m in enumerate(self.pelist):
+                out = m(out)
+                if idx < len(self.pelist) - 1:
+                    out = self.f(out)
+
+            outputs.append(out)
+        return torch.cat(outputs, 1) / 10
+
 class EPyramid(nn.Module):
     def get_identity_grid(self, dim):
         if dim not in self.identities:
@@ -103,10 +134,14 @@ class EPyramid(nn.Module):
         self.enclist = nn.ModuleList([Enc(infm=infm, outfm=outfm) for infm, outfm in zip(enc_infms, enc_outfms)])
         self.I = self.get_identity_grid(rdim)
         self.TRAIN_SIZE = train_size
-        
+        self.pe = PreEnc(fm_0)
+
     def forward(self, stack, target_level, vis=None):
         if vis is not None:
             gif(vis + 'input', gif_prep(stack))
+        stack = stack + self.pe(stack)
+        if vis is not None:
+            gif(vis + 'pre_enc_outut', gif_prep(stack))
         
         encodings = [self.enclist[0](stack)]
         for idx in range(1, self.size-self.topskips):
@@ -127,7 +162,6 @@ class EPyramid(nn.Module):
                 field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
         return field_so_far, residuals
 
-    
 class PyramidTransformer(nn.Module):
     def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, student=False):
         super(PyramidTransformer, self).__init__()

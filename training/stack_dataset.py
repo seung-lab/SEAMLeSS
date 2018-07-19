@@ -13,8 +13,10 @@ class StackDataset(Dataset):
 
         self.datasets = []
         for k in self.h5f.keys():
-            self.datasets.append(self.h5f[k])
-
+            if 'pinky' not in k:
+                self.datasets.append(self.h5f[k])
+            else:
+                print('Throwing out pinky...')
         self.lengths = [d.shape[0] for d in self.datasets]
         self.clengths = np.cumsum(self.lengths)
         self.length = sum(self.lengths)
