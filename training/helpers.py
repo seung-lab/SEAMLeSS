@@ -24,10 +24,9 @@ def copy_state_to_model(archive_params, model):
     ]
 
     model_params = dict(model.named_parameters())
-    archive_keys = archive_params.keys()
     model_keys = sorted(model_params.keys())
-    archive_keys = sorted([k for k in archive_keys if 'seq' not in k])
-    assert len(archive_keys) <= len(model_keys)
+    archive_keys = sorted([k for k in archive_params.keys() if 'seq' not in k and 'pelist' not in k])
+    assert len(archive_keys) <= len(model_keys), 'Cannot load archive with more parameters than model ({}, {}).'.format(len(archive_keys), len(model_keys))
 
     approx = 0
     skipped = 0
@@ -56,16 +55,7 @@ def copy_state_to_model(archive_params, model):
 
         min_size_slices = tuple([slice(*(s,)) for s in min_size])
         model_params[key].data[min_size_slices] = archive_params[key][min_size_slices]
-        
-        if 'enc' not in key and msize != asize and wrong_dim == 1:
-            fm_count = asize[1]/2
-            chunks = (msize[1]-fm_count)/(asize[1]-fm_count)
-            for i in range(1,chunks+1):
-                model_params[key].data[:,i*fm_count:(i+1)*fm_count] = archive_params[key][:,fm_count:] / (i+1)
-            model_params[key].data[:,fm_count:] /= sum([1.0/k for k in range(2,chunks+2)])
-            means = torch.zeros(model_params[key].data[:,fm_count:].size())
-            std = varchive/5
-            model_params[key].data[:,fm_count:] += torch.normal(means, std).cuda()
+
     print('Copied {} parameters exactly, {} parameters partially.'.format(len(model_keys) - approx - new, approx))
     print('Skipped {} parameters in archive, found {} new parameters in model.'.format(skipped, new))
         

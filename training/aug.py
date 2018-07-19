@@ -9,7 +9,9 @@ import itertools
 
 from helpers import reverse_dim, save_chunk, gif
 
-def half(a,b):
+def half(a=None,b=None):
+    if a is None and b is None:
+        a,b = True,False
     return a if random.randint(0,1) == 0 else b
 
 def apply_grid(stack, grid):
@@ -17,7 +19,7 @@ def apply_grid(stack, grid):
         stack[:,sliceidx:sliceidx+1] = F.grid_sample(stack[:,sliceidx:sliceidx+1], grid)
     return stack
 
-def rotate_and_scale(imslice, size=0.004, scale=0.005, grid=None):
+def rotate_and_scale(imslice, size=0.01, scale=0.01, grid=None):
     if type(imslice) == list:
         for _ in range(4 - len(imslice[0].size())):
             imslice = [o.unsqueeze(0) for o in imslice]
@@ -79,22 +81,30 @@ def jitter_stacks(Xs, max_displacement=2**6, min_cut=32):
         Xs_ = [X_.cuda() for X_ in Xs_]
     for i in range(len(Xs)):
         Xs_[i][:,-1] = Xs[i][:,-1]
-    for i in range(Xs[0].size()[1] - 1, -1, -1):
-        xoff = half(weighted_draw(-d,-1), weighted_draw(1,d))
-        yoff = half(weighted_draw(-d,-1), weighted_draw(1,d))
-        for ii in range(len(Xs_)):
-            if xoff >= 0:
-                if yoff >= 0:
-                    Xs_[ii][:,i,xoff:,yoff:] = srcXs[ii][:,i,:-xoff,:-yoff]
-                else:
-                    Xs_[ii][:,i,xoff:,:yoff] = srcXs[ii][:,i,:-xoff,-yoff:]
-            else:
-                if yoff >= 0:
-                    Xs_[ii][:,i,:xoff,yoff:] = srcXs[ii][:,i,-xoff:,:-yoff]
-                else:
-                    Xs_[ii][:,i,:xoff,:yoff] = srcXs[ii][:,i,-xoff:,-yoff:]
 
-            Xs_[ii][:,i:i+1] = rotate_and_scale(Xs_[ii][:,i:i+1])[0]
+    xoff, yoff = None, None
+    for i in range(Xs[0].size()[1] - 1, -1, -1):
+        jitter = half()
+        if jitter or xoff is None or yoff is None:
+            xoff = weighted_draw(1,d) * half(1,-1)
+            yoff = weighted_draw(1,d) * half(1,-1)
+        for ii in range(len(Xs_)):
+            if jitter:
+                if xoff >= 0:
+                    if yoff >= 0:
+                        Xs_[ii][:,i,xoff:,yoff:] = srcXs[ii][:,i,:-xoff,:-yoff]
+                    else:
+                        Xs_[ii][:,i,xoff:,:yoff] = srcXs[ii][:,i,:-xoff,-yoff:]
+                else:
+                    if yoff >= 0:
+                        Xs_[ii][:,i,:xoff,yoff:] = srcXs[ii][:,i,-xoff:,:-yoff]
+                    else:
+                        Xs_[ii][:,i,:xoff,:yoff] = srcXs[ii][:,i,-xoff:,-yoff:]
+
+                Xs_[ii][:,i:i+1] = rotate_and_scale(Xs_[ii][:,i:i+1])[0]
+            else:
+                Xs_[ii][:,i] = srcXs[ii][:,i]
+
             cut_range = (min_cut, Xs_[ii].size(-1)//5)
             if ii == 0: # we only want to cut our images; we're assuming the images are first in Xs_, then masks 
                 cut = random.randint(cut_range[0], cut_range[1])
@@ -112,18 +122,22 @@ def jitter_stacks(Xs, max_displacement=2**6, min_cut=32):
     Xs_ = rotate_and_scale(Xs_, size=None)[0] if should_rotate else Xs_
     return Xs_
 
-def gen_gradient(size, flip=None, period_median=25, peak=0.5):
+def gen_gradient(size, flip=None, period_median=25, peak=0.3, randomize_peak=True, rotate=True):
     if flip is None:
         flip = half(True,False)
-    periods = int(1 + np.random.exponential(-np.log(.5)*period_median))
-    grad = torch.zeros(size)
-    peak *= np.random.uniform(0,1)
+    if period_median is not None:
+        periods = int(1 + np.random.exponential(-np.log(.5)*period_median))
+    else:
+        periods = 1
+    grad = torch.zeros(size)    
+    if randomize_peak:
+        peak *= np.random.uniform(0,1)
     for period in range(periods):
         for idx in range(size[-1] // periods):
             if period % 2 == 0:
-                grad[idx + period * (size[-1] // periods),:] = (float(idx) / (size[-1] / periods)) * peak
+                grad[:,idx + period * (size[-1] // periods)] = (float(idx) / (size[-1] / periods)) * peak
             else:
-                grad[idx + period * (size[-1] // periods),:] = peak - (float(idx) / (size[-1] / periods)) * peak
+                grad[:,idx + period * (size[-1] // periods)] = peak - (float(idx) / (size[-1] / periods)) * peak
     grad -= torch.mean(grad)
     grad = Variable(grad)
     if flip:
@@ -134,28 +148,62 @@ def gen_gradient(size, flip=None, period_median=25, peak=0.5):
         grad = reverse_dim(grad, 1)
     if random.randint(0,1) == 0:
         grad = -grad
-    grad = rotate_and_scale(grad.unsqueeze(0).unsqueeze(0), None, 0.1)[0].squeeze()
+    if rotate:
+        grad = rotate_and_scale(grad.unsqueeze(0).unsqueeze(0), None, 0.1)[0].squeeze()
     return grad.cuda()
 
-def aug_brightness(X, factor=2.0, mask=False):
-    # Assuming we get an input within [0,1]
+def gen_tiles(size, dim=None, min_count=6, max_count=32, peak=0.3):
+    assert len(size) == 2
+
+    total_size = max(size)
+    if dim is None:
+        dim = random.randint(total_size // max_count, total_size // min_count) + 1
+
+    count = total_size // dim + 1
+    flip = False
+    tile = gen_gradient((dim,dim), flip=not flip, period_median=None, peak=peak, randomize_peak=False, rotate=False)
+    tiles = tile.repeat(count,count)
+
+    for idx in range(count-1):
+        shift = random.randint(0, dim)
+        shift_idxs = range(tiles.size(0))
+        shift_idxs = shift_idxs[shift:] + shift_idxs[:shift]
+        shift_idxs = torch.from_numpy(np.array(shift_idxs)).cuda().long()
+        if flip:
+            tiles[idx*dim:(idx+1)*dim,:] = tiles[idx*dim:(idx+1)*dim][:,shift_idxs]
+        else:
+            tiles[:,idx*dim:(idx+1)*dim] = tiles[shift_idxs][:,idx*dim:(idx+1)*dim]
+
+    tiles = rotate_and_scale(tiles.unsqueeze(0).unsqueeze(0), None, 0.2)[0].squeeze()
+    tiles = tiles[:size[0],:size[1]]
+    return tiles
+        
+def check_data_range(X, eps=1e-6):
     mi, ma = torch.min(X).data[0], torch.max(X).data[0]
-    assert mi >= -1e-6 and ma <= 1 + 1e-6, 'Data must fall in range [0,1] ({}, {})'.format(mi, ma)
-    
+    assert mi >= -eps and ma <= 1 + eps, 'Data must fall in range [0,1] ({}, {})'.format(mi, ma)
+
+def aug_brightness(X, factor=2.5, mask=False):
+    check_data_range(X)
+    zm = X == 0
     gradients = random.randint(0,2)
     for _ in range(gradients):
         X = X + gen_gradient(X.size())
 
-    X = X.clamp(min=0,max=1)
-    compress = random.randint(0,1) == 0
+    tilings = half(0,1)
+    for _ in range(tilings):
+        X = X + gen_tiles(X.size())
+        
+    X = X.clamp(min=1/255.,max=1)
+
+    compress = half()
     severity = np.random.uniform(1,factor)
 
-    X = X 
     if compress:
         X = X / severity
     else:
         X = X * severity
 
+    X[zm] = 0
     return X
 
 """
@@ -188,16 +236,19 @@ def displace_slice(stack, slice_idx, aux, displacement=32):
     aux = [rotate_and_scale(a, grid=grid)[0].squeeze() for a in aux]
     return stack, aux
 
-def weighted_draw(l,h,exp=2, wf=None):
+def weighted_draw(l,h,exp=2, wf=None, max_factor=4):
     """
     Draw a value from the range [l,h] (inclusive) weighted such that
     the probability of drawing a value k is roughly proportional to the value
     itself (with an exponent to make the weighting less severe; exponent=0 gives
-    a uniform distribution).
+    a uniform distribution). The max factor caps the ratio max(weights) / min(weights)
+    so that lower values don't become virtually non-existent.
     """
     weight_function = lambda x: (abs(x) - min(abs(l), abs(h)) + 1) ** float(exp) if wf is None else wf
     vals = range(l,h+1)
-    weights = np.array([weight_function(v) for v in vals])
+    weights = np.array([weight_function(v) for v in vals]).astype(np.float32)
+    if max_factor is not None and max(weights) / min(weights) > max_factor:
+        weights += (max(weights) - max_factor * min(weights)) / (max_factor - 1)
     weights /= np.sum(weights)
     return np.random.choice(vals, p=weights)
 
@@ -210,35 +261,45 @@ def random_rect_mask(size):
     prerotated_centered[mx:mx+dimx,my:my+dimy] = 1
     rotated_centered, _ = rotate_and_scale(prerotated_centered, None, 0)
     upper_bound = int(size[-2]/2 - max(dimx,dimy) / np.sqrt(2))
-    dx = weighted_draw(1,upper_bound,1)
-    dy = weighted_draw(1,upper_bound,1)
+    dx = weighted_draw(1,upper_bound,exp=1,max_factor=10)
+    dy = weighted_draw(1,upper_bound,exp=1,max_factor=10)
     off_centered = Variable(translate(rotated_centered.data, dx, dy))
     output = torch.ceil(rotate_and_scale(off_centered, None, 0)[0])
     return output.byte()
 
-def aug_input(x, factor=2.0):
-    zm = x == 0
-    idx = random.randint(0,x.size()[0]-1)
-    out = x if len(x.size()) == 2 else x[idx].clone()
+def aug_input(x, factor=2.5):
+    check_data_range(x)
+
+    out = x
+    zm = out == 0
+
     contrast_cutouts = half(0, random.randint(1,4))
     missing_cutouts = half(0, half(0,1))
+    gaussian_cutouts = half(0, random.randint(1,2))
+    missing_masks = []
+
+    for _ in range(gaussian_cutouts):
+        mask = random_rect_mask(out.size())
+        sigma = np.random.uniform(0.001,0.03)
+        noise = Variable(torch.FloatTensor(np.random.normal(0,sigma,out.size()))).cuda()
+        if half():
+            # randomly smooth the noise
+            r = random.randint(1,10)
+            noise = noise.unsqueeze(0).unsqueeze(0)
+            noise = F.avg_pool2d(noise, r*2+1, padding=r, stride=1, count_include_pad=False)
+            noise = noise.view(out.size())
+        out[mask] = (out[mask] + noise[mask]).clamp(min=1./255, max=1)
+
     for _ in range(contrast_cutouts):
-        mask = random_rect_mask(x.size())
+        mask = random_rect_mask(out.size())
         out[mask] = out[mask] / np.random.uniform(1,factor)
         out[mask] = out[mask] + np.random.uniform(0,1-torch.max(out[mask]).data[0])
 
-    missing_masks = []
-            
     for _ in range(missing_cutouts):
-        mask = random_rect_mask(x.size())
+        mask = random_rect_mask(out.size())
         missing_masks.append(mask)
-        out[mask] = np.random.uniform(0,1)
-
-    if len(x.size()) == 3:
-        out2 = x.clone()
-        out2[idx] = out
-        out = out2
-
+        out[mask] = np.random.uniform(1/255.,1)
+        
     out = aug_brightness(out, factor)
 
     out[zm] = 0

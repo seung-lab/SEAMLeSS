@@ -37,6 +37,7 @@ if __name__ == '__main__':
     parser.add_argument('--lm_defect_net', help='mip2 defect net archive', type=str, default='basil_defect_unet18070201')
     parser.add_argument('--hm_defect_net', help='mip5 defect net archive', type=str, default='basil_defect_unet_mip518070305')
     parser.add_argument('--fine_tuning_lr_factor', help='factor by which to reduce learning rate during fine tuning', type=float, default=0.2)
+    parser.add_argument('--pe_only', action='store_true')
     args = parser.parse_args()
 
     import os
@@ -66,7 +67,7 @@ if __name__ == '__main__':
     from pyramid import PyramidTransformer
     from defect_net import *
     from defect_detector import DefectDetector
-    from helpers import gif, save_chunk, center, display_v, dvl, copy_state_to_model, reverse_dim
+    from helpers import save_chunk, copy_state_to_model, reverse_dim
     import masks
     from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
     from vis import visualize_outputs
@@ -139,30 +140,33 @@ if __name__ == '__main__':
 
     def opt(layer):
         params = []
-        if layer >= skiplayers and not fine_tuning:
-            print('Training only layer {}'.format(layer))
-            params.extend(model.pyramid.mlist[layer].parameters())
-        else:
-            print('Training all residual networks.')
-            params.extend(model.pyramid.mlist.parameters())
+        if not args.pe_only:
+            if layer >= skiplayers and not fine_tuning:
+                print('Training only layer {}'.format(layer))
+                params.extend(model.pyramid.mlist[layer].parameters())
+            else:
+                print('Training all residual networks.')
+                params.extend(model.pyramid.mlist.parameters())
 
-        if fine_tuning or epoch < fall_time - 1:
-            print('Training all encoder parameters.')
-            params.extend(model.pyramid.enclist.parameters())
+            if fine_tuning or epoch < fall_time - 1:
+                print('Training all encoder parameters.')
+                params.extend(model.pyramid.enclist.parameters())
+                params.extend(model.pyramid.pe.parameters())
+            else:
+                print('Freezing encoder parameters.')
         else:
-            print('Freezing encoder parameters.')
-
+            print('Training pre-encoder only.')
+            params.extend(model.pyramid.pe.parameters())
+            #params.extend(model.pyramid.enclist.parameters())
         lr_ = lr if not fine_tuning else lr * args.fine_tuning_lr_factor
         print('Building optimizer for layer {} (fine tuning: {}, lr: {})'.format(layer, fine_tuning, lr_))
-        return torch.optim.Adam(params, lr=lr_)
+        return torch.optim.Adam(params, lr=lr_, weight_decay=0 if args.pe_only else 0)
 
     def run_sample(X, mask=None, target_mask=None, train=True):
         model.train(train)
 
         # our convention here is that X is 4D PyTorch convolution shape, while src and target are in squeezed shape (2D)
         src, target = X[0,0], torch.squeeze(X[0,1:])
-        src = Variable(torch.FloatTensor(normalizer.apply(src.data.cpu().numpy()))).cuda()
-        target = Variable(torch.FloatTensor(normalizer.apply(target.data.cpu().numpy()))).cuda()
 
         if train and not args.skip_sample_aug:
             # random rotation
@@ -175,7 +179,7 @@ if __name__ == '__main__':
                     target_mask = torch.ceil(rotate_and_scale(target_mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze())
                     
                 src = src.squeeze()
-        
+
         input_src = src.clone()
         input_target = target.clone()
 
@@ -190,6 +194,11 @@ if __name__ == '__main__':
         elif train:
             print('Skipping sample-wise augmentation...')
 
+        src = Variable(torch.FloatTensor(normalizer.apply(src.data.cpu().numpy()))).cuda()
+        target = Variable(torch.FloatTensor(normalizer.apply(target.data.cpu().numpy()))).cuda()
+        input_src = Variable(torch.FloatTensor(normalizer.apply(input_src.data.cpu().numpy()))).cuda()
+        input_target = Variable(torch.FloatTensor(normalizer.apply(input_target.data.cpu().numpy()))).cuda()
+            
         if args.dry_run:
             print('Bailing for dry run [not an error].')
             return None
@@ -213,12 +222,12 @@ if __name__ == '__main__':
         # mask away similarity error from pixels outside the boundary of either prediction or target
         # in other words, we need valid data in both the target and prediction to count the error from
         # that pixel
-        border_mse_mask = masks.intersect([pred != 0, target != 0])
-        border_mse_mask, no_valid_pixels = masks.contract(border_mse_mask, 5, return_sum=True)
+        border_mask = masks.low_pass(masks.intersect([pred != 0, target != 0]))
+        border_mask, no_valid_pixels = masks.contract(border_mask, 5, return_sum=True)
         if no_valid_pixels:
             print('Empty mask, skipping!')
             return None
-        mse_binary_masks.append(border_mse_mask)
+        mse_binary_masks.append(border_mask)
         
         # mask away similarity error from pixels within cutouts in either the source or target
         cutout_mse_masks = src_cutout_masks + target_cutout_masks
@@ -235,15 +244,13 @@ if __name__ == '__main__':
         mse_binary_mask = masks.intersect(mse_binary_masks)
 
         # reweight remaining pixels for focus areas
-        mse_weights = Variable(torch.ones(border_mse_mask.size())).cuda()
+        mse_weights = Variable(torch.ones(border_mask.size())).cuda()
         if mask is not None:
             mse_weights.data[masks.intersect([mask > 0, mask <= 1]).data] = args.lambda4
             mse_weights.data[masks.dilate(mask > 1, 2).data] = args.lambda5
-        #if target_mask is not None:
-        #    mse_weights.data[masks.intersect([target_mask.data > 0, target_mask.data <= 1, mask.data <= 1])] *= args.lambda4
 
         mse_weights *= mse_binary_mask.float()        
-        mse_mask_factor = (torch.sum(mse_weights[border_mse_mask.detach()]) / torch.sum(border_mse_mask.float())).data[0]
+        mse_mask_factor = (torch.sum(mse_weights[border_mask.detach()]) / torch.sum(border_mask.float())).data[0]
         if mse_mask_factor < args.eps:
             print('Similarity mask factor zero; skipping')
             return None
@@ -273,7 +280,7 @@ if __name__ == '__main__':
         smoothness_weights = F.grid_sample(smoothness_weights.detach(), field)
         if args.hm:
             smoothness_weights = smoothness_weights.detach()
-        smoothness_weights = smoothness_weights * border_mse_mask.float().detach()
+        smoothness_weights = smoothness_weights * border_mask.float().detach()
         
         rfield = field - model.pyramid.get_identity_grid(field.size()[-2])
         smoothness_error_field = penalty([rfield], weights=smoothness_weights)
@@ -322,7 +329,6 @@ if __name__ == '__main__':
             X = Variable(tensor_dict['X'], requires_grad=False).cuda()
             this_mip = tensor_dict['mip'][0]
             mask_stack = lm_defect_detector.masks_from_stack(X) if this_mip == 2 else hm_defect_detector.masks_from_stack(X)
-            #X = Variable(torch.FloatTensor(normalizer.apply(X.data.cpu().numpy()))).cuda()
             stacks, top, left = aug_stacks([X, mask_stack], padding=padding, jitter=not args.no_jitter, jitter_displacement=2**(args.size-1))
             X, mask_stack = stacks[0], stacks[1]
 
@@ -347,7 +353,7 @@ if __name__ == '__main__':
                     (cost/2).backward(retain_graph=args.unflow>0)
                     errs.append(rf['similarity_error'].data[0])
                     penalties.append(rf['smoothness_error'].data[0])
-
+                    
                 ##################################
                 # RUN SAMPLE BACKWARD ############
                 ##################################
@@ -393,8 +399,10 @@ if __name__ == '__main__':
                 mean_err_train = sum(errs) / len(errs)
                 mean_penalty_train = sum(penalties) / len(penalties)
                 mean_consensus = (sum(consensus_list) / len(consensus_list)) if len(consensus_list) > 0 else 0
-                print(t, smooth_factor, trunclayer, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus)
-                history.append((time.time() - start_time, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train, mean_penalty_train, mean_consensus))
+                print(t, smooth_factor, trunclayer, mean_err_train + args.lambda1 * mean_penalty_train * smooth_factor,
+                      mean_err_train, mean_penalty_train, mean_consensus)
+                history.append((time.time() - start_time, mean_err_train + mean_penalty_train * smooth_factor, mean_err_train,
+                                mean_penalty_train, mean_consensus))
                 torch.save(model.state_dict(), 'pt/' + name + '.pt')
 
                 print('Writing status to: {}'.format(log_file))

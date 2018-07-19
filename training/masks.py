@@ -26,6 +26,9 @@ def invert(mask):
         return torch.max(mask) - mask
     else:
         return (torch.max(mask).float() - mask.float()).byte()
+
+def low_pass(mask, radius=1):
+    return contract(dilate(mask, radius, binary=False), radius, binary=False, ceil=False, return_sum=False)
     
 def dilate(mask, radius, binary=True):
     check_mask(mask, binary)

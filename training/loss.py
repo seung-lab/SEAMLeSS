@@ -76,6 +76,6 @@ def smoothness_penalty(ptype):
             field = field * weights
         return field
     return penalty
-    
+
 def similarity_score(should_reduce=False):
     return lambda x, y: torch.mean((x-y)**2) if should_reduce else (x-y)**2

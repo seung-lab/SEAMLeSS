@@ -8,7 +8,7 @@ import h5py
 class Normalizer(object):
     def __init__(self, mip, f=None):
         self.mip = mip
-        self.f = compose_functions([self.rescale, self.highpass, self.contrast]) if f is None else f
+        self.f = compose_functions([self.rescale, self.contrast]) if f is None else f
 
     def old_contrast(self, t, l=145, h=210):
         zeromask = (t == 0)
@@ -51,14 +51,14 @@ class Normalizer(object):
         filtered[zm] = 0
         return self.rescale(filtered)
 
-    def contrast(self, img, radius=128, radius_func=lambda m, r: r // (m+1)):
+    def contrast(self, img, radius=256, radius_func=lambda m, r: r // (m+1)):
         rescaled = self.rescale(img, factor=255., dtype=np.uint8)
         r = radius_func(self.mip, radius)
         equalized = rank.equalize(rescaled, disk(r), mask=(rescaled!=0))
         return self.rescale(equalized)
     
     def apply_slice(self, img):
-        return self.f(img)
+        return self.f(img).astype(np.float32)
 
     def apply_stack(self, img):
         slice_results = [np.expand_dims(self.apply_slice(img[0,i]), 0) for i in range(img.shape[1])]
