@@ -1,3 +1,4 @@
+import torch
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 import sys
@@ -5,6 +6,7 @@ import os
 from pyramid import PyramidTransformer
 from stack_dataset import StackDataset
 from aug import aug_stacks, aug_input
+from normalizer import Normalizer
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -25,6 +27,8 @@ train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers
 
 model = PyramidTransformer.load(args.archive, height=8, dim=1152, skips=0, k=7)
 
+normalizer = Normalizer(5)
+
 for t, tensor_dict in enumerate(train_loader):
     if t == args.count:
         break
@@ -35,5 +39,10 @@ for t, tensor_dict in enumerate(train_loader):
     stacks, top, left = aug_stacks([X], padding=0)
     X = stacks[0]
     src, target = X[0,0].clone(), X[0,1].clone()
+    src = aug_input(src)[0]
+    target = aug_input(target)[0]
 
-    model.apply(aug_input(src)[0],aug_input(target)[0],vis='inspect/{}/sample{}'.format(args.archive[3:-3], t))
+    src = Variable(torch.FloatTensor(normalizer.apply(src.data.cpu().numpy()))).cuda()
+    target = Variable(torch.FloatTensor(normalizer.apply(target.data.cpu().numpy()))).cuda()
+        
+    model.apply(src,target,vis='inspect/{}/sample{}'.format(args.archive[3:-3], t))

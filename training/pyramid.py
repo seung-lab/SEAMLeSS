@@ -102,7 +102,7 @@ class PreEnc(nn.Module):
                     out = self.f(out)
 
             outputs.append(out)
-        return torch.cat(outputs, 1) / 10
+        return torch.cat(outputs, 1) / 100
 
 class EPyramid(nn.Module):
     def get_identity_grid(self, dim):
@@ -139,9 +139,15 @@ class EPyramid(nn.Module):
     def forward(self, stack, target_level, vis=None):
         if vis is not None:
             gif(vis + 'input', gif_prep(stack))
-        stack = stack + self.pe(stack)
+        residual = self.pe(stack)
+        stack = stack + residual
         if vis is not None:
-            gif(vis + 'pre_enc_outut', gif_prep(stack))
+            zm = (stack == 0).data
+            print('residual me,mi,ma {},{},{}'.format(torch.mean(residual[~zm]).data[0], torch.min(residual[~zm]).data[0], torch.max(residual[~zm]).data[0]))
+            gif(vis + 'pre_enc_residual', gif_prep(residual))
+
+        if vis is not None:
+            gif(vis + 'pre_enc_output', gif_prep(stack))
         
         encodings = [self.enclist[0](stack)]
         for idx in range(1, self.size-self.topskips):
