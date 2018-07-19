@@ -38,8 +38,34 @@ class Process(object):
             #self.contrast_(s)
             #self.contrast_(t)
         level -= self.mip
+
+        '''
+        Run the net twice.
+        The second time, flip the image 180 degrees.
+        Then average the resulting (unflipped) vector fields.
+        This eliminates the effect of any gradual drift.
+        '''
+        
+        # nonflipped
+        save_chunk(s, "s_dp")
+        save_chunk(t, "t_dp")
+        x = torch.from_numpy(np.stack((s,t), axis=1))
+        if self.cuda:
+            x = x.cuda()
+        x = torch.autograd.Variable(x, requires_grad=False)
+        res = self.model(x)[1] - self.model.pyramid.get_identity_grid(x.size(3))
+        res *= (res.shape[-2] / 2) * (2 ** self.mip)
+        if crop>0:
+            res = res[:,crop:-crop, crop:-crop,:]
+        nonflipped = res.data.cpu().numpy()
+
+        # flipped
+        s = np.flip(s,1)
         s = np.flip(s,2)
+        t = np.flip(t,1)
         t = np.flip(t,2)
+        save_chunk(s, "s_dp_flip")
+        save_chunk(t, "t_dp_flip")
         x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
@@ -49,8 +75,13 @@ class Process(object):
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
         res = res.data.cpu().numpy()
-        return np.flip(res,2)
+        res = np.flip(res,1)
+        res = np.flip(res,2)
+        flipped = -res
+        #flipped = np.concatenate((-resflipped[:,:,:,0:1], -resflipped[:,:,:,1:2]),3)
 
+        return (flipped + nonflipped)/2.0
+        
 #Simple test
 if __name__ == "__main__":
     print('Testing...')
