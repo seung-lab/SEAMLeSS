@@ -157,7 +157,7 @@ if __name__ == '__main__':
         else:
             print('Training pre-encoder only.')
             params.extend(model.pyramid.pe.parameters())
-            #params.extend(model.pyramid.enclist.parameters())
+
         lr_ = lr if not fine_tuning else lr * args.fine_tuning_lr_factor
         print('Building optimizer for layer {} (fine tuning: {}, lr: {})'.format(layer, fine_tuning, lr_))
         return torch.optim.Adam(params, lr=lr_, weight_decay=0 if args.pe_only else 0)
@@ -203,8 +203,22 @@ if __name__ == '__main__':
             print('Bailing for dry run [not an error].')
             return None
 
-        pred, field, residuals = model.apply(input_src, input_target, trunclayer)
+        # if we're just training the pre-encoder, no need to do everything
+        if args.pe_only:
+            contrasted_stack = model.apply(input_src, input_target, pe=True)
+            pred = contrasted_stack.squeeze()
+            y = torch.cat((src.unsqueeze(0), target.squeeze().unsqueeze(0)),0)
+            contrast_err = mse(pred, y)
+            contrast_err_src = contrast_err[0:1]
+            contrast_err_target = contrast_err[1:2]
+            for m in src_cutout_masks:
+                contrast_err_src = contrast_err_src * m.view(contrast_err_src.size()).float()
+            for m in target_cutout_masks:
+                contrast_err_target = contrast_err_target * m.view(contrast_err_target.size()).float()
+            contrast_err = torch.mean(torch.cat((contrast_err_src, contrast_err_target),0))
+            return { 'contrast_error' : contrast_err }
 
+        pred, field, residuals = model.apply(input_src, input_target, trunclayer)
         # resample tensors that are in our source coordinate space with our new field prediction
         # to move them into target coordinate space so we can compare things fairly
         pred = F.grid_sample(downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
@@ -335,6 +349,7 @@ if __name__ == '__main__':
             errs = []
             penalties = []
             consensus_list = []
+            contrast_errors = []
             smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
             for sample_idx, i in enumerate(range(1,X.size(1)-1)):
                 ##################################
@@ -349,10 +364,13 @@ if __name__ == '__main__':
 
                 rf = run_sample(X_, src_mask, target_mask, train=True)
                 if rf is not None:
-                    cost = rf['similarity_error'] + args.lambda1 * smooth_factor * rf['smoothness_error']
-                    (cost/2).backward(retain_graph=args.unflow>0)
-                    errs.append(rf['similarity_error'].data[0])
-                    penalties.append(rf['smoothness_error'].data[0])
+                    if not args.pe_only:
+                        cost = rf['similarity_error'] + args.lambda1 * smooth_factor * rf['smoothness_error']
+                        (cost/2).backward(retain_graph=args.unflow>0)
+                        errs.append(rf['similarity_error'].data[0])
+                        penalties.append(rf['smoothness_error'].data[0])
+                    else:
+                        rf['contrast_error'].backward()
                     
                 ##################################
                 # RUN SAMPLE BACKWARD ############
@@ -362,10 +380,13 @@ if __name__ == '__main__':
 
                 rb = run_sample(X_, src_mask, target_mask, train=True)
                 if rb is not None:
-                    cost = rb['similarity_error'] + args.lambda1 * smooth_factor * rb['smoothness_error']
-                    (cost/2).backward(retain_graph=args.unflow>0)
-                    errs.append(rb['similarity_error'].data[0])
-                    penalties.append(rb['smoothness_error'].data[0])
+                    if not args.pe_only:
+                        cost = rb['similarity_error'] + args.lambda1 * smooth_factor * rb['smoothness_error']
+                        (cost/2).backward(retain_graph=args.unflow>0)
+                        errs.append(rb['similarity_error'].data[0])
+                        penalties.append(rb['smoothness_error'].data[0])
+                    else:
+                        rb['contrast_error'].backward()
 
                 ##################################
                 # CONSENSUS PENALTY COMPUTATION ##
@@ -394,6 +415,8 @@ if __name__ == '__main__':
                 optimizer.step()
                 model.zero_grad()
 
+            if args.pe_only:
+                torch.save(model.state_dict(), 'pt/' + name + '.pt')
             # Save some info
             if len(errs) > 0:
                 mean_err_train = sum(errs) / len(errs)

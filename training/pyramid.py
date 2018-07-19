@@ -102,7 +102,7 @@ class PreEnc(nn.Module):
                     out = self.f(out)
 
             outputs.append(out)
-        return torch.cat(outputs, 1) / 100
+        return torch.cat(outputs, 1)
 
 class EPyramid(nn.Module):
     def get_identity_grid(self, dim):
@@ -136,11 +136,16 @@ class EPyramid(nn.Module):
         self.TRAIN_SIZE = train_size
         self.pe = PreEnc(fm_0)
 
-    def forward(self, stack, target_level, vis=None):
+    def forward(self, stack, target_level, vis=None, pe=False):
         if vis is not None:
             gif(vis + 'input', gif_prep(stack))
+
         residual = self.pe(stack)
         stack = stack + residual
+
+        if pe:
+            return stack
+
         if vis is not None:
             zm = (stack == 0).data
             print('residual me,mi,ma {},{},{}'.format(torch.mean(residual[~zm]).data[0], torch.min(residual[~zm]).data[0], torch.max(residual[~zm]).data[0]))
@@ -176,9 +181,12 @@ class PyramidTransformer(nn.Module):
         else:
             assert False # TODO: add student network
 
-    def forward(self, x, idx=0, vis=None):
-        field, residuals = self.pyramid(x, idx, vis)
-        return grid_sample(x[:,0:1,:,:], field, mode='nearest'), field, residuals
+    def forward(self, x, idx=0, vis=None, pe=False):
+        if not pe:
+            field, residuals = self.pyramid(x, idx, vis, pe=False)
+            return grid_sample(x[:,0:1,:,:], field, mode='nearest'), field, residuals
+        else:
+            return self.pyramid(x, idx, vis, pe=True)
 
     @staticmethod
     def student(height, dim, skips, topskips, k):
@@ -217,7 +225,7 @@ class PyramidTransformer(nn.Module):
         print('Successfully loaded model state.')
         return model
 
-    def apply(self, source, target, skip=0, vis=None):
+    def apply(self, source, target, skip=0, vis=None, pe=False):
         """
         Applies the model to an input. Inputs (source and target) are
         expected to be of shape (dim // (2 ** skip), dim // (2 ** skip)),
@@ -231,4 +239,4 @@ class PyramidTransformer(nn.Module):
         source = source.unsqueeze(0)
         if len(target.size()) == 2:
             target = target.unsqueeze(0)
-        return self.forward(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis)
+        return self.forward(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis, pe=pe)
