@@ -8,7 +8,7 @@ import h5py
 class Normalizer(object):
     def __init__(self, mip, f=None):
         self.mip = mip
-        self.f = compose_functions([self.rescale, self.highpass, self.contrast]) if f is None else f
+        self.f = compose_functions([self.rescale, self.contrast]) if f is None else f
 
     def old_contrast(self, t, l=145, h=210):
         zeromask = (t == 0)
