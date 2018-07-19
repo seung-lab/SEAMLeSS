@@ -194,18 +194,24 @@ if __name__ == '__main__':
 
         rf = run_sample(src, target, input_src, input_target, src_mask, target_mask, src_cutout_masks, target_cutout_masks, train)
         if rf is not None:
-            cost = rf['similarity_error'] + args.lambda1 * smooth_factor * rf['smoothness_error']
-            (cost/2).backward(retain_graph=args.unflow>0)
+            if not args.pe_only:
+                cost = rf['similarity_error'] + args.lambda1 * smooth_factor * rf['smoothness_error']
+                (cost/2).backward(retain_graph=args.unflow>0)
+            else:
+                (rf['contrast_error']/2).backward()
 
         rb = run_sample(target, src, input_target, input_src, target_mask, src_mask, target_cutout_masks, src_cutout_masks, train)
         if rb is not None:
-            cost = rb['similarity_error'] + args.lambda1 * smooth_factor * rb['smoothness_error']
-            (cost/2).backward(retain_graph=args.unflow>0)
-
+            if not args.pe_only:
+                cost = rb['similarity_error'] + args.lambda1 * smooth_factor * rb['smoothness_error']
+                (cost/2).backward(retain_graph=args.unflow>0)
+            else:
+                (rb['contrast_error']/2).backward()
+                
         ##################################
         # CONSENSUS PENALTY COMPUTATION ##
         ##################################
-        if args.unflow > 0 and rf is not None and rb is not None:
+        if not args.pe_only and args.unflow > 0 and rf is not None and rb is not None:
             ffield, rffield = rf['field'], rf['rfield']
             bfield, rbfield = rb['field'], rb['rfield']
             consensus_forward = (F.grid_sample(rbfield.permute(0,3,1,2), ffield).permute(0,2,3,1) + rffield) ** 2
@@ -228,8 +234,22 @@ if __name__ == '__main__':
             print('Bailing for dry run [not an error].')
             return None
 
-        pred, field, residuals = model.apply(input_src, input_target, trunclayer)
+        # if we're just training the pre-encoder, no need to do everything
+        if args.pe_only:
+            contrasted_stack = model.apply(input_src, input_target, pe=True)
+            pred = contrasted_stack.squeeze()
+            y = torch.cat((src.unsqueeze(0), target.squeeze().unsqueeze(0)),0)
+            contrast_err = mse(pred, y)
+            contrast_err_src = contrast_err[0:1]
+            contrast_err_target = contrast_err[1:2]
+            for m in src_cutout_masks:
+                contrast_err_src = contrast_err_src * m.view(contrast_err_src.size()).float()
+            for m in target_cutout_masks:
+                contrast_err_target = contrast_err_target * m.view(contrast_err_target.size()).float()
+            contrast_err = torch.mean(torch.cat((contrast_err_src, contrast_err_target),0))
+            return { 'contrast_error' : contrast_err }
 
+        pred, field, residuals = model.apply(input_src, input_target, trunclayer)
         # resample tensors that are in our source coordinate space with our new field prediction
         # to move them into target coordinate space so we can compare things fairly
         pred = F.grid_sample(downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
@@ -360,31 +380,37 @@ if __name__ == '__main__':
             errs = []
             penalties = []
             consensus_list = []
+            contrast_errors = []
             smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
             for sample_idx, i in enumerate(range(1,X.size(1)-1)):
                 ##################################
                 # RUN SINGLE PAIR OF SLICES ######
                 ##################################
-                X_ = X[:,i:i+2].detach()
                 src, target = X[0,i], X[0,i+1]
                 src_mask, target_mask = (mask_stack[0,i], mask_stack[0,i+1]) if trunclayer == 0 else (None, None)
 
-                if min(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]) < args.blank_var_threshold:
-                    print("Skipping blank sections: ({}, {})".format(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]))
+                if min(torch.var(src).data[0], torch.var(target).data[0]) < args.blank_var_threshold:
+                    print("Skipping blank sections: ({}, {})".format(torch.var(src).data[0], torch.var(target).data[0]))
                     continue
 
                 rf, rb = run_pair(src, target, src_mask, target_mask)
                 if rf is not None:
-                    errs.append(rf['similarity_error'].data[0])
-                    penalties.append(rf['smoothness_error'].data[0])
-                    if args.unflow > 0:
-                        consensus_list.append(rf['consensus'].data[0])
-
+                    if not args.pe_only:
+                        errs.append(rf['similarity_error'].data[0])
+                        penalties.append(rf['smoothness_error'].data[0])
+                        if args.unflow > 0:
+                            consensus_list.append(rf['consensus'].data[0])
+                    else:
+                        contrast_errors.append(rf['contrast_error'].data[0])
+                    
                 if rb is not None:
-                    errs.append(rb['similarity_error'].data[0])
-                    penalties.append(rb['smoothness_error'].data[0])
-                    if args.unflow > 0:
-                        consensus_list.append(rb['consensus'].data[0])
+                    if not args.pe_only:
+                        errs.append(rb['similarity_error'].data[0])
+                        penalties.append(rb['smoothness_error'].data[0])
+                        if args.unflow > 0:
+                            consensus_list.append(rb['consensus'].data[0])
+                    else:
+                        contrast_errors.append(rb['contrast_error'].data[0])
 
                 if sample_idx == 0 and t % args.vis_interval == 0:
                     prefix = '{}{}_e{}_t{}'.format(log_path, name, epoch, t)
@@ -395,6 +421,10 @@ if __name__ == '__main__':
                 optimizer.step()
                 model.zero_grad()
 
+            if args.pe_only:
+                mean_contrast = (sum(contrast_errors) / len(contrast_errors)) if len(contrast_errors) > 0 else 0
+                print('Mean: {}'.format(mean_contrast))
+                torch.save(model.state_dict(), 'pt/' + name + '.pt')
             # Save some info
             if len(errs) > 0:
                 mean_err_train = sum(errs) / len(errs)
