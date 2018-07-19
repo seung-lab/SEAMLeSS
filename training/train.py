@@ -162,28 +162,21 @@ if __name__ == '__main__':
         print('Building optimizer for layer {} (fine tuning: {}, lr: {})'.format(layer, fine_tuning, lr_))
         return torch.optim.Adam(params, lr=lr_, weight_decay=0 if args.pe_only else 0)
 
-    def run_sample(X, mask=None, target_mask=None, train=True):
-        model.train(train)
-
-        # our convention here is that X is 4D PyTorch convolution shape, while src and target are in squeezed shape (2D)
-        src, target = X[0,0], torch.squeeze(X[0,1:])
-
+    def run_pair(src, target, src_mask=None, target_mask=None, train=True):
         if train and not args.skip_sample_aug:
             # random rotation
             should_rotate = random.randint(0,1) == 0
             if should_rotate:
                 src, grid = rotate_and_scale(src.unsqueeze(0).unsqueeze(0), None)
                 target = rotate_and_scale(target.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
-                if mask is not None:
-                    mask = torch.ceil(rotate_and_scale(mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze())
+                if src_mask is not None:
+                    src_mask = torch.ceil(rotate_and_scale(src_mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze())
                     target_mask = torch.ceil(rotate_and_scale(target_mask.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze())
                     
                 src = src.squeeze()
 
         input_src = src.clone()
         input_target = target.clone()
-
-        target = downsample(trunclayer)(target.unsqueeze(0).unsqueeze(0))
 
         src_cutout_masks = []
         target_cutout_masks = []
@@ -198,7 +191,39 @@ if __name__ == '__main__':
         target = Variable(torch.FloatTensor(normalizer.apply(target.data.cpu().numpy()))).cuda()
         input_src = Variable(torch.FloatTensor(normalizer.apply(input_src.data.cpu().numpy()))).cuda()
         input_target = Variable(torch.FloatTensor(normalizer.apply(input_target.data.cpu().numpy()))).cuda()
-            
+
+        rf = run_sample(src, target, input_src, input_target, src_mask, target_mask, src_cutout_masks, target_cutout_masks, train)
+        if rf is not None:
+            cost = rf['similarity_error'] + args.lambda1 * smooth_factor * rf['smoothness_error']
+            (cost/2).backward(retain_graph=args.unflow>0)
+
+        rb = run_sample(target, src, input_target, input_src, target_mask, src_mask, target_cutout_masks, src_cutout_masks, train)
+        if rb is not None:
+            cost = rb['similarity_error'] + args.lambda1 * smooth_factor * rb['smoothness_error']
+            (cost/2).backward(retain_graph=args.unflow>0)
+
+        ##################################
+        # CONSENSUS PENALTY COMPUTATION ##
+        ##################################
+        if args.unflow > 0 and rf is not None and rb is not None:
+            ffield, rffield = rf['field'], rf['rfield']
+            bfield, rbfield = rb['field'], rb['rfield']
+            consensus_forward = (F.grid_sample(rbfield.permute(0,3,1,2), ffield).permute(0,2,3,1) + rffield) ** 2
+            consensus_backward = (F.grid_sample(rffield.permute(0,3,1,2), bfield).permute(0,2,3,1) + rbfield) ** 2
+            rf['consensus_field'] = consensus_forward
+            rb['consensus_field'] = consensus_backward
+            mean_consensus_forward = torch.mean(consensus_forward)
+            mean_consensus_backward = torch.mean(consensus_backward)
+            rf['consensus'] = mean_consensus_forward
+            rb['consensus'] = mean_consensus_backward
+            consensus = args.unflow * (mean_consensus_forward + mean_consensus_backward)
+            consensus.backward()
+
+        return rf, rb 
+        
+    def run_sample(src, target, input_src, input_target, mask=None, target_mask=None, src_cutout_masks=[], target_cutout_masks=[], train=True):
+        model.train(train)
+
         if args.dry_run:
             print('Bailing for dry run [not an error].')
             return None
@@ -338,53 +363,29 @@ if __name__ == '__main__':
             smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
             for sample_idx, i in enumerate(range(1,X.size(1)-1)):
                 ##################################
-                # RUN SAMPLE FORWARD #############
+                # RUN SINGLE PAIR OF SLICES ######
                 ##################################
                 X_ = X[:,i:i+2].detach()
+                src, target = X[0,i], X[0,i+1]
                 src_mask, target_mask = (mask_stack[0,i], mask_stack[0,i+1]) if trunclayer == 0 else (None, None)
 
                 if min(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]) < args.blank_var_threshold:
                     print("Skipping blank sections: ({}, {})".format(torch.var(X_[0,0]).data[0], torch.var(X_[0,1]).data[0]))
                     continue
 
-                rf = run_sample(X_, src_mask, target_mask, train=True)
+                rf, rb = run_pair(src, target, src_mask, target_mask)
                 if rf is not None:
-                    cost = rf['similarity_error'] + args.lambda1 * smooth_factor * rf['smoothness_error']
-                    (cost/2).backward(retain_graph=args.unflow>0)
                     errs.append(rf['similarity_error'].data[0])
                     penalties.append(rf['smoothness_error'].data[0])
-                    
-                ##################################
-                # RUN SAMPLE BACKWARD ############
-                ##################################
-                X_ = reverse_dim(X_,1)
-                src_mask, target_mask = target_mask, src_mask
+                    if args.unflow > 0:
+                        consensus_list.append(rf['consensus'].data[0])
 
-                rb = run_sample(X_, src_mask, target_mask, train=True)
                 if rb is not None:
-                    cost = rb['similarity_error'] + args.lambda1 * smooth_factor * rb['smoothness_error']
-                    (cost/2).backward(retain_graph=args.unflow>0)
                     errs.append(rb['similarity_error'].data[0])
                     penalties.append(rb['smoothness_error'].data[0])
+                    if args.unflow > 0:
+                        consensus_list.append(rb['consensus'].data[0])
 
-                ##################################
-                # CONSENSUS PENALTY COMPUTATION ##
-                ##################################
-                if args.unflow > 0 and rf is not None and rb is not None:
-                    ffield, rffield = rf['field'], rf['rfield']
-                    bfield, rbfield = rb['field'], rb['rfield']
-                    consensus_forward = (F.grid_sample(rbfield.permute(0,3,1,2), ffield).permute(0,2,3,1) + rffield) ** 2
-                    consensus_backward = (F.grid_sample(rffield.permute(0,3,1,2), bfield).permute(0,2,3,1) + rbfield) ** 2
-                    rf['consensus'] = consensus_forward
-                    rb['consensus'] = consensus_backward
-                    consensus_unweighted = torch.mean(consensus_forward) + torch.mean(consensus_backward)
-                    consensus = args.unflow * consensus_unweighted
-                    consensus.backward()
-                    consensus_list.append(consensus.data[0])
-
-                ##################################
-                # VISUALIZATION ##################
-                ##################################
                 if sample_idx == 0 and t % args.vis_interval == 0:
                     prefix = '{}{}_e{}_t{}'.format(log_path, name, epoch, t)
                     visualize_outputs(prefix + '_forward_{}', rf)
