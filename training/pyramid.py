@@ -126,8 +126,8 @@ class EPyramid(nn.Module):
         self.skip = skip
         self.topskips = topskips
         self.size = size
-        enc_infms = [1] + [fm_0 + fm_coef * idx for idx in range(size-1)]
-        enc_outfms = enc_infms[1:] + [fm_0 + fm_coef * (size-1)]
+        enc_outfms = [fm_0 + fm_coef * idx for idx in range(size)]
+        enc_infms = [1] + enc_outfms[:-1]
         self.mlist = nn.ModuleList([G(k=k, infm=enc_outfms[level]*2) for level in range(size)])
         self.up = nn.Upsample(scale_factor=2, mode='bilinear')
         self.down = nn.MaxPool2d(2)
