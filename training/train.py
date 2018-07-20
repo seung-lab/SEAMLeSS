@@ -200,7 +200,16 @@ if __name__ == '__main__':
             else:
                 (rf['contrast_error']/2).backward()
 
-        rb = run_sample(target, src, input_target, input_src, target_mask, src_mask, target_cutout_masks, src_cutout_masks, train)
+        src = reverse_dim(reverse_dim(src, 0), 1)
+        target = reverse_dim(reverse_dim(target, 0), 1)
+        input_src = reverse_dim(reverse_dim(input_src, 0), 1)
+        input_target = reverse_dim(reverse_dim(input_target, 0), 1)
+        src_mask = reverse_dim(reverse_dim(src_mask, 0), 1)
+        target_mask = reverse_dim(reverse_dim(target_mask, 0), 1)
+        src_cutout_masks = [reverse_dim(reverse_dim(m, 0), 1) for m in src_cutout_masks]
+        target_cutout_masks = [reverse_dim(reverse_dim(m, 0), 1) for m in target_cutout_masks]
+
+        rb = run_sample(src, target, input_src, input_target, src_mask, target_mask, src_cutout_masks, target_cutout_masks, train)
         if rb is not None:
             if not args.pe_only:
                 cost = rb['similarity_error'] + args.lambda1 * smooth_factor * rb['smoothness_error']
@@ -212,17 +221,15 @@ if __name__ == '__main__':
         # CONSENSUS PENALTY COMPUTATION ##
         ##################################
         if not args.pe_only and args.unflow > 0 and rf is not None and rb is not None:
-            ffield, rffield = rf['field'], rf['rfield']
-            bfield, rbfield = rb['field'], rb['rfield']
-            consensus_forward = (F.grid_sample(rbfield.permute(0,3,1,2), ffield).permute(0,2,3,1) + rffield) ** 2
-            consensus_backward = (F.grid_sample(rffield.permute(0,3,1,2), bfield).permute(0,2,3,1) + rbfield) ** 2
-            rf['consensus_field'] = consensus_forward
-            rb['consensus_field'] = consensus_backward
-            mean_consensus_forward = torch.mean(consensus_forward)
-            mean_consensus_backward = torch.mean(consensus_backward)
-            rf['consensus'] = mean_consensus_forward
-            rb['consensus'] = mean_consensus_backward
-            consensus = args.unflow * (mean_consensus_forward + mean_consensus_backward)
+            rffield, rbfield = rf['rfield'], rb['rfield']
+            consensus_diff = rffield + reverse_dim(reverse_dim(rbfield, 1), 2)
+            consensus_field = consensus_diff[:,:,:,0] ** 2 + consensus_diff[:,:,:,1] ** 2
+            mean_consensus = torch.mean(consensus_field)
+            rf['consensus_field'] = consensus_field
+            rb['consensus_field'] = consensus_field
+            rf['consensus'] = mean_consensus
+            rb['consensus'] = mean_consensus
+            consensus = args.unflow * mean_consensus
             consensus.backward()
 
         return rf, rb 
@@ -398,7 +405,7 @@ if __name__ == '__main__':
                     if not args.pe_only:
                         errs.append(rf['similarity_error'].data[0])
                         penalties.append(rf['smoothness_error'].data[0])
-                        if args.unflow > 0:
+                        if args.unflow > 0 and 'consensus' in rf:
                             consensus_list.append(rf['consensus'].data[0])
                     else:
                         contrast_errors.append(rf['contrast_error'].data[0])
@@ -407,7 +414,7 @@ if __name__ == '__main__':
                     if not args.pe_only:
                         errs.append(rb['similarity_error'].data[0])
                         penalties.append(rb['smoothness_error'].data[0])
-                        if args.unflow > 0:
+                        if args.unflow > 0 and 'consensus' in rb:
                             consensus_list.append(rb['consensus'].data[0])
                     else:
                         contrast_errors.append(rb['contrast_error'].data[0])
