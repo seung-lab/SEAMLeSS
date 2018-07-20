@@ -160,7 +160,7 @@ if __name__ == '__main__':
 
         lr_ = lr if not fine_tuning else lr * args.fine_tuning_lr_factor
         print('Building optimizer for layer {} (fine tuning: {}, lr: {})'.format(layer, fine_tuning, lr_))
-        return torch.optim.Adam(params, lr=lr_, weight_decay=0 if args.pe_only else 0)
+        return torch.optim.Adam(params, lr=lr_)
 
     def run_pair(src, target, src_mask=None, target_mask=None, train=True):
         if train and not args.skip_sample_aug:
@@ -223,7 +223,7 @@ if __name__ == '__main__':
         if not args.pe_only and args.unflow > 0 and rf is not None and rb is not None:
             rffield, rbfield = rf['rfield'], rb['rfield']
             consensus_diff = rffield + reverse_dim(reverse_dim(rbfield, 1), 2)
-            consensus_field = consensus_diff[:,:,:,0] ** 2 + consensus_diff[:,:,:,1] ** 2
+            consensus_field = (consensus_diff[:,:,:,0] ** 2 + consensus_diff[:,:,:,1] ** 2) * (rf['pred'] != 0).float().detach()
             mean_consensus = torch.mean(consensus_field)
             rf['consensus_field'] = consensus_field
             rb['consensus_field'] = consensus_field
