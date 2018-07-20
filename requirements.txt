@@ -1,0 +1,5 @@
+# pytorch
+torchvision
+cloud-volume
+numpy
+scikit-image
