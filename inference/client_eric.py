@@ -22,6 +22,7 @@ parser.add_argument('--ye', type=int)
 parser.add_argument('--stack_size', type=int, default=100)
 parser.add_argument('--zs', type=int)
 parser.add_argument('--no_anchor', action='store_true')
+parser.add_argument('--no_flip_average', action='store_true')
 args = parser.parse_args()
 
 out_name = args.out_name
@@ -62,7 +63,7 @@ print('NG link:', ng_link(out_name, 'precomputed://' + 'gs://neuroglancer/seamle
 
 a = Aligner(model_path, max_displacement, edge_crop, mip_range, high_mip_chunk, source,
             'gs://neuroglancer/seamless/{}_{}'.format(model_name, out_name), render_low_mip=render_mip, render_high_mip=max_mip,
-            skip=0, topskip=0, size=args.size, should_contrast=should_contrast, num_targets=num_targets)
+            skip=0, topskip=0, size=args.size, should_contrast=should_contrast, num_targets=num_targets, flip_average=not args.no_flip_average)
 
 bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=max_mip)
 

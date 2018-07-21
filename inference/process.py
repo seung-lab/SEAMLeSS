@@ -7,7 +7,7 @@ from helpers import save_chunk
 
 class Process(object):
     """docstring for Process."""
-    def __init__(self, path, mip, cuda=True, is_Xmas=False, dim=1280, skip=0, topskip=0, size=7, contrast=True):
+    def __init__(self, path, mip, cuda=True, is_Xmas=False, dim=1280, skip=0, topskip=0, size=7, contrast=True, flip_average=True):
         super(Process, self).__init__()
         self.cuda = cuda
         self.height = size
@@ -18,6 +18,7 @@ class Process(object):
         self.dim = dim
         self.should_contrast = contrast
         self.normalizer = Normalizer(self.mip)
+        self.flip_average = flip_average
         
     def contrast(self, t):
         zeromask = (t == 0)
@@ -47,8 +48,6 @@ class Process(object):
         '''
         
         # nonflipped
-        save_chunk(s, "s_dp")
-        save_chunk(t, "t_dp")
         x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
@@ -59,13 +58,14 @@ class Process(object):
             res = res[:,crop:-crop, crop:-crop,:]
         nonflipped = res.data.cpu().numpy()
 
+        if not self.flip_average:
+            return nonflipped
+
         # flipped
         s = np.flip(s,1)
         s = np.flip(s,2)
         t = np.flip(t,1)
         t = np.flip(t,2)
-        save_chunk(s, "s_dp_flip")
-        save_chunk(t, "t_dp_flip")
         x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
@@ -78,8 +78,6 @@ class Process(object):
         res = np.flip(res,1)
         res = np.flip(res,2)
         flipped = -res
-        #flipped = np.concatenate((-resflipped[:,:,:,0:1], -resflipped[:,:,:,1:2]),3)
-
         return (flipped + nonflipped)/2.0
         
 #Simple test
