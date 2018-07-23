@@ -248,7 +248,6 @@ if __name__ == '__main__':
             rf['consensus'] = mean_consensus
             rb['consensus'] = mean_consensus
             consensus = args.lambda6 * mean_consensus
-            print(consensus.data[0])
             consensus.backward()
 
         return rf, rb 

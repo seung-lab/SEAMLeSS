@@ -39,15 +39,16 @@ def show_weights(weights, path):
 
     save_chunk(weights, path.format('weights'), norm=False)
 
-def visualize_outputs(path, outputs, skip=['residuals', 'hpred']):
-    if outputs is None:
-        print('Skipping visualization of empty outputs to path {}.'.format(path))
-        return
+def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False):
+    if verbose:
+        if outputs is None:
+            print('Skipping visualization of empty outputs to path {}.'.format(path))
+            return
+        
+        for k in outputs:
+            if k in skip:
+                print('Excluding key {} in outputs for visualization.'.format(k))
 
-    for k in outputs:
-        if k in exclude:
-            print('Excluding key {} in outputs for visualization.'.format(k))
-    
     v = lambda k: outputs[k] if k in outputs and k not in skip else None
 
     if v('input_src') is not None and v('input_target') is not None:
