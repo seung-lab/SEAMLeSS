@@ -15,8 +15,9 @@ pass the `--test` flag; samples are partitioned such that train samples come fro
 
 ## Training
 
-`train.py` trains a pyramid. There are many arguments available to customize the training process, which are more or less 
-self-documented within `train.py`. (TODO: document them here)
+An example invocation of training to fine-tune a network called 'matriarch_na3' would be:
+
+`train.py --state_archive pt/matriarch_na3.pt --size 8 --lambda1 2 --lambda2 0.04 --lambda3 0 --lambda4 5 --lambda5 0 --mask_smooth_radius 75 --mask_neighborhood_radius 75 --lr 0.0003 --trunc 0 --fine_tuning --hm --padding 0 --vis_interval 5 --lambda6 1 fine_tune_example`
 
 ## Testing
 
