@@ -42,7 +42,7 @@ display_length = 10
 for start_idx in range(0, len(folders), display_length):
     for idx, f in enumerate(folders[start_idx:start_idx + display_length]):
         aux_info = '[{}]'.format(du('out/{}'.format(f)) if os.path.exists('pt/{}.pt'.format(f)) else 'NO PT ARCHIVE')
-        print '{}) {} {}'.format(start_idx + idx + 1, f, aux_info)
+        print('{}) {} {}'.format(start_idx + idx + 1, f, aux_info))
     print('----------------------------------------------------------')
     selection = raw_input()
     if selection.isdigit():
