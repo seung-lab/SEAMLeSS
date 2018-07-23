@@ -14,16 +14,25 @@ To control training, it is best to use arguments/parameters so that they are sav
 This will also show you a description for the purpose of each parameter.
 
 The key parameters are the `lambda` family:
+
 `lambda1` controls the weighting of the total smoothness penalty against the similarity penalty (this is the most important/frequently tuned parameter)
+
 `lambda2` controls the relative weight of the smoothness penalty in the region near, but not within defects (cracks and folds); this is usually a value in the range (0.01,0.1)
+
 `lambda3` controls the relative weight of the smoothness penalty in the regions *within* defects; this is almost always 0
+
 `lambda4` is like lambda2, but for the similarity penalty; it is usually a value in the range (5,10), which focuses the net on fixing the defects
+
 `lambda5` is like lambda3, but for the similarity penalty; it is almost always 0
+
 `lambda6` is the coefficient of the consensus penalty used for eliminating drift; it is usually in the range 0.1-10 (this requires more investigation)
 
 Some other key parameters:
+
 `mask_neighborhood_radius` controls the radius in pixels of the neighborhood regions used by `lambda2` and `lambda4`
+
 `lr` controls the learning rate; usually ~0.0003
+
 `--state_archive` is a filepath to the network archive you'd like to start training from
 
 ### Invoking Training
@@ -32,7 +41,7 @@ You can begin training or fine-tuning by calling
 
 `python train.py [--param1_name VALUE1 --param2_name VALUE2 ...] EXPERIMENT_NAME`
 
-*If you use the same experiment name twice, you will overwrite the outputs from the older version. It is highly recommended that you use unique experiment names.*
+**If you use the same experiment name twice, you will overwrite the outputs from the older version. It is highly recommended that you use unique experiment names.**
 
 ### Fine-tuning
 An example invocation of training to fine-tune a network called 'matriarch_na3' would be:
