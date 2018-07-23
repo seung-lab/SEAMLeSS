@@ -29,7 +29,7 @@ The key parameters are the `lambda` family:
 
 Some other key parameters:
 
-`mask_neighborhood_radius` controls the radius in pixels of the neighborhood regions used by `lambda2` and `lambda4`
+`mask_neighborhood_radius` controls the radius in pixels of the neighborhood regions used by `lambda2` and `lambda4`; usually a value in the range (75,150)
 
 `lr` controls the learning rate; usually ~0.0003
 
