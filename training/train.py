@@ -39,6 +39,9 @@ if __name__ == '__main__':
     parser.add_argument('--fine_tuning_lr_factor', help='factor by which to reduce learning rate during fine tuning', type=float, default=0.2)
     parser.add_argument('--pe_only', action='store_true')
     parser.add_argument('--enc_only', action='store_true')
+    parser.add_argument('--vhm_src', help='very high mip source (mip 8)', type=str, default='~/matriarch_mixed.h5')
+    parser.add_argument('--hm_src', help='high mip source (mip 5)', type=str, default='~/mip5_mixed.h5')
+    parser.add_argument('--lm_src', help='low mip source (mip 2)', type=str, default='~/mip2_mixed.h5')
     args = parser.parse_args()
 
     import os
@@ -108,18 +111,17 @@ if __name__ == '__main__':
     normalizer = Normalizer(5 if args.hm else 2)
 
     if args.mm:
-        train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/mip5_mixed.h5'), mip=5)
-        train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/mip2_mixed.h5'), mip=2)
-        train_dataset3 = StackDataset(os.path.expanduser('~/../eam6/matriarch_mixed.h5'), mip=8)
+        train_dataset1 = StackDataset(os.path.expanduser(args.hm_src), mip=5)
+        train_dataset2 = StackDataset(os.path.expanduser(args.lm_src), mip=2)
+        train_dataset3 = StackDataset(os.path.expanduser(args.vhm_src), mip=8)
         train_dataset = ConcatDataset([train_dataset1, train_dataset2, train_dataset3])
     else:
         if args.hm:
-            train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/mip5_mixed.h5'), mip=5)
-            train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/matriarch_mixed.h5'), mip=5)
+            train_dataset1 = StackDataset(os.path.expanduser(args.hm_src), mip=5)
+            train_dataset2 = StackDataset(os.path.expanduser(args.vhm_src), mip=8)
             train_dataset = ConcatDataset([train_dataset1, train_dataset2])
         else:
-            #train_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5')) # dataset pulled from all of Basil
-            train_dataset2 = StackDataset(os.path.expanduser('~/../eam6/mip2_mixed.h5'), mip=2) # dataset focused on extreme folds
+            train_dataset2 = StackDataset(os.path.expanduser(args.lm_src), mip=2) # dataset focused on extreme folds
             train_dataset = ConcatDataset([train_dataset2])
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
 
