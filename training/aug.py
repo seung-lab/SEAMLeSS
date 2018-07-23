@@ -105,7 +105,7 @@ def jitter_stacks(Xs, max_displacement=2**6, min_cut=32):
             else:
                 Xs_[ii][:,i] = srcXs[ii][:,i]
 
-            cut_range = (min_cut, Xs_[ii].size(-1)//5)
+            cut_range = (min_cut, Xs_[ii].size(-1)//3)
             if ii == 0: # we only want to cut our images; we're assuming the images are first in Xs_, then masks 
                 cut = random.randint(cut_range[0], cut_range[1])
                 if random.randint(0,1) == 0:
@@ -138,7 +138,7 @@ def gen_gradient(size, flip=None, period_median=25, peak=0.3, randomize_peak=Tru
                 grad[:,idx + period * (size[-1] // periods)] = (float(idx) / (size[-1] / periods)) * peak
             else:
                 grad[:,idx + period * (size[-1] // periods)] = peak - (float(idx) / (size[-1] / periods)) * peak
-    grad -= torch.mean(grad)
+    grad += np.random.normal(0, (torch.max(grad) + torch.min(grad)) / 2)
     grad = Variable(grad)
     if flip:
         grad = grad.permute(1,0)
@@ -152,7 +152,7 @@ def gen_gradient(size, flip=None, period_median=25, peak=0.3, randomize_peak=Tru
         grad = rotate_and_scale(grad.unsqueeze(0).unsqueeze(0), None, 0.1)[0].squeeze()
     return grad.cuda()
 
-def gen_tiles(size, dim=None, min_count=6, max_count=32, peak=0.3):
+def gen_tiles(size, dim=None, min_count=6, max_count=32, peak=0.5):
     assert len(size) == 2
 
     total_size = max(size)
@@ -160,8 +160,8 @@ def gen_tiles(size, dim=None, min_count=6, max_count=32, peak=0.3):
         dim = random.randint(total_size // max_count, total_size // min_count) + 1
 
     count = total_size // dim + 1
-    flip = False
-    tile = gen_gradient((dim,dim), flip=not flip, period_median=None, peak=peak, randomize_peak=False, rotate=False)
+    flip = half()
+    tile = gen_gradient((dim,dim), flip=not flip, period_median=None, peak=peak, randomize_peak=True, rotate=False)
     tiles = tile.repeat(count,count)
 
     for idx in range(count-1):
@@ -174,36 +174,39 @@ def gen_tiles(size, dim=None, min_count=6, max_count=32, peak=0.3):
         else:
             tiles[:,idx*dim:(idx+1)*dim] = tiles[shift_idxs][:,idx*dim:(idx+1)*dim]
 
-    tiles = rotate_and_scale(tiles.unsqueeze(0).unsqueeze(0), None, 0.2)[0].squeeze()
+    tiles = rotate_and_scale(tiles.unsqueeze(0).unsqueeze(0), np.pi/2, 0.2)[0].squeeze()
     tiles = tiles[:size[0],:size[1]]
     return tiles
-        
-def check_data_range(X, eps=1e-6):
-    mi, ma = torch.min(X).data[0], torch.max(X).data[0]
-    assert mi >= -eps and ma <= 1 + eps, 'Data must fall in range [0,1] ({}, {})'.format(mi, ma)
 
-def aug_brightness(X, factor=2.5, mask=False):
-    check_data_range(X)
+def check_data_range(X, eps=1e-6, factor=1):
+    mi, ma = torch.min(X).data[0], torch.max(X).data[0]
+    assert mi >= -eps and ma <= factor + eps, 'Data must fall in range [0,1] ({}, {})'.format(mi, ma)
+
+def aug_brightness(X, factor=2, mask=False, clamp=False):
     zm = X == 0
-    gradients = random.randint(0,2)
+
+    total_periodic_augs = 2
+
+    gradients = random.randint(0, total_periodic_augs)
     for _ in range(gradients):
         X = X + gen_gradient(X.size())
+        if clamp:
+            X = X.clamp(min=1/255.,max=1)
 
-    tilings = half(0,1)
+    tilings = random.randint(0, total_periodic_augs - gradients)
     for _ in range(tilings):
         X = X + gen_tiles(X.size())
-        
-    X = X.clamp(min=1/255.,max=1)
+        if clamp:
+            X = X.clamp(min=1/255.,max=1)
 
-    compress = half()
-    severity = np.random.uniform(1,factor)
+    f = np.random.uniform(1,factor)
+    X = X * half(f, 1./f)
 
-    if compress:
-        X = X / severity
-    else:
-        X = X * severity
-
+    if not clamp:
+        X = X + np.random.uniform(0,0.5)
+    
     X[zm] = 0
+
     return X
 
 """
@@ -267,7 +270,7 @@ def random_rect_mask(size):
     output = torch.ceil(rotate_and_scale(off_centered, None, 0)[0])
     return output.byte()
 
-def aug_input(x, factor=2.5):
+def aug_input(x, factor=2):
     check_data_range(x)
 
     out = x
@@ -284,22 +287,22 @@ def aug_input(x, factor=2.5):
         noise = Variable(torch.FloatTensor(np.random.normal(0,sigma,out.size()))).cuda()
         if half():
             # randomly smooth the noise
-            r = random.randint(1,10)
+            r = random.randint(1,20)
             noise = noise.unsqueeze(0).unsqueeze(0)
             noise = F.avg_pool2d(noise, r*2+1, padding=r, stride=1, count_include_pad=False)
             noise = noise.view(out.size())
-        out[mask] = (out[mask] + noise[mask]).clamp(min=1./255, max=1)
+        out[mask] = out[mask] + noise[mask]
 
     for _ in range(contrast_cutouts):
         mask = random_rect_mask(out.size())
-        out[mask] = out[mask] / np.random.uniform(1,factor)
-        out[mask] = out[mask] + np.random.uniform(0,1-torch.max(out[mask]).data[0])
+        f = np.random.uniform(1,factor)
+        out[mask] = out[mask] * half(f,1./f)
 
     for _ in range(missing_cutouts):
         mask = random_rect_mask(out.size())
         missing_masks.append(mask)
         out[mask] = np.random.uniform(1/255.,1)
-        
+
     out = aug_brightness(out, factor)
 
     out[zm] = 0

@@ -19,7 +19,6 @@ An example invocation of training to fine-tune a network called 'matriarch_na3' 
 
 `python train.py --state_archive pt/matriarch_na3.pt --size 8 --lambda1 2 --lambda2 0.04 --lambda3 0 --lambda4 5 --lambda5 0 --mask_smooth_radius 75 --mask_neighborhood_radius 75 --lr 0.0003 --trunc 0 --fine_tuning --hm --padding 0 --vis_interval 5 --lambda6 1 fine_tune_example`
 
-## Testing
-
-To test a trained pyramid, run `python train.py --inference_only --state_archive pt/YOUR_ARCHIVE.pt NAME_OF_RUN`.
+## Network Histories
+Using the net_hist tool (`net_hist.py`), you can see the history of training for a particular network.
 
