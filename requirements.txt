@@ -4,3 +4,4 @@ cloud-volume
 numpy
 scikit-image
 h5py
+moviepy
