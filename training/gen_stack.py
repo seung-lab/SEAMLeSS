@@ -26,7 +26,7 @@ parser.add_argument('--ys', type=int, default=None)
 parser.add_argument('--ye', type=int, default=None)
 parser.add_argument('--no_split', action='store_true')
 args = parser.parse_args()
-print args
+print(args)
 
 offsets = (args.xs, args.ys) if args.xs is not None and args.ys is not None else None
 size = (args.xe, args.ye) if args.xe is not None and args.ye is not None else None
@@ -111,7 +111,7 @@ for i in range(N):
         if args.check_mask:
             mask_dataset[i,:,:,:] = np.transpose(mask, (2,0,1))
     else:
-        print 'None chunk'
+        print('None chunk')
         dataset[i,:,:,:] = 0
 
     print(i)
@@ -125,7 +125,7 @@ h5f.create_dataset('main', data=dataset)
 
 if args.check_mask:
     mask_name = args.mask[(args.mask).rfind('/')+1:]
-    print 'Adding mask dataset:', mask_name
+    print('Adding mask dataset:', mask_name)
     h5f.create_dataset(mask_name, data=mask_dataset)
 
 h5f.close()
