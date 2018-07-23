@@ -133,7 +133,11 @@ def display_v(vfield, name=None, center=False):
         assert (name is not None)
         dv(vfield, name)
     
-def dvl(V_pred, name):
+def dvl(V_pred, name, mag=10):
+    factor = V_pred.shape[1] // 100
+    if factor > 1:
+        V_pred = V_pred[:,::factor,::factor,:]
+    V_pred *= 10
     plt.figure(figsize=(6,6))
     X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
     U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
@@ -149,7 +153,9 @@ def dvl(V_pred, name):
 
 def reverse_dim(var, dim):
     idx = range(var.size()[dim] - 1, -1, -1)
-    idx = Variable(torch.LongTensor(idx))
+    idx = torch.LongTensor(idx)
+    if type(var) == Variable:
+        idx = Variable(idx)
     if var.is_cuda:
         idx = idx.cuda()
     return var.index_select(dim, idx)

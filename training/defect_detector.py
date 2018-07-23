@@ -7,7 +7,7 @@ from helpers import save_chunk
 import masks
 
 class DefectDetector(object):
-    def __init__(self, net, minor_dilation_radius=1, major_dilation_radius=75, sigmoid_threshold=0.4, cc_count=250):
+    def __init__(self, net, minor_dilation_radius=1, major_dilation_radius=75, sigmoid_threshold=0.4, cc_count=1000):
         for p in net.parameters():
             p.requires_grad = False
         self.net = net
