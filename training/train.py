@@ -75,7 +75,7 @@ if __name__ == '__main__':
     from defect_detector import DefectDetector
     from helpers import save_chunk, copy_state_to_model, reverse_dim, apply_grid, downsample, dvl
     import masks
-    from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice, half
+    from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice, half, rotate_chunks
     from vis import visualize_outputs
     from loss import similarity_penalty, smoothness_penalty
     from normalizer import Normalizer
@@ -224,7 +224,7 @@ if __name__ == '__main__':
                 else:
                     (rf['contrast_error']/2).backward()
         else:
-            rf = run_supervised(half(input_src, input_target))    
+            rf = run_supervised(half(src, target))    
             (rf['similarity_error']/2).backward()
 
         # flip everything 180 degrees
@@ -247,7 +247,7 @@ if __name__ == '__main__':
                 else:
                     (rb['contrast_error']/2).backward()
         else:
-            rb = run_supervised(half(input_src, input_target))    
+            rb = run_supervised(half(src, target))    
             (rb['similarity_error']/2).backward()
 
         # compute our consensus penalty, if necessary
@@ -274,35 +274,53 @@ if __name__ == '__main__':
 
     # run a sample in a semi-supervised manner with fold augmentation
     def run_supervised(img):
-        src, grid = fold(img, radius=random.randint(10,40))
+        src, grid = fold(img, radius=random.randint(30,100))
         rgrid = grid - model.pyramid.get_identity_grid(grid.size()[-2])
         target = img
+        input_src, _ = aug_input(src)
+        input_target, _ = aug_input(target)
+
         flipped = half()
         if flipped:
-            src, target = target, src
+            input_src, input_target = input_target, input_src
 
-        src, aug_grid = rotate_and_scale(src.unsqueeze(0).unsqueeze(0), None)
-        target = rotate_and_scale(target.unsqueeze(0).unsqueeze(0), grid=aug_grid)[0].squeeze()
-        src = src.squeeze()
-        
-        pred, field, residuals = model.apply(src, target, trunclayer)
+        rot = True
+        if rot:
+            src, input_src, target, input_target, rgrid = rotate_chunks((src.unsqueeze(0).unsqueeze(0),
+                                                                         input_src.unsqueeze(0).unsqueeze(0),
+                                                                         target.unsqueeze(0).unsqueeze(0),
+                                                                         input_target.unsqueeze(0).unsqueeze(0),
+                                                                         rgrid), np.random.uniform(0,2*np.pi))
+            grid = rgrid + model.pyramid.get_identity_grid(grid.size()[-2])
+
+        pred, field, residuals = model.apply(input_src, input_target, trunclayer)
         rfield = field - model.pyramid.get_identity_grid(field.size()[-2])
 
         border_mask = masks.low_pass(masks.intersect([pred != 0, target != 0]))
-        border_mask, no_valid_pixels = masks.contract(border_mask, 5, return_sum=True)
+        border_mask, no_valid_pixels = masks.contract(border_mask, 7, return_sum=True)
 
+        #idd = str(np.random.uniform())
         if flipped:
             similarity_error_vector_field = (rfield - rgrid) * border_mask.permute(0,2,3,1).float()
+            #dvl(rfield.data.cpu().numpy(), idd+'rfieldflipped')
+            #dvl(similarity_error_vector_field.data.cpu().numpy(), idd+'simflipped')
+            #dvl(rgrid.data.cpu().numpy(), idd+'rgridflipped')
         else:
             similarity_error_vector_field = apply_grid(rfield.permute(0,3,1,2), grid).permute(0,2,3,1) + rgrid
             similarity_error_vector_field = similarity_error_vector_field * border_mask.permute(0,2,3,1).float()
+            #dvl(rfield.data.cpu().numpy(), idd+'rfield')
+            #dvl(similarity_error_vector_field.data.cpu().numpy(), idd+'sim')
+            #dvl(rgrid.data.cpu().numpy(), idd+'rgrid')
         
-        similarity_error_field = torch.sum(similarity_error_vector_field**2, 3).unsqueeze(3)
+        similarity_error_field = torch.sum(similarity_error_vector_field**2, 3).squeeze()
+        #weights = smoothness(rfield).detach()
+        #weights = weights / torch.mean(weights)
+        #similarity_error_field = similarity_error_field * weights
 
         return {
             'similarity_error' : torch.mean(similarity_error_field),
-            'input_src' : src.unsqueeze(0).unsqueeze(0),
-            'input_target' : target.unsqueeze(0).unsqueeze(0),
+            'input_src' : input_src.unsqueeze(0).unsqueeze(0),
+            'input_target' : input_target.unsqueeze(0).unsqueeze(0),
             'pred' : pred,
             'field' : field,
             'rfield' : rfield,
@@ -336,10 +354,11 @@ if __name__ == '__main__':
         pred, field, residuals = model.apply(input_src, input_target, trunclayer)
         # resample tensors that are in our source coordinate space with our new field prediction
         # to move them into target coordinate space so we can compare things fairly
-        pred = F.grid_sample(downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
+        pred = F.grid_sample(downsample(src.unsqueeze(0).unsqueeze(0), trunclayer), field)
+        target = downsample(target.unsqueeze(0).unsqueeze(0), trunclayer)
         raw_mask = mask
         if mask is not None:
-            mask = torch.ceil(F.grid_sample(downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0)), field))
+            mask = torch.ceil(F.grid_sample(mask.unsqueeze(0).unsqueeze(0), field))
         if target_mask is not None:
             target_mask = masks.dilate(target_mask.unsqueeze(0).unsqueeze(0), 1, binary=False)
         if len(src_cutout_masks) > 0:
@@ -476,7 +495,8 @@ if __name__ == '__main__':
             penalties = []
             consensus_list = []
             contrast_errors = []
-            smooth_factor = 2.**(-trunclayer)
+            #smooth_factor = 2.**(-trunclayer)
+            smooth_factor = 1
             for sample_idx, i in enumerate(range(1,X.size(1)-1)):
                 ##################################
                 # RUN SINGLE PAIR OF SLICES ######

@@ -12,11 +12,16 @@ import torch
 from torch.autograd import Variable
 from skimage.transform import rescale
 
-def downsample(f):
+def downsample(x, f, preserve_range=True):
+    mi, ma = torch.min(x), torch.max(x)
     if f > 0:
-        return nn.AvgPool2d(2**f, 2**f, count_include_pad=False)
+        pooled = F.avg_pool2d(x, 2**f)
+        if preserve_range:
+            scaled = (pooled - torch.min(pooled).data[0]) * (ma-mi) / (torch.max(pooled) - torch.min(pooled)) + mi
+            pooled = scaled
+        return pooled
     else:
-        return lambda x: x
+        return x
 
 def apply_grid(img, grid):
     o = [F.grid_sample(img[:,i:i+1], grid) for i in range(img.size(1))]

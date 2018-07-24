@@ -7,17 +7,46 @@ import random
 import time
 import itertools
 
-from helpers import reverse_dim, save_chunk, gif
+from helpers import reverse_dim, save_chunk, gif, apply_grid
 
 def half(a=None,b=None):
     if a is None and b is None:
         a,b = True,False
     return a if random.randint(0,1) == 0 else b
 
-def apply_grid(stack, grid):
-    for sliceidx in range(stack.size(1)):
-        stack[:,sliceidx:sliceidx+1] = F.grid_sample(stack[:,sliceidx:sliceidx+1], grid)
-    return stack
+def rotation_field(theta, dim, cuda=True):
+    mat = torch.FloatTensor([[[np.cos(theta),-np.sin(theta),0],[np.sin(theta),np.cos(theta),0]]])
+    grid = F.affine_grid(mat, torch.Size((1,1,dim,dim)))
+    if cuda:
+        grid = grid.cuda()
+    return grid
+
+def rotate_field(field, theta, cuda=True):
+    assert type(theta) == float
+    assert field.size(-1) == 2
+    s = field.size()
+    rot_mat = Variable(torch.FloatTensor(np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])))
+    if cuda:
+        rot_mat = rot_mat.cuda()
+    field = field.view(-1,2).permute(1,0)
+    field = rot_mat.mm(field)
+    field = field.permute(1,0).contiguous().view(s)
+    assert field.size() == s
+    return apply_grid(field.permute(0,3,1,2), rotation_field(theta, s[2], cuda)).permute(0,2,3,1)
+
+def rotate_chunk(chunk, theta):
+    if chunk.size(-1) == 2:
+        return rotate_field(chunk, theta)
+    else:
+        return apply_grid(chunk, rotation_field(theta, chunk.size(-1)))
+
+def rotate_chunks(chunks, theta, squeeze=True):
+    rotated = [rotate_chunk(c, theta) for c in chunks]
+    if squeeze:
+        rotated = [r.squeeze() if r.size(0) == 1 and r.size(1) == 1 else r for r in rotated]
+    if type(chunks) == tuple:
+        rotate = tuple(rotated)
+    return rotated
 
 def rotate_and_scale(imslice, size=0.01, scale=0.01, grid=None):
     if type(imslice) == list:
@@ -273,7 +302,7 @@ def random_rect_mask(size):
 def aug_input(x, factor=2):
     check_data_range(x)
 
-    out = x
+    out = x.clone()
     zm = out == 0
 
     contrast_cutouts = half(0, random.randint(1,4))
