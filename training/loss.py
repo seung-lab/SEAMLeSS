@@ -66,16 +66,27 @@ def tv(fields):
 
 def smoothness_penalty(ptype):
     def penalty(fields, weights=None):
-        if ptype ==     'lap': field = lap(fields)
-        elif ptype == 'jacob': field = jacob(fields)
+        if ptype ==      'lap': field = lap(fields)
+        elif ptype ==  'jacob': field = jacob(fields)
         elif ptype == 'cjacob': field = cjacob(fields)
-        elif ptype ==    'tv': field = tv(fields)
-        else: crash # invalid penalty
+        elif ptype ==     'tv': field = tv(fields)
+        else: raise Exception('Smoothness penalty type {} not supported.'.format(ptype))
         
         if weights is not None:
             field = field * weights
         return field
     return penalty
 
-def similarity_score(should_reduce=False):
-    return lambda x, y: torch.mean((x-y)**2) if should_reduce else (x-y)**2
+def mse(x, y):
+    return (x-y)**2
+
+def similarity_penalty(ptype, should_reduce=False):
+    def penalty(x, y, weights=None):
+        if ptype == 'mse': field = mse(x, y)
+        else: raise Exception('Similarity penalty type {} not supported.'.format(ptype))
+
+        if weights is not None:
+            field = field * weights
+
+        return field
+    return penalty

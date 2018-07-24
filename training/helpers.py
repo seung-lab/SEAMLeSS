@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import os
@@ -9,6 +11,16 @@ import collections
 import torch
 from torch.autograd import Variable
 from skimage.transform import rescale
+
+def downsample(f):
+    if f > 0:
+        return nn.AvgPool2d(2**f, 2**f, count_include_pad=False)
+    else:
+        return lambda x: x
+
+def apply_grid(img, grid):
+    o = [F.grid_sample(img[:,i:i+1], grid) for i in range(img.size(1))]
+    return torch.cat(o, 1)
 
 def compose_functions(fseq):
     def compose(f1, f2):
@@ -137,7 +149,7 @@ def dvl(V_pred, name, mag=10):
     factor = V_pred.shape[1] // 100
     if factor > 1:
         V_pred = V_pred[:,::factor,::factor,:]
-    V_pred *= 10
+    V_pred = V_pred * 10
     plt.figure(figsize=(6,6))
     X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
     U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
