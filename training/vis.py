@@ -43,11 +43,13 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
     if verbose:
         if outputs is None:
             print('Skipping visualization of empty outputs to path {}.'.format(path))
-            return
-        
-        for k in outputs:
-            if k in skip:
-                print('Excluding key {} in outputs for visualization.'.format(k))
+        else:
+            for k in outputs:
+                if k in skip:
+                    print('Excluding key {} in outputs for visualization.'.format(k))
+
+    if outputs is None:
+        return
 
     v = lambda k: outputs[k] if k in outputs and k not in skip else None
 
