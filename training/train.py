@@ -329,8 +329,9 @@ if __name__ == '__main__':
             visualize_outputs(prefix('zero_similarity_weights') + '{}', {'src' : input_src, 'target' : input_target})
             return None
 
-        similarity_mask_factor = (torch.sum(border_mask.float()) / torch.sum(similarity_weights[border_mask.data])).data[0]
-
+        #similarity_mask_factor = (torch.sum(border_mask.float()) / torch.sum(similarity_weights[border_mask.data])).data[0]
+        similarity_mask_factor = 1
+        
         # compute raw similarity error and masked/weighted similarity error
         similarity_error_field = similarity(pred, target)
         weighted_similarity_error_field = similarity_error_field * similarity_weights * similarity_mask_factor
@@ -352,8 +353,9 @@ if __name__ == '__main__':
             visualize_outputs(prefix('zero_smoothness_weights') + '{}', {'src' : input_src, 'target' : input_target})
             return None
 
-        smoothness_mask_factor = (dim**2. / torch.sum(smoothness_weights[smoothness_binary_mask.byte().data]).data[0])
-
+        #smoothness_mask_factor = (dim**2. / torch.sum(smoothness_weights[smoothness_binary_mask.byte().data]).data[0])
+        smoothness_mask_factor = 1
+        
         smoothness_weights /= smoothness_mask_factor
         smoothness_weights = F.grid_sample(smoothness_weights.detach(), field)
         if args.hm:
