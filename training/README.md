@@ -61,7 +61,7 @@ pass the `--test` flag; samples are partitioned such that train samples come fro
 (800 <= z < 1000).
 
 ## Network Histories
-Using the net_hist tool (`net_hist.py`), you can see the history of training for a particular network.
+Using the net_hist tool (just type `nh` into the command line if you have my command line tools; `net_hist.py` if you don't), you can see the history of training for a particular network.
 
 ## Conventions and Quirks
 
