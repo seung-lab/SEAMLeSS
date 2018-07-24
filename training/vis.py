@@ -1,6 +1,5 @@
 import numpy as np
-from helpers import save_chunk, gif, reverse_dim
-from helpers import dvl, display_v
+from helpers import save_chunk, gif, reverse_dim, dvl, display_v
 import torch
 import torch.nn
 import torch.nn.functional as F
@@ -71,6 +70,7 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
         
         rfield = v('rfield').data.cpu().numpy()
         display_v(rfield, path.format('field'))
+        dvl(rfield, path.format('vfield'))
         display_v(rfield, path.format('cfield'), center=True)
 
     if v('consensus_error_field') is not None:
@@ -92,6 +92,9 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
 
     if v('similarity_error_field') is not None:
         save_chunk(norm(v('similarity_error_field').data.cpu().numpy()), path.format('similarity_error_field'), norm=False)  
+
+    if v('similarity_error_vector_field') is not None:
+        dvl(v('similarity_error_vector_field').data.cpu().numpy(), path.format('similarity_error_vector_field'))  
 
     if v('smoothness_error_field') is not None:
         save_chunk(norm(v('smoothness_error_field').data.cpu().numpy()), path.format('smoothness_error_field'), norm=False)  

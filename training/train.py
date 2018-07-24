@@ -34,7 +34,7 @@ if __name__ == '__main__':
     parser.add_argument('--padding', help='amount of padding to add to training stacks', type=int, default=128)
     parser.add_argument('--fine_tuning', help='when passed, begin with fine tuning (reduce learning rate, train all parameters)', action='store_true')
     parser.add_argument('--skip_sample_aug', help='skips slice-wise augmentation when passed (no cutouts, etc)', action='store_true')
-    parser.add_argument('--similarity_penalty_type', help='type of similarity penalty (only mse supported)', type=str, default='jacob')
+    parser.add_argument('--similarity_penalty_type', help='type of similarity penalty (only mse supported)', type=str, default='mse')
     parser.add_argument('--smoothness_penalty_type', help='type of smoothness penalty (lap, jacob, cjacob, tv supported)', type=str, default='jacob')
     parser.add_argument('--lm_defect_net', help='mip2 defect net archive', type=str, default='basil_defect_unet18070201')
     parser.add_argument('--hm_defect_net', help='mip5 defect net archive', type=str, default='basil_defect_unet_mip518070305')
@@ -65,17 +65,19 @@ if __name__ == '__main__':
     from torch.utils.data import DataLoader, ConcatDataset
     import warnings
     with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+        warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
         warnings.filterwarnings("ignore",category=FutureWarning)
         import h5py
         
     from pyramid import PyramidTransformer
     from defect_net import *
     from defect_detector import DefectDetector
-    from helpers import save_chunk, copy_state_to_model, reverse_dim, apply_grid, downsample
+    from helpers import save_chunk, copy_state_to_model, reverse_dim, apply_grid, downsample, dvl
     import masks
     from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice, half
     from vis import visualize_outputs
-    from loss import similarity_score, smoothness_penalty
+    from loss import similarity_penalty, smoothness_penalty
     from normalizer import Normalizer
     from fold_test import fold
 
@@ -222,7 +224,7 @@ if __name__ == '__main__':
                 else:
                     (rf['contrast_error']/2).backward()
         else:
-            rf = run_fold(half(input_src, input_target))    
+            rf = run_supervised(half(input_src, input_target))    
             (rf['similarity_error']/2).backward()
 
         # flip everything 180 degrees
@@ -245,7 +247,7 @@ if __name__ == '__main__':
                 else:
                     (rb['contrast_error']/2).backward()
         else:
-            rb = run_fold(half(input_src, input_target))    
+            rb = run_supervised(half(input_src, input_target))    
             (rb['similarity_error']/2).backward()
 
         # compute our consensus penalty, if necessary
@@ -271,22 +273,31 @@ if __name__ == '__main__':
         return rf, rb 
 
     # run a sample in a semi-supervised manner with fold augmentation
-    def run_fold(img):
+    def run_supervised(img):
         src, grid = fold(img, radius=random.randint(10,40))
-        rgrid = grid - model.pyramid.get_identity_grid(field.size()[-2])
+        rgrid = grid - model.pyramid.get_identity_grid(grid.size()[-2])
         target = img
-        if half():
+        flipped = half()
+        if flipped:
             src, target = target, src
 
+        src, aug_grid = rotate_and_scale(src.unsqueeze(0).unsqueeze(0), None)
+        target = rotate_and_scale(target.unsqueeze(0).unsqueeze(0), grid=aug_grid)[0].squeeze()
+        src = src.squeeze()
+        
         pred, field, residuals = model.apply(src, target, trunclayer)
         rfield = field - model.pyramid.get_identity_grid(field.size()[-2])
 
-        similarity_error_field = apply_grid(field.permute(0,3,1,2), grid).permute(0,2,3,1) + grid - model.pyramid.get_identity_grid(field.size(-2))
-        dvl(rfield, 'rfield')
-        dvl(rgrid, 'rgrid')
-        dvl(similarity_error_field, 'sim_test')
-        crash
-        similarity_error_field = torch.sum(similarity_error_field**2, 3).unsqueeze(3)
+        border_mask = masks.low_pass(masks.intersect([pred != 0, target != 0]))
+        border_mask, no_valid_pixels = masks.contract(border_mask, 5, return_sum=True)
+
+        if flipped:
+            similarity_error_vector_field = (rfield - rgrid) * border_mask.permute(0,2,3,1).float()
+        else:
+            similarity_error_vector_field = apply_grid(rfield.permute(0,3,1,2), grid).permute(0,2,3,1) + rgrid
+            similarity_error_vector_field = similarity_error_vector_field * border_mask.permute(0,2,3,1).float()
+        
+        similarity_error_field = torch.sum(similarity_error_vector_field**2, 3).unsqueeze(3)
 
         return {
             'similarity_error' : torch.mean(similarity_error_field),
@@ -295,6 +306,7 @@ if __name__ == '__main__':
             'pred' : pred,
             'field' : field,
             'rfield' : rfield,
+            'similarity_error_vector_field' : similarity_error_vector_field,
             'similarity_error_field' : similarity_error_field,
             'smoothness_error' : Variable(torch.FloatTensor(np.zeros((1)))).cuda()
         }
@@ -379,7 +391,7 @@ if __name__ == '__main__':
         similarity_mask_factor = 1
         
         # compute weighted similarity error
-        similarity_error_field = similarity(pred, target, weights=similarity_weights) * similarity_mask_factor
+        weighted_similarity_error_field = similarity(pred, target, weights=similarity_weights) * similarity_mask_factor
 
         # perform masking/weighting for smoothness penalty
         smoothness_binary_mask = masks.intersect([src != 0, target != 0]).view(similarity_binary_mask.size())
@@ -499,7 +511,7 @@ if __name__ == '__main__':
                 if sample_idx == 0 and t % args.vis_interval == 0:
                     visualize_outputs(prefix('forward') + '{}', rf)
                     visualize_outputs(prefix('backward') + '{}', rb)
-                ##################################
+                    ##################################
 
                 optimizer.step()
                 model.zero_grad()

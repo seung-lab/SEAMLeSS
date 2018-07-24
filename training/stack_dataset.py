@@ -1,5 +1,7 @@
 import warnings
 with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+    warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
     warnings.filterwarnings("ignore",category=FutureWarning)
     import h5py
 

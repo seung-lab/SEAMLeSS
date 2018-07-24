@@ -3,7 +3,12 @@ from helpers import save_chunk, compose_functions
 from scipy.ndimage import gaussian_filter
 from skimage.filters import rank
 from skimage.morphology import disk
-import h5py
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+    warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
+    warnings.filterwarnings("ignore",category=FutureWarning)
+    import h5py
 
 class Normalizer(object):
     def __init__(self, mip, f=None):
