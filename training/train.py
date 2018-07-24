@@ -224,7 +224,7 @@ if __name__ == '__main__':
                 else:
                     (rf['contrast_error']/2).backward()
         else:
-            rf = run_supervised(half(input_src, input_target))    
+            rf = run_supervised(half(src, target))    
             (rf['similarity_error']/2).backward()
 
         # flip everything 180 degrees
@@ -247,7 +247,7 @@ if __name__ == '__main__':
                 else:
                     (rb['contrast_error']/2).backward()
         else:
-            rb = run_supervised(half(input_src, input_target))    
+            rb = run_supervised(half(src, target))    
             (rb['similarity_error']/2).backward()
 
         # compute our consensus penalty, if necessary
@@ -277,6 +277,9 @@ if __name__ == '__main__':
         src, grid = fold(img, radius=random.randint(10,40))
         rgrid = grid - model.pyramid.get_identity_grid(grid.size()[-2])
         target = img
+        src, _ = aug_input(src)
+        target, _ = aug_input(target)
+
         flipped = half()
         if flipped:
             src, target = target, src
