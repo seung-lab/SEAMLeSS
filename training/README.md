@@ -1,5 +1,7 @@
 # SEAMLeSS
 
+** This documentation is a work in progress. Please let me know if you have any questions/suggestions. **
+
 Working repository for active development of the SEAMLeSS architecture for the purposes of aligning Basil. This codebase is 
 not intended to remain consistent with the 2018 NIPS submission "Siamese Encoding and Alignment by Multiscale Learning with 
 Self-Supervision."
@@ -10,7 +12,19 @@ Self-Supervision."
 
 * `aug.py` : Augmentation code is here, along with some augmentation-specific convenience functions for rotating things, specialized random sampling, and mask generation. Key players are `aug_stacks`, which performs what we refer to as **non-invertible** augmentation to a sequence of stacks of shape (1,H,D,D). That is, we don't 'undo' this augmentation when we compute the loss. The augmentation will be consistent across stacks, except that the first item in the sequence will be 'cut' randomly (to simulate inconsistent edges). This method is used to jitter a stack of EM images along with its masks. The jitter includes translation, slight rotation, and slight scaling. This process allows us to control the size of the displacements that net is trained on. On the other hand, `aug_input` performs **invertible** augmentation to a single slice (*not a stack*). This augmentation includes missing data cutouts, brightness cutouts, tiling and periodic contrasting augmentation, and general brightness augmentation. 
 
-* `helpers.py` is a conglomeration of various general tools that are used across the project. These include wrapper function for saving images or gifs, our custom archive loader, and more.
+* `helpers.py` : A conglomeration of various general tools that are used across the project. These include wrapper function for saving images or gifs, our custom archive loader, and more.
+
+* `loss.py` : Our loss functions and corresponding wrapper functions. For example, calling loss.smoothness_penalty('jacob') will return a smoothness penalty function that computes the smoothness using the approximate discrete centered Jacobian of the vector field. Supported loss functions are 'lap', 'jacob', 'cjacob', and 'tv'. 'lap' uses the deviation of the vector from the average of its four neighbors as its penalty contribution, and 'tv' uses the [total variation](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7570266) of the field, which is basically the jacobian but using the absolute size of the difference vectors rather than the square.
+
+* `stack_dataset.py` : A wrapper around the PyTorch Dataset class that provides some small extra functionality, namely loading from h5 archives.
+
+* `cv_sampler.py` : Some wrappers around CloudVolume. Is used only by `gen_stack` to generate datasets.
+
+* `gen_stack.py` : Provides functionality for generating datasets by sampling from CloudVolume datasets. Our datasets are h5 binary data archives. Run `python gen_stack.py -h` to see the parameters that the script accepts. Basically, specify a bounding box within a NG path, and you'll get a dataset.
+
+* `combine_h5.py` : So you've run `gen_stack` on several different volumes, but you want to train on all of that data at once. Because `stack_dataset` supports h5 archives with multiple datasets in them, we can run `python combine_h5.py NEW_COMBINED_DATASET_NAME SOURCE_DATASET1.h5 SOURCE_DATASET2.h5 ...`. This will generate NEW_COMBINED_DATASET_NAME.h5, which contains a dataset for each of the inputs, wrapped into one file (**fair warning: because you have to load each dataset in order to combine it, this can take several minutes to run; stand up and use your muscles or something**)
+
+* `requirements.txt` : The dependencies of the project. We recommend using a virtualenv (with Python 2) and installing the dependencies as `pip install -r requirements.txt`.
 
 ## Training
 
@@ -61,27 +75,25 @@ You can begin training or fine-tuning by calling
 ### Fine-tuning
 An example invocation of training to fine-tune a network called 'matriarch_na3' would be:
 
-`python train.py --state_archive pt/matriarch_na3.pt --size 8 --lambda1 2 --lambda2 0.04 --lambda3 0 --lambda4 5 --lambda5 0 --mask_smooth_radius 75 --mask_neighborhood_radius 75 --lr 0.0003 --trunc 0 --fine_tuning --hm --padding 0 --vis_interval 5 --lambda6 1 fine_tune_example`
+`python train.py --state_archive pt/SOME_ARCHIVE.pt --size 8 --lambda1 2 --lambda2 0.04 --lambda3 0 --lambda4 5 --lambda5 0 --mask_smooth_radius 75 --mask_neighborhood_radius 75 --lr 0.0003 --trunc 0 --fine_tuning --hm --padding 0 --vis_interval 5 --lambda6 1 fine_tune_example`
+
+The `fine_tuning` flag essentially reduces the learning rate, trains all parameters together, and trains at the full resolution of the network.
 
 ### Training from scratch
-
-Relevant files:
 
 The key to training from scratch is identifying when the net is stuck in a minimium that it won't get out from. By far the most common minimum that rears its ugly head is the solution where the net simply outputs a vector field of all zeros. **This most commonly happens when the smoothness penalty is too large relative to the similarity penalty *OR* the learning rate is too large.** The network is particularly sensitive to this phenomenon early in training, because when training the top several layers of the network, the target image that we are matching too is extremely heavily downsampled. This downsampling reduces the dynamic range of the prediction and target images, which has the effect of increasing the smoothness penalty (because the MSE of a misalignment gets smaller if the values in the image are compressed). We've recently implemented a mitigation to this phenomenon by rescaling the images after downsampling to ensure they have the same dynamic range as the inputs, but it hasn't been tested thoroughly.
 
 ## Generating Data
 
-Datasets can be generated using `gen_stack.py`. A dataset has the shape (N,H,D,D). A single 'sample' is a stack of H consecutive sub-slices from some dataset. N is the number of samples, H is the height/number of slices per sample, D is the side length of each sample (currently we only work with square samples).
+We have a hell of a lot of data. We can't train on all of it. Instead, we generate a dataset that is a random (hopefully representative) subsample of the tissue of interest.
 
-Run `gen_stack.py` as `python gen_stack.py --count NUMBER_OF_SAMPLES --source CLOUD_VOLUME_PATH DATASET_NAME`, for example 
-`python gen_stack.py --count 100 --source basil_v0/raw_image basil_v0`. This creates a training dataset of shape (100, 50, 
-1152, 1152) at mip level 5, that is, 100 stacks of 50 slices of size 1152 x 1152. To change the number of slices per stack, 
-image size, or mip level, pass the `--stack_height`, `--dim`, or `--mip` arguments. To generate the corresponding test set, 
-pass the `--test` flag; samples are partitioned such that train samples come from (1 <= z < 800) and test samples come from 
-(800 <= z < 1000).
+Datasets can be generated using `gen_stack.py`. The output will be an A dataset has the shape (N,H,D,D). A single 'sample' is a stack of H consecutive sub-slices from some dataset. N is the number of samples, H is the height/number of slices per sample, D is the side length of each sample (currently we only work with square samples).
+
+**Example:** Run `python gen_stack.py --count NUMBER_OF_SAMPLES --source CLOUD_VOLUME_PATH DATASET_NAME`, for example `python gen_stack.py --count 100 --source basil_v0/raw_image basil_v0`. This creates a training dataset of shape (100, 50, 1152, 1152) at mip level 5, that is, 100 stacks of 50 slices of size 1152 x 1152. 
 
 ## Network Histories
-Using the net_hist tool (just type `nh` into the command line if you have my command line tools; `net_hist.py` if you don't), you can see the history of training for a particular network.
+
+Using the net_hist tool (just type `nh` into the command line if you have my command line tools; `net_hist.py` if you don't), you can see the history of training for a particular network. You can change the parameters it shows if you tweak `net_hist.py`.
 
 ## Conventions and Quirks
 
@@ -99,15 +111,11 @@ During its lifetime, SEAMLeSS has developed (and hopefully generally adhered to)
 
 * **There are tricky local minima out there.** The most common is when the network collapses to a state when it always outputs the zero field. **This is almost always an unrecoverable, pathological solution; if you get to this point, you probably want to quit that training/fine-tuning session and re-think or re-tune.** A notable exception to this is very early in training a **new** network; it is common for the top layer (and only the top layer) to sit in this solution of the zero field for a while (quarter or half of an epoch) before learning something useful.
 
-* **Helpers.** 
-
-
-## TODOs
+## Open questions
 
 There are some unresolved mysteries and partially-completed research endeavors in SEAMLeSS as it stands:
 
 * What is the best smoothness penalty? We have several implemented, but others exist too.
-
 * What is the best similarity penalty?
-
 * How do we normalize inputs in order to make the error contributions consistently interpretable? The MSE between two images represented as floating point values in [0,1] and the exact same images represented as unsigned integers in [0,255] will be much different.
+* How can we best utilize self-supervision as in the original SEAMLeSS paper to quickly learn cracks and folds?
