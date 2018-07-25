@@ -274,24 +274,15 @@ if __name__ == '__main__':
 
     # run a sample in a semi-supervised manner with fold augmentation
     def run_supervised(img):
-        src, grid = fold(img, radius=random.randint(30,100))
+        src, grid = fold(img, radius=random.randint(40,100))
         rgrid = grid - model.pyramid.get_identity_grid(grid.size()[-2])
         target = img
         input_src, _ = aug_input(src)
         input_target, _ = aug_input(target)
 
-        flipped = half()
+        flipped = False
         if flipped:
             input_src, input_target = input_target, input_src
-
-        rot = True
-        if rot:
-            src, input_src, target, input_target, rgrid = rotate_chunks((src.unsqueeze(0).unsqueeze(0),
-                                                                         input_src.unsqueeze(0).unsqueeze(0),
-                                                                         target.unsqueeze(0).unsqueeze(0),
-                                                                         input_target.unsqueeze(0).unsqueeze(0),
-                                                                         rgrid), np.random.uniform(0,2*np.pi))
-            grid = rgrid + model.pyramid.get_identity_grid(grid.size()[-2])
 
         pred, field, residuals = model.apply(input_src, input_target, trunclayer)
         rfield = field - model.pyramid.get_identity_grid(field.size()[-2])

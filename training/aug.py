@@ -24,15 +24,15 @@ def rotation_field(theta, dim, cuda=True):
 def rotate_field(field, theta, cuda=True):
     assert type(theta) == float
     assert field.size(-1) == 2
-    s = field.size()
+    original_size = field.size()
     rot_mat = Variable(torch.FloatTensor(np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])))
     if cuda:
         rot_mat = rot_mat.cuda()
     field = field.view(-1,2).permute(1,0)
     field = rot_mat.mm(field)
-    field = field.permute(1,0).contiguous().view(s)
-    assert field.size() == s
-    return apply_grid(field.permute(0,3,1,2), rotation_field(theta, s[2], cuda)).permute(0,2,3,1)
+    field = field.permute(1,0).contiguous().view(original_size)
+    assert field.size() == original_size
+    return apply_grid(field.permute(0,3,1,2), rotation_field(theta, original_size[2], cuda)).permute(0,2,3,1)
 
 def rotate_chunk(chunk, theta):
     if chunk.size(-1) == 2:
