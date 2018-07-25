@@ -14,9 +14,13 @@ Self-Supervision."
 
 * `aug.py` : Augmentation code is here, along with some augmentation-specific convenience functions for rotating things, specialized random sampling, and mask generation. Key players are `aug_stacks`, which performs what we refer to as **non-invertible** augmentation to a sequence of stacks of shape (1,H,D,D). That is, we don't 'undo' this augmentation when we compute the loss. The augmentation will be consistent across stacks, except that the first item in the sequence will be 'cut' randomly (to simulate inconsistent edges). This method is used to jitter a stack of EM images along with its masks. The jitter includes translation, slight rotation, and slight scaling. This process allows us to control the size of the displacements that net is trained on. On the other hand, `aug_input` performs **invertible** augmentation to a single slice (*not a stack*). This augmentation includes missing data cutouts, brightness cutouts, tiling and periodic contrasting augmentation, and general brightness augmentation. 
 
-* `helpers.py` : A conglomeration of various general tools that are used across the project. These include wrapper function for saving images or gifs, our custom archive loader, and more.
-
 * `loss.py` : Our loss functions and corresponding wrapper functions. For example, calling loss.smoothness_penalty('jacob') will return a smoothness penalty function that computes the smoothness using the approximate discrete centered Jacobian of the vector field. Supported loss functions are 'lap', 'jacob', 'cjacob', and 'tv'. 'lap' uses the deviation of the vector from the average of its four neighbors as its penalty contribution, and 'tv' uses the [total variation](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7570266) of the field, which is basically the jacobian but using the absolute size of the difference vectors rather than the square.
+
+* `defect_net.py` : Network architecture for the defect detector (credit: Tommy/@tmacrina). Basically a 2D UNet.
+
+* `defect_detector.py` : Wrapper around the defect network that performs relevant pre- and post-processing in order to generate masks from the raw output from the detector network. You pass the detector class a defect net loaded from an archive along with whatever parameters you want to tweak (discussion of these parameters [here](README.md#defect-detection).
+
+* `vis.py` : Various wrappers and methods related to visualizing outputs during training.
 
 * `stack_dataset.py` : A wrapper around the PyTorch Dataset class that provides some small extra functionality, namely loading from h5 archives.
 
@@ -26,11 +30,15 @@ Self-Supervision."
 
 * `combine_h5.py` : So you've run `gen_stack` on several different volumes, but you want to train on all of that data at once. Because `stack_dataset` supports h5 archives with multiple datasets in them, we can run `python combine_h5.py NEW_COMBINED_DATASET_NAME SOURCE_DATASET1.h5 SOURCE_DATASET2.h5 SOURCE_DATASET3.h5 ...`. This will generate NEW_COMBINED_DATASET_NAME.h5, which contains a dataset for each of the inputs, wrapped into one file (**fair warning: because you have to load each dataset in order to combine it, this can take several minutes to run; stand up and use your muscles or something**)
 
+* `helpers.py` : A conglomeration of various general tools that are used across the project. These include wrapper function for saving images or gifs, our custom archive loader, and more.
+
+* `masks.py` : A group of convenience functions for logical manipulation of masks that are in PyTorch Variable or Tensors (union/intersection, dilation/contraction). Read in more detail [here](README.md#conventions-and-quirks).
+
+* `inspect_enc.py` : A test script to output the encodings of the network for inspection. This is half-finished (some parameters are hard-coded in the source), but can be useful in order to sanity check whether or not the net is actually learning anything.
+
 * `requirements.txt` : The dependencies of the project. We recommend using a virtualenv (with Python 2) and installing the dependencies as `pip install -r requirements.txt`.
 
-## Training
-
-### General Overview
+## General Overview
 
 **If you only read one section, read this one.**
 
@@ -44,7 +52,18 @@ In training, we perform this prediction and weighting twice for each pair of adj
 
 We then do all of this again, and again, and again. There are some details left out here about how we sequentially train the different levels of the pyramid. We'll include that later.
 
-### Key Arguments
+## Training
+
+### Invoking Training
+
+You can begin training or fine-tuning by calling
+
+`python train.py [--param1_name VALUE1 --param2_name VALUE2 ...] EXPERIMENT_NAME`
+
+**If you use the same experiment name twice, you will overwrite the outputs from the older version. It is highly recommended that you use unique experiment names.**
+
+### Key Parameters
+
 To control training, it is best to use arguments/parameters so that they are saved and archived by argparse. To see a list of all of the parameters available in training, run
 
 `python train.py -h`
@@ -64,26 +83,36 @@ Some other key parameters:
 
 `mask_neighborhood_radius` controls the radius in pixels of the neighborhood regions used by `lambda2` and `lambda4`; usually a value in the range (75,150)
 `lr` controls the learning rate; usually ~0.0003
-`--state_archive` is a filepath to the network archive you'd like to start training from
+`state_archive` is a filepath to the network archive you'd like to start training from
+`trunc` controls the level of the pyramid to start training at; **when training from scratch, this should be equal to the size of the network minus 1.** When fine-tuning, this is almost always 0 (you want to train all levels).
 
-### Invoking Training
+### Training from scratch
 
-You can begin training or fine-tuning by calling
+The key to training from scratch is identifying when the net is stuck in a minimium that it won't get out from. By far the most common minimum that rears its ugly head is the solution where the net simply outputs a vector field of all zeros. **This most commonly happens when the smoothness penalty is too large relative to the similarity penalty *OR* the learning rate is too large.** The network is particularly sensitive to this phenomenon early in training, because when training the top several layers of the network, the target image that we are matching too is extremely heavily downsampled. This downsampling reduces the dynamic range of the prediction and target images, which has the effect of increasing the smoothness penalty (because the MSE of a misalignment gets smaller if the values in the image are compressed). We've recently implemented a mitigation to this phenomenon by rescaling the images after downsampling to ensure they have the same dynamic range as the inputs, but it hasn't been tested thoroughly.
 
-`python train.py [--param1_name VALUE1 --param2_name VALUE2 ...] EXPERIMENT_NAME`
+### Fine-Tuning
 
-**If you use the same experiment name twice, you will overwrite the outputs from the older version. It is highly recommended that you use unique experiment names.**
-
-### Fine-tuning
-An example invocation of training to fine-tune a network called 'matriarch_na3' would be:
+Fine-tuning is perhaps even more important than training from scratch; you can iterate experiments much more quickly when running 'hot' from a previous training run, rather than starting from an untrained network (think **hours** instead of **days**). An example invocation of training to fine-tune a network called 'matriarch_na3' would be:
 
 `python train.py --state_archive pt/SOME_ARCHIVE.pt --size 8 --lambda1 2 --lambda2 0.04 --lambda3 0 --lambda4 5 --lambda5 0 --mask_smooth_radius 75 --mask_neighborhood_radius 75 --lr 0.0003 --trunc 0 --fine_tuning --hm --padding 0 --vis_interval 5 --lambda6 1 fine_tune_example`
 
 The `fine_tuning` flag essentially reduces the learning rate, trains all parameters together, and trains at the full resolution of the network.
 
-### Training from scratch
+## Augmentation
 
-The key to training from scratch is identifying when the net is stuck in a minimium that it won't get out from. By far the most common minimum that rears its ugly head is the solution where the net simply outputs a vector field of all zeros. **This most commonly happens when the smoothness penalty is too large relative to the similarity penalty *OR* the learning rate is too large.** The network is particularly sensitive to this phenomenon early in training, because when training the top several layers of the network, the target image that we are matching too is extremely heavily downsampled. This downsampling reduces the dynamic range of the prediction and target images, which has the effect of increasing the smoothness penalty (because the MSE of a misalignment gets smaller if the values in the image are compressed). We've recently implemented a mitigation to this phenomenon by rescaling the images after downsampling to ensure they have the same dynamic range as the inputs, but it hasn't been tested thoroughly.
+Augmentation is critically important to SEAMLeSS generalizing well. Without it, the network fails when faced with even small defects or deviations in lighting. Augmentations include:
+
+* Jitter/artificial displacements
+* Rotation (both of the source and target together [drawn randomly from [0,2pi]] and of the slices independently [much smaller])
+* Scaling (very small amounts)
+* Contrast cutouts (amplify or depress the dynamic range of a region of the slice)
+* Missing data cutouts (set the pixels in a random region to a constant value in [0,1])
+* Gaussian noise cutouts (add Gaussian noise smoothed by a randomly sized average pooling kernel to a random region)
+* Tiling (add artificial contrasting gradient tiles to the entire slice)
+* Gradients (add gradients with random amplitude and frequency to the entire slice)
+* Brightness (amplify or depress the dynamic range of the entire slice, add a random small constant to the entire slice)
+
+Some of these augmentations are added once and forgotten, and some are added to the inputs to the network but removed for the error computation. Jitter, rotation, and scaling are applied once and forgotten; the rest are applied only to the inputs (invertible augmentation).
 
 ## Generating Data
 
@@ -107,7 +136,7 @@ During its lifetime, SEAMLeSS has developed (and hopefully generally adhered to)
 
 * **PyTorch is unfinished** (as of July 2018). This means that there are bugs, and sometimes stuff won't work and it's not your fault. [Here is an example](https://github.com/pytorch/pytorch/issues/7258). Admittedly this is rare, and PyTorch is approaching production stability, but keep this in mind.
 
-* **Masks make it all work.** SEAMLeSS has come to rely heavily on masks in order to interpret and penalize predictions correctly. There is an important distinction between **masks** and **weights**. **Masks** are interpreted using the `lambda` family to generate **weights.** Masks are abstract images that contain a class label (integer) for each pixel in an image; weights are (generally 2D) scalar fields that represent an intended re-weighting of, for example, the error contribution of each pixel ((i,j) location) in an image or vector field. Masks currently follow a **ternary** convention: for a given pixel, a 0 means that the pixel is a 'normal' pixel (far from a defect); a 1 means a pixel near, but not immediately on top of, a defect; a 2 means a pixel that is within a defect.
+* **Masks make it all work.** SEAMLeSS has come to rely heavily on masks in order to interpret and penalize predictions correctly. There is an important distinction between **masks** and **weights**. **Masks** are interpreted using the `lambda` family to generate **weights.** Masks are abstract images that contain a class label (integer) for each pixel in an image; weights are (generally 2D) scalar fields that represent an intended re-weighting of, for example, the error contribution of each pixel ((i,j) location) in an image or vector field. Masks currently follow a **ternary** convention: for a given pixel, a 0 means that the pixel is a 'normal' pixel (far from a defect); a 1 means a pixel near, but not immediately on top of, a defect; a 2 means a pixel that is within a defect. Using `masks.py`, you can manipulate masks (hopefully) more painfully than manually using PyTorch pooling layers. For a binary or ternary mask, the union operation is the element-wise max; intersection is the element-wise min. Correspondingly, dilation is equivalent to max-pooling, while contraction is equivalent to min-pooling (not explicitly implemented by PyTorch). The functions in `masks.py' include some flags for aggressive checking some properties of your masks for sanity checks (e.g. the `binary` flag); you can disable these when working with ternary masks or masks with negative numbers to do less strict enforcement of pre-conditions.
 
 * **`lambda` is everything (not really, but kind of).** Any time you change the logic of masks and weighting or any of the components of the loss functions, **you will likely need to re-tune the `lambda` parameters**, in most cases just `lambda1'. Sometimes a change to masking logic or updates to loss functions appear to break SEAMLeSS when really they just changed the range of values of a particular contribution to the loss function. Tread carefully.
 
