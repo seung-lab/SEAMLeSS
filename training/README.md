@@ -6,6 +6,8 @@ Working repository for active development of the SEAMLeSS architecture for the p
 not intended to remain consistent with the 2018 NIPS submission "Siamese Encoding and Alignment by Multiscale Learning with 
 Self-Supervision."
 
+[Skip straight to the [General Overview](README.md#general-overview)]
+
 ## What's What
 
 * `train.py` : This is where the magic happens. The main logic of taking raw inputs, generating masks and weights, running the net, and computing gradients from the results is here. The main training loop calls `run_pair()`, which calls `run_sample` (or `run_supervised`) once for the input in its normal orientation and once with the input rotated 180 degrees (for computation of consensus penalty, if desired).
@@ -22,13 +24,13 @@ Self-Supervision."
 
 * `gen_stack.py` : Provides functionality for generating datasets by sampling from CloudVolume datasets. Our datasets are h5 binary data archives. Run `python gen_stack.py -h` to see the parameters that the script accepts. Basically, specify a bounding box within a NG path, and you'll get a dataset.
 
-* `combine_h5.py` : So you've run `gen_stack` on several different volumes, but you want to train on all of that data at once. Because `stack_dataset` supports h5 archives with multiple datasets in them, we can run `python combine_h5.py NEW_COMBINED_DATASET_NAME SOURCE_DATASET1.h5 SOURCE_DATASET2.h5 ...`. This will generate NEW_COMBINED_DATASET_NAME.h5, which contains a dataset for each of the inputs, wrapped into one file (**fair warning: because you have to load each dataset in order to combine it, this can take several minutes to run; stand up and use your muscles or something**)
+* `combine_h5.py` : So you've run `gen_stack` on several different volumes, but you want to train on all of that data at once. Because `stack_dataset` supports h5 archives with multiple datasets in them, we can run `python combine_h5.py NEW_COMBINED_DATASET_NAME SOURCE_DATASET1.h5 SOURCE_DATASET2.h5 SOURCE_DATASET3.h5 ...`. This will generate NEW_COMBINED_DATASET_NAME.h5, which contains a dataset for each of the inputs, wrapped into one file (**fair warning: because you have to load each dataset in order to combine it, this can take several minutes to run; stand up and use your muscles or something**)
 
 * `requirements.txt` : The dependencies of the project. We recommend using a virtualenv (with Python 2) and installing the dependencies as `pip install -r requirements.txt`.
 
 ## Training
 
-### General Logic
+### General Overview
 
 **If you only read one section, read this one.**
 
