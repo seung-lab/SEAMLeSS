@@ -41,7 +41,7 @@ if __name__ == '__main__':
     parser.add_argument('--fine_tuning_lr_factor', help='factor by which to reduce learning rate during fine tuning', type=float, default=0.2)
     parser.add_argument('--pe_only', action='store_true')
     parser.add_argument('--enc_only', action='store_true')
-    parser.add_argument('--folds_only', help='only run with artificial fold augmentation', action='store_true')
+    parser.add_argument('--supervised', action='store_true')
     args = parser.parse_args()
 
     import os
@@ -212,20 +212,20 @@ if __name__ == '__main__':
         input_src = Variable(torch.FloatTensor(normalizer.apply(input_src.data.cpu().numpy()))).cuda()
         input_target = Variable(torch.FloatTensor(normalizer.apply(input_target.data.cpu().numpy()))).cuda()
 
-        folds_only = (half() or args.folds_only)
-        
         # run the sample forwards/normally
-        if trunclayer > 0 or args.pe_only or not folds_only:
-            rf = run_sample(src, target, input_src, input_target, src_mask, target_mask, src_cutout_masks, target_cutout_masks, train)
-            if rf is not None:
-                if not args.pe_only:
-                    cost = rf['similarity_error'] + args.lambda1 * smooth_factor * rf['smoothness_error']
-                    (cost/2).backward(retain_graph=args.lambda6>0)
-                else:
-                    (rf['contrast_error']/2).backward()
-        else:
-            rf = run_supervised(half(src, target))    
-            (rf['similarity_error']/2).backward()
+        rn = run_sample(src, target, input_src, input_target, src_mask, target_mask, src_cutout_masks, target_cutout_masks, train)
+        rns = run_supervised(half(src, target)) if args.supervised and not args.pe_only else None
+
+        # run backward on the losses
+        if rn is not None:
+            if not args.pe_only:
+                cost = rn['similarity_error'] + args.lambda1 * smooth_factor * rn['smoothness_error']
+                (cost/4).backward(retain_graph=args.lambda6>0)
+            else:
+                (rn['contrast_error']/2).backward()
+
+        if rns is not None:
+            (rns['similarity_error']/4).backward()
 
         # flip everything 180 degrees
         src = reverse_dim(reverse_dim(src, 0), 1)
@@ -238,43 +238,45 @@ if __name__ == '__main__':
         target_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1) for m in target_cutout_masks]
 
         # run the sample flipped
-        if trunclayer > 0 or args.pe_only or not folds_only:
-            rb = run_sample(src, target, input_src, input_target, src_mask, target_mask, src_cutout_masks, target_cutout_masks, train)
-            if rb is not None:
-                if not args.pe_only:
-                    cost = rb['similarity_error'] + args.lambda1 * smooth_factor * rb['smoothness_error']
-                    (cost/2).backward(retain_graph=args.lambda6>0)
-                else:
-                    (rb['contrast_error']/2).backward()
-        else:
-            rb = run_supervised(half(src, target))    
-            (rb['similarity_error']/2).backward()
+        rf = run_sample(src, target, input_src, input_target, src_mask, target_mask, src_cutout_masks, target_cutout_masks, train)
+        rfs = run_supervised(half(src, target)) if args.supervised and not args.pe_only else None
+
+        # run backward on the losses
+        if rf is not None:
+            if not args.pe_only:
+                cost = rf['similarity_error'] + args.lambda1 * smooth_factor * rf['smoothness_error']
+                (cost/4).backward(retain_graph=args.lambda6>0)
+            else:
+                (rf['contrast_error']/2).backward()
+
+        if rfs is not None:
+            (rfs['similarity_error']/4).backward()
 
         # compute our consensus penalty, if necessary
-        if not args.pe_only and args.lambda6 > 0 and rf is not None and rb is not None and not folds_only:
+        if not args.pe_only and args.lambda6 > 0 and rn is not None and rf is not None:
+            zmn = (rn['pred'] != 0).float() * (rn['input_target'] != 0).float()
+            zmn = zmn.detach().unsqueeze(0).view(1,1,dim,dim).repeat(1,2,1,1).permute(0,2,3,1)
             zmf = (rf['pred'] != 0).float() * (rf['input_target'] != 0).float()
             zmf = zmf.detach().unsqueeze(0).view(1,1,dim,dim).repeat(1,2,1,1).permute(0,2,3,1)
-            zmb = (rb['pred'] != 0).float() * (rb['input_target'] != 0).float()
-            zmb = zmb.detach().unsqueeze(0).view(1,1,dim,dim).repeat(1,2,1,1).permute(0,2,3,1)
-            rffield, rbfield = rf['rfield'] * zmf, rb['rfield'] * zmb
-            rbfield_reversed = -reverse_dim(reverse_dim(rbfield, 1), 2)
-            consensus_diff = rffield - rbfield_reversed
+            rnfield, rffield = rn['rfield'] * zmn, rf['rfield'] * zmf
+            rffield_reversed = -reverse_dim(reverse_dim(rffield, 1), 2)
+            consensus_diff = rnfield - rffield_reversed
             consensus_error_field = (consensus_diff[:,:,:,0] ** 2 + consensus_diff[:,:,:,1] ** 2)
             mean_consensus = torch.mean(consensus_error_field)
-            rf['consensus_field'] = rffield
-            rb['consensus_field'] = rbfield_reversed
+            rn['consensus_field'] = rnfield
+            rf['consensus_field'] = rffield_reversed
+            rn['consensus_error_field'] = consensus_error_field
             rf['consensus_error_field'] = consensus_error_field
-            rb['consensus_error_field'] = consensus_error_field
+            rn['consensus'] = mean_consensus
             rf['consensus'] = mean_consensus
-            rb['consensus'] = mean_consensus
             consensus = args.lambda6 * mean_consensus
             consensus.backward()
 
-        return rf, rb 
+        return rn, rf, rns, rfs
 
     # run a sample in a semi-supervised manner with fold augmentation
     def run_supervised(img):
-        src, grid = fold(img, radius=random.randint(40,100))
+        src, grid = fold(img, radius=random.randint(20,50))
         rgrid = grid - model.pyramid.get_identity_grid(grid.size()[-2])
         target = img
         input_src, _ = aug_input(src)
@@ -486,7 +488,6 @@ if __name__ == '__main__':
             penalties = []
             consensus_list = []
             contrast_errors = []
-            #smooth_factor = 2.**(-trunclayer)
             smooth_factor = 1
             for sample_idx, i in enumerate(range(1,X.size(1)-1)):
                 ##################################
@@ -500,29 +501,25 @@ if __name__ == '__main__':
                     visualize_outputs(prefix('blank_sections') + '{}', {'src' : src, 'target' : target})
                     continue
 
-                rf, rb = run_pair(src, target, src_mask, target_mask)
-                if rf is not None:
+                rn, rf, rns, rfs = run_pair(src, target, src_mask, target_mask)
+                to_show = [rn,rf,rns,rfs][random.randint(0,3)]
+
+                if to_show is not None:
                     if not args.pe_only:
-                        errs.append(rf['similarity_error'].data[0])
-                        penalties.append(rf['smoothness_error'].data[0])
-                        if args.lambda6 > 0 and 'consensus' in rf:
-                            consensus_list.append(rf['consensus'].data[0])
+                        if 'similarity_error' in to_show:
+                            errs.append(to_show['similarity_error'].data[0])
+                        if 'smoothness_error' in to_show:
+                            penalties.append(to_show['smoothness_error'].data[0])
+                        if 'consensus' in to_show:
+                            consensus_list.append(to_show['consensus'].data[0])
                     else:
-                        contrast_errors.append(rf['contrast_error'].data[0])
-                    
-                if rb is not None:
-                    if not args.pe_only:
-                        errs.append(rb['similarity_error'].data[0])
-                        penalties.append(rb['smoothness_error'].data[0])
-                        if args.lambda6 > 0 and 'consensus' in rb:
-                            consensus_list.append(rb['consensus'].data[0])
-                    else:
-                        contrast_errors.append(rb['contrast_error'].data[0])
+                        contrast_errors.append(to_show['contrast_error'].data[0])
 
                 if sample_idx == 0 and t % args.vis_interval == 0:
-                    visualize_outputs(prefix('forward') + '{}', rf)
-                    visualize_outputs(prefix('backward') + '{}', rb)
-                    ##################################
+                    visualize_outputs(prefix() + '{}', to_show)
+                ##################################
+
+                del to_show
 
                 optimizer.step()
                 model.zero_grad()

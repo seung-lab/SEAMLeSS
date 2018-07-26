@@ -38,7 +38,7 @@ def show_weights(weights, path):
 
     save_chunk(weights, path.format('weights'), norm=False)
 
-def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False):
+def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False, mag=10):
     if verbose:
         if outputs is None:
             print('Skipping visualization of empty outputs to path {}.'.format(path))
@@ -47,6 +47,9 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
         for k in outputs:
             if k in skip:
                 print('Excluding key {} in outputs for visualization.'.format(k))
+
+    if outputs is None:
+        return
 
     v = lambda k: outputs[k] if k in outputs and k not in skip else None
 
@@ -70,7 +73,7 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
         
         rfield = v('rfield').data.cpu().numpy()
         display_v(rfield, path.format('field'))
-        dvl(rfield, path.format('vfield'))
+        dvl(rfield, path.format('vfield'), mag=mag)
         display_v(rfield, path.format('cfield'), center=True)
 
     if v('consensus_error_field') is not None:
@@ -79,7 +82,7 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
 
     if v('consensus_field') is not None:
         cfield = v('consensus_field').data.cpu().numpy()
-        dvl(cfield, path.format('consensus_field'))
+        dvl(cfield, path.format('consensus_field'), mag=mag)
 
     if v('consensus_field_neg') is not None:
         cfield = v('consensus_field_neg').data.cpu().numpy()
