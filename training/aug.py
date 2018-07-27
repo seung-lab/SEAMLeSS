@@ -65,7 +65,6 @@ def defect(imslice, width_range=(8,40), crack=None, factor=2, neighborhood=0):
     direction = half(1,-1)
     for idx, (p,w) in enumerate(zip(pos,width)):
         this_offset = int(mean_offset + (2. * float(idx)/len(pos) - 1) * std_offset * direction)
-        print this_offset
         if is_crack:
             outslice.data[idx,:p-this_offset] = outslice.data[idx,this_offset:p]
         else:
