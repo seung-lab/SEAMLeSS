@@ -6,6 +6,7 @@ import numpy as np
 import random
 import time
 import itertools
+import masks
 
 from helpers import reverse_dim, save_chunk, gif
 
@@ -42,34 +43,40 @@ def rotate_and_scale(imslice, size=0.01, scale=0.01, grid=None):
         output = apply_grid(imslice.clone(), grid)
     return output, grid
 
-def crack(imslice, width_range=(4,32)):
-    width = np.random.randint(width_range[0], width_range[1])
+def defect(imslice, width_range=(8,40), crack=None, factor=2, neighborhood=0):
+    width = [np.random.randint(width_range[0], width_range[1])]
     pos = [random.randint(imslice.size()[-1]/4,imslice.size()[-1]-imslice.size()[-1]/4)]
-    prob = random.randint(4,10)
-    left = random.randint(0,1) == 0
+    is_crack = crack if crack is not None else half()
+    aesthetic_factor = np.random.uniform(1 if is_crack else 1./factor,factor)
     for _ in range(imslice.size()[-1]-1):
-        r = random.randint(0,prob)
-        if r == 0:
-            if left:
-                pos.append(pos[-1] + 1)
-            else:
-                pos.append(pos[-1] - 1)
-        else:
-            pos.append(pos[-1])
-        if pos[-1] <= width or pos[-1] >= imslice.size()[-1]:
+        pos.append(half(pos[-1], half(pos[-1] + 1, pos[-1] - 1)))
+        width.append(half(width[-1],
+                          half(max(width_range[0], width[-1] - 1),
+                               min(width_range[1], width[-1] + 1))))
+        if pos[-1] <= width[-1] or pos[-1] >= imslice.size()[-1]:
             pos.pop()
             break
 
-    color_mean = np.random.uniform()
+    color_mean = np.random.uniform(0.85,0.95) if is_crack else np.random.uniform(0.05,0.15)
     outslice = imslice.clone()
-    mask = Variable(torch.ones(outslice.size())).cuda()
-    for idx, p in enumerate(pos):
-        outslice.data[idx,:p-width] = outslice.data[idx,width:p]
-        color = torch.cuda.FloatTensor(np.random.normal(color_mean, 0.2, width)).clamp(min=0,max=1)
-        if torch.max(outslice.data[idx,width:p]) > 0:
-            outslice.data[idx,p-width:p] = color
-        mask.data[idx,p-width:p] = 0
-    return outslice, mask
+    mask = Variable(torch.zeros(outslice.size())).cuda()
+    mean_offset = int(np.mean(width))
+    std_offset = int(np.std(width))
+    direction = half(1,-1)
+    for idx, (p,w) in enumerate(zip(pos,width)):
+        this_offset = int(mean_offset + (2. * float(idx)/len(pos) - 1) * std_offset * direction)
+        print this_offset
+        if is_crack:
+            outslice.data[idx,:p-this_offset] = outslice.data[idx,this_offset:p]
+        else:
+            outslice.data[idx,this_offset:p] = outslice.data[idx,:p-this_offset]
+            outslice.data[idx,:this_offset] = 0
+        color = torch.cuda.FloatTensor(np.random.normal(color_mean, 0.2, int(this_offset*aesthetic_factor))).clamp(min=0,max=1)
+        if torch.max(outslice.data[idx,w:p]) > 0:
+            outslice.data[idx,p-int(this_offset*aesthetic_factor):p] = color
+        mask.data[idx,p-w:p] = 1
+        
+    return outslice, mask + masks.dilate(mask, neighborhood)
 
 def jitter_stacks(Xs, max_displacement=2**6, min_cut=32):
     assert len(Xs) > 0

@@ -73,7 +73,7 @@ if __name__ == '__main__':
     from defect_detector import DefectDetector
     from helpers import save_chunk, copy_state_to_model, reverse_dim
     import masks
-    from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
+    from aug import aug_stacks, aug_input, rotate_and_scale, defect, displace_slice, half
     from vis import visualize_outputs
     from loss import similarity_score, smoothness_penalty
     from normalizer import Normalizer
@@ -177,8 +177,13 @@ if __name__ == '__main__':
 
     def run_pair(src, target, src_mask=None, target_mask=None, train=True):
         if train and not args.skip_sample_aug:
+            add_defect = half()
+            if add_defect:
+                src, fake_defect_mask = defect(src, neighborhood=args.mask_neighborhood_radius)
+                src_mask = masks.union([src_mask, fake_defect_mask])
+                
             # random rotation
-            should_rotate = random.randint(0,1) == 0
+            should_rotate = half() or add_defect
             if should_rotate:
                 src, grid = rotate_and_scale(src.unsqueeze(0).unsqueeze(0), None)
                 target = rotate_and_scale(target.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()

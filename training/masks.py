@@ -32,14 +32,16 @@ def low_pass(mask, radius=1):
     
 def dilate(mask, radius, binary=True):
     check_mask(mask, binary)
+    sz = mask.size()
     mask = prep_mask(mask)
     if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
-        return F.max_pool2d(mask, radius*2+1, stride=1, padding=radius).detach()
+        return F.max_pool2d(mask, radius*2+1, stride=1, padding=radius).detach().view(sz)
     else:
-        return F.max_pool2d(mask.float(), radius*2+1, stride=1, padding=radius).byte().detach()
+        return F.max_pool2d(mask.float(), radius*2+1, stride=1, padding=radius).byte().detach().view(sz)
     
 def contract(mask, radius, binary=True, ceil=True, return_sum=False):
     check_mask(mask, binary)
+    sz = mask.size()
     mask = prep_mask(mask)
     if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
         contracted = -F.max_pool2d(-mask, radius*2+1, stride=1, padding=radius)
@@ -51,6 +53,6 @@ def contract(mask, radius, binary=True, ceil=True, return_sum=False):
             contracted = torch.ceil(contracted)
         contracted = contracted.byte()
     if return_sum:
-        return contracted.detach(), torch.sum(contracted).data[0] <= 0
+        return contracted.detach().view(sz), torch.sum(contracted).data[0] <= 0
     else:
-        return contracted.detach()
+        return contracted.detach().view(sz)
