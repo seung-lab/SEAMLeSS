@@ -266,7 +266,7 @@ if __name__ == '__main__':
             contrasted_stack = model.apply(input_src, input_target, pe=True)
             pred = contrasted_stack.squeeze()
             y = torch.cat((src.unsqueeze(0), target.squeeze().unsqueeze(0)),0)
-            contrast_err = mse(pred, y)
+            contrast_err = similarity(pred, y)
             contrast_err_src = contrast_err[0:1]
             contrast_err_target = contrast_err[1:2]
             for m in src_cutout_masks:
@@ -450,7 +450,7 @@ if __name__ == '__main__':
                     else:
                         contrast_errors.append(rb['contrast_error'].data[0])
 
-                if sample_idx == 0 and t % args.vis_interval == 0:
+                if sample_idx == 0 and t % args.vis_interval == 0 and not args.pe_only:
                     visualize_outputs(prefix('forward') + '{}', rf)
                     visualize_outputs(prefix('backward') + '{}', rb)
                 ##################################
@@ -460,7 +460,7 @@ if __name__ == '__main__':
 
             if args.pe_only:
                 mean_contrast = (sum(contrast_errors) / len(contrast_errors)) if len(contrast_errors) > 0 else 0
-                print('Mean: {}'.format(mean_contrast))
+                print('Mean contraster error: {}'.format(mean_contrast))
                 torch.save(model.state_dict(), 'pt/' + name + '.pt')
             # Save some info
             if len(errs) > 0:
