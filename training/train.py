@@ -75,11 +75,10 @@ if __name__ == '__main__':
     from defect_detector import DefectDetector
     from helpers import save_chunk, copy_state_to_model, reverse_dim, apply_grid, downsample, dvl
     import masks
-    from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice, half, rotate_chunks
+    from aug import aug_stacks, aug_input, rotate_and_scale, displace_slice, half, rotate_chunks, fold
     from vis import visualize_outputs
     from loss import similarity_penalty, smoothness_penalty
     from normalizer import Normalizer
-    from fold_test import fold
 
     # set up some global state variables that will be convenient
     trunclayer = args.trunc

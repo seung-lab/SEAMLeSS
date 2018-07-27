@@ -100,6 +100,46 @@ def crack(imslice, width_range=(4,32)):
         mask.data[idx,p-width:p] = 0
     return outslice, mask
 
+def fold(chunk, radius=1, disp=128):
+    pad_factor = np.sqrt(2)
+    original_dim = chunk.size(-1)
+    dim = int(np.ceil(original_dim * pad_factor))
+    chunk = chunk.unsqueeze(0).unsqueeze(0)
+
+    weights = Variable(torch.ones((1,1,dim,dim))).cuda()
+    part = int(np.random.normal(.5,0.05) * dim)
+    weights[:,:,:,part:] = 0
+    weights = F.avg_pool2d(weights, radius*2+1, padding=radius, stride=1, count_include_pad=False)
+    weights = (weights - torch.min(weights)) / (torch.max(weights) - torch.min(weights))
+    weights = weights.permute(0,2,3,1)
+
+    sz = disp//4
+    line = Variable(torch.ones((1,1,dim,dim))).cuda()
+    line[:,:,:,part-sz//2:part+sz//2] = 0
+    #line = F.avg_pool2d(line, 5, padding=2, stride=1, count_include_pad=True)
+    
+    id_grid = identity_grid(dim)
+    left, ascending = half(), half()
+    is_crack = left
+    rg = shgrid(dim, md=disp, ascending=ascending, left=left)
+    lg = shgrid(dim, md=disp, ascending=not ascending, left=not left)
+    rgrid = weights * lg + (1-weights) * rg
+    theta = np.random.uniform(0,2*np.pi)
+    print('Left/ascending: {} {} {}'.format(left, ascending, theta))
+    rgrid = rotate_field(rgrid, theta)
+    line = rotate_chunk(line, theta)
+    line = F.grid_sample(line, rgrid + identity_grid(dim))
+    rgrid = center(rgrid, (1,2), dim-original_dim)
+    line = center(line, (-1,-2), dim-original_dim).squeeze()
+    grid = rgrid + identity_grid(original_dim)
+
+    folded = F.grid_sample(chunk, grid).squeeze().detach()
+    folded = folded * line
+    #line = torch.ceil(line).byte()
+    #folded[line] = 1 if is_crack else 0
+    
+    return folded, grid.detach()
+
 def jitter_stacks(Xs, max_displacement=2**6, min_cut=32):
     assert len(Xs) > 0
     should_rotate = random.randint(0,1) == 0
