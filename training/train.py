@@ -167,7 +167,7 @@ if __name__ == '__main__':
 
         lr_ = lr if not fine_tuning else lr * args.fine_tuning_lr_factor
         print('Building optimizer for layer {} (fine tuning: {}, lr: {})'.format(layer, fine_tuning, lr_))
-        return torch.optim.Adam(params, lr=lr_)
+        return torch.optim.Adam(params, lr=lr_, weight_decay=0.0001 if args.pe_only else 0)
 
     def prefix(tag=None):
         if tag is None:
