@@ -42,7 +42,7 @@ Self-Supervision."
 
 **If you only read one section, read this one.**
 
-Training is essentially a few nested loops. Our outer-most loop iterates is the epoch counter, which is simply the number of passes we have made over our training data. Within each epoch we loop over the samples in our dataset. Each sample is a PyTorch Tensor of shape (1,H,D,D), where H is the z dimension size. For each sample, we iterate over this z dimension, training on each adjacent pair of slices.
+Training is essentially a few nested loops. Our outer-most loop iterates over the epoch counter, which is simply the number of passes we have made over our training data. Within each epoch we loop over the samples in our dataset. Each sample is a PyTorch Tensor of shape (1,H,D,D), where H is the z dimension size. For each sample, we iterate over this z dimension, training on each adjacent pair of slices.
 
 After loading each training sample (stack of shape (1,H,D,D)) but before we run the network, we do some pre-processing. This pre-processing includes running the defect detection network to generate defect masks, running the normalizer to give standardized contrasting, and performing some 'jittering' on the stack to make the network's task a bit more difficult using the augmentation packages's `aug_stacks` method. The amount of jitter is chosen to be 2^(height-1), using the assumption that each layer of the network corrects roughly one pixel displacements. This jitter is non-invertible; that is, once we apply it, we throw away the original stack, and proceed as if the jittered stack were the raw data. Once this pre-processing is complete, we perform training on each pair of adjacent slices. Each pair (`src`, `target`) receives its own, independent augmentation and is fed to the network. Importantly, **the original slices are retained** for loss computation (the nomenclature in the code is `src` and `target` for the original slices and `input_src` and `input_target` for the augmented versions of the slices that are the actual inputs to the network).
 
@@ -72,27 +72,39 @@ This will also show you a description for the purpose of each parameter.
 
 The key parameters are the `lambda` family:
 
-`lambda1` controls the weighting of the total smoothness penalty against the similarity penalty (this is the most important/frequently tuned parameter)
-`lambda2` controls the relative weight of the smoothness penalty in the region near, but not within defects (cracks and folds); this is usually a value in the range (0.01,0.1)
-`lambda3` controls the relative weight of the smoothness penalty in the regions *within* defects; this is almost always 0
-`lambda4` is like lambda2, but for the similarity penalty; it is usually a value in the range (5,10), which focuses the net on fixing the defects
-`lambda5` is like lambda3, but for the similarity penalty; it is almost always 0
-`lambda6` is the coefficient of the consensus penalty used for eliminating drift; it is usually in the range 0.1-10 (this requires more investigation)
+|||
+|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `lambda1` | controls the weighting of the total smoothness penalty against the similarity penalty (this is the most important/frequently tuned parameter) |
+| `lambda2` | controls the relative weight of the smoothness penalty in the region near, but not within defects (cracks and folds); this is usually a value in the range (0.01,0.1) |
+| `lambda3` | controls the relative weight of the smoothness penalty in the regions *within* defects; this is almost always 0 |
+| `lambda4` | is like lambda2, but for the similarity penalty; it is usually a value in the range (5,10), which focuses the net on fixing the defects |
+| `lambda5` | is like lambda3, but for the similarity penalty; it is almost always 0 |
+| `lambda6` | is the coefficient of the consensus penalty used for eliminating drift; it is usually in the range 0.1-10 (this requires more investigation) |
+
 
 Some other key parameters:
 
-`mask_neighborhood_radius` controls the radius in pixels of the neighborhood regions used by `lambda2` and `lambda4`; usually a value in the range (75,150)
-`lr` controls the learning rate; usually ~0.0003
-`state_archive` is a filepath to the network archive you'd like to start training from
-`trunc` controls the level of the pyramid to start training at; **when training from scratch, this should be equal to the size of the network minus 1.** When fine-tuning, this is almost always 0 (you want to train all levels).
+|||
+|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `mask_neighborhood_radius` | controls the radius in pixels of the neighborhood regions used by `lambda2` and `lambda4`; usually a value in the range (75,150) |
+| `lr`                       | controls the learning rate; usually ~0.0003 |
+| `state_archive`            | is a filepath to the network archive you'd like to start training from |
+| `trunc`                    | controls the level of the pyramid to start training at; **when training from scratch, this should be equal to the size of the network minus 1.** When fine-tuning, this is almost always 0 (you want to train all levels). |
 
 ### Training from scratch
 
-The key to training from scratch is identifying when the net is stuck in a minimium that it won't get out from. By far the most common minimum that rears its ugly head is the solution where the net simply outputs a vector field of all zeros. **This most commonly happens when the smoothness penalty is too large relative to the similarity penalty *OR* the learning rate is too large.** The network is particularly sensitive to this phenomenon early in training, because when training the top several layers of the network, the target image that we are matching too is extremely heavily downsampled. This downsampling reduces the dynamic range of the prediction and target images, which has the effect of increasing the smoothness penalty (because the MSE of a misalignment gets smaller if the values in the image are compressed). We've recently implemented a mitigation to this phenomenon by rescaling the images after downsampling to ensure they have the same dynamic range as the inputs, but it hasn't been tested thoroughly.
+The key to training from scratch is identifying when the net is stuck in a minimium that it won't get out from. 
+By far the most common minimum that rears its ugly head is the solution where the net simply outputs a vector field of all zeros. 
+**This most commonly happens when the smoothness penalty is too large relative to the similarity penalty *OR* the learning rate is too large.** 
+The network is particularly sensitive to this phenomenon early in training, because when training the top several layers of the network, the target image that we are matching 
+too is extremely heavily downsampled. This downsampling reduces the dynamic range of the prediction and target images, which has the effect of increasing the smoothness penalty 
+(because the MSE of a misalignment gets smaller if the values in the image are compressed). We've recently implemented a mitigation to this phenomenon by rescaling the images 
+after downsampling to ensure they have the same dynamic range as the inputs, but it hasn't been tested thoroughly.
 
 ### Fine-Tuning
 
-Fine-tuning is perhaps even more important than training from scratch; you can iterate experiments much more quickly when running 'hot' from a previous training run, rather than starting from an untrained network (think **hours** instead of **days**). An example invocation of training to fine-tune a network called 'matriarch_na3' would be:
+Fine-tuning is perhaps even more important than training from scratch; you can iterate experiments much more quickly when running 'hot' from a previous training run, rather than starting from an untrained network 
+(think **hours** instead of **days**). An example invocation of training to fine-tune a network called 'SOME_ARCHIVE' would be:
 
 `python train.py --state_archive pt/SOME_ARCHIVE.pt --size 8 --lambda1 2 --lambda2 0.04 --lambda3 0 --lambda4 5 --lambda5 0 --mask_smooth_radius 75 --mask_neighborhood_radius 75 --lr 0.0003 --trunc 0 --fine_tuning --hm --padding 0 --vis_interval 5 --lambda6 1 fine_tune_example`
 
@@ -118,7 +130,8 @@ Some of these augmentations are added once and forgotten, and some are added to 
 
 We have a hell of a lot of data. We can't train on all of it. Instead, we generate a dataset that is a random (hopefully representative) subsample of the tissue of interest.
 
-Datasets can be generated using `gen_stack.py`. The output will be an A dataset has the shape (N,H,D,D). A single 'sample' is a stack of H consecutive sub-slices from some dataset. N is the number of samples, H is the height/number of slices per sample, D is the side length of each sample (currently we only work with square samples).
+Datasets can be generated using `gen_stack.py`. 
+A dataset has the shape (N,H,D,D). A single 'sample' is a stack of H consecutive sub-slices from some dataset. N is the number of samples, H is the height/number of slices per sample, D is the side length of each sample (currently we only work with square samples).
 
 **Example:** Run `python gen_stack.py --count NUMBER_OF_SAMPLES --source CLOUD_VOLUME_PATH DATASET_NAME`, for example `python gen_stack.py --count 100 --source basil_v0/raw_image basil_v0`. This creates a training dataset of shape (100, 50, 1152, 1152) at mip level 5, that is, 100 stacks of 50 slices of size 1152 x 1152. 
 
@@ -128,7 +141,8 @@ Using the net_hist tool (just type `nh` into the command line if you have my com
 
 ## Conventions and Quirks
 
-During its lifetime, SEAMLeSS has developed (and hopefully generally adhered to) many conventiones and likewise accumulated many quirks, some due to PyTorch's design and some more arbitrary. Here are some things to keep in mind to avoid *losing* your mind:
+During its lifetime, SEAMLeSS has developed (and hopefully generally adhered to) many conventions and likewise accumulated many quirks, some due to PyTorch's design and some more arbitrary. 
+Here are some things to keep in mind to avoid *losing* your mind:
 
 * **Know what you're working with.** PyTorch and NumPy can interact strangely (and generally don't mix), so if you're stuck with some weird behavior, a good debugging step can be to check the types of the objects you're working with. For example, some NumPy functions will hang for a **very** long time (minutes+) without crashing; if you make a seemingly innocuous change to your code and all of a sudden it hangs without crashing, check your types. Some of the helper functions are type-agnostic (`save_chunk` adapts to either PyTorch Variables or Tensors or NumPy arrays), but in general it's good to actually know what you're dealing with. Convert from PyTorch to NumPy with `v.data.numpy()` if `v` is a `Variable`, or `v.numpy()` if `v` is a `Tensor`. If the `Variable` or `Tensor` is on the GPU, you need to insert a call to `.cpu()` before `.numpy()`, so: `v.data.cpu().numpy()`. Convert from NumPy to PyTorch with `torch.from_numpy(v)` or `torch.FloatTensor(v)` if `v` is an `ndarray`. **Be careful: `torch.from_numpy(v)` will infer the type of the new `Tensor` from `v`, and the newly-created `Tensor` will share memory with `v`. *This means changes to `v` will be reflected in the new `Tensor`; it is generally safer to use `torch.Tensor(v)` (which returns the default `Tensor` type) or `torch.FloatTensor` (or something else from the `Tensor` family to use an explicit type).**
 
