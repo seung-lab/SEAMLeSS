@@ -20,7 +20,6 @@ def get_composite_image(vol, bbox):
   o = img[:,:,0]
   for z in range(1, img.shape[2]):
     o[o <= 1] = img[:,:,z][o <= 1]
-    Image.fromarray(o[:,:,0]).save('/usr/people/tmacrina/Desktop/{0}.png'.format(z))
   return o
 
 def normalize(img):
@@ -57,7 +56,7 @@ def grid_score(src_img, dst_img, block):
   return o
 
 def main(src_path, src_mip, dst_path, dst_mips, bbox, bbox_mip, composite_z):
-  """Run similarity score in a grid over req_bbox, compile as image & save. 
+  """Run similarity score in a grid over bbox, compile as image & save. 
 
   Args:
     * src_path: path to CloudVolume with images to be scored
@@ -67,7 +66,7 @@ def main(src_path, src_mip, dst_path, dst_mips, bbox, bbox_mip, composite_z):
         used in scoring: 2**(dst_mip - src_mip). 
         Requires min(dst_mips) >= src_mip.
     * bbox: Requested bbox of area to be scored.
-    * bbox_mip: MIP level of the req_bbox (typically 0)
+    * bbox_mip: MIP level of the bbox (typically 0)
     * composite_z: The number of slices to use when making a composite
         image to be scored against.
 
@@ -116,26 +115,27 @@ def main(src_path, src_mip, dst_path, dst_mips, bbox, bbox_mip, composite_z):
 
 if __name__ == '__main__':
 
-  parser = argparse.ArgumentParser()
-  parser.add_argument('--src_path', type=str)
-  parser.add_argument('--dst_path', type=str)
-  parser.add_argument('--src_mip', type=int)
-  parser.add_argument('--dst_mip_start', type=int)
-  parser.add_argument('--dst_mip_stop', type=int)
-  parser.add_argument('--x_start', type=int)
-  parser.add_argument('--x_stop', type=int)
-  parser.add_argument('--y_start', type=int)
-  parser.add_argument('--y_stop', type=int)
-  parser.add_argument('--z_start', type=int)
-  parser.add_argument('--z_stop', type=int)
-  parser.add_argument('--bbox_mip', type=int)
-  parser.add_argument('--composite_z', type=int)
+  parser = argparse.ArgumentParser(description='Create score image.')
+  parser.add_argument('--src_path', type=str, 
+    help='Path to CloudVolume with images to be scored')
+  parser.add_argument('--dst_path', type=str,
+    help='Path to CloudVolume where score image to be written')
+  parser.add_argument('--src_mip', type=int,
+    help='MIP level of images to be used in scoring')
+  parser.add_argument('--dst_mips', nargs='+', type=int,
+    help='MIP levels of output to be written. This dictates chunksize used.')
+  parser.add_argument('--bbox_start', nargs='+', type=int,
+    help='bbox origin, 3-element int list')
+  parser.add_argument('--bbox_stop', nargs='+', type=int,
+    help='bbox origin+shape, 3-element int list')
+  parser.add_argument('--bbox_mip', type=int,
+    help='MIP level at which bbox_start & bbox_stop are specified')
+  parser.add_argument('--composite_z', type=int, default=0,
+    help='Number of z slices to create a composite image for scoring')
   args = parser.parse_args()
 
-  bbox = Bbox([args.x_start, args.y_start, args.z_start],
-                [args.x_stop, args.y_stop, args.z_stop])
-  dst_mips = range(args.dst_mip_start, args.dst_mip_stop)
-  main(args.src_path, args.src_mip, args.dst_path, dst_mips, 
+  bbox = Bbox(args.bbox_start, args.bbox_stop)
+  main(args.src_path, args.src_mip, args.dst_path, args.dst_mips, 
                                   bbox, args.bbox_mip, args.composite_z)
 
 # test
