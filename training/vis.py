@@ -70,7 +70,7 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
         grid, distorted_grid = distortion_lines(v('field'))
         save_chunk(grid, path.format('grid'))
         save_chunk(distorted_grid, path.format('dgrid'))
-        
+
         rfield = v('rfield').data.cpu().numpy()
         display_v(rfield, path.format('field'))
         display_v(rfield, path.format('cfield'), center=True)
@@ -93,22 +93,22 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
         display_v(residuals, path.format('crfield'), center=True)
 
     if v('similarity_error_field') is not None:
-        save_chunk(norm(v('similarity_error_field').data.cpu().numpy()), path.format('similarity_error_field'), norm=False)  
+        save_chunk(norm(v('similarity_error_field').data.cpu().numpy()), path.format('similarity_error_field'), norm=False)
 
     if v('smoothness_error_field') is not None:
-        save_chunk(norm(v('smoothness_error_field').data.cpu().numpy()), path.format('smoothness_error_field'), norm=False)  
+        save_chunk(norm(v('smoothness_error_field').data.cpu().numpy()), path.format('smoothness_error_field'), norm=False)
 
     if v('similarity_weights') is not None:
         show_weights(v('similarity_weights'), path.format('similarity_{}'))
 
     if v('smoothness_weights') is not None:
         show_weights(v('smoothness_weights'), path.format('smoothness_{}'))
-                   
+
     if v('src_mask') is not None:
         save_chunk(np.squeeze(v('src_mask').data.cpu().numpy()), path.format('src_mask'), norm=False)
 
     if v('raw_src_mask') is not None:
         save_chunk(np.squeeze(v('raw_src_mask').data.cpu().numpy()), path.format('raw_src_mask'), norm=False)
-        
+
     if v('target_mask') is not None:
         save_chunk(np.squeeze(v('target_mask').data.cpu().numpy()), path.format('target_mask'), norm=False)

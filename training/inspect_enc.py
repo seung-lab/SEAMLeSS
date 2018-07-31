@@ -44,5 +44,5 @@ for t, tensor_dict in enumerate(train_loader):
 
     src = Variable(torch.FloatTensor(normalizer.apply(src.data.cpu().numpy()))).cuda()
     target = Variable(torch.FloatTensor(normalizer.apply(target.data.cpu().numpy()))).cuda()
-        
+
     model.apply(src,target,vis='inspect/{}/sample{}'.format(args.archive[3:-3], t))

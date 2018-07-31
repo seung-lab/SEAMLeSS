@@ -106,7 +106,7 @@ def jitter_stacks(Xs, max_displacement=2**6, min_cut=32):
                 Xs_[ii][:,i] = srcXs[ii][:,i]
 
             cut_range = (min_cut, Xs_[ii].size(-1)//3)
-            if ii == 0: # we only want to cut our images; we're assuming the images are first in Xs_, then masks 
+            if ii == 0: # we only want to cut our images; we're assuming the images are first in Xs_, then masks
                 cut = random.randint(cut_range[0], cut_range[1])
                 if random.randint(0,1) == 0:
                     Xs_[ii][:,i,:cut,:] = 0
@@ -129,7 +129,7 @@ def gen_gradient(size, flip=None, period_median=25, peak=0.3, randomize_peak=Tru
         periods = int(1 + np.random.exponential(-np.log(.5)*period_median))
     else:
         periods = 1
-    grad = torch.zeros(size)    
+    grad = torch.zeros(size)
     if randomize_peak:
         peak *= np.random.uniform(0,1)
     for period in range(periods):
@@ -204,7 +204,7 @@ def aug_brightness(X, factor=2, mask=False, clamp=False):
 
     if not clamp:
         X = X + np.random.uniform(0,0.5)
-    
+
     X[zm] = 0
 
     return X
@@ -306,7 +306,7 @@ def aug_input(x, factor=2):
     out = aug_brightness(out, factor)
 
     out[zm] = 0
-    
+
     return out, missing_masks
 
 def pad_stacks(stacks, total_padding):

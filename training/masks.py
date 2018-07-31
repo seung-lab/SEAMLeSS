@@ -29,7 +29,7 @@ def invert(mask):
 
 def low_pass(mask, radius=1):
     return contract(dilate(mask, radius, binary=False), radius, binary=False, ceil=False, return_sum=False)
-    
+
 def dilate(mask, radius, binary=True):
     check_mask(mask, binary)
     mask = prep_mask(mask)
@@ -37,7 +37,7 @@ def dilate(mask, radius, binary=True):
         return F.max_pool2d(mask, radius*2+1, stride=1, padding=radius).detach()
     else:
         return F.max_pool2d(mask.float(), radius*2+1, stride=1, padding=radius).byte().detach()
-    
+
 def contract(mask, radius, binary=True, ceil=True, return_sum=False):
     check_mask(mask, binary)
     mask = prep_mask(mask)

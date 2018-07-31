@@ -40,7 +40,7 @@ class DefectDetector(object):
         stack = np.concatenate([np.expand_dims(morphology.remove_small_objects(stack[i], self.cc_count, connectivity=2), 0) for i in range(stack.shape[0])]).astype(np.uint8)
         stack = stack.reshape(shape)
         return Variable(torch.FloatTensor(stack)).cuda()
-    
+
     def net_postprocess(self, raw_output):
         sigmoided = F.sigmoid(raw_output)
         pooled = F.max_pool2d(sigmoided, self.minor_dilation_radius*2+1, stride=1, padding=self.minor_dilation_radius)
@@ -56,4 +56,3 @@ class DefectDetector(object):
         raw_combined_output = torch.cat([torch.max(self.net(stack[:,i:i+1]), 1, keepdim=True)[0] for i in range(stack.size(1))], 1)
         final_output = self.net_postprocess(raw_combined_output)
         return final_output
-

@@ -28,9 +28,9 @@ class StackDataset(Dataset):
         dataset_idx = chunks.index(True)
         sub_idx = idx if dataset_idx == 0 else idx - self.clengths[dataset_idx - 1]
         return (dataset_idx, sub_idx)
-        
+
     def __len__(self):
-        
+
         return self.length
 
     def __getitem__(self, idx):

@@ -1,4 +1,4 @@
-if __name__ == '__main__': 
+if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -48,7 +48,7 @@ if __name__ == '__main__':
     import sys
     import time
     import operator
-    
+
     import torch
     import torch.nn.functional as F
     import torch.nn as nn
@@ -60,14 +60,14 @@ if __name__ == '__main__':
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import random
-    
+
     from stack_dataset import StackDataset
     from torch.utils.data import DataLoader, ConcatDataset
     import warnings
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore",category=FutureWarning)
         import h5py
-        
+
     from pyramid import PyramidTransformer
     from defect_net import *
     from defect_detector import DefectDetector
@@ -132,7 +132,7 @@ if __name__ == '__main__':
 
     with open(log_path + 'args.txt', 'a') as f:
         f.write(str(args))
-    
+
     if args.state_archive is None:
         model = PyramidTransformer(size=size, dim=dim, skip=skiplayers, k=kernel_size).cuda()
     else:
@@ -252,8 +252,8 @@ if __name__ == '__main__':
             consensus = args.lambda6 * mean_consensus
             consensus.backward()
 
-        return rf, rb 
-        
+        return rf, rb
+
     def run_sample(src, target, input_src, input_target, mask=None, target_mask=None, src_cutout_masks=[], target_cutout_masks=[], train=True):
         model.train(train)
 
@@ -287,7 +287,7 @@ if __name__ == '__main__':
             target_mask = masks.dilate(target_mask.unsqueeze(0).unsqueeze(0), 1, binary=False)
         if len(src_cutout_masks) > 0:
             src_cutout_masks = [torch.ceil(F.grid_sample(m.float(), field)).byte() for m in src_cutout_masks]
-        
+
         # first we'll build a binary mask to completely ignore 'irrelevant' pixels
         similarity_binary_masks = []
 
@@ -301,7 +301,7 @@ if __name__ == '__main__':
             visualize_outputs(prefix('empty_border_mask') + '{}', {'src' : input_src, 'target' : input_target})
             return None
         similarity_binary_masks.append(border_mask)
-        
+
         # mask away similarity error from pixels within cutouts in either the source or target
         cutout_similarity_masks = src_cutout_masks + target_cutout_masks
         if len(cutout_similarity_masks) > 0:
@@ -313,7 +313,7 @@ if __name__ == '__main__':
         if target_mask is not None:
             target_defect_similarity_mask = masks.contract(target_mask < 2, 2).detach()
             similarity_binary_masks.append(target_defect_similarity_mask)
-            
+
         similarity_binary_mask = masks.intersect(similarity_binary_masks)
 
         # reweight remaining pixels for focus areas
@@ -322,7 +322,7 @@ if __name__ == '__main__':
             similarity_weights.data[masks.intersect([mask > 0, mask <= 1]).data] = args.lambda4
             similarity_weights.data[masks.dilate(mask > 1, 2).data] = args.lambda5
 
-        similarity_weights *= similarity_binary_mask.float()        
+        similarity_weights *= similarity_binary_mask.float()
 
         if torch.sum(similarity_weights[border_mask.data]).data[0] < args.eps:
             print('Skipping all zero similarity weights (factor == 0).')
@@ -331,7 +331,7 @@ if __name__ == '__main__':
 
         #similarity_mask_factor = (torch.sum(border_mask.float()) / torch.sum(similarity_weights[border_mask.data])).data[0]
         similarity_mask_factor = 1
-        
+
         # compute raw similarity error and masked/weighted similarity error
         similarity_error_field = similarity(pred, target)
         weighted_similarity_error_field = similarity_error_field * similarity_weights * similarity_mask_factor
@@ -355,16 +355,16 @@ if __name__ == '__main__':
 
         #smoothness_mask_factor = (dim**2. / torch.sum(smoothness_weights[smoothness_binary_mask.byte().data]).data[0])
         smoothness_mask_factor = 1
-        
+
         smoothness_weights /= smoothness_mask_factor
         smoothness_weights = F.grid_sample(smoothness_weights.detach(), field)
         if args.hm:
             smoothness_weights = smoothness_weights.detach()
         smoothness_weights = smoothness_weights * border_mask.float().detach()
-        
+
         rfield = field - model.pyramid.get_identity_grid(field.size()[-2])
         weighted_smoothness_error_field = smoothness([rfield], weights=smoothness_weights)
-        
+
         if mask is not None:
             hpred = pred.clone().detach()
             hpred[(mask > 1).detach()] = torch.min(pred).data[0]
@@ -440,7 +440,7 @@ if __name__ == '__main__':
                             consensus_list.append(rf['consensus'].data[0])
                     else:
                         contrast_errors.append(rf['contrast_error'].data[0])
-                    
+
                 if rb is not None:
                     if not args.pe_only:
                         errs.append(rb['similarity_error'].data[0])
