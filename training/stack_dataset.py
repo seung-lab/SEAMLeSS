@@ -6,6 +6,8 @@ with warnings.catch_warnings():
 import torch
 import numpy as np
 from torch.utils.data import Dataset
+import matplotlib
+matplotlib.use('Agg')
 
 class StackDataset(Dataset):
     def __init__(self, source_h5, mip=-1):
