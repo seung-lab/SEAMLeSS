@@ -29,10 +29,10 @@ class G(nn.Module):
         self.initc(self.conv3)
         self.initc(self.conv4)
         self.initc(self.conv5)
-        
+
     def forward(self, x):
         return self.seq(x).permute(0,2,3,1) / 10
-    
+
 def gif_prep(s):
     if type(s) != np.ndarray:
         s = np.squeeze(s.data.cpu().numpy())
@@ -44,7 +44,7 @@ def gif_prep(s):
 class Enc(nn.Module):
     def initc(self, m):
         m.weight.data *= np.sqrt(6)
-        
+
     def __init__(self, infm, outfm):
         super(Enc, self).__init__()
         if not outfm:
@@ -56,7 +56,7 @@ class Enc(nn.Module):
         self.initc(self.c2)
         self.infm = infm
         self.outfm = outfm
-        
+
     def forward(self, x, vis=None):
         ch = x.size(1)
         ngroups = ch // self.infm
@@ -65,12 +65,12 @@ class Enc(nn.Module):
         out1 = torch.cat(input_groups, 1)
         input_groups2 = [self.f(self.c2(out1[:,idx*self.outfm:(idx+1)*self.outfm])) for idx in range(ngroups)]
         out2 = torch.cat(input_groups2, 1)
-        
+
         if vis is not None:
             visinput1, visinput2 = gif_prep(out1), gif_prep(out2)
-            gif(vis + '_out1_' + str(self.infm), visinput1)    
+            gif(vis + '_out1_' + str(self.infm), visinput1)
             gif(vis + '_out2_' + str(self.infm), visinput2)
-            
+
         return out2
 
 class PreEnc(nn.Module):
@@ -115,7 +115,7 @@ class EPyramid(nn.Module):
             I = I.permute(0,2,3,1)
             self.identities[dim] = I.cuda()
         return self.identities[dim]
-    
+
     def __init__(self, size, dim, skip, topskips, k, train_size=1280):
         super(EPyramid, self).__init__()
         rdim = dim // (2 ** (size - 1 - topskips))
@@ -153,7 +153,7 @@ class EPyramid(nn.Module):
 
         if vis is not None:
             gif(vis + 'pre_enc_output', gif_prep(stack))
-        
+
         encodings = [self.enclist[0](stack)]
         for idx in range(1, self.size-self.topskips):
             encodings.append(self.enclist[idx](self.down(encodings[-1]), vis=vis))
@@ -191,7 +191,7 @@ class PyramidTransformer(nn.Module):
     @staticmethod
     def student(height, dim, skips, topskips, k):
         return PyramidTransformer(height, dim, skips, topskips, k, student=True).cuda()
-    
+
     ################################################################
     # Begin Sergiy API
     ################################################################

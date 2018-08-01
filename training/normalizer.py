@@ -34,7 +34,7 @@ class Normalizer(object):
         assert np.max(output) <= factor
         output[zm] = 0
         return output
-            
+
     def masked_gaussian_filter(self, img, r, mask):
         pre = img[~mask]
         img[~mask] = np.mean(img[mask])
@@ -56,7 +56,7 @@ class Normalizer(object):
         r = radius_func(self.mip, radius)
         equalized = rank.equalize(rescaled, disk(r), mask=(rescaled!=0))
         return self.rescale(equalized)
-    
+
     def apply_slice(self, img):
         return self.f(img).astype(np.float32)
 
@@ -64,7 +64,7 @@ class Normalizer(object):
         slice_results = [np.expand_dims(self.apply_slice(img[0,i]), 0) for i in range(img.shape[1])]
         stacked = np.expand_dims(np.concatenate(slice_results), 0)
         return stacked
-        
+
     def apply(self, img):
         assert type(img) == np.ndarray, 'Can only contrast numpy arrays; received type \'{}\''.format(type(img))
         assert img.ndim == 4 or img.ndim == 2, 'Must pass either 2D or 4D images; received shape {}'.format(img.shape)

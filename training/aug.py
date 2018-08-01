@@ -44,7 +44,7 @@ def rotate_and_scale(imslice, size=0.01, scale=0.01, grid=None):
 
 def crack(imslice, width_range=(4,32)):
     width = np.random.randint(width_range[0], width_range[1])
-    pos = [random.randint(imslice.size()[-1]/4,imslice.size()[-1]-imslice.size()[-1]/4)]
+    pos = [random.randint(imslice.size()[-1]//4,imslice.size()[-1]-imslice.size()[-1]//4)]
     prob = random.randint(4,10)
     left = random.randint(0,1) == 0
     for _ in range(imslice.size()[-1]-1):
@@ -106,7 +106,7 @@ def jitter_stacks(Xs, max_displacement=2**6, min_cut=32):
                 Xs_[ii][:,i] = srcXs[ii][:,i]
 
             cut_range = (min_cut, Xs_[ii].size(-1)//3)
-            if ii == 0: # we only want to cut our images; we're assuming the images are first in Xs_, then masks 
+            if ii == 0: # we only want to cut our images; we're assuming the images are first in Xs_, then masks
                 cut = random.randint(cut_range[0], cut_range[1])
                 if random.randint(0,1) == 0:
                     Xs_[ii][:,i,:cut,:] = 0
@@ -129,7 +129,7 @@ def gen_gradient(size, flip=None, period_median=25, peak=0.3, randomize_peak=Tru
         periods = int(1 + np.random.exponential(-np.log(.5)*period_median))
     else:
         periods = 1
-    grad = torch.zeros(size)    
+    grad = torch.zeros(size)
     if randomize_peak:
         peak *= np.random.uniform(0,1)
     for period in range(periods):
@@ -167,7 +167,7 @@ def gen_tiles(size, dim=None, min_count=6, max_count=32, peak=0.5):
     for idx in range(count-1):
         shift = random.randint(0, dim)
         shift_idxs = range(tiles.size(0))
-        shift_idxs = shift_idxs[shift:] + shift_idxs[:shift]
+        shift_idxs = list(shift_idxs[shift:]) + list(shift_idxs[:shift])
         shift_idxs = torch.from_numpy(np.array(shift_idxs)).cuda().long()
         if flip:
             tiles[idx*dim:(idx+1)*dim,:] = tiles[idx*dim:(idx+1)*dim][:,shift_idxs]
@@ -204,7 +204,7 @@ def aug_brightness(X, factor=2, mask=False, clamp=False):
 
     if not clamp:
         X = X + np.random.uniform(0,0.5)
-    
+
     X[zm] = 0
 
     return X
@@ -256,14 +256,14 @@ def weighted_draw(l,h,exp=2, wf=None, max_factor=4):
     return np.random.choice(vals, p=weights)
 
 def random_rect_mask(size):
-    dimx = random.randint(1,size[-2]/2)
-    dimy = random.randint(1,size[-2]/2)
-    mx = size[-2]/2-dimx/2
-    my = size[-2]/2-dimy/2
+    dimx = random.randint(1,size[-2]//2)
+    dimy = random.randint(1,size[-2]//2)
+    mx = size[-2]//2-dimx//2
+    my = size[-2]//2-dimy//2
     prerotated_centered = Variable(torch.zeros(size)).cuda()
     prerotated_centered[mx:mx+dimx,my:my+dimy] = 1
     rotated_centered, _ = rotate_and_scale(prerotated_centered, None, 0)
-    upper_bound = int(size[-2]/2 - max(dimx,dimy) / np.sqrt(2))
+    upper_bound = int(size[-2]//2 - max(dimx,dimy) / np.sqrt(2))
     dx = weighted_draw(1,upper_bound,exp=1,max_factor=10)
     dy = weighted_draw(1,upper_bound,exp=1,max_factor=10)
     off_centered = Variable(translate(rotated_centered.data, dx, dy))
@@ -306,7 +306,7 @@ def aug_input(x, factor=2):
     out = aug_brightness(out, factor)
 
     out[zm] = 0
-    
+
     return out, missing_masks
 
 def pad_stacks(stacks, total_padding):
