@@ -30,12 +30,11 @@ from stack_dataset import StackDataset
 from pyramid import PyramidTransformer
 from defect_net import *
 from defect_detector import DefectDetector
-from helpers import reverse_dim
+from helpers import reverse_dim, downsample
 from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
 from vis import visualize_outputs
 from loss import similarity_score, smoothness_penalty
 from normalizer import Normalizer
-
 
 
 def main():
@@ -49,11 +48,10 @@ def main():
     padding = args.padding
     dim = args.dim + padding
     kernel_size = args.k
-    anneal = not args.no_anneal
     log_path = 'out/' + name + '/'
     log_file = log_path + name + '.log'
     lr = args.lr
-    batch_size = args.batch_size
+    # batch_size = args.batch_size
     fine_tuning = args.fine_tuning
     epoch = args.epoch
 
@@ -446,13 +444,6 @@ def main():
                 print("Skipping writing status for stack with no valid slices.")
 
 
-def downsample(x):
-    if x > 0:
-        return nn.AvgPool2d(2**x, 2**x, count_include_pad=False)
-    else:
-        return (lambda y: y)
-
-
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
@@ -516,10 +507,6 @@ def parse_args():
         help='number of residuals (starting at the bottom of the pyramid) to '
         'omit from the aggregate field', type=int, default=0)
     parser.add_argument(
-        '--no_anneal',
-        help='do not anneal the smoothness penalty in the early stages of '
-        'training', action='store_true')
-    parser.add_argument(
         '--size',
         help='height of pyramid/number of residual modules in the pyramid',
         type=int, default=5)
@@ -539,9 +526,9 @@ def parse_args():
     parser.add_argument(
         '--state_archive',
         help='saved model to initialize with', type=str, default=None)
-    parser.add_argument(
-        '--batch_size',
-        help='size of batch', type=int, default=1)
+    # parser.add_argument(
+    #     '--batch_size',
+    #     help='size of batch', type=int, default=1)
     parser.add_argument(
         '--k',
         help='kernel size', type=int, default=7)

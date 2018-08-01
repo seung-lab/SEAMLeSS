@@ -3,6 +3,7 @@ from moviepy.editor import ImageSequenceClip
 import numpy as np
 import collections
 import torch
+import torch.nn as nn
 from torch.autograd import Variable
 from skimage.transform import rescale
 import matplotlib
@@ -228,3 +229,10 @@ def gif(filename, array, fps=8, scale=1.0):
     clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
     clip.write_gif(filename, fps=fps, verbose=False)
     return clip
+
+
+def downsample(x):
+    if x > 0:
+        return nn.AvgPool2d(2**x, 2**x, count_include_pad=False)
+    else:
+        return (lambda y: y)
