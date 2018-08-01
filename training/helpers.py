@@ -2,6 +2,7 @@ import os
 from moviepy.editor import ImageSequenceClip
 import numpy as np
 import collections
+import functools
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -14,7 +15,7 @@ import matplotlib.cm as cm
 def compose_functions(fseq):
     def compose(f1, f2):
         return lambda x: f2(f1(x))
-    return reduce(compose, fseq, lambda _: _)
+    return functools.reduce(compose, fseq, lambda _: _)
 
 def copy_state_to_model(archive_params, model):
     size_map = [

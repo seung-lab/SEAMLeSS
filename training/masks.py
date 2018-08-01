@@ -1,3 +1,4 @@
+import functools
 import torch
 import torch.nn.functional as F
 from torch.autograd import Variable
@@ -15,10 +16,10 @@ def prep_mask(mask):
     return mask
 
 def union(masks):
-    return reduce(torch.max, masks)
+    return functools.reduce(torch.max, masks)
 
 def intersect(masks):
-    return reduce(torch.min, masks)
+    return functools.reduce(torch.min, masks)
 
 def invert(mask):
     check_mask(mask, False)

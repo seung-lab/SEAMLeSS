@@ -6,11 +6,11 @@ Running:
     To begin training, run this on a machine with a GPU.
     (Don't forget to install the required dependencies in requirements.txt)
 
-        $ python train.py [--param1_name VALUE1 --param2_name VALUE2 ...]
+        $ python3 train.py [--param1_name VALUE1 --param2_name VALUE2 ...]
             EXPERIMENT_NAME
 
 Example:
-        $ python train.py --state_archive pt/SOME_ARCHIVE.pt --size 8
+        $ python3 train.py --state_archive pt/SOME_ARCHIVE.pt --size 8
             --lambda1 2 --lambda2 0.04 --lambda3 0 --lambda4 5 --lambda5 0
             --mask_smooth_radius 75 --mask_neighborhood_radius 75 --lr 0.0003
             --trunc 0 --fine_tuning --hm --padding 0 --vis_interval 5
@@ -544,10 +544,10 @@ def main():
                       mean_err_train + args.lambda1
                       * mean_penalty_train * smooth_factor,
                       mean_err_train, mean_penalty_train, mean_consensus)
-                history.append(
+                history.append((
                     time.time() - start_time,
                     mean_err_train + mean_penalty_train * smooth_factor,
-                    mean_err_train, mean_penalty_train, mean_consensus)
+                    mean_err_train, mean_penalty_train, mean_consensus))
                 torch.save(model.state_dict(), 'pt/' + name + '.pt')
 
                 print('Writing status to: {}'.format(log_file))
