@@ -1,19 +1,21 @@
-import torch
-import torch.nn.functional as F
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import os
 from moviepy.editor import ImageSequenceClip
+import numpy as np
 import collections
+import functools
 import torch
+import torch.nn as nn
 from torch.autograd import Variable
 from skimage.transform import rescale
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
 def compose_functions(fseq):
     def compose(f1, f2):
         return lambda x: f2(f1(x))
-    return reduce(compose, fseq, lambda _: _)
+    return functools.reduce(compose, fseq, lambda _: _)
 
 def copy_state_to_model(archive_params, model):
     size_map = [
@@ -58,7 +60,7 @@ def copy_state_to_model(archive_params, model):
 
     print('Copied {} parameters exactly, {} parameters partially.'.format(len(model_keys) - approx - new, approx))
     print('Skipped {} parameters in archive, found {} new parameters in model.'.format(skipped, new))
-        
+
 def get_colors(angles, f, c):
     colors = f(angles)
     colors = c(colors)
@@ -67,7 +69,7 @@ def get_colors(angles, f, c):
 def dv(vfield, name=None, downsample=0.5):
     dim = vfield.shape[-2]
     assert type(vfield) == np.ndarray
-    
+
     lengths = np.squeeze(np.sqrt(vfield[:,:,:,0] ** 2 + vfield[:,:,:,1] ** 2))
     lengths = (lengths - np.min(lengths)) / (np.max(lengths) - np.min(lengths))
     angles = np.squeeze(np.angle(vfield[:,:,:,0] + vfield[:,:,:,1]*1j))
@@ -77,7 +79,7 @@ def dv(vfield, name=None, downsample=0.5):
     angles[angles<0] += np.pi
     off_angles = angles + np.pi/4
     off_angles[off_angles>np.pi] -= np.pi
-    
+
     scolors = get_colors(angles, f=lambda x: np.sin(x) ** 1.4, c=cm.viridis)
     ccolors = get_colors(off_angles, f=lambda x: np.sin(x) ** 1.4, c=cm.magma)
 
@@ -88,7 +90,7 @@ def dv(vfield, name=None, downsample=0.5):
     scolors = 1 - (1 - scolors) * lengths.reshape((dim, dim, 1)) ** .8 #
 
     img = np_upsample(scolors, downsample) if downsample is not None else scolors
-    
+
     if name is not None:
         plt.imsave(name + '.png', img)
     else:
@@ -117,7 +119,7 @@ def center_field(field):
         vfield[:,:,:,1] = vfield[:,:,:,1] - np.mean(vfield[:,:,:,1])
         field[idx] = vfield
     return field[0] if wrap else field
-        
+
 def display_v(vfield, name=None, center=False):
     if center:
         center_field(vfield)
@@ -132,7 +134,7 @@ def display_v(vfield, name=None, center=False):
     else:
         assert (name is not None)
         dv(vfield, name)
-    
+
 def dvl(V_pred, name, mag=10):
     factor = V_pred.shape[1] // 100
     if factor > 1:
@@ -192,7 +194,7 @@ def save_chunk(chunk, name, norm=True):
         chunk[-50:,-50:] = 1
         chunk[-10:,-10:] = 0
     plt.imsave(name + '.png', 1 - chunk, cmap='Greys')
-        
+
 def gif(filename, array, fps=8, scale=1.0):
     """Creates a gif given a stack of images using moviepy
     >>> X = randn(100, 64, 64)
@@ -223,8 +225,15 @@ def gif(filename, array, fps=8, scale=1.0):
     array[:,:10,:10] = 255
     array[:,-50:,-50:] = 255
     array[:,-10:,-10:] = 0
-        
+
     # make the moviepy clip
     clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
     clip.write_gif(filename, fps=fps, verbose=False)
     return clip
+
+
+def downsample(x):
+    if x > 0:
+        return nn.AvgPool2d(2**x, 2**x, count_include_pad=False)
+    else:
+        return (lambda y: y)

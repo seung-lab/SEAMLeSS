@@ -21,8 +21,8 @@ class Sampler(object):
         assert xyz[2] >= self.zs
         assert xyz_[2] <= self.ze
         factor = 2 ** self.vol.mip
-        x, x_ = xyz[0]/factor, xyz_[0]/factor
-        y, y_ = xyz[1]/factor, xyz_[1]/factor
+        x, x_ = xyz[0]//factor, xyz_[0]//factor
+        y, y_ = xyz[1]//factor, xyz_[1]//factor
         z, z_ = xyz[2], xyz_[2]
         squeezed = None
         try:

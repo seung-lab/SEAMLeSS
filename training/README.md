@@ -26,9 +26,9 @@ Self-Supervision."
 
 * `cv_sampler.py` : Some wrappers around CloudVolume. Is used only by `gen_stack` to generate datasets.
 
-* `gen_stack.py` : Provides functionality for generating datasets by sampling from CloudVolume datasets. Our datasets are h5 binary data archives. Run `python gen_stack.py -h` to see the parameters that the script accepts. Basically, specify a bounding box within a NG path, and you'll get a dataset.
+* `gen_stack.py` : Provides functionality for generating datasets by sampling from CloudVolume datasets. Our datasets are h5 binary data archives. Run `python3 gen_stack.py -h` to see the parameters that the script accepts. Basically, specify a bounding box within a NG path, and you'll get a dataset.
 
-* `combine_h5.py` : So you've run `gen_stack` on several different volumes, but you want to train on all of that data at once. Because `stack_dataset` supports h5 archives with multiple datasets in them, we can run `python combine_h5.py NEW_COMBINED_DATASET_NAME SOURCE_DATASET1.h5 SOURCE_DATASET2.h5 SOURCE_DATASET3.h5 ...`. This will generate NEW_COMBINED_DATASET_NAME.h5, which contains a dataset for each of the inputs, wrapped into one file (**fair warning: because you have to load each dataset in order to combine it, this can take several minutes to run; stand up and use your muscles or something**)
+* `combine_h5.py` : So you've run `gen_stack` on several different volumes, but you want to train on all of that data at once. Because `stack_dataset` supports h5 archives with multiple datasets in them, we can run `python3 combine_h5.py NEW_COMBINED_DATASET_NAME SOURCE_DATASET1.h5 SOURCE_DATASET2.h5 SOURCE_DATASET3.h5 ...`. This will generate NEW_COMBINED_DATASET_NAME.h5, which contains a dataset for each of the inputs, wrapped into one file (**fair warning: because you have to load each dataset in order to combine it, this can take several minutes to run; stand up and use your muscles or something**)
 
 * `helpers.py` : A conglomeration of various general tools that are used across the project. These include wrapper function for saving images or gifs, our custom archive loader, and more.
 
@@ -58,7 +58,7 @@ We then do all of this again, and again, and again. There are some details left 
 
 You can begin training or fine-tuning by calling
 
-`python train.py [--param1_name VALUE1 --param2_name VALUE2 ...] EXPERIMENT_NAME`
+`python3 train.py [--param1_name VALUE1 --param2_name VALUE2 ...] EXPERIMENT_NAME`
 
 **If you use the same experiment name twice, you will overwrite the outputs from the older version. It is highly recommended that you use unique experiment names.**
 
@@ -66,7 +66,7 @@ You can begin training or fine-tuning by calling
 
 To control training, it is best to use arguments/parameters so that they are saved and archived by argparse. To see a list of all of the parameters available in training, run
 
-`python train.py -h`
+`python3 train.py -h`
 
 This will also show you a description for the purpose of each parameter.
 
@@ -106,7 +106,7 @@ after downsampling to ensure they have the same dynamic range as the inputs, but
 Fine-tuning is perhaps even more important than training from scratch; you can iterate experiments much more quickly when running 'hot' from a previous training run, rather than starting from an untrained network 
 (think **hours** instead of **days**). An example invocation of training to fine-tune a network called 'SOME_ARCHIVE' would be:
 
-`python train.py --state_archive pt/SOME_ARCHIVE.pt --size 8 --lambda1 2 --lambda2 0.04 --lambda3 0 --lambda4 5 --lambda5 0 --mask_smooth_radius 75 --mask_neighborhood_radius 75 --lr 0.0003 --trunc 0 --fine_tuning --hm --padding 0 --vis_interval 5 --lambda6 1 fine_tune_example`
+`python3 train.py --state_archive pt/SOME_ARCHIVE.pt --size 8 --lambda1 2 --lambda2 0.04 --lambda3 0 --lambda4 5 --lambda5 0 --mask_smooth_radius 75 --mask_neighborhood_radius 75 --lr 0.0003 --trunc 0 --fine_tuning --hm --padding 0 --vis_interval 5 --lambda6 1 fine_tune_example`
 
 The `fine_tuning` flag essentially reduces the learning rate, trains all parameters together, and trains at the full resolution of the network.
 
@@ -133,7 +133,7 @@ We have a hell of a lot of data. We can't train on all of it. Instead, we genera
 Datasets can be generated using `gen_stack.py`. 
 A dataset has the shape (N,H,D,D). A single 'sample' is a stack of H consecutive sub-slices from some dataset. N is the number of samples, H is the height/number of slices per sample, D is the side length of each sample (currently we only work with square samples).
 
-**Example:** Run `python gen_stack.py --count NUMBER_OF_SAMPLES --source CLOUD_VOLUME_PATH DATASET_NAME`, for example `python gen_stack.py --count 100 --source basil_v0/raw_image basil_v0`. This creates a training dataset of shape (100, 50, 1152, 1152) at mip level 5, that is, 100 stacks of 50 slices of size 1152 x 1152. 
+**Example:** Run `python3 gen_stack.py --count NUMBER_OF_SAMPLES --source CLOUD_VOLUME_PATH DATASET_NAME`, for example `python3 gen_stack.py --count 100 --source basil_v0/raw_image basil_v0`. This creates a training dataset of shape (100, 50, 1152, 1152) at mip level 5, that is, 100 stacks of 50 slices of size 1152 x 1152. 
 
 ## Network Histories
 

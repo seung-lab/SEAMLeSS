@@ -42,7 +42,7 @@ if args.check_mask:
     mask_sampler = Sampler(source=('gs://' + args.mask), dim=args.dim//(2**(5-args.mip)), mip=5,
                            height=args.stack_height, zs=args.zs, ze=args.ze)
 
-def get_chunk(coords=None, coords_=None):    
+def get_chunk(coords=None, coords_=None):
     chunk = None
     if coords is None:
         if not args.check_mask:
