@@ -1,82 +1,187 @@
-if __name__ == '__main__':
-    import argparse
+"""Train a network.
 
+This is the main module which is invoked to train a network.
+
+Running:
+    To begin training, run this on a machine with a GPU.
+    (Don't forget to install the required dependencies in requirements.txt)
+
+        $ python train.py [--param1_name VALUE1 --param2_name VALUE2 ...]
+            EXPERIMENT_NAME
+
+Todo:
+    * Finish refactor
+    * Expand docstring
+
+"""
+
+import os
+import time
+import torch
+import torch.nn.functional as F
+import torch.nn as nn
+from torch.autograd import Variable
+from torch.utils.data import DataLoader, ConcatDataset
+import argparse
+import random
+
+import masks
+from stack_dataset import StackDataset
+from pyramid import PyramidTransformer
+from defect_net import *
+from defect_detector import DefectDetector
+from helpers import reverse_dim
+from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
+from vis import visualize_outputs
+from loss import similarity_score, smoothness_penalty
+from normalizer import Normalizer
+
+import matplotlib
+matplotlib.use('Agg')
+
+
+def main():
+    """Start training a net."""
     parser = argparse.ArgumentParser()
     parser.add_argument('name')
-    parser.add_argument('--dry_run', help='tests data loading when passed, skipping training', action='store_true')
-    parser.add_argument('--vis_interval', help='the number of stacks in between each visualization', type=int, default=10)
-    parser.add_argument('--mask_smooth_radius', help='radius of average pooling kernel for smoothing smoothness penalty weights', type=int, default=20)
-    parser.add_argument('--mask_neighborhood_radius', help='radius (in pixels) of neighborhood effects of cracks and folds', type=int, default=20)
-    parser.add_argument('--eps', help='epsilon value to avoid divide-by-zero', type=float, default=1e-6)
-    parser.add_argument('--no_jitter', help='omit jitter when augmenting image stacks', action='store_true')
-    parser.add_argument('--hm', help='do high mip (mip 5) training run; runs at mip 2 if flag is omitted', action='store_true')
-    parser.add_argument('--mm', help='mix mips while training (2,5,7,8)', action='store_true')
-    parser.add_argument('--blank_var_threshold', help='variance threshold under which an image will be considered blank and omitted', type=float, default=0.001)
-    parser.add_argument('--lambda1', help='total smoothness penalty coefficient', type=float, default=0.1)
-    parser.add_argument('--lambda2', help='smoothness penalty reduction around cracks/folds', type=float, default=0.3)
-    parser.add_argument('--lambda3', help='smoothness penalty reduction on top of cracks/folds', type=float, default=0.00001)
-    parser.add_argument('--lambda4', help='MSE multiplier in regions around cracks and folds', type=float, default=10)
-    parser.add_argument('--lambda5', help='MSE multiplier in regions on top of cracks and folds', type=float, default=0)
-    parser.add_argument('--lambda6', help='coefficient for drift-prevention consensus loss in training (default=0)', type=float, default=0)
-    parser.add_argument('--skip', help='number of residuals (starting at the bottom of the pyramid) to omit from the aggregate field', type=int, default=0)
-    parser.add_argument('--no_anneal', help='do not anneal the smoothness penalty in the early stages of training', action='store_true')
-    parser.add_argument('--size', help='height of pyramid/number of residual modules in the pyramid', type=int, default=5)
-    parser.add_argument('--dim', help='side dimension of training images', type=int, default=1152)
-    parser.add_argument('--trunc', help='truncation layer; should usually be size-1 (0 IF FINE TUNING)', type=int, default=4)
-    parser.add_argument('--lr', help='starting learning rate', type=float, default=0.0002)
-    parser.add_argument('--num_epochs', help='number of training epochs', type=int, default=1000)
-    parser.add_argument('--state_archive', help='saved model to initialize with', type=str, default=None)
-    parser.add_argument('--batch_size', help='size of batch', type=int, default=1)
-    parser.add_argument('--k', help='kernel size', type=int, default=7)
-    parser.add_argument('--fall_time', help='epochs between layers', type=int, default=2)
-    parser.add_argument('--epoch', help='training epoch to start from', type=int, default=0)
-    parser.add_argument('--padding', help='amount of padding to add to training stacks', type=int, default=128)
-    parser.add_argument('--fine_tuning', help='when passed, begin with fine tuning (reduce learning rate, train all parameters)', action='store_true')
-    parser.add_argument('--skip_sample_aug', help='skips slice-wise augmentation when passed (no cutouts, etc)', action='store_true')
-    parser.add_argument('--penalty', help='type of smoothness penalty (lap, jacob, cjacob, tv)', type=str, default='jacob')
-    parser.add_argument('--lm_defect_net', help='mip2 defect net archive', type=str, default='basil_defect_unet18070201')
-    parser.add_argument('--hm_defect_net', help='mip5 defect net archive', type=str, default='basil_defect_unet_mip518070305')
-    parser.add_argument('--fine_tuning_lr_factor', help='factor by which to reduce learning rate during fine tuning', type=float, default=0.2)
-    parser.add_argument('--pe_only', action='store_true')
-    parser.add_argument('--enc_only', action='store_true')
-    parser.add_argument('--vhm_src', help='very high mip source (mip 8)', type=str, default='~/matriarch_mixed.h5')
-    parser.add_argument('--hm_src', help='high mip source (mip 5)', type=str, default='~/mip5_mixed.h5')
-    parser.add_argument('--lm_src', help='low mip source (mip 2)', type=str, default='~/mip2_mixed.h5')
+    parser.add_argument(
+        '--dry_run',
+        help='tests data loading when passed, skipping training',
+        action='store_true')
+    parser.add_argument(
+        '--vis_interval',
+        help='the number of stacks in between each visualization',
+        type=int, default=10)
+    parser.add_argument(
+        '--mask_smooth_radius',
+        help='radius of average pooling kernel for smoothing smoothness '
+        'penalty weights', type=int, default=20)
+    parser.add_argument(
+        '--mask_neighborhood_radius',
+        help='radius (in pixels) of neighborhood effects of cracks and folds',
+        type=int, default=20)
+    parser.add_argument(
+        '--eps',
+        help='epsilon value to avoid divide-by-zero',
+        type=float, default=1e-6)
+    parser.add_argument(
+        '--no_jitter',
+        help='omit jitter when augmenting image stacks', action='store_true')
+    parser.add_argument(
+        '--hm',
+        help='do high mip (mip 5) training run; runs at mip 2 if flag is '
+        'omitted', action='store_true')
+    parser.add_argument(
+        '--mm',
+        help='mix mips while training (2,5,7,8)', action='store_true')
+    parser.add_argument(
+        '--blank_var_threshold',
+        help='variance threshold under which an image will be considered '
+        'blank and omitted', type=float, default=0.001)
+    parser.add_argument(
+        '--lambda1', help='total smoothness penalty coefficient',
+        type=float, default=0.1)
+    parser.add_argument(
+        '--lambda2', help='smoothness penalty reduction around cracks/folds',
+        type=float, default=0.3)
+    parser.add_argument(
+        '--lambda3',
+        help='smoothness penalty reduction on top of cracks/folds',
+        type=float, default=0.00001)
+    parser.add_argument(
+        '--lambda4', help='MSE multiplier in regions around cracks and folds',
+        type=float, default=10)
+    parser.add_argument(
+        '--lambda5',
+        help='MSE multiplier in regions on top of cracks and folds',
+        type=float, default=0)
+    parser.add_argument(
+        '--lambda6',
+        help='coefficient for drift-prevention consensus loss in training '
+        '(default=0)', type=float, default=0)
+    parser.add_argument(
+        '--skip',
+        help='number of residuals (starting at the bottom of the pyramid) to '
+        'omit from the aggregate field', type=int, default=0)
+    parser.add_argument(
+        '--no_anneal',
+        help='do not anneal the smoothness penalty in the early stages of '
+        'training', action='store_true')
+    parser.add_argument(
+        '--size',
+        help='height of pyramid/number of residual modules in the pyramid',
+        type=int, default=5)
+    parser.add_argument(
+        '--dim',
+        help='side dimension of training images', type=int, default=1152)
+    parser.add_argument(
+        '--trunc',
+        help='truncation layer; should usually be size-1 (0 IF FINE TUNING)',
+        type=int, default=4)
+    parser.add_argument(
+        '--lr',
+        help='starting learning rate', type=float, default=0.0002)
+    parser.add_argument(
+        '--num_epochs',
+        help='number of training epochs', type=int, default=1000)
+    parser.add_argument(
+        '--state_archive',
+        help='saved model to initialize with', type=str, default=None)
+    parser.add_argument(
+        '--batch_size',
+        help='size of batch', type=int, default=1)
+    parser.add_argument(
+        '--k',
+        help='kernel size', type=int, default=7)
+    parser.add_argument(
+        '--fall_time',
+        help='epochs between layers', type=int, default=2)
+    parser.add_argument(
+        '--epoch',
+        help='training epoch to start from', type=int, default=0)
+    parser.add_argument(
+        '--padding',
+        help='amount of padding to add to training stacks',
+        type=int, default=128)
+    parser.add_argument(
+        '--fine_tuning',
+        help='when passed, begin with fine tuning (reduce learning rate, '
+        'train all parameters)', action='store_true')
+    parser.add_argument(
+        '--skip_sample_aug',
+        help='skips slice-wise augmentation when passed (no cutouts, etc)',
+        action='store_true')
+    parser.add_argument(
+        '--penalty',
+        help='type of smoothness penalty (lap, jacob, cjacob, tv)',
+        type=str, default='jacob')
+    parser.add_argument(
+        '--lm_defect_net',
+        help='mip2 defect net archive', type=str,
+        default='basil_defect_unet18070201')
+    parser.add_argument(
+        '--hm_defect_net',
+        help='mip5 defect net archive', type=str,
+        default='basil_defect_unet_mip518070305')
+    parser.add_argument(
+        '--fine_tuning_lr_factor',
+        help='factor by which to reduce learning rate during fine tuning',
+        type=float, default=0.2)
+    parser.add_argument(
+        '--pe_only', action='store_true')
+    parser.add_argument(
+        '--enc_only', action='store_true')
+    parser.add_argument(
+        '--vhm_src',
+        help='very high mip source (mip 8)', type=str,
+        default='~/matriarch_mixed.h5')
+    parser.add_argument(
+        '--hm_src',
+        help='high mip source (mip 5)', type=str, default='~/mip5_mixed.h5')
+    parser.add_argument(
+        '--lm_src',
+        help='low mip source (mip 2)', type=str, default='~/mip2_mixed.h5')
     args = parser.parse_args()
-
-    import os
-    import sys
-    import time
-    import operator
-
-    import torch
-    import torch.nn.functional as F
-    import torch.nn as nn
-    from torch.optim import lr_scheduler
-    from torch.autograd import Variable
-    import numpy as np
-    import collections
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    import random
-
-    from stack_dataset import StackDataset
-    from torch.utils.data import DataLoader, ConcatDataset
-    import warnings
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore",category=FutureWarning)
-        import h5py
-
-    from pyramid import PyramidTransformer
-    from defect_net import *
-    from defect_detector import DefectDetector
-    from helpers import save_chunk, copy_state_to_model, reverse_dim
-    import masks
-    from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
-    from vis import visualize_outputs
-    from loss import similarity_score, smoothness_penalty
-    from normalizer import Normalizer
 
     name = args.name
     trunclayer = args.trunc
@@ -482,3 +587,7 @@ if __name__ == '__main__':
                     history = []
             else:
                 print("Skipping writing status for stack with no valid slices.")
+
+
+if __name__ == '__main__':
+    main()
