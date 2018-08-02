@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 
 
-# helper operations 
+# helper operations
 def conv3x3(in_channels, out_channels):
     return nn.Conv2d(in_channels, out_channels,
         kernel_size=3, stride=1, padding=1, bias=True)
@@ -23,8 +23,8 @@ class UpConv2x2(nn.Module):
         x = self.upsample(x)
         x = F.pad(x, (0,1,0,1))
         x = self.conv(x)
-        return x 
-        
+        return x
+
 def concat(xh, xv):
     return torch.cat([xh, xv], dim=1)
 

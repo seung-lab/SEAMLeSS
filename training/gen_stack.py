@@ -12,30 +12,42 @@ parser.add_argument('name')
 parser.add_argument('--count', type=int)
 parser.add_argument('--test', action='store_true')
 parser.add_argument('--mip', type=int, default=5)
-parser.add_argument('--stack_height', type=int, default=50)
+parser.add_argument('--stack_height', type=int, default=10)
 parser.add_argument('--dim', type=int, default=1152)
 parser.add_argument('--coords', type=str, default=None)
 parser.add_argument('--check_mask', action='store_true')
 parser.add_argument('--mask', type=str, default=None)
 parser.add_argument('--source', type=str, default='neuroglancer/basil_v0/raw_image_cropped')
+parser.add_argument('--zs', type=int, default=1)
+parser.add_argument('--ze', type=int, default=1000)
+parser.add_argument('--xs', type=int, default=None)
+parser.add_argument('--xe', type=int, default=None)
+parser.add_argument('--ys', type=int, default=None)
+parser.add_argument('--ye', type=int, default=None)
+parser.add_argument('--no_split', action='store_true')
 args = parser.parse_args()
-print args
+print(args)
+
+offsets = (args.xs, args.ys) if args.xs is not None and args.ys is not None else None
+size = (args.xe, args.ye) if args.xe is not None and args.ye is not None else None
 
 # neuroglancer/basil_v0/father_of_alignment/v3
 # neuroglancer/pinky40_v11/image
 # neuroglancer/pinky40_alignment/prealigned
 # neuroglancer/basil_v0/raw_image
 
-sampler = Sampler(source=('gs://' + args.source), dim=args.dim, mip=args.mip, height=args.stack_height)
+sampler = Sampler(source=('gs://' + args.source), dim=args.dim, mip=args.mip, height=args.stack_height,
+                  zs=args.zs, ze=args.ze)
 if args.check_mask:
-    mask_sampler = Sampler(source=('gs://' + args.mask), dim=args.dim//(2**(5-args.mip)), mip=5, height=args.stack_height)
+    mask_sampler = Sampler(source=('gs://' + args.mask), dim=args.dim//(2**(5-args.mip)), mip=5,
+                           height=args.stack_height, zs=args.zs, ze=args.ze)
 
-def get_chunk(coords=None, coords_=None):    
+def get_chunk(coords=None, coords_=None):
     chunk = None
     if coords is None:
         if not args.check_mask:
             while chunk is None:
-                chunk, coords = sampler.random_sample(train=not args.test)
+                chunk, coords = sampler.random_sample(train=not args.test, offsets=offsets, size=size, split=not args.no_split)
                 if chunk is None:
                     print('None')
                     continue
@@ -43,13 +55,13 @@ def get_chunk(coords=None, coords_=None):
             while chunk is None:
                 mask = None
                 while mask is None:
-                    mask, coords = mask_sampler.random_sample(train=not args.test)
+                    mask, coords = mask_sampler.random_sample(train=not args.test, offsets=offsets, size=size, split=not args.no_split)
                     if mask is None:
                         print('None mask')
                         continue
-                    foldiness = np.mean(mask < 100)
-                    print(foldiness)
-                    if foldiness < 0.01:
+                    maskiness = np.mean(mask < 100)
+                    print(maskiness)
+                    if maskiness < 0.01:
                         print('Empty mask')
                         mask = None
                         continue
@@ -99,7 +111,7 @@ for i in range(N):
         if args.check_mask:
             mask_dataset[i,:,:,:] = np.transpose(mask, (2,0,1))
     else:
-        print 'None chunk'
+        print('None chunk')
         dataset[i,:,:,:] = 0
 
     print(i)
@@ -113,7 +125,7 @@ h5f.create_dataset('main', data=dataset)
 
 if args.check_mask:
     mask_name = args.mask[(args.mask).rfind('/')+1:]
-    print 'Adding mask dataset:', mask_name
+    print('Adding mask dataset:', mask_name)
     h5f.create_dataset(mask_name, data=mask_dataset)
 
 h5f.close()

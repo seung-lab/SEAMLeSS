@@ -1,17 +1,18 @@
+import torch
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 import sys
 import os
 from pyramid import PyramidTransformer
 from stack_dataset import StackDataset
-from aug import aug_stacks
+from aug import aug_stacks, aug_input
+from normalizer import Normalizer
 import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--count', type=int, default=5)
 parser.add_argument('--dataset', type=int, default=0)
 parser.add_argument('--archive', type=str, default='pt/fprod_correct_enc6.pt')
-parser.add_argument('--num_targets', type=int, default=1)
 args = parser.parse_args()
 
 if not os.path.isdir('inspect'):
@@ -19,25 +20,29 @@ if not os.path.isdir('inspect'):
 if not os.path.isdir('inspect/{}'.format(args.archive[3:-3])):
     os.makedirs('inspect/{}'.format(args.archive[3:-3]))
 
-hm_dataset = StackDataset(os.path.expanduser('~/../eam6/basil_raw_cropped_train_mip5.h5'), None, None, basil=True)
-lm_dataset1 = StackDataset(os.path.expanduser('~/../eam6/full_father_train_mip2.h5'), None, None, basil=True, lm=True) # dataset pulled from all of Basil
-lm_dataset2 = StackDataset(os.path.expanduser('~/../eam6/dense_folds_train_mip2.h5'), None, None, basil=True, lm=True) # dataset focused on extreme folds
-datasets = [hm_dataset, lm_dataset1, lm_dataset2]
+hm_dataset = StackDataset(os.path.expanduser('~/../eam6/mip5_mixed.h5'), mip=5)
+datasets = [hm_dataset]
 train_dataset = datasets[args.dataset]
 train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=5, pin_memory=True)
 
-model = PyramidTransformer.load(args.archive, height=7, dim=1280, skips=0, k=7, dilate=False, unet=False, num_targets=args.num_targets)
+model = PyramidTransformer.load(args.archive, height=8, dim=1152, skips=0, k=7)
+
+normalizer = Normalizer(5)
 
 for t, tensor_dict in enumerate(train_loader):
     if t == args.count:
         break
 
-    X, mask_stack = tensor_dict['X'], tensor_dict['m']
+    X = tensor_dict['X']
     # Get inputs
-    X = Variable(X, requires_grad=False)
-    mask_stack = Variable(mask_stack, requires_grad=False)
-    X, mask_stack = X.cuda(), mask_stack.cuda()
-    stacks, top, left = aug_stacks([X, mask_stack], padding=128)
-    X, mask_stack = stacks[0], stacks[1]
+    X = Variable(X, requires_grad=False).cuda()
+    stacks, top, left = aug_stacks([X], padding=0)
+    X = stacks[0]
+    src, target = X[0,0].clone(), X[0,1].clone()
+    src = aug_input(src)[0]
+    target = aug_input(target)[0]
 
-    model.apply(X[0,0],X[0,1],vis='inspect/{}/sample{}'.format(args.archive[3:-3], t))
+    src = Variable(torch.FloatTensor(normalizer.apply(src.data.cpu().numpy()))).cuda()
+    target = Variable(torch.FloatTensor(normalizer.apply(target.data.cpu().numpy()))).cuda()
+
+    model.apply(src,target,vis='inspect/{}/sample{}'.format(args.archive[3:-3], t))
