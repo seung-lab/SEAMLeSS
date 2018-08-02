@@ -1,31 +1,38 @@
-import torch
-import torch.nn.functional as F
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import os
 from moviepy.editor import ImageSequenceClip
+import numpy as np
 import collections
+import functools
 import torch
+import torch.nn as nn
 from torch.autograd import Variable
 from skimage.transform import rescale
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
-size_map = [
-    'number of out channels',
-    'number of in channels',
-    'kernel x dimension',
-    'kernel y dimension'
-]
+def compose_functions(fseq):
+    def compose(f1, f2):
+        return lambda x: f2(f1(x))
+    return functools.reduce(compose, fseq, lambda _: _)
 
 def copy_state_to_model(archive_params, model):
+    size_map = [
+        'number of out channels',
+        'number of in channels',
+        'kernel x dimension',
+        'kernel y dimension'
+    ]
+
     model_params = dict(model.named_parameters())
-    archive_keys = archive_params.keys()
     model_keys = sorted(model_params.keys())
-    archive_keys = sorted([k for k in archive_keys if 'seq' not in k])
-    assert len(archive_keys) <= len(model_keys)
+    archive_keys = sorted([k for k in archive_params.keys() if 'seq' not in k and 'pelist' not in k])
+    assert len(archive_keys) <= len(model_keys), 'Cannot load archive with more parameters than model ({}, {}).'.format(len(archive_keys), len(model_keys))
 
     approx = 0
     skipped = 0
+    new = len(set(model_keys)) - len(set(archive_keys))
     for key in archive_keys:
         if key not in model_keys:
             print('[WARNING]   Key ' + key + ' present in archive but not in model; skipping.')
@@ -50,58 +57,10 @@ def copy_state_to_model(archive_params, model):
 
         min_size_slices = tuple([slice(*(s,)) for s in min_size])
         model_params[key].data[min_size_slices] = archive_params[key][min_size_slices]
-        
-        if 'enc' not in key and msize != asize and wrong_dim == 1:
-            fm_count = asize[1]/2
-            chunks = (msize[1]-fm_count)/(asize[1]-fm_count)
-            for i in range(1,chunks+1):
-                model_params[key].data[:,i*fm_count:(i+1)*fm_count] = archive_params[key][:,fm_count:] / (i+1)
-            model_params[key].data[:,fm_count:] /= sum([1.0/k for k in range(2,chunks+2)])
-            means = torch.zeros(model_params[key].data[:,fm_count:].size())
-            std = varchive/5
-            model_params[key].data[:,fm_count:] += torch.normal(means, std).cuda()
-    print('Copied ' + str(len(model_keys) - approx) + ' parameters exactly, ' + str(approx) + ' parameters partially. Skipped ' + str(skipped) + ' parameters.')
 
-def check_mask(mask, binary):
-    if binary:
-        assert torch.max(mask).data[0] <= 1
-    assert torch.min(mask).data[0] >= 0
+    print('Copied {} parameters exactly, {} parameters partially.'.format(len(model_keys) - approx - new, approx))
+    print('Skipped {} parameters in archive, found {} new parameters in model.'.format(skipped, new))
 
-def union_masks(masks):
-    return reduce(torch.max, masks)
-
-def intersection_masks(masks):
-    return reduce(torch.min, masks)
-
-def invert_mask(mask):
-    check_mask(mask, False)
-    if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
-        return torch.max(mask) - mask
-    else:
-        return (torch.max(mask).float() - mask.float()).byte()
-        
-def dilate_mask(mask, radius, binary=True):
-    check_mask(mask, binary)
-    mask = mask.detach()
-    if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
-        return F.max_pool2d(mask, radius*2+1, stride=1, padding=radius).detach()
-    else:
-        return F.max_pool2d(mask.float(), radius*2+1, stride=1, padding=radius).byte().detach()
-
-def contract_mask(mask, radius, binary=True, ceil=True):
-    check_mask(mask, binary)
-    mask = mask.detach()
-    if type(mask.data) == torch.FloatTensor or type(mask.data) == torch.cuda.FloatTensor:
-        contracted = -F.max_pool2d(-mask, radius*2+1, stride=1, padding=radius)
-        if ceil:
-            contracted = torch.ceil(contracted)
-    else:
-        contracted = -F.max_pool2d(-(mask.float()), radius*2+1, stride=1, padding=radius)
-        if ceil:
-            contracted = torch.ceil(contracted)
-        contracted = contracted.byte()
-    return contracted.detach(), torch.sum(contracted).data[0] <= 0
-        
 def get_colors(angles, f, c):
     colors = f(angles)
     colors = c(colors)
@@ -110,7 +69,7 @@ def get_colors(angles, f, c):
 def dv(vfield, name=None, downsample=0.5):
     dim = vfield.shape[-2]
     assert type(vfield) == np.ndarray
-    
+
     lengths = np.squeeze(np.sqrt(vfield[:,:,:,0] ** 2 + vfield[:,:,:,1] ** 2))
     lengths = (lengths - np.min(lengths)) / (np.max(lengths) - np.min(lengths))
     angles = np.squeeze(np.angle(vfield[:,:,:,0] + vfield[:,:,:,1]*1j))
@@ -120,7 +79,7 @@ def dv(vfield, name=None, downsample=0.5):
     angles[angles<0] += np.pi
     off_angles = angles + np.pi/4
     off_angles[off_angles>np.pi] -= np.pi
-    
+
     scolors = get_colors(angles, f=lambda x: np.sin(x) ** 1.4, c=cm.viridis)
     ccolors = get_colors(off_angles, f=lambda x: np.sin(x) ** 1.4, c=cm.magma)
 
@@ -131,7 +90,7 @@ def dv(vfield, name=None, downsample=0.5):
     scolors = 1 - (1 - scolors) * lengths.reshape((dim, dim, 1)) ** .8 #
 
     img = np_upsample(scolors, downsample) if downsample is not None else scolors
-    
+
     if name is not None:
         plt.imsave(name + '.png', img)
     else:
@@ -160,7 +119,7 @@ def center_field(field):
         vfield[:,:,:,1] = vfield[:,:,:,1] - np.mean(vfield[:,:,:,1])
         field[idx] = vfield
     return field[0] if wrap else field
-        
+
 def display_v(vfield, name=None, center=False):
     if center:
         center_field(vfield)
@@ -175,8 +134,12 @@ def display_v(vfield, name=None, center=False):
     else:
         assert (name is not None)
         dv(vfield, name)
-    
-def dvl(V_pred, name):
+
+def dvl(V_pred, name, mag=10):
+    factor = V_pred.shape[1] // 100
+    if factor > 1:
+        V_pred = V_pred[:,::factor,::factor,:]
+    V_pred *= 10
     plt.figure(figsize=(6,6))
     X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
     U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
@@ -192,7 +155,9 @@ def dvl(V_pred, name):
 
 def reverse_dim(var, dim):
     idx = range(var.size()[dim] - 1, -1, -1)
-    idx = Variable(torch.LongTensor(idx))
+    idx = torch.LongTensor(idx)
+    if type(var) == Variable:
+        idx = Variable(idx)
     if var.is_cuda:
         idx = idx.cuda()
     return var.index_select(dim, idx)
@@ -222,14 +187,14 @@ def save_chunk(chunk, name, norm=True):
                 chunk = chunk.cpu().numpy()
             else:
                 chunk = chunk.numpy()
-    chunk = np.squeeze(chunk)
+    chunk = np.squeeze(chunk).astype(np.float64)
     if norm:
         chunk[:50,:50] = 0
         chunk[:10,:10] = 1
         chunk[-50:,-50:] = 1
         chunk[-10:,-10:] = 0
     plt.imsave(name + '.png', 1 - chunk, cmap='Greys')
-        
+
 def gif(filename, array, fps=8, scale=1.0):
     """Creates a gif given a stack of images using moviepy
     >>> X = randn(100, 64, 64)
@@ -260,8 +225,15 @@ def gif(filename, array, fps=8, scale=1.0):
     array[:,:10,:10] = 255
     array[:,-50:,-50:] = 255
     array[:,-10:,-10:] = 0
-        
+
     # make the moviepy clip
     clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
     clip.write_gif(filename, fps=fps, verbose=False)
     return clip
+
+
+def downsample(x):
+    if x > 0:
+        return nn.AvgPool2d(2**x, 2**x, count_include_pad=False)
+    else:
+        return (lambda y: y)
