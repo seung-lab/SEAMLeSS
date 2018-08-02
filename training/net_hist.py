@@ -42,7 +42,7 @@ display_length = 10
 for start_idx in range(0, len(folders), display_length):
     for idx, f in enumerate(folders[start_idx:start_idx + display_length]):
         aux_info = '[{}]'.format(du('out/{}'.format(f)) if os.path.exists('pt/{}.pt'.format(f)) else 'NO PT ARCHIVE')
-        print '{}) {} {}'.format(start_idx + idx + 1, f, aux_info)
+        print('{}) {} {}'.format(start_idx + idx + 1, f, aux_info))
     print('----------------------------------------------------------')
     selection = raw_input()
     if selection.isdigit():
@@ -54,7 +54,7 @@ for start_idx in range(0, len(folders), display_length):
         name = selection
         break
 
-name = strip_name(name)    
+name = strip_name(name)
 
 ARCHIVE_KEY = 'state_archive'
 OTHER_PARAMS = ['lambda1', 'lambda2', 'lambda3', 'lambda4', 'lambda5', 'lr']
@@ -69,7 +69,7 @@ while True:
         f.close()
         aux_info = ', '.join(['{}: {}'.format(k, contents[k] if k in contents else '<NOT FOUND>') for k in OTHER_PARAMS])
         aux_info_printouts.append(aux_info)
-        
+
         next_name = contents['state_archive']
         if next_name is not None:
             name = strip_name(next_name)
