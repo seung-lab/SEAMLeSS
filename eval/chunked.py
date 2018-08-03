@@ -124,9 +124,9 @@ if __name__ == '__main__':
     help='MIP level of images to be used in scoring')
   parser.add_argument('--dst_mips', nargs='+', type=int,
     help='MIP levels of output to be written. This dictates chunksize used.')
-  parser.add_argument('--bbox_start', nargs='3', type=int,
+  parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
-  parser.add_argument('--bbox_stop', nargs='3', type=int,
+  parser.add_argument('--bbox_stop', nargs=3, type=int,
     help='bbox origin+shape, 3-element int list')
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
