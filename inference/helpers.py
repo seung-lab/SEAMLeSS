@@ -28,7 +28,6 @@ def copy_state_to_model(archive_params, model):
     archive_keys = archive_params.keys()
     model_keys = sorted(model_params.keys())
     archive_keys = sorted([k for k in archive_keys if 'seq' not in k])
-    assert len(archive_keys) <= len(model_keys)
 
     approx = 0
     skipped = 0

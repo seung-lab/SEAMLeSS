@@ -226,8 +226,7 @@ class Aligner:
     abs_residual = self.net.process(s, t, mip)
 
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
-    #print ("Computing residual for {}".format(out_patch_bbox.__str__(mip=0)),
-    #        end='', flush=True)
+    print ("Computing residual for region {}.".format(out_patch_bbox.__str__(mip=0)), flush=True)
     precrop_patch_bbox = deepcopy(out_patch_bbox)
     precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
 
@@ -517,6 +516,7 @@ class Aligner:
     self.downsample(z, bbox, self.render_low_mip, self.render_high_mip)
 
   def downsample(self, z, bbox, source_mip, target_mip):
+    print ("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
     for m in range(source_mip+1, target_mip + 1):
       chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
                                       self.dst_voxel_offsets[m], mip=m, render=True)
@@ -533,17 +533,20 @@ class Aligner:
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
     for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
-      print ("Running net at mip {}".format(m),
-                                end='', flush=True)
       start = time()
       chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[m],
                                       self.vec_voxel_offsets[m], mip=m)
-      for patch_bbox in chunks:
-      #def chunkwise(patch_bbox):
+      print ("Aligning slice {} to slice {} at mip {} ({} chunks)".format(source_z,
+                                                                        target_z,
+                                                                        m,
+                                                                        len(chunks)),
+             flush=True)
+      #for patch_bbox in chunks:
+      def chunkwise(patch_bbox):
       #FIXME Torch runs out of memory
       #FIXME batchify download and upload
         self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
-      #self.pool.map(chunkwise, chunks)
+      self.pool.map(chunkwise, chunks)
       end = time()
       print (": {} sec".format(end - start))
 
@@ -559,18 +562,6 @@ class Aligner:
     #if not bbox.is_chunk_aligned(self.dst_ng_path):
     #  raise Exception("Have to align a chunkaligned size")
 
-    (xs,xe),(ys,ye) = bbox.x_range(mip=0), bbox.y_range(mip=0)
-    for b in self.break_into_chunks(bbox, self.vec_chunk_sizes[self.process_high_mip], self.vec_voxel_offsets[self.process_high_mip], self.process_high_mip):
-      (xs_, xe_), (ys_, ye_) = b.x_range(mip=0), b.y_range(mip=0)
-      if xs_ < xs:
-        xs = xs_
-      if xe_ > xe:
-        xe = xe_
-      if ys_ < ys:
-        ys = ys_
-      if ye_ > ye:
-        ye = ye_
-    #self.total_bbox = BoundingBox(xs,xe,ys,ye,0)
     self.total_bbox = bbox
     
     start = time()
