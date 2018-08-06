@@ -19,8 +19,10 @@ from threading import Lock
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
-               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads = 5,
-               max_chunk = (1024, 1024), max_render_chunk = (2048*2, 2048*2), skip=0, topskip=0, size=7, should_contrast=True, num_targets=1, flip_average=True):
+               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=5,
+               max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
+               skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
+               flip_average=True, run_pairs=False):
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip
@@ -30,7 +32,8 @@ class Aligner:
     self.max_chunk        = max_chunk
     self.max_render_chunk = max_render_chunk
     self.num_targets      = num_targets
-    
+    self.run_pairs = run_pairs
+
     self.max_displacement = max_displacement
     self.crop_amount      = crop
     self.org_ng_path      = src_ng_path
@@ -233,7 +236,12 @@ class Aligner:
     else:
       src_patch = self.get_image_data(self.tmp_ng_path, source_z, precrop_patch_bbox, mip)
 
-    tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
+    if (self.run_pairs):
+         # only align consecutive pairs of source slices TODO: write function to compse resulting vector fields
+        tgt_patch = self.get_image_data(self.src_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
+    else:
+        # align to the newly aligned previous slice
+        tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
     abs_residual = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
@@ -495,7 +503,11 @@ class Aligner:
     def chunkwise(patch_bbox):
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                     (mip, self.process_high_mip), mip)
-      self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+      if (self.run_pairs):
+        # save the image in the previous slice so it's easier to compare pairs
+        self.save_image_patch(self.dst_ng_path, warped_patch, z-1, patch_bbox, mip)
+      else:
+        self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
@@ -511,8 +523,12 @@ class Aligner:
 
       def chunkwise(patch_bbox):
         print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
-        downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
-        self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
+        if (self.run_pairs):
+          downsampled_patch = self.downsample_patch(self.dst_ng_path, z-1, patch_bbox, m)
+          self.save_image_patch(self.dst_ng_path, downsampled_patch, z-1, patch_bbox, m)
+        else:
+          downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
+          self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
       self.pool.map(chunkwise, chunks)
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
