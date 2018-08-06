@@ -17,7 +17,7 @@ class Process(object):
         self.mip = mip
         self.dim = dim
         self.should_contrast = contrast
-        self.normalizer = Normalizer(self.mip)
+        self.normalizer = Normalizer(min(5, self.mip))
         self.flip_average = flip_average
         
     def contrast(self, t):
@@ -38,6 +38,8 @@ class Process(object):
             t = self.normalizer.apply(t.squeeze()).reshape(t.shape)
             #self.contrast_(s)
             #self.contrast_(t)
+        else:
+            print('Skipping contrast...')
         level -= self.mip
 
         '''

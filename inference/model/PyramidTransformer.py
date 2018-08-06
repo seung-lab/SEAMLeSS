@@ -13,7 +13,6 @@ class G(nn.Module):
 
     def __init__(self, k=7, f=nn.LeakyReLU(inplace=True), infm=2):
         super(G, self).__init__()
-        print('building G with kernel', k)
         p = (k-1)//2
         self.conv1 = nn.Conv2d(infm, 32, k, padding=p)
         self.conv2 = nn.Conv2d(32, 64, k, padding=p)
@@ -74,6 +73,37 @@ class Enc(nn.Module):
             
         return out2
 
+class PreEnc(nn.Module):
+    def initc(self, m):
+        m.weight.data *= np.sqrt(6)
+
+    def __init__(self, outfm=12):
+        super(PreEnc, self).__init__()
+        self.f = nn.LeakyReLU(inplace=True)
+        self.c1 = nn.Conv2d(1, outfm // 2, 7, padding=3)
+        self.c2 = nn.Conv2d(outfm // 2, outfm // 2, 7, padding=3)
+        self.c3 = nn.Conv2d(outfm // 2, outfm, 7, padding=3)
+        self.c4 = nn.Conv2d(outfm, outfm // 2, 7, padding=3)
+        self.c5 = nn.Conv2d(outfm // 2, 1, 7, padding=3)
+        self.initc(self.c1)
+        self.initc(self.c2)
+        self.initc(self.c3)
+        self.initc(self.c4)
+        self.initc(self.c5)
+        self.pelist = nn.ModuleList([self.c1, self.c2, self.c3, self.c4, self.c5])
+
+    def forward(self, x, vis=None):
+        outputs = []
+        for x_ch in range(x.size(1)):
+            out = x[:,x_ch:x_ch+1]
+            for idx, m in enumerate(self.pelist):
+                out = m(out)
+                if idx < len(self.pelist) - 1:
+                    out = self.f(out)
+
+            outputs.append(out)
+        return torch.cat(outputs, 1)
+
 class EPyramid(nn.Module):
     def get_identity_grid(self, dim):
         if dim not in self.identities:
@@ -85,46 +115,48 @@ class EPyramid(nn.Module):
             I = I.permute(0,2,3,1)
             self.identities[dim] = I.cuda()
         return self.identities[dim]
-    
-    def __init__(self, size, dim, skip, topskips, k, dilate=False, amp=False, unet=False, num_targets=1, name=None, train_size=1280, target_weights=None):
+
+    def __init__(self, size, dim, skip, topskips, k, num_targets=1, train_size=1280):
         super(EPyramid, self).__init__()
         rdim = dim // (2 ** (size - 1 - topskips))
-        print('------- Constructing EPyramid with size', size, '(' + str(size-1) + ' downsamples) ' + str(dim))
-        if name:
-            self.name = name
+        print('Constructing EPyramid with size {} ({} downsamples, input size {})...'.format(size, size-1, dim))
         fm_0 = 12
         fm_coef = 6
         self.identities = {}
         self.skip = skip
         self.topskips = topskips
         self.size = size
-        enc_infms = [1] + [fm_0 + fm_coef * idx for idx in range(size-1)]
-        enc_outfms = enc_infms[1:] + [fm_0 + fm_coef * (size-1)]
-        num_slices = 1 + (num_targets if target_weights is None else 1)
-        self.mlist = nn.ModuleList([G(k=k, infm=enc_outfms[level]*num_slices) for level in range(size)])
+        enc_outfms = [fm_0 + fm_coef * idx for idx in range(size)]
+        enc_infms = [1] + enc_outfms[:-1]
+        self.mlist = nn.ModuleList([G(k=k, infm=enc_outfms[level]*2) for level in range(size)])
         self.up = nn.Upsample(scale_factor=2, mode='bilinear')
         self.down = nn.MaxPool2d(2)
         self.enclist = nn.ModuleList([Enc(infm=infm, outfm=outfm) for infm, outfm in zip(enc_infms, enc_outfms)])
         self.I = self.get_identity_grid(rdim)
         self.TRAIN_SIZE = train_size
-        self.num_targets = num_targets
-        self.target_weights = target_weights
-        if target_weights is not None:
-            assert len(target_weights) == num_targets
-        
-    def forward(self, stack, target_level, vis=None):
+        self.pe = PreEnc(fm_0)
+
+    def forward(self, stack, target_level, vis=None, use_preencoder=False):
         if vis is not None:
             gif(vis + 'input', gif_prep(stack))
-        
+
+        if use_preencoder:
+            # run the preencoder
+            residual = self.pe(stack)
+            stack = stack + residual
+            if vis is not None:
+                # visualize the preencoder output
+                zm = (stack == 0).data
+                print('residual me,mi,ma {},{},{}'.format(torch.mean(residual[~zm]).data[0], torch.min(residual[~zm]).data[0], torch.max(residual[~zm]).data[0]))
+                gif(vis + 'pre_enc_residual', gif_prep(residual))
+                gif(vis + 'pre_enc_output', gif_prep(stack))
+            if use_preencoder == "only":
+                # only run the preencoder and return the results
+                return stack
+
         encodings = [self.enclist[0](stack)]
         for idx in range(1, self.size-self.topskips):
             encodings.append(self.enclist[idx](self.down(encodings[-1]), vis=vis))
-
-        if self.target_weights is not None:
-            for idx, e in enumerate(encodings):
-                chunk_length = e.size(1) // (self.num_targets + 1)
-                chunks = [e[:,chunk_length * i:chunk_length * (i+1)] for i in range(self.num_targets+1)]
-                encodings[idx] = torch.cat((chunks[0], sum([c * self.target_weights[i] for i, c in enumerate(chunks[1:])])), 1)
 
         residuals = [self.I]
         field_so_far = self.I
@@ -142,9 +174,12 @@ class EPyramid(nn.Module):
         return field_so_far, residuals
 
 class PyramidTransformer(nn.Module):
-    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, dilate=False, amp=False, unet=False, num_targets=1, name=None, target_weights=None):
+    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, student=False, num_targets=1):
         super(PyramidTransformer, self).__init__()
-        self.pyramid = EPyramid(size, dim, skip, topskips, k, dilate, amp, unet, num_targets, name=name, target_weights=target_weights)
+        if not student:
+            self.pyramid = EPyramid(size, dim, skip, topskips, k, num_targets)
+        else:
+            assert False # TODO: add student network
 
     def open_layer(self):
         if self.pyramid.skip > 0:
@@ -169,7 +204,7 @@ class PyramidTransformer(nn.Module):
     ################################################################
 
     @staticmethod
-    def load(archive_path=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True, dilate=False, amp=False, unet=False, num_targets=1, name=None, target_weights=None):
+    def load(archive_path=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True, num_targets=1):
         """
         Builds and load a model with the specified architecture from
         an archive.
@@ -184,16 +219,16 @@ class PyramidTransformer(nn.Module):
         """
         assert archive_path is not None, "Must provide an archive"
 
-        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, topskips=topskips, dilate=dilate, amp=amp, unet=unet, num_targets=num_targets, name=name, target_weights=target_weights)
+        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, topskips=topskips, num_targets=num_targets)
         if cuda:
             model = model.cuda()
         for p in model.parameters():
             p.requires_grad = False
         model.train(False)
 
-        print('Loading model state from ' + archive_path + '...')
+        print('Loading model state from {}...'.format(archive_path))
         state_dict = torch.load(archive_path)
-        copy_state_to_model(state_dict, model) #model.load_state_dict(state_dict)
+        copy_state_to_model(state_dict, model)
         print('Successfully loaded model state.')
         return model
 

@@ -12,7 +12,7 @@ parser.add_argument('--mip', type=int)
 parser.add_argument('--render_mip', type=int)
 parser.add_argument('--should_contrast', type=int)
 parser.add_argument('--num_targets', type=int)
-parser.add_argument('--edge_crop', type=int, default=384)
+parser.add_argument('--edge_pad', type=int, default=384)
 parser.add_argument('--max_displacement', help='the size of the largest displacement expected; should be 2^high_mip', type=int, default=2048)
 parser.add_argument('--max_mip', type=int, default=9)
 parser.add_argument('--xs', type=int)
@@ -34,7 +34,7 @@ num_targets = args.num_targets
 model_path = args.model_path
 model_name = model_path[model_path.rindex('/')+1:model_path.rindex('.')]
 max_displacement = args.max_displacement
-edge_crop  = args.edge_crop
+edge_pad  = args.edge_pad
 mip_range = (mip,mip)
 high_mip_chunk = (1024, 1024)
 source = args.source
@@ -62,7 +62,7 @@ print('Contrast:', should_contrast)
 print('Max mip:', max_mip)
 print('NG link:', ng_link(out_name, 'precomputed://' + 'gs://neuroglancer/seamless/' + model_name+'_'+out_name+'/image', source[source.rindex('/')+1:], 'precomputed://' + source, (xs+xe)//2, (ys+ye)//2, zs))
 
-a = Aligner(model_path, max_displacement, edge_crop, mip_range, high_mip_chunk, source,
+a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk, source,
             'gs://neuroglancer/seamless/{}_{}'.format(model_name, out_name), render_low_mip=render_mip, render_high_mip=max_mip,
             skip=0, topskip=0, size=args.size, should_contrast=should_contrast, num_targets=num_targets, flip_average=not args.no_flip_average, run_pairs=args.run_pairs)
 
