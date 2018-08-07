@@ -1,11 +1,12 @@
-numpy
 torch==0.3.1
 torchvision
-matplotlib
-visdom
 cloud-volume
-pathos
+numpy
+scikit-image
+matplotlib
+h5py
 moviepy
+visdom
+pathos
 scikit-image
 pyshorteners
-h5py
