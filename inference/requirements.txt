@@ -1,0 +1,11 @@
+numpy
+torch==0.3.1
+torchvision
+matplotlib
+visdom
+cloud-volume
+pathos
+moviepy
+scikit-image
+pyshorteners
+h5py
