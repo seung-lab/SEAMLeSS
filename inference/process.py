@@ -54,14 +54,15 @@ class Process(object):
         if self.cuda:
             x = x.cuda()
         x = torch.autograd.Variable(x, requires_grad=False)
-        res = self.model(x)[1] - self.model.pyramid.get_identity_grid(x.size(3))
+        image, field, residuals, encodings = self.model(x)
+        res = field - self.model.pyramid.get_identity_grid(x.size(3))
         res *= (res.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
         nonflipped = res.data.cpu().numpy()
 
         if not self.flip_average:
-            return nonflipped
+            return nonflipped, residuals, encodings
 
         # flipped
         s = np.flip(s,1)
@@ -72,7 +73,8 @@ class Process(object):
         if self.cuda:
             x = x.cuda()
         x = torch.autograd.Variable(x, requires_grad=False)
-        res = self.model(x)[1] - self.model.pyramid.get_identity_grid(x.size(3))
+        image_fl, field_fl, residuals_fl, encodings_fl = self.model(x)
+        res = field_fl - self.model.pyramid.get_identity_grid(x.size(3))
         res *= (res.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
@@ -80,8 +82,9 @@ class Process(object):
         res = np.flip(res,1)
         res = np.flip(res,2)
         flipped = -res
-        return (flipped + nonflipped)/2.0
         
+        return (flipped + nonflipped)/2.0, residuals, encodings # TODO: include flipped resid & enc
+
 #Simple test
 if __name__ == "__main__":
     print('Testing...')
