@@ -1,0 +1,13 @@
+v7: 3-block DenseNet, 4 layers per block, feature maps 48, 32, 16. Trained with lambda = 300000, fine tuned with lambda 350000 and larger rotations from ~N(0, 0.01).
+    Trained with uncropped smoothness constraint over entire image (including artificial padding added as augmentation), with MSE cropped to 48 pixels from each side
+    of the interior of this padding.
+
+v8: 3-block DenseNet, 4 layers per block, feature maps 32, 32, 16. Trained with lambda = 1000000, trained with *correct* rotations and masking on the black pixels of the
+    prediction and target (unaugmented) slices. Random black padding is added around the image (256px). Augmentation included contrast and missing section squares,
+    in source, target, or both, up to 3 squares in each.
+
+v9: 3-block DenseNet, 4 layers per block, feature maps 32, 32, 16. Trained with lambda = 1000000. Has trained layers at mip 6, 7, and 8.
+
+v10: 3-block DenseNet, 4 layers per block, feature maps 32, 32, 16. Trained with lambda = 1000000. Has trained layers at mip 5,6,7,8. 128px of padding added around the images.
+
+v11: Dilated network, 5x5 kernels. 64 feature maps, lambda 1000000. Trained layers at mips 3-7. (1280x1280)

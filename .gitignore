@@ -5,6 +5,17 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+logs/*
+logs_old/*
+dump/*
+data/images/*
+data/labels/*
+data/masks/*
+data/tf/*
+data/slices/*
+data/*
+src/train.py
+
 # C extensions
 *.so
 
@@ -110,3 +121,4 @@ venv.bak/
 
 # output images
 out/
+bin/projects
