@@ -154,7 +154,7 @@ class EPyramid(nn.Module):
                 # only run the preencoder and return the results
                 return stack
 
-        encodings = [self.enclist[0](stack)]
+        encodings = [self.enclist[0](stack, vis=vis)]
         for idx in range(1, self.size-self.topskips):
             encodings.append(self.enclist[idx](self.down(encodings[-1]), vis=vis))
 
@@ -171,7 +171,7 @@ class EPyramid(nn.Module):
                 field_so_far = rfield + field_so_far
             if i != target_level:
                 field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
-        return field_so_far, residuals
+        return field_so_far, residuals, encodings
 
 class PyramidTransformer(nn.Module):
     def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, student=False, num_targets=1):
@@ -196,8 +196,8 @@ class PyramidTransformer(nn.Module):
             g.requires_grad = True
 
     def forward(self, x, idx=0, vis=None):
-        field, residuals = self.pyramid(x, idx, vis)
-        return grid_sample(x[:,0:1,:,:], field, mode='nearest'), field, residuals
+        field, residuals, encodings = self.pyramid(x, idx, vis)
+        return grid_sample(x[:,0:1,:,:], field, mode='nearest'), field, residuals, encodings
 
     ################################################################
     # Begin Sergiy API

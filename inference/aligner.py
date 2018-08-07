@@ -33,6 +33,7 @@ class Aligner:
     self.max_render_chunk = max_render_chunk
     self.num_targets      = num_targets
     self.run_pairs = run_pairs
+    self.size = size
 
     self.max_displacement = max_displacement
     self.crop_amount      = crop
@@ -241,10 +242,14 @@ class Aligner:
     else:
         # align to the newly aligned previous slice
         tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
-    abs_residual = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
+    abs_residual, residuals, encodings = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
     self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
+
+    # ## TODO: write out residuals and encodings
+    # for m in range(self.size)
+    #   self.save_residual_vectors(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], z, bbox, mip)
 
 
   def abs_to_rel_residual(self, abs_residual, patch, mip):

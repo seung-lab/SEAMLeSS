@@ -10,6 +10,7 @@ import torch
 from torch.autograd import Variable
 from skimage.transform import rescale
 from functools import reduce
+import tqdm
 
 def compose_functions(fseq):
     def compose(f1, f2):
@@ -175,7 +176,7 @@ def center(var, dims, d):
         var = var.narrow(dim, d[idx]/2, var.size()[dim] - d[idx])
     return var
 
-def save_chunk(chunk, name, norm=True):
+def save_chunk(chunk, name, norm=False):
     if type(chunk) != np.ndarray:
         try:
             if chunk.is_cuda:
@@ -195,7 +196,7 @@ def save_chunk(chunk, name, norm=True):
         chunk[-10:,-10:] = 0
     plt.imsave(name + '.png', 1 - chunk, cmap='Greys')
         
-def gif(filename, array, fps=8, scale=1.0):
+def gif(filename, array, fps=8, scale=1.0, norm=False):
     """Creates a gif given a stack of images using moviepy
     >>> X = randn(100, 64, 64)
     >>> gif('test.gif', X)
@@ -210,6 +211,8 @@ def gif(filename, array, fps=8, scale=1.0):
     scale : float
         how much to rescale each image by (default: 1.0)
     """
+    tqdm.pos = 0  # workaround for tqdm bug when using it in multithreading
+
     array = (array - np.min(array)) / (np.max(array) - np.min(array))
     array *= 255
     # ensure that the file has the .gif extension
@@ -220,12 +223,13 @@ def gif(filename, array, fps=8, scale=1.0):
     if array.ndim == 3:
         array = array[..., np.newaxis] * np.ones(3)
 
-    # add 'signature' block to top left and bottom right
-    array[:,:50,:50] = 0
-    array[:,:10,:10] = 255
-    array[:,-50:,-50:] = 255
-    array[:,-10:,-10:] = 0
-        
+    if norm:
+        add 'signature' block to top left and bottom right
+        array[:,:50,:50] = 0
+        array[:,:10,:10] = 255
+        array[:,-50:,-50:] = 255
+        array[:,-10:,-10:] = 0
+
     # make the moviepy clip
     clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
     clip.write_gif(filename, fps=fps, verbose=False)
