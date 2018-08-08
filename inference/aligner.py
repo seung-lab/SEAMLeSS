@@ -1,5 +1,6 @@
 from process import Process
 from cloudvolume import CloudVolume as cv
+from cloudvolume.lib import Vec
 import numpy as np
 import os
 import json
@@ -49,6 +50,11 @@ class Aligner:
     self.x_res_ng_paths = [os.path.join(r, 'x') for r in self.res_ng_paths]
     self.y_res_ng_paths = [os.path.join(r, 'y') for r in self.res_ng_paths]
 
+    self.field_ng_paths   = [os.path.join(dst_ng_path, 'field/{}'.format(i))
+                                                    for i in range(self.process_high_mip + 10)] #TODO
+    self.x_field_ng_paths = [os.path.join(r, 'x') for r in self.field_ng_paths]
+    self.y_field_ng_paths = [os.path.join(r, 'y') for r in self.field_ng_paths]
+
     self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip, size=size, flip_average=flip_average)
     
     self.dst_chunk_sizes   = []
@@ -75,11 +81,11 @@ class Aligner:
 
     os.system("mkdir {}".format(tmp_dir))
 
-    src_info = cv(self.src_ng_path).info
-    dst_info = deepcopy(src_info)
+    src_cv = cv(self.src_ng_path)
+    dst_info = deepcopy(src_cv.info)
 
     ##########################################################
-    #### Create dest info file
+    #### Create dst info file
     ##########################################################
     chunk_size = dst_info["scales"][0]["chunk_sizes"][0][0]
     dst_size_increase = max_offset
@@ -121,11 +127,20 @@ class Aligner:
     ##########################################################
     #### Create vec info file
     ##########################################################
+    # Copy the src_info file & create the necessary scales
+    each_factor = Vec(2,2,1)
+    factor = each_factor.clone()
+    src_info = src_cv.info
+    src_info['scales'] = src_info['scales'][:1]
+    for m in range(self.process_low_mip+self.size):
+      src_cv.add_scale(factor, info=src_info)
+      factor *= each_factor
+
     vec_info = deepcopy(src_info)
     vec_info["data_type"] = "float32"
     for i in range(len(vec_info["scales"])):
       vec_info["scales"][i]["chunk_sizes"][0][2] = 1
-    
+
     scales = deepcopy(vec_info["scales"])
     for i in range(len(scales)):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
@@ -245,11 +260,13 @@ class Aligner:
     abs_residual, residuals, encodings = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
-    self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
+    # self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
+    self.save_vector_patch(abs_residual, self.x_field_ng_paths[mip], self.y_field_ng_paths[mip], source_z, out_patch_bbox, mip)
 
     # ## TODO: write out residuals and encodings
-    # for m in range(self.size)
-    #   self.save_residual_vectors(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], z, bbox, mip)
+    seamless_mip_range = range(self.process_low_mip, self.process_low_mip+self.size)
+    for flow_mip, flow in zip(seamless_mip_range, residuals):
+      self.save_vector_patch(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], z, out_patch_bbox, flow_mip)
 
 
   def abs_to_rel_residual(self, abs_residual, patch, mip):
@@ -307,12 +324,12 @@ class Aligner:
                                   progress=False)[x_range[0]:x_range[1],
                                                   y_range[0]:y_range[1], z] = uint_patch
 
-  def save_residual_patch(self, flow, z, bbox, mip):
-    #print ("Saving residual patch {} at mip {}".format(bbox.__str__(mip=0), mip), end='')
-    start = time()
-    self.save_vector_patch(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], z, bbox, mip)
-    end = time()
-    #print (": {} sec".format(end - start))
+  # def save_residual_patch(self, flow, z, bbox, mip):
+  #   #print ("Saving residual patch {} at mip {}".format(bbox.__str__(mip=0), mip), end='')
+  #   start = time()
+  #   self.save_vector_patch(flow, self.x_field_ng_paths[mip], self.y_field_ng_paths[mip], z, bbox, mip)
+  #   end = time()
+  #   #print (": {} sec".format(end - start))
 
   def save_vector_patch(self, flow, x_path, y_path, z, bbox, mip):
     x_res = flow[0, :, :, 0, np.newaxis]
@@ -436,14 +453,14 @@ class Aligner:
     return data
 
   def get_abs_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.x_res_ng_paths[mip], z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.y_res_ng_paths[mip], z, bbox, mip)[..., 0, 0]
+    x = self.get_vector_data(self.x_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
+    y = self.get_vector_data(self.y_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
     result = np.stack((x, y), axis=2)
     return np.expand_dims(result, axis=0)
 
   def get_rel_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.x_res_ng_paths[mip], z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.y_res_ng_paths[mip], z, bbox, mip)[..., 0, 0]
+    x = self.get_vector_data(self.x_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
+    y = self.get_vector_data(self.y_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
     abs_res = np.stack((x, y), axis=2)
     abs_res = np.expand_dims(abs_res, axis=0)
     rel_res = self.abs_to_rel_residual(abs_res, bbox, mip)
