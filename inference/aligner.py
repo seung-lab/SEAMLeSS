@@ -147,6 +147,8 @@ class Aligner:
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
 
+      cv(self.x_field_ng_paths[i], info=vec_info).commit_info()
+      cv(self.y_field_ng_paths[i], info=vec_info).commit_info()
       cv(self.x_res_ng_paths[i], info=vec_info).commit_info()
       cv(self.y_res_ng_paths[i], info=vec_info).commit_info()
 
