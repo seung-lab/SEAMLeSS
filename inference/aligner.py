@@ -268,6 +268,10 @@ class Aligner:
     for flow_mip, flow in zip(seamless_mip_range, residuals):
       self.save_vector_patch(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], z, out_patch_bbox, flow_mip)
 
+    # ## TODO: write out residuals and encodings
+    # for m in range(self.size)
+    #   self.save_residual_vectors(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], z, bbox, mip)
+
 
   def abs_to_rel_residual(self, abs_residual, patch, mip):
     x_fraction = patch.x_size(mip=0) * 0.5

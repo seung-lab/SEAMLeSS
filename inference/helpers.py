@@ -224,7 +224,7 @@ def gif(filename, array, fps=8, scale=1.0, norm=False):
         array = array[..., np.newaxis] * np.ones(3)
 
     if norm:
-        add 'signature' block to top left and bottom right
+        # add 'signature' block to top left and bottom right
         array[:,:50,:50] = 0
         array[:,:10,:10] = 255
         array[:,-50:,-50:] = 255
