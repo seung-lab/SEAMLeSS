@@ -268,7 +268,7 @@ class Aligner:
     # ## TODO: write out residuals and encodings
     seamless_mip_range = range(self.process_low_mip, self.process_low_mip+self.size)
     for flow_mip, flow in zip(seamless_mip_range, residuals):
-      self.save_vector_patch(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], z, out_patch_bbox, flow_mip)
+      self.save_vector_patch(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], source_z, out_patch_bbox, flow_mip)
 
     # ## TODO: write out residuals and encodings
     # for m in range(self.size)
