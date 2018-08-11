@@ -44,6 +44,8 @@ class Aligner:
     self.dst_ng_path = os.path.join(dst_ng_path, 'image')
     self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
 
+    self.enc_ng_paths   = [os.path.join(dst_ng_path, 'enc/{}'.format(i))
+                                                     for i in range(self.process_high_mip + 10)] #TODO
 
     self.res_ng_paths   = [os.path.join(dst_ng_path, 'vec/{}'.format(i))
                                                     for i in range(self.process_high_mip + 10)] #TODO
@@ -138,6 +140,8 @@ class Aligner:
     for i in range(len(vec_info["scales"])):
       vec_info["scales"][i]["chunk_sizes"][0][2] = 1
 
+    enc_dict = {x: 6*(x-5)+12 for x in range(5,13)} 
+
     scales = deepcopy(vec_info["scales"])
     print('src_info scales: {0}'.format(len(scales)))
     for i in range(len(scales)):
@@ -149,6 +153,12 @@ class Aligner:
       cv(self.y_field_ng_paths[i], info=vec_info).commit_info()
       cv(self.x_res_ng_paths[i], info=vec_info).commit_info()
       cv(self.y_res_ng_paths[i], info=vec_info).commit_info()
+
+      if i in enc_dict.keys():
+        enc_info = deepcopy(vec_info)
+        enc_info['num_channels'] = enc_dict[i]
+        enc_info['data_type'] = 'uint8'
+        cv(self.enc_ng_paths[i], info=enc_info).commit_info()
 
   def check_all_params(self):
     return True
@@ -276,6 +286,29 @@ class Aligner:
         flow = flow.data.cpu().numpy() 
         self.save_vector_patch(flow, self.x_res_ng_paths[flow_mip], self.y_res_ng_paths[flow_mip], source_z, out_patch_bbox, flow_mip)
 
+    print('encoding size: {0}'.format(len(encodings)))
+    for k, enc in enumerate(encodings):
+        mip = self.process_low_mip + k
+        print('encoding shape @ idx={0}, mip={1}: {2}'.format(k, mip, enc.shape))
+        crop = self.crop_amount // 2**k
+        enc = enc[:,:,crop:-crop, crop:-crop].permute(2,3,0,1)
+        enc = enc.data.cpu().numpy()
+        
+        def write_encodings(j_slice, z):
+          x_range = out_patch_bbox.x_range(mip=mip)
+          y_range = out_patch_bbox.y_range(mip=mip)
+          patch = enc[:, :, :, j_slice]
+          uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
+          cv(self.enc_ng_paths[mip], mip=mip, bounded=False, fill_missing=True, autocrop=True,
+                                  progress=False)[x_range[0]:x_range[1],
+                                                  y_range[0]:y_range[1], z, j_slice] = uint_patch
+
+        # src_image encodings
+        write_encodings(slice(0, enc.shape[-1] // 2), source_z)
+        # dst_image_encodings
+        write_encodings(slice(enc.shape[-1] // 2, enc.shape[-1]), target_z)
+        
+    
     # ## TODO: write out residuals and encodings
     # for m in range(self.size)
     #   self.save_residual_vectors(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], z, bbox, mip)
