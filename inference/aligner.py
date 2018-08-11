@@ -17,6 +17,8 @@ from boundingbox import BoundingBox
 from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
 
+import torch.nn as nn
+
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
@@ -260,18 +262,24 @@ class Aligner:
     # self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
     self.save_vector_patch(abs_residual, self.x_field_ng_paths[mip], self.y_field_ng_paths[mip], source_z, out_patch_bbox, mip)
 
+    up = nn.Upsample(scale_factor=2, mode='bilinear')
+
     # ## TODO: write out residuals and encodings
     seamless_mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
     print('mip_range: {0}'.format(list(seamless_mip_range)))
     print('residuals length: {0}'.format(len(residuals[1:])))
-    for flow_mip, flow in zip(seamless_mip_range, residuals[1:]):
-        crop = self.crop_amount // 2**(flow_mip - self.process_low_mip)
+    for flow_mip, flow in zip(seamless_mip_range, residuals[1:]):    
+        print('flow shape: {0}'.format(flow.shape))
+        for m in range(flow_mip, self.process_low_mip, -1):
+          flow = up(flow.permute(0,3,1,2)).permute(0,2,3,1) 
+        print('flow shape: {0}'.format(flow.shape))
+        crop = self.crop_amount
         print('Saving residuals @ MIP{0} for z={1} to {2} with crop {3} to {4}'.format(flow_mip, source_z, self.x_res_ng_paths[flow_mip], crop, out_patch_bbox.__str__(mip=0)))
-        flow *= (flow.shape[-2] / 2) * (2 ** flow_mip)
+        flow *= (flow.shape[-2] / 2) * (2 ** self.process_low_mip)
         flow = flow[:,crop:-crop, crop:-crop,:]
         print('flow shape: {0}'.format(flow.shape))
         flow = flow.data.cpu().numpy() 
-        self.save_vector_patch(flow, self.x_res_ng_paths[flow_mip], self.y_res_ng_paths[flow_mip], source_z, out_patch_bbox, flow_mip)
+        self.save_vector_patch(flow, self.x_res_ng_paths[flow_mip], self.y_res_ng_paths[flow_mip], source_z, out_patch_bbox, self.process_low_mip)
 
     # ## TODO: write out residuals and encodings
     # for m in range(self.size)
