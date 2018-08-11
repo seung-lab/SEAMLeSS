@@ -76,13 +76,16 @@ class Aligner:
     self.high_mip_chunk = chunk_size
 
   def _create_info_files(self, max_offset):
-    tmp_dir = "/tmp/{}".format(os.getpid())
-    nocache_f = '"Cache-Control: no-cache"'
-
-    os.system("mkdir {}".format(tmp_dir))
-
     src_cv = cv(self.src_ng_path)
-    dst_info = deepcopy(src_cv.info)
+    src_info = src_cv.info
+    m = len(src_info['scales'])
+    each_factor = Vec(2,2,1)
+    factor = Vec(2**m,2**m,1)
+    for m in range(m, self.process_low_mip + self.size):
+      src_cv.add_scale(factor)
+      factor *= each_factor
+
+    dst_info = deepcopy(src_info)
 
     ##########################################################
     #### Create dst info file
@@ -127,21 +130,13 @@ class Aligner:
     ##########################################################
     #### Create vec info file
     ##########################################################
-    # Copy the src_info file & create the necessary scales
-    each_factor = Vec(2,2,1)
-    factor = each_factor.clone()
-    src_info = src_cv.info
-    src_info['scales'] = src_info['scales'][:1]
-    for m in range(self.process_low_mip+self.size):
-      src_cv.add_scale(factor, info=src_info)
-      factor *= each_factor
-
     vec_info = deepcopy(src_info)
     vec_info["data_type"] = "float32"
     for i in range(len(vec_info["scales"])):
       vec_info["scales"][i]["chunk_sizes"][0][2] = 1
 
     scales = deepcopy(vec_info["scales"])
+    print('src_info scales: {0}'.format(len(scales)))
     for i in range(len(scales)):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
@@ -266,9 +261,17 @@ class Aligner:
     self.save_vector_patch(abs_residual, self.x_field_ng_paths[mip], self.y_field_ng_paths[mip], source_z, out_patch_bbox, mip)
 
     # ## TODO: write out residuals and encodings
-    seamless_mip_range = range(self.process_low_mip, self.process_low_mip+self.size)
-    for flow_mip, flow in zip(seamless_mip_range, residuals):
-      self.save_vector_patch(flow, self.x_res_ng_paths[mip], self.y_res_ng_paths[mip], source_z, out_patch_bbox, flow_mip)
+    seamless_mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
+    print('mip_range: {0}'.format(list(seamless_mip_range)))
+    print('residuals length: {0}'.format(len(residuals[1:])))
+    for flow_mip, flow in zip(seamless_mip_range, residuals[1:]):
+        crop = self.crop_amount // 2**(flow_mip - self.process_low_mip)
+        print('Saving residuals @ MIP{0} for z={1} to {2} with crop {3} to {4}'.format(flow_mip, source_z, self.x_res_ng_paths[flow_mip], crop, out_patch_bbox.__str__(mip=0)))
+        flow *= (flow.shape[-2] / 2) * (2 ** flow_mip)
+        flow = flow[:,crop:-crop, crop:-crop,:]
+        print('flow shape: {0}'.format(flow.shape))
+        flow = flow.data.cpu().numpy() 
+        self.save_vector_patch(flow, self.x_res_ng_paths[flow_mip], self.y_res_ng_paths[flow_mip], source_z, out_patch_bbox, flow_mip)
 
     # ## TODO: write out residuals and encodings
     # for m in range(self.size)
@@ -345,10 +348,10 @@ class Aligner:
     y_range = bbox.y_range(mip=mip)
 
     cv(x_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                                   progress=False)[x_range[0]:x_range[1],
+                       non_aligned_writes=True, progress=False)[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = x_res
     cv(y_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                                   progress=False)[x_range[0]:x_range[1],
+                       non_aligned_writes=True, progress=False)[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = y_res
 
   ## Data loading
