@@ -86,7 +86,10 @@ class Aligner:
     for m in range(m, self.process_low_mip + self.size):
       src_cv.add_scale(factor)
       factor *= each_factor
+      chunksize = src_info['scales'][-2]['chunk_sizes'][0] // each_factor
+      src_info['scales'][-1]['chunk_sizes'] = [ list(map(int, chunksize)) ]
 
+    print(src_info)
     dst_info = deepcopy(src_info)
 
     ##########################################################
@@ -356,10 +359,10 @@ class Aligner:
     y_range = bbox.y_range(mip=mip)
 
     cv(x_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                       non_aligned_writes=True, progress=False)[x_range[0]:x_range[1],
+                       non_aligned_writes=False, progress=False)[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = x_res
     cv(y_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                       non_aligned_writes=True, progress=False)[x_range[0]:x_range[1],
+                       non_aligned_writes=False, progress=False)[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = y_res
 
   ## Data loading
