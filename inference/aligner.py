@@ -157,7 +157,7 @@ class Aligner:
       if i in enc_dict.keys():
         enc_info = deepcopy(vec_info)
         enc_info['num_channels'] = enc_dict[i]
-        enc_info['data_type'] = 'uint8'
+        # enc_info['data_type'] = 'uint8'
         cv(self.enc_ng_paths[i], info=enc_info).commit_info()
 
   def check_all_params(self):
@@ -298,10 +298,10 @@ class Aligner:
           x_range = out_patch_bbox.x_range(mip=mip)
           y_range = out_patch_bbox.y_range(mip=mip)
           patch = enc[:, :, :, j_slice]
-          uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
+          # uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
           cv(self.enc_ng_paths[mip], mip=mip, bounded=False, fill_missing=True, autocrop=True,
                                   progress=False)[x_range[0]:x_range[1],
-                                                  y_range[0]:y_range[1], z, j_slice] = uint_patch
+                                                  y_range[0]:y_range[1], z, j_slice] = patch # uint_patch
 
         # src_image encodings
         write_encodings(slice(0, enc.shape[-1] // 2), source_z)
