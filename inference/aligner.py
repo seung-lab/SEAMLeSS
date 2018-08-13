@@ -52,6 +52,11 @@ class Aligner:
     self.x_res_ng_paths = [os.path.join(r, 'x') for r in self.res_ng_paths]
     self.y_res_ng_paths = [os.path.join(r, 'y') for r in self.res_ng_paths]
 
+    self.cumres_ng_paths   = [os.path.join(dst_ng_path, 'cumulative_vec/{}'.format(i))
+                                                    for i in range(self.process_high_mip + 10)] #TODO
+    self.x_cumres_ng_paths = [os.path.join(r, 'x') for r in self.cumres_ng_paths]
+    self.y_cumres_ng_paths = [os.path.join(r, 'y') for r in self.cumres_ng_paths]
+
     self.field_ng_paths   = [os.path.join(dst_ng_path, 'field/{}'.format(i))
                                                     for i in range(self.process_high_mip + 10)] #TODO
     self.x_field_ng_paths = [os.path.join(r, 'x') for r in self.field_ng_paths]
@@ -89,7 +94,7 @@ class Aligner:
       chunksize = src_info['scales'][-2]['chunk_sizes'][0] // each_factor
       src_info['scales'][-1]['chunk_sizes'] = [ list(map(int, chunksize)) ]
 
-    print(src_info)
+    # print(src_info)
     dst_info = deepcopy(src_info)
 
     ##########################################################
@@ -143,7 +148,7 @@ class Aligner:
     enc_dict = {x: 6*(x-5)+12 for x in range(5,13)} 
 
     scales = deepcopy(vec_info["scales"])
-    print('src_info scales: {0}'.format(len(scales)))
+    # print('src_info scales: {0}'.format(len(scales)))
     for i in range(len(scales)):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
@@ -153,6 +158,8 @@ class Aligner:
       cv(self.y_field_ng_paths[i], info=vec_info).commit_info()
       cv(self.x_res_ng_paths[i], info=vec_info).commit_info()
       cv(self.y_res_ng_paths[i], info=vec_info).commit_info()
+      cv(self.x_cumres_ng_paths[i], info=vec_info).commit_info()
+      cv(self.y_cumres_ng_paths[i], info=vec_info).commit_info()
 
       if i in enc_dict.keys():
         enc_info = deepcopy(vec_info)
@@ -267,7 +274,7 @@ class Aligner:
     else:
         # align to the newly aligned previous slice
         tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
-    abs_residual, residuals, encodings = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
+    abs_residual, residuals, encodings, cumulative_residuals = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
     # self.save_residual_patch(abs_residual, source_z, out_patch_bbox, mip)
@@ -276,20 +283,24 @@ class Aligner:
     # ## TODO: write out residuals and encodings
     seamless_mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
     print('mip_range: {0}'.format(list(seamless_mip_range)))
-    print('residuals length: {0}'.format(len(residuals[1:])))
-    for flow_mip, flow in zip(seamless_mip_range, residuals[1:]):
-        crop = self.crop_amount // 2**(flow_mip - self.process_low_mip)
-        print('Saving residuals @ MIP{0} for z={1} to {2} with crop {3} to {4}'.format(flow_mip, source_z, self.x_res_ng_paths[flow_mip], crop, out_patch_bbox.__str__(mip=0)))
-        flow *= (flow.shape[-2] / 2) * (2 ** flow_mip)
-        flow = flow[:,crop:-crop, crop:-crop,:]
-        print('flow shape: {0}'.format(flow.shape))
-        flow = flow.data.cpu().numpy() 
-        self.save_vector_patch(flow, self.x_res_ng_paths[flow_mip], self.y_res_ng_paths[flow_mip], source_z, out_patch_bbox, flow_mip)
+    # print('residuals length: {0}'.format(len(residuals[1:])))
+    for res_mip, res, cum_res in zip(seamless_mip_range, residuals[1:], cumulative_residuals[1:]):
+        crop = self.crop_amount // 2**(res_mip - self.process_low_mip)
+        print('Saving residuals @ MIP{0} for z={1} to {2} with crop {3} to {4}'.format(res_mip, source_z, self.x_res_ng_paths[res_mip], crop, out_patch_bbox.__str__(mip=0)))
+        res *= (res.shape[-2] / 2) * (2 ** res_mip)
+        res = res[:,crop:-crop, crop:-crop,:]
+        cum_res *= (cum_res.shape[-2] / 2) * (2 ** res_mip)
+        cum_res = cum_res[:,crop:-crop, crop:-crop,:]
+        # print('flow shape: {0}'.format(flow.shape))
+        res = res.data.cpu().numpy() 
+        cum_res = cum_res.data.cpu().numpy() 
+        self.save_vector_patch(res, self.x_res_ng_paths[res_mip], self.y_res_ng_paths[res_mip], source_z, out_patch_bbox, res_mip)
+        self.save_vector_patch(cum_res, self.x_cumres_ng_paths[res_mip], self.y_cumres_ng_paths[res_mip], source_z, out_patch_bbox, res_mip)
 
-    print('encoding size: {0}'.format(len(encodings)))
+    # print('encoding size: {0}'.format(len(encodings)))
     for k, enc in enumerate(encodings):
         mip = self.process_low_mip + k
-        print('encoding shape @ idx={0}, mip={1}: {2}'.format(k, mip, enc.shape))
+        # print('encoding shape @ idx={0}, mip={1}: {2}'.format(k, mip, enc.shape))
         crop = self.crop_amount // 2**k
         enc = enc[:,:,crop:-crop, crop:-crop].permute(2,3,0,1)
         enc = enc.data.cpu().numpy()
