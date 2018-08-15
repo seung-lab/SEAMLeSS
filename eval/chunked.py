@@ -23,6 +23,8 @@ def get_composite_image(vol, bbox):
   return o
 
 def normalize(img):
+  if np.std(img) == 0:
+    return img
   return (img - np.mean(img)) / np.std(img)
 
 def score(src_img, dst_img):
