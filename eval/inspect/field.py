@@ -8,12 +8,22 @@ from os.path import join
 class Field():
   """Display vector fields from CloudVolume in neuroglancer for inspection.
   """
-  def __init__(self, vec_path, mip=5, port=9999):
+  def __init__(self, path, mip=5, port=9999):
     self.controller = correspondences.controller(port)
-    self.vec_path = vec_path
     self.mip = mip
-    self.x_cv = CloudVolume(join(self.vec_path, str(mip), 'x'), mip=mip, fill_missing=True)
-    self.y_cv = CloudVolume(join(self.vec_path, str(mip), 'y'), mip=mip, fill_missing=True)
+    self.path = path
+    self.x_cv = None
+    self.y_cv = None
+    self.set_path(path)
+
+  def set_path(self, path):
+    self.path = path
+    self.set_mip(self.mip)
+
+  def set_mip(self, mip):
+    self.mip = mip
+    self.x_cv = CloudVolume(join(self.path, str(mip), 'x'), mip=mip, fill_missing=True)
+    self.y_cv = CloudVolume(join(self.path, str(mip), 'y'), mip=mip, fill_missing=True)
 
   def display(self, pts):
     self.controller.set(pts)
