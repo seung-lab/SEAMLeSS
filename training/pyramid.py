@@ -126,6 +126,7 @@ class EPyramid(nn.Module):
         self.skip = skip
         self.topskips = topskips
         self.size = size
+        self.dim = dim
         enc_outfms = [fm_0 + fm_coef * idx for idx in range(size)]
         enc_infms = [1] + enc_outfms[:-1]
         self.mlist = nn.ModuleList([G(k=k, infm=enc_outfms[level]*2) for level in range(size)])
@@ -168,7 +169,10 @@ class EPyramid(nn.Module):
                 factor = ((self.TRAIN_SIZE / (2. ** i)) / new_input_i.size()[-1])
                 rfield = self.mlist[i](new_input_i) * factor
                 residuals.append(rfield)
-                field_so_far = rfield + field_so_far
+                field_so_far = grid_sample(
+                    field_so_far.permute(0,3,1,2), 
+                    rfield + self.get_identity_grid(self.dim // (2 ** i)),
+                    mode='bilinear').permute(0,2,3,1)
             if i != target_level:
                 field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
         return field_so_far, residuals
