@@ -60,6 +60,16 @@ class Aligner:
     self.x_cumres_ng_paths = [os.path.join(r, 'x') for r in self.cumres_ng_paths]
     self.y_cumres_ng_paths = [os.path.join(r, 'y') for r in self.cumres_ng_paths]
 
+    self.resup_ng_paths   = [os.path.join(dst_ng_path, 'vec_up/{}'.format(i))
+                                                    for i in range(self.process_high_mip + 10)] #TODO
+    self.x_resup_ng_paths = [os.path.join(r, 'x') for r in self.resup_ng_paths]
+    self.y_resup_ng_paths = [os.path.join(r, 'y') for r in self.resup_ng_paths]
+
+    self.cumresup_ng_paths   = [os.path.join(dst_ng_path, 'cumulative_vec_up/{}'.format(i))
+                                                    for i in range(self.process_high_mip + 10)] #TODO
+    self.x_cumresup_ng_paths = [os.path.join(r, 'x') for r in self.cumresup_ng_paths]
+    self.y_cumresup_ng_paths = [os.path.join(r, 'y') for r in self.cumresup_ng_paths]
+
     self.field_ng_paths   = [os.path.join(dst_ng_path, 'field/{}'.format(i))
                                                     for i in range(self.process_high_mip + 10)] #TODO
     self.x_field_ng_paths = [os.path.join(r, 'x') for r in self.field_ng_paths]
@@ -166,6 +176,10 @@ class Aligner:
       cv(self.y_res_ng_paths[i], info=vec_info).commit_info()
       cv(self.x_cumres_ng_paths[i], info=vec_info).commit_info()
       cv(self.y_cumres_ng_paths[i], info=vec_info).commit_info()
+      cv(self.x_resup_ng_paths[i], info=vec_info).commit_info()
+      cv(self.y_resup_ng_paths[i], info=vec_info).commit_info()
+      cv(self.x_cumresup_ng_paths[i], info=vec_info).commit_info()
+      cv(self.y_cumresup_ng_paths[i], info=vec_info).commit_info()
 
       if i in enc_dict.keys():
         enc_info = deepcopy(vec_info)
@@ -280,7 +294,7 @@ class Aligner:
     else:
         # align to the newly aligned previous slice
         tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
-    field, residuals, encodings, cumulative_residuals = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
+    field, residuals, encodings, cum_residuals = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
 
@@ -288,22 +302,29 @@ class Aligner:
     self.save_vector_patch(field, self.x_field_ng_paths[mip], self.y_field_ng_paths[mip], source_z, out_patch_bbox, mip)
 
     if self.write_intermediaries:
-      up = nn.Upsample(scale_factor=2, mode='bilinear')
   
-      seamless_mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
-      for res_mip, res, cum_res in zip(seamless_mip_range, residuals[1:], 
-                                                    cumulative_residuals[1:]):
-          for m in range(res_mip, self.process_low_mip, -1):
-            res = up(res.permute(0,3,1,2)).permute(0,2,3,1) 
-            cum_res = up(cum_res.permute(0,3,1,2)).permute(0,2,3,1) 
-          crop = self.crop_amount
+      mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
+      for res_mip, res, cumres in zip(mip_range, residuals[1:], cum_residuals[1:]):
+          crop = self.crop_amount // 2**(res_mip - self.process_low_mip)   
           self.save_residual_patch(res, crop, self.x_res_ng_paths[res_mip], 
                                    self.y_res_ng_paths[res_mip], source_z, 
-                                   out_patch_bbox, self.process_low_mip)
-          self.save_residual_patch(cum_res, crop, self.x_cumres_ng_paths[res_mip], 
+                                   out_patch_bbox, res_mip)
+          self.save_residual_patch(cumres, crop, self.x_cumres_ng_paths[res_mip], 
                                    self.y_cumres_ng_paths[res_mip], source_z, 
-                                   out_patch_bbox, self.process_low_mip)
-  
+                                   out_patch_bbox, res_mip)
+          if self.upsample_residuals:
+            crop = self.crop_amount   
+            res = self.scale_residuals(res, res_mip, self.process_low_mip)
+            self.save_residual_patch(res, crop, self.x_resup_ng_paths[res_mip], 
+                                     self.y_resup_ng_paths[res_mip], source_z, 
+                                     out_patch_bbox, self.process_low_mip)
+            cumres = self.scale_residuals(cumres, res_mip, self.process_low_mip)
+            self.save_residual_patch(cumres, crop, self.x_cumresup_ng_paths[res_mip], 
+                                     self.y_cumresup_ng_paths[res_mip], source_z, 
+                                     out_patch_bbox, self.process_low_mip)
+
+
+ 
       # print('encoding size: {0}'.format(len(encodings)))
       for k, enc in enumerate(encodings):
           mip = self.process_low_mip + k
@@ -382,16 +403,19 @@ class Aligner:
                                   progress=False)[x_range[0]:x_range[1],
                                                   y_range[0]:y_range[1], z] = uint_patch
 
+  def scale_residuals(self, res, src_mip, dst_mip):
+    print('Upsampling residuals from MIP {0} to {1}'.format(src_mip, dst_mip))
+    up = nn.Upsample(scale_factor=2, mode='bilinear')
+    for m in range(src_mip, dst_mip, -1):
+      res = up(res.permute(0,3,1,2)).permute(0,2,3,1)
+    return res
+
   def save_residual_patch(self, res, crop, x_path, y_path, z, bbox, mip):
-    print ("Saving residual patch {} at mip {}".format(bbox.__str__(mip=0), mip), end='')
-    start = time()
-    res *= (res.shape[-2] / 2) * (2 ** mip)
-    res = res[:,crop:-crop, crop:-crop,:]
-    # print('flow shape: {0}'.format(flow.shape))
-    res = res.data.cpu().numpy() 
-    self.save_vector_patch(res, x_path, y_path, z, bbox, mip)
-    end = time()
-    #print (": {} sec".format(end - start))
+    print ("Saving residual patch {} at MIP {}".format(bbox.__str__(mip=0), mip))
+    v = res * (res.shape[-2] / 2) * (2**mip)
+    v = v[:,crop:-crop, crop:-crop,:]
+    v = v.data.cpu().numpy() 
+    self.save_vector_patch(v, x_path, y_path, z, bbox, mip)
 
   def save_vector_patch(self, flow, x_path, y_path, z, bbox, mip):
     x_res = flow[0, :, :, 0, np.newaxis]
