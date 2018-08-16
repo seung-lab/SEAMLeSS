@@ -293,19 +293,20 @@ def main():
         # new field prediction to move them into target coordinate space so
         # we can compare things fairly
         pred = F.grid_sample(
-            downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
+            downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field, 
+            mode='bilinear')
         raw_mask = mask
         if mask is not None:
             mask = torch.ceil(
                 F.grid_sample(
                     downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0)),
-                    field))
+                    field, mode='bilinear'))
         if target_mask is not None:
             target_mask = masks.dilate(
                 target_mask.unsqueeze(0).unsqueeze(0), 1, binary=False)
         if len(src_cutout_masks) > 0:
             src_cutout_masks = [
-                torch.ceil(F.grid_sample(m.float(), field)).byte()
+                torch.ceil(F.grid_sample(m.float(), field, mode='bilinear')).byte()
                 for m in src_cutout_masks]
 
         # first we'll build a binary mask to completely ignore
@@ -409,7 +410,7 @@ def main():
         smoothness_mask_factor = 1
 
         smoothness_weights /= smoothness_mask_factor
-        smoothness_weights = F.grid_sample(smoothness_weights.detach(), field)
+        smoothness_weights = F.grid_sample(smoothness_weights.detach(), field, mode='bilinear')
         if args.hm:
             smoothness_weights = smoothness_weights.detach()
         smoothness_weights = smoothness_weights * border_mask.float().detach()

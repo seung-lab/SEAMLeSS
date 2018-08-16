@@ -184,7 +184,7 @@ class PyramidTransformer(nn.Module):
     def forward(self, x, idx=0, vis=None, pe=False):
         if not pe:
             field, residuals = self.pyramid(x, idx, vis, pe=False)
-            return grid_sample(x[:,0:1,:,:], field, mode='nearest'), field, residuals
+            return grid_sample(x[:,0:1,:,:], field, mode='bilinear'), field, residuals
         else:
             return self.pyramid(x, idx, vis, pe=True)
 

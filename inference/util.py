@@ -27,5 +27,5 @@ def downsample_mip(data_3d):
 def warp(data, flow):
     td = torch.from_numpy(np.expand_dims(data, 0))
     tf = torch.from_numpy(flow)
-    y = F.grid_sample(td, tf)
+    y = F.grid_sample(td, tf, mode='bilinear')
     return y.data.numpy()[0, 0]
