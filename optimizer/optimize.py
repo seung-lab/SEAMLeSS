@@ -69,7 +69,7 @@ class Optimizer():
         src, field = torch.FloatTensor(src).cuda(), torch.FloatTensor(field).cuda()
         src, field = Variable(src).unsqueeze(0).unsqueeze(0), Variable(field).unsqueeze(0)
         #print(src, field)
-        y =  F.grid_sample(src, field + self.get_identity_grid(field.size(2)))
+        y =  F.grid_sample(src, field + self.get_identity_grid(field.size(2)), mode='bilinear')
         return  y.data.cpu().numpy()
 
     def process(self, s, t, crop=0, mask=1):
@@ -100,7 +100,7 @@ class Optimizer():
             print(downsamples)
             while True:
                 updates += 1
-                pred = F.grid_sample(src_, field + self.get_identity_grid(field.size(2)))
+                pred = F.grid_sample(src_, field + self.get_identity_grid(field.size(2)), mode='bilinear')
                 if masking:
                     penalty1 = self.penalty([self.center(field, (1,2), 128 / (2**downsamples))], self.center(mask_, (1,2), 128 / (2**downsamples)))
                 else:

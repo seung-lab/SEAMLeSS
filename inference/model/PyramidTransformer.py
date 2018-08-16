@@ -197,7 +197,7 @@ class PyramidTransformer(nn.Module):
 
     def forward(self, x, idx=0, vis=None):
         field, residuals = self.pyramid(x, idx, vis)
-        return grid_sample(x[:,0:1,:,:], field, mode='nearest'), field, residuals
+        return grid_sample(x[:,0:1,:,:], field, mode='bilinear'), field, residuals
 
     ################################################################
     # Begin Sergiy API

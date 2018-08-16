@@ -16,7 +16,7 @@ def half(a=None,b=None):
 
 def apply_grid(stack, grid):
     for sliceidx in range(stack.size(1)):
-        stack[:,sliceidx:sliceidx+1] = F.grid_sample(stack[:,sliceidx:sliceidx+1], grid)
+        stack[:,sliceidx:sliceidx+1] = F.grid_sample(stack[:,sliceidx:sliceidx+1], grid, mode='bilinear')
     return stack
 
 def rotate_and_scale(imslice, size=0.01, scale=0.01, grid=None):
