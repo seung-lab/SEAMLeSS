@@ -385,10 +385,10 @@ def main():
         if raw_mask is not None:
             # everywhere we have non-standard smoothness, slightly reduce
             # the smoothness penalty
-            smoothness_weights[raw_mask.data > 0] = args.lambda2
+            smoothness_weights[raw_mask.unsqueeze(0).unsqueeze(0) > 0] = args.lambda2
             # on top of cracks and folds only, significantly reduce
             # the smoothness penalty
-            smoothness_weights[raw_mask.data > 1] = args.lambda3
+            smoothness_weights[raw_mask.unsqueeze(0).unsqueeze(0) > 1] = args.lambda3
         smoothness_weights = masks.contract(
             smoothness_weights, args.mask_smooth_radius,
             ceil=False, binary=False)
@@ -399,7 +399,7 @@ def main():
         )**.5
         if raw_mask is not None:
             # reset the most significant smoothness penalty relaxation
-            smoothness_weights[raw_mask.data > 1] = args.lambda3
+            smoothness_weights[raw_mask.unsqueeze(0).unsqueeze(0) > 1] = args.lambda3
         smoothness_weights = F.avg_pool2d(smoothness_weights, 5,
                                           stride=1, padding=2)
         if (torch.sum(smoothness_weights[smoothness_binary_mask.byte().data])
