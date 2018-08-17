@@ -64,6 +64,8 @@ def main():
     similarity = similarity_score(should_reduce=False)
     smoothness = smoothness_penalty(args.penalty)
     history = []
+    if args.pe_only:
+        args.pe = "only"
 
     # setup the defect detector
     if args.mm or args.hm:
@@ -131,7 +133,8 @@ def main():
             if fine_tuning or epoch < fall_time - 1:
                 print('Training all encoder parameters.')
                 params.extend(model.pyramid.enclist.parameters())
-                params.extend(model.pyramid.pe.parameters())
+                if args.pe:
+                    params.extend(model.pyramid.pe.parameters())
             else:
                 print('Freezing encoder parameters.')
         elif args.pe_only:
@@ -270,7 +273,8 @@ def main():
 
         # if we're just training the pre-encoder, no need to do everything
         if args.pe_only:
-            contrasted_stack = model.apply(input_src, input_target, pe=True)
+            contrasted_stack = model.apply(input_src, input_target, 
+                                           use_preencoder=args.pe)
             pred = contrasted_stack.squeeze()
             y = torch.cat((src.unsqueeze(0), target.squeeze().unsqueeze(0)), 0)
             contrast_err = similarity(pred, y)
@@ -288,7 +292,7 @@ def main():
             return {'contrast_error': contrast_err}
 
         pred, field, residuals = model.apply(input_src, input_target,
-                                             trunclayer)
+                                             trunclayer, use_preencoder=args.pe)
         # resample tensors that are in our source coordinate space with our
         # new field prediction to move them into target coordinate space so
         # we can compare things fairly
@@ -686,7 +690,11 @@ def parse_args():
         help='factor by which to reduce learning rate during fine tuning',
         type=float, default=0.2)
     parser.add_argument(
-        '--pe_only', action='store_true')
+        '--pe', action='store_true', 
+        help="Add a preencoder to preprocess the inputs")
+    parser.add_argument(
+        '--pe_only', action='store_true',
+        help="Only train the preencoder.")
     parser.add_argument(
         '--enc_only', action='store_true')
     parser.add_argument(
