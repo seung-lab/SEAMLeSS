@@ -282,7 +282,7 @@ def aug_input(x, factor=2):
     missing_masks = []
 
     for _ in range(gaussian_cutouts):
-        mask = random_rect_mask(out.size())
+        mask = random_rect_mask(out.size()).squeeze(0).squeeze(0)
         sigma = np.random.uniform(0.001,0.03)
         noise = Variable(torch.FloatTensor(np.random.normal(0,sigma,out.size()))).cuda()
         if half():
@@ -294,13 +294,14 @@ def aug_input(x, factor=2):
         out[mask] = out[mask] + noise[mask]
 
     for _ in range(contrast_cutouts):
-        mask = random_rect_mask(out.size())
+        mask = random_rect_mask(out.size()).squeeze(0).squeeze(0)
         f = np.random.uniform(1,factor)
         out[mask] = out[mask] * half(f,1./f)
 
     for _ in range(missing_cutouts):
         mask = random_rect_mask(out.size())
         missing_masks.append(mask)
+        mask = mask.squeeze(0).squeeze(0)
         out[mask] = np.random.uniform(1/255.,1)
 
     out = aug_brightness(out, factor)
