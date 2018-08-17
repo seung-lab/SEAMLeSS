@@ -185,6 +185,10 @@ class PyramidTransformer(nn.Module):
         else:
             assert False # TODO: add student network
 
+    @staticmethod
+    def student(height, dim, skips, topskips, k):
+        return PyramidTransformer(height, dim, skips, topskips, k, student=True).cuda()
+    
     def open_layer(self):
         if self.pyramid.skip > 0:
             self.pyramid.skip -= 1
@@ -199,8 +203,11 @@ class PyramidTransformer(nn.Module):
         for g in self.pyramid.mlist:
             g.requires_grad = True
 
-    def forward(self, x, idx=0, vis=None):
-        field, residuals = self.pyramid(x, idx, vis)
+    def forward(self, x, idx=0, vis=None, use_preencoder=False):
+        if use_preencoder == "only":
+            # only run the preencoder and return the results
+            return self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
+        field, residuals = self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
         return grid_sample(x[:,0:1,:,:], field, mode='bilinear'), field, residuals
 
     ################################################################
@@ -236,7 +243,7 @@ class PyramidTransformer(nn.Module):
         print('Successfully loaded model state.')
         return model
 
-    def apply(self, source, target, skip=0, vis=None):
+    def apply(self, source, target, skip=0, vis=None, use_preencoder=False):
         """
         Applies the model to an input. Inputs (source and target) are
         expected to be of shape (dim // (2 ** skip), dim // (2 ** skip)),
@@ -250,4 +257,4 @@ class PyramidTransformer(nn.Module):
         source = source.unsqueeze(0)
         if len(target.size()) == 2:
             target = target.unsqueeze(0)
-        return self.forward(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis)
+        return self(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis, use_preencoder=use_preencoder)
