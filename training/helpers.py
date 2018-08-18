@@ -154,6 +154,8 @@ def dvl(V_pred, name, mag=10):
     plt.clf()
 
 def reverse_dim(var, dim):
+    if var is None:
+        return var
     idx = range(var.size()[dim] - 1, -1, -1)
     idx = torch.LongTensor(idx)
     if type(var) == Variable:
@@ -235,5 +237,11 @@ def gif(filename, array, fps=8, scale=1.0):
 def downsample(x):
     if x > 0:
         return nn.AvgPool2d(2**x, 2**x, count_include_pad=False)
+    else:
+        return (lambda y: y)
+
+def upsample(x):
+    if x > 0:
+        return nn.Upsample(scale_factor=2**x, mode='bilinear')
     else:
         return (lambda y: y)
