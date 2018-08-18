@@ -213,8 +213,11 @@ def main():
         target = reverse_dim(reverse_dim(target, 0), 1)
         input_src = reverse_dim(reverse_dim(input_src, 0), 1)
         input_target = reverse_dim(reverse_dim(input_target, 0), 1)
-        src_mask = reverse_dim(reverse_dim(src_mask, 0), 1)
-        target_mask = reverse_dim(reverse_dim(target_mask, 0), 1)
+        if src_mask is not None:
+            src_mask = reverse_dim(reverse_dim(src_mask, 0), 1)
+        if target_mask is not None:
+            target_mask = reverse_dim(reverse_dim(target_mask, 0), 1)
+
         src_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
                             for m in src_cutout_masks]
         target_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
@@ -292,22 +295,25 @@ def main():
         # resample tensors that are in our source coordinate space with our
         # new field prediction to move them into target coordinate space so
         # we can compare things fairly
-        pred = F.grid_sample(
-            downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
-        raw_mask = mask
+        src = downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0))
+        target = downsample(trunclayer)(target.unsqueeze(0).unsqueeze(0))
+        pred = F.grid_sample(src, field)
+        raw_mask = None
         if mask is not None:
-            mask = torch.ceil(
-                F.grid_sample(
-                    downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0)),
-                    field))
+            mask = downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0))
+            raw_mask = mask
+            mask = torch.ceil(F.grid_sample(mask, field))
         if target_mask is not None:
-            target_mask = masks.dilate(
-                target_mask.unsqueeze(0).unsqueeze(0), 1, binary=False)
+            target_mask = downsample(trunclayer)(target_mask.unsqueeze(0).unsqueeze(0))
+            target_mask = masks.dilate(target_mask, 1, binary=False)
         if len(src_cutout_masks) > 0:
             src_cutout_masks = [
                 torch.ceil(F.grid_sample(m.float(), field)).byte()
                 for m in src_cutout_masks]
 
+        if len(target_cutout_masks) > 0:
+            target_cutout_masks = [torch.ceil(downsample(trunclayer)(m.float())).byte() for m in target_cutout_masks]
+        
         # first we'll build a binary mask to completely ignore
         # 'irrelevant' pixels
         similarity_binary_masks = []
@@ -427,8 +433,8 @@ def main():
         return {
             'src': src,
             'target': target,
-            'input_src': input_src.unsqueeze(0).unsqueeze(0),
-            'input_target': input_target.unsqueeze(0).unsqueeze(0),
+            'input_src': downsample(trunclayer)(input_src.unsqueeze(0).unsqueeze(0)),
+            'input_target': downsample(trunclayer)(input_target.unsqueeze(0).unsqueeze(0)),
             'field': field,
             'rfield': rfield,
             'residuals': residuals,
@@ -468,13 +474,17 @@ def main():
             # Get inputs
             X = Variable(tensor_dict['X'], requires_grad=False).cuda()
             this_mip = tensor_dict['mip'][0]
-            mask_stack = (
-                lm_defect_detector.masks_from_stack(X) if this_mip == 2
-                else hm_defect_detector.masks_from_stack(X))
+            if trunclayer == 0:
+                mask_stack = (
+                    lm_defect_detector.masks_from_stack(X) if this_mip == 2
+                    else hm_defect_detector.masks_from_stack(X))
+            else:
+                mask_stack = None
             stacks, top, left = aug_stacks(
-                [X, mask_stack], padding=padding, jitter=not args.no_jitter,
+                [X, mask_stack] if trunclayer == 0 else [X],
+                padding=padding, jitter=not args.no_jitter,
                 jitter_displacement=2**(args.size-1))
-            X, mask_stack = stacks[0], stacks[1]
+            X, mask_stack = stacks[0], stacks[1] if trunclayer == 0 else None
 
             errs = []
             penalties = []

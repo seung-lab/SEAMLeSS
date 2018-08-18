@@ -122,3 +122,7 @@ venv.bak/
 # output images
 out/
 bin/projects
+**/*.pt
+**/*.pyc
+**/*~
+**/out/*
