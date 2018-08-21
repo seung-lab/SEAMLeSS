@@ -116,7 +116,7 @@ class EPyramid(nn.Module):
             self.identities[dim] = I.cuda()
         return self.identities[dim]
 
-    def __init__(self, size, dim, skip, topskips, k, num_targets=1, train_size=1280):
+    def __init__(self, size, dim, skip, topskips, k, num_targets=1, train_size=1280, old_upsample=False):
         super(EPyramid, self).__init__()
         rdim = dim // (2 ** (size - 1 - topskips))
         print('Constructing EPyramid with size {} ({} downsamples, input size {})...'.format(size, size-1, dim))
@@ -130,7 +130,7 @@ class EPyramid(nn.Module):
         enc_outfms = [fm_0 + fm_coef * idx for idx in range(size)]
         enc_infms = [1] + enc_outfms[:-1]
         self.mlist = nn.ModuleList([G(k=k, infm=enc_outfms[level]*2) for level in range(size)])
-        self.up = nn.Upsample(scale_factor=2, mode='bilinear')
+        self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=old_upsample)
         self.down = nn.MaxPool2d(2)
         self.enclist = nn.ModuleList([Enc(infm=infm, outfm=outfm) for infm, outfm in zip(enc_infms, enc_outfms)])
         self.I = self.get_identity_grid(rdim)
@@ -178,10 +178,10 @@ class EPyramid(nn.Module):
         return field_so_far, residuals
 
 class PyramidTransformer(nn.Module):
-    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, student=False, num_targets=1):
+    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, student=False, num_targets=1, old_upsample=False):
         super(PyramidTransformer, self).__init__()
         if not student:
-            self.pyramid = EPyramid(size, dim, skip, topskips, k, num_targets)
+            self.pyramid = EPyramid(size, dim, skip, topskips, k, num_targets, old_upsample=old_upsample)
         else:
             assert False # TODO: add student network
 
@@ -215,7 +215,7 @@ class PyramidTransformer(nn.Module):
     ################################################################
 
     @staticmethod
-    def load(archive_path=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True, num_targets=1):
+    def load(archive_path=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True, num_targets=1, old_upsample=False):
         """
         Builds and load a model with the specified architecture from
         an archive.
@@ -230,7 +230,7 @@ class PyramidTransformer(nn.Module):
         """
         assert archive_path is not None, "Must provide an archive"
 
-        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, topskips=topskips, num_targets=num_targets)
+        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, topskips=topskips, num_targets=num_targets, old_upsample=old_upsample)
         if cuda:
             model = model.cuda()
         for p in model.parameters():

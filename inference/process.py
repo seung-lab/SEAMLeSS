@@ -7,11 +7,11 @@ from helpers import save_chunk
 
 class Process(object):
     """docstring for Process."""
-    def __init__(self, path, mip, cuda=True, is_Xmas=False, dim=1280, skip=0, topskip=0, size=7, contrast=True, flip_average=True):
+    def __init__(self, path, mip, cuda=True, is_Xmas=False, dim=1280, skip=0, topskip=0, size=7, contrast=True, flip_average=True, old_upsample=False):
         super(Process, self).__init__()
         self.cuda = cuda
         self.height = size
-        self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=skip, topskips=topskip, cuda=cuda, dim=dim)
+        self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=skip, topskips=topskip, cuda=cuda, dim=dim, old_upsample=old_upsample)
         self.skip = self.model.pyramid.skip
         self.convs = self.model.pyramid.mlist
         self.mip = mip
