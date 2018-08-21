@@ -19,11 +19,12 @@ class G(nn.Module):
         self.conv3 = nn.Conv2d(64, 32, k, padding=p)
         self.conv4 = nn.Conv2d(32, 16, k, padding=p)
         self.conv5 = nn.Conv2d(16, 2, k, padding=p)
+        self.tanh = nn.Tanh()
         self.seq = nn.Sequential(self.conv1, f,
                                  self.conv2, f,
                                  self.conv3, f,
                                  self.conv4, f,
-                                 self.conv5)
+                                 self.conv5, self.tanh)
         self.initc(self.conv1)
         self.initc(self.conv2)
         self.initc(self.conv3)
@@ -31,7 +32,7 @@ class G(nn.Module):
         self.initc(self.conv5)
         
     def forward(self, x):
-        return self.seq(x).permute(0,2,3,1) / 10
+        return self.seq(x).permute(0,2,3,1)
 
 def gif_prep(s):
     if type(s) != np.ndarray:
@@ -168,7 +169,7 @@ class EPyramid(nn.Module):
                 inputs_i = encodings[i]
                 resampled_source = grid_sample(inputs_i[:,0:inputs_i.size(1)//2], field_so_far, mode='bilinear')
                 new_input_i = torch.cat((resampled_source, inputs_i[:,inputs_i.size(1)//2:]), 1)
-                factor = ((self.TRAIN_SIZE / (2. ** i)) / (new_input_i.size()[-1] - 1))
+                factor = 2.0 / (new_input_i.size()[-1] - 1)
                 rfield = self.mlist[i](new_input_i) * factor
                 residuals.append(rfield)
                 field_so_far = grid_sample(
