@@ -306,13 +306,13 @@ def main():
         if mask is not None:
             mask = downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0))
             raw_mask = mask
-            mask = torch.ceil(F.grid_sample(mask, field, mode='bilinear'))
+            mask = torch.ceil(F.grid_sample(mask, field, mode='bilinear', padding_mode='border'))
         if target_mask is not None:
             target_mask = downsample(trunclayer)(target_mask.unsqueeze(0).unsqueeze(0))
             target_mask = masks.dilate(target_mask, 1, binary=False)
         if len(src_cutout_masks) > 0:
             src_cutout_masks = [
-                torch.ceil(F.grid_sample(m.float(), field, mode='bilinear')).byte()
+                torch.ceil(F.grid_sample(m.float(), field, mode='bilinear', padding_mode='border')).byte()
                 for m in src_cutout_masks]
 
         if len(target_cutout_masks) > 0:
@@ -419,7 +419,7 @@ def main():
         smoothness_mask_factor = 1
 
         smoothness_weights /= smoothness_mask_factor
-        smoothness_weights = F.grid_sample(smoothness_weights.detach(), field, mode='bilinear')
+        smoothness_weights = F.grid_sample(smoothness_weights.detach(), field, mode='bilinear', padding_mode='border')
         if args.hm:
             smoothness_weights = smoothness_weights.detach()
         smoothness_weights = smoothness_weights * border_mask.float().detach()

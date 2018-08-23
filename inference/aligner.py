@@ -248,8 +248,8 @@ class Aligner:
 
 
   def abs_to_rel_residual(self, abs_residual, patch, mip):
-    x_fraction = patch.x_size(mip=0) * 0.5
-    y_fraction = patch.y_size(mip=0) * 0.5
+    x_fraction = (patch.x_size(mip=0) - 1) * 0.5
+    y_fraction = (patch.y_size(mip=0) - 1) * 0.5
 
     rel_residual = deepcopy(abs_residual)
     rel_residual[0, :, :, 0] /= x_fraction
