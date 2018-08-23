@@ -160,21 +160,30 @@ class EPyramid(nn.Module):
             encodings.append(self.enclist[idx](self.down(encodings[-1]), vis=vis))
 
         residuals = [self.I]
-        field_so_far = self.I
+        field_so_far = self.I * 0.0 # zero field
         for i in range(self.size - 1 - self.topskips, target_level - 1, -1):
             if i >= self.skip:
+                curr_dim = self.dim // (2 ** i)
+                field_so_far += self.get_identity_grid(curr_dim)
                 inputs_i = encodings[i]
                 resampled_source = grid_sample(inputs_i[:,0:inputs_i.size(1)//2], field_so_far, mode='bilinear')
                 new_input_i = torch.cat((resampled_source, inputs_i[:,inputs_i.size(1)//2:]), 1)
-                factor = ((self.TRAIN_SIZE / (2. ** i)) / new_input_i.size()[-1])
+                factor = ((self.TRAIN_SIZE / (2. ** i)) / (new_input_i.size()[-1] - 1))
                 rfield = self.mlist[i](new_input_i) * factor
                 residuals.append(rfield)
                 field_so_far = grid_sample(
                     field_so_far.permute(0,3,1,2), 
                     rfield + self.get_identity_grid(self.dim // (2 ** i)),
-                    mode='bilinear').permute(0,2,3,1)
+                    mode='bilinear', padding_mode='border').permute(0,2,3,1)
+                field_so_far -= self.get_identity_grid(curr_dim)
             if i != target_level:
-                field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
+                up_field = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
+                # account for shifting locations of -1 and +1 in upsampled field
+                up_field *= (field_so_far.shape[2]-1.0)/field_so_far.shape[2]
+                up_field /= (up_field.shape[2]-1.0)/up_field.shape[2]
+                field_so_far = up_field
+        curr_dim = self.dim // (2 ** target_level)
+        field_so_far += self.get_identity_grid(curr_dim)
         return field_so_far, residuals
 
 class PyramidTransformer(nn.Module):
