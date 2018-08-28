@@ -13,7 +13,9 @@ parser.add_argument('--render_mip', type=int)
 parser.add_argument('--should_contrast', type=int)
 parser.add_argument('--num_targets', type=int)
 parser.add_argument('--edge_pad', type=int, default=384)
-parser.add_argument('--max_displacement', help='the size of the largest displacement expected; should be 2^high_mip', type=int, default=2048)
+parser.add_argument('--max_displacement', 
+  help='the size of the largest displacement expected; should be 2^high_mip', 
+  type=int, default=2048)
 parser.add_argument('--max_mip', type=int, default=9)
 parser.add_argument('--xs', type=int)
 parser.add_argument('--xe', type=int)
@@ -22,8 +24,18 @@ parser.add_argument('--ye', type=int)
 parser.add_argument('--stack_size', type=int, default=100)
 parser.add_argument('--zs', type=int)
 parser.add_argument('--no_anchor', action='store_true')
-parser.add_argument('--no_flip_average', help='disable flip averaging, on by default (flip averaging is used to eliminate drift)', action='store_true')
-parser.add_argument('--run_pairs', help='only run on consecutive pairs of input slices, rather than sequentially aligning a whole stack', action='store_true')
+parser.add_argument('--no_flip_average', 
+  help='disable flip averaging, on by default (flip averaging is used to eliminate drift)', 
+  action='store_true')
+parser.add_argument('--run_pairs', 
+  help='only run on consecutive pairs of input slices, rather than sequentially aligning a whole stack', 
+  action='store_true')
+parser.add_argument('--write_intermediaries', 
+  help='write encodings, residuals, & cumulative residuals to cloudvolumes', 
+  action='store_true')
+parser.add_argument('--upsample_residuals', 
+  help='upsample residuals & cumulative residuals when writing intermediaries; requires --write_intermediaries flag', 
+  action='store_true')
 args = parser.parse_args()
 
 out_name = args.out_name
@@ -48,6 +60,7 @@ v_off = (xs, ys, zs)
 x_size = xe - xs
 y_size = ye - ys
 stack_size = args.stack_size
+out_cv = 'gs://neuroglancer/seamless/{}_{}'.format(model_name, out_name) 
 
 if num_targets < 1:
     print('num_targets must be > 0')
@@ -62,9 +75,13 @@ print('Contrast:', should_contrast)
 print('Max mip:', max_mip)
 print('NG link:', ng_link(out_name, 'precomputed://' + 'gs://neuroglancer/seamless/' + model_name+'_'+out_name+'/image', source[source.rindex('/')+1:], 'precomputed://' + source, (xs+xe)//2, (ys+ye)//2, zs))
 
-a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk, source,
-            'gs://neuroglancer/seamless/{}_{}'.format(model_name, out_name), render_low_mip=render_mip, render_high_mip=max_mip,
-            skip=0, topskip=0, size=args.size, should_contrast=should_contrast, num_targets=num_targets, flip_average=not args.no_flip_average, run_pairs=args.run_pairs)
+a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk, 
+            source, out_cv, render_low_mip=render_mip, render_high_mip=max_mip,
+            skip=0, topskip=0, size=args.size, should_contrast=should_contrast, 
+            num_targets=num_targets, flip_average=not args.no_flip_average, 
+            run_pairs=args.run_pairs, 
+            write_intermediaries=args.write_intermediaries, 
+            upsample_residuals=args.upsample_residuals)
 
 bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=max_mip)
 
