@@ -6,6 +6,7 @@ scikit-image
 matplotlib
 h5py
 moviepy
+neuroglancer
 visdom
 pathos
 scikit-image
