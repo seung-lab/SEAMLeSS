@@ -104,7 +104,7 @@ class Aligner:
     m = len(src_info['scales'])
     each_factor = Vec(2,2,1)
     factor = Vec(2**m,2**m,1)
-    for m in range(m, self.process_low_mip + self.size):
+    for _ in range(m, self.process_low_mip + self.size):
       src_cv.add_scale(factor)
       factor *= each_factor
       chunksize = src_info['scales'][-2]['chunk_sizes'][0] // each_factor
@@ -161,7 +161,8 @@ class Aligner:
     for i in range(len(vec_info["scales"])):
       vec_info["scales"][i]["chunk_sizes"][0][2] = 1
 
-    enc_dict = {x: 6*(x-5)+12 for x in range(5,13)} 
+    enc_dict = {x: 6*(x-self.process_low_mip)+12 for x in 
+                    range(self.process_low_mip, self.process_high_mip+1)} 
 
     scales = deepcopy(vec_info["scales"])
     # print('src_info scales: {0}'.format(len(scales)))
