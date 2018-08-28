@@ -159,6 +159,7 @@ class EPyramid(nn.Module):
             encodings.append(self.enclist[idx](self.down(encodings[-1]), vis=vis))
 
         residuals = [self.I]
+        cumulative_residuals = [self.I]
         field_so_far = self.I
         for i in range(self.size - 1 - self.topskips, target_level - 1, -1):
             if i >= self.skip:
@@ -169,9 +170,10 @@ class EPyramid(nn.Module):
                 rfield = self.mlist[i](new_input_i) * factor
                 residuals.append(rfield)
                 field_so_far = rfield + field_so_far
+                cumulative_residuals.append(field_so_far - self.get_identity_grid(rfield.size(2)))
             if i != target_level:
                 field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
-        return field_so_far, residuals, encodings
+        return field_so_far, residuals, encodings, cumulative_residuals
 
 class PyramidTransformer(nn.Module):
     def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, student=False, num_targets=1):
@@ -196,8 +198,8 @@ class PyramidTransformer(nn.Module):
             g.requires_grad = True
 
     def forward(self, x, idx=0, vis=None):
-        field, residuals, encodings = self.pyramid(x, idx, vis)
-        return grid_sample(x[:,0:1,:,:], field, mode='nearest'), field, residuals, encodings
+        field, residuals, encodings, cumulative_residuals = self.pyramid(x, idx, vis)
+        return grid_sample(x[:,0:1,:,:], field, mode='nearest'), field, residuals, encodings, cumulative_residuals
 
     ################################################################
     # Begin Sergiy API
