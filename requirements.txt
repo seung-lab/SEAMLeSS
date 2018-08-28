@@ -1,0 +1,13 @@
+torch==0.3.1
+torchvision
+cloud-volume
+numpy
+scikit-image
+matplotlib
+h5py
+moviepy
+neuroglancer
+visdom
+pathos
+scikit-image
+pyshorteners
