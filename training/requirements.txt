@@ -6,3 +6,4 @@ scikit-image
 matplotlib
 h5py
 moviepy
+neuroglancer
