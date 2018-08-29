@@ -78,8 +78,8 @@ def main():
     h5_paths = [expanduser(x) for x in paths]
     train_dataset = compile_dataset(h5_paths)
     train_loader = DataLoader(
-        train_dataset, batch_size=1, shuffle=True, num_workers=5,
-        pin_memory=True)
+        train_dataset, batch_size=args.batch_size, shuffle=True, 
+        num_workers=args.num_workers, pin_memory=True)
 
     if not os.path.isdir(log_path):
         os.makedirs(log_path)
@@ -680,6 +680,10 @@ def parse_args():
     parser.add_argument(
         '--lm_src',
         help='low mip source (mip 2)', type=str, default='~/mip2_mixed.h5')
+    parser.add_argument('--batch_size', type=int, default=1, 
+        help='Number of samples to be evaluated before each gradient update')
+    parser.add_argument('--num_workers', type=int, default=1,
+        help='Number of workers for the DataLoader')
     return parser.parse_args()
 
 
