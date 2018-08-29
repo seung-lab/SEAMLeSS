@@ -29,6 +29,7 @@ import torch
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.utils.data import DataLoader, ConcatDataset
+from torch.nn.parallel import data_parallel
 import argparse
 import random
 
@@ -43,102 +44,24 @@ from vis import visualize_outputs
 from loss import similarity_score, smoothness_penalty
 from normalizer import Normalizer
 
+class ModelWrapper(nn.Module):
+    """Abstraction to allow for multi-GPU training
+    """
 
-def main():
-    """Start training a net."""
-    args = parse_args()
-    name = args.name
-    trunclayer = args.trunc
-    skiplayers = args.skip
-    size = args.size
-    fall_time = args.fall_time
-    padding = args.padding
-    dim = args.dim + padding
-    kernel_size = args.k
-    log_path = 'out/' + name + '/'
-    log_file = log_path + name + '.log'
-    lr = args.lr
-    # batch_size = args.batch_size
-    fine_tuning = args.fine_tuning
-    epoch = args.epoch
-    start_time = time.time()
-    similarity = similarity_score(should_reduce=False)
-    smoothness = smoothness_penalty(args.penalty)
-    history = []
+    def __init__(self, args, model):
+        self.args = args
+        self.model = model
+        self.trunclayer = args.trunc
+        self.dim = args.dim + self.padding
+        self.padding = args.padding
+        self.similarity = similarity_score(should_reduce=False)
+        self.smoothness = smoothness_penalty(args.penalty)
 
-    normalizer = Normalizer(5 if args.hm else 2)
-
-    if args.mm:
-        paths = [args.hm_src, args.lm_src, args.vhm_src]
-    else:
-        if args.hm:
-            paths = [args.hm_src, args.vhm_src]
-        else:
-            paths = [args.lm_src]
-    h5_paths = [expanduser(x) for x in paths]
-    train_dataset = compile_dataset(h5_paths)
-    train_loader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True, 
-        num_workers=args.num_workers, pin_memory=True)
-
-    if not os.path.isdir(log_path):
-        os.makedirs(log_path)
-    if not os.path.isdir('pt'):
-        os.makedirs('pt')
-
-    with open(log_path + 'args.txt', 'a') as f:
-        f.write(str(args))
-
-    if args.state_archive is None:
-        model = PyramidTransformer(
-            size=size, dim=dim, skip=skiplayers, k=kernel_size).cuda()
-    else:
-        model = PyramidTransformer.load(
-            args.state_archive, height=size, dim=dim, skips=skiplayers,
-            k=kernel_size)
-        for p in model.parameters():
-            p.requires_grad = True
-        model.train(True)
-
-    def opt(layer):
-        params = []
-        if not args.pe_only and not args.enc_only:
-            if layer >= skiplayers and not fine_tuning:
-                print('Training only layer {}'.format(layer))
-                params.extend(model.pyramid.mlist[layer].parameters())
-            else:
-                print('Training all residual networks.')
-                params.extend(model.pyramid.mlist.parameters())
-
-            if fine_tuning or epoch < fall_time - 1:
-                print('Training all encoder parameters.')
-                params.extend(model.pyramid.enclist.parameters())
-                params.extend(model.pyramid.pe.parameters())
-            else:
-                print('Freezing encoder parameters.')
-        elif args.pe_only:
-            print('Training pre-encoder only.')
-            params.extend(model.pyramid.pe.parameters())
-        elif args.enc_only:
-            print('Training all encoder parameters only.')
-            params.extend(model.pyramid.enclist.parameters())
-            params.extend(model.pyramid.pe.parameters())
-
-        lr_ = lr if not fine_tuning else lr * args.fine_tuning_lr_factor
-        print(
-            'Building optimizer for layer {} (fine tuning: {}, lr: {})'
-            .format(layer, fine_tuning, lr_))
-        return torch.optim.Adam(
-            params, lr=lr_, weight_decay=0.0001 if args.pe_only else 0)
-
-    def prefix(tag=None):
-        if tag is None:
-            return '{}{}_e{}_t{}_'.format(log_path, name, epoch, t)
-        else:
-            return '{}{}_e{}_t{}_{}_'.format(log_path, name, epoch, t, tag)
+    def save(self, name):
+        torch.save(self.model.state_dict(), 'pt/' + name + '.pt')
 
     def run_pair(src, target, src_mask=None, target_mask=None, train=True):
-        if train and not args.skip_sample_aug:
+        if train and not self.args.skip_sample_aug:
             # random rotation
             should_rotate = random.randint(0, 1) == 0
             if should_rotate:
@@ -164,7 +87,7 @@ def main():
         src_cutout_masks = []
         target_cutout_masks = []
 
-        if train and not args.skip_sample_aug:
+        if train and not self.args.skip_sample_aug:
             input_src, src_cutout_masks = aug_input(input_src)
             input_target, target_cutout_masks = aug_input(input_target)
         elif train:
@@ -183,11 +106,11 @@ def main():
             src, target, input_src, input_target, src_mask, target_mask,
             src_cutout_masks, target_cutout_masks, train)
         if rf is not None:
-            if not args.pe_only:
+            if not self.args.pe_only:
                 cost = (rf['similarity_error']
-                        + args.lambda1
+                        + self.args.lambda1
                         * smooth_factor * rf['smoothness_error'])
-                (cost/2).backward(retain_graph=args.lambda6 > 0)
+                (cost/2).backward(retain_graph=self.args.lambda6 > 0)
             else:
                 (rf['contrast_error']/2).backward()
 
@@ -206,24 +129,24 @@ def main():
             src, target, input_src, input_target, src_mask, target_mask,
             src_cutout_masks, target_cutout_masks, train)
         if rb is not None:
-            if not args.pe_only:
+            if not self.args.pe_only:
                 cost = (rb['similarity_error']
-                        + args.lambda1
+                        + self.args.lambda1
                         * smooth_factor * rb['smoothness_error'])
-                (cost/2).backward(retain_graph=args.lambda6 > 0)
+                (cost/2).backward(retain_graph=self.args.lambda6 > 0)
             else:
                 (rb['contrast_error']/2).backward()
 
         ##################################
         # CONSENSUS PENALTY COMPUTATION ##
         ##################################
-        if (not args.pe_only and args.lambda6 > 0 and rf is not None
+        if (not self.args.pe_only and self.args.lambda6 > 0 and rf is not None
                 and rb is not None):
             zmf = (rf['pred'] != 0).float() * (rf['input_target'] != 0).float()
-            zmf = (zmf.detach().unsqueeze(0).view(1, 1, dim, dim)
+            zmf = (zmf.detach().unsqueeze(0).view(1, 1, self.dim, self.dim)
                    .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
             zmb = (rb['pred'] != 0).float() * (rb['input_target'] != 0).float()
-            zmb = (zmb.detach().unsqueeze(0).view(1, 1, dim, dim)
+            zmb = (zmb.detach().unsqueeze(0).view(1, 1, self.dim, self.dim)
                    .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
             rffield, rbfield = rf['rfield'] * zmf, rb['rfield'] * zmb
             rbfield_reversed = -reverse_dim(reverse_dim(rbfield, 1), 2)
@@ -237,7 +160,7 @@ def main():
             rb['consensus_error_field'] = consensus_error_field
             rf['consensus'] = mean_consensus
             rb['consensus'] = mean_consensus
-            consensus = args.lambda6 * mean_consensus
+            consensus = self.args.lambda6 * mean_consensus
             consensus.backward()
 
         return rf, rb
@@ -245,17 +168,17 @@ def main():
     def run_sample(src, target, input_src, input_target, mask=None,
                    target_mask=None, src_cutout_masks=[],
                    target_cutout_masks=[], train=True):
-        model.train(train)
-        if args.dry_run:
+        self.model.train(train)
+        if self.args.dry_run:
             print('Bailing for dry run [not an error].')
             return None
 
         # if we're just training the pre-encoder, no need to do everything
-        if args.pe_only:
-            contrasted_stack = model.apply(input_src, input_target, pe=True)
+        if self.args.pe_only:
+            contrasted_stack = self.model.apply(input_src, input_target, pe=True)
             pred = contrasted_stack.squeeze()
             y = torch.cat((src.unsqueeze(0), target.squeeze().unsqueeze(0)), 0)
-            contrast_err = similarity(pred, y)
+            contrast_err = self.similarity(pred, y)
             contrast_err_src = contrast_err[0:1]
             contrast_err_target = contrast_err[1:2]
             for m in src_cutout_masks:
@@ -269,18 +192,18 @@ def main():
                                                  contrast_err_target), 0))
             return {'contrast_error': contrast_err}
 
-        pred, field, residuals = model.apply(input_src, input_target,
-                                             trunclayer)
+        pred, field, residuals = self.model.apply(input_src, input_target,
+                                             self.trunclayer)
         # resample tensors that are in our source coordinate space with our
         # new field prediction to move them into target coordinate space so
         # we can compare things fairly
         pred = F.grid_sample(
-            downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
+            downsample(self.trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
         raw_mask = mask
         if mask is not None:
             mask = torch.ceil(
                 F.grid_sample(
-                    downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0)),
+                    downsample(self.trunclayer)(mask.unsqueeze(0).unsqueeze(0)),
                     field))
         if target_mask is not None:
             target_mask = masks.dilate(
@@ -330,14 +253,14 @@ def main():
         if mask is not None:
             similarity_weights.data[
                 masks.intersect([mask > 0, mask <= 1]).data
-            ] = args.lambda4
+            ] = self.args.lambda4
             similarity_weights.data[
                 masks.dilate(mask > 1, 2).data
-            ] = args.lambda5
+            ] = self.args.lambda5
 
         similarity_weights *= similarity_binary_mask.float()
 
-        if torch.sum(similarity_weights[border_mask.data]).data[0] < args.eps:
+        if torch.sum(similarity_weights[border_mask.data]).data[0] < self.args.eps:
             print('Skipping all zero similarity weights (factor == 0).')
             visualize_outputs(prefix('zero_similarity_weights') + '{}',
                               {'src': input_src, 'target': input_target})
@@ -349,7 +272,7 @@ def main():
         similarity_mask_factor = 1
 
         # compute raw similarity error and masked/weighted similarity error
-        similarity_error_field = similarity(pred, target)
+        similarity_error_field = self.similarity(pred, target)
         weighted_similarity_error_field = (similarity_error_field
                                            * similarity_weights
                                            * similarity_mask_factor)
@@ -367,20 +290,20 @@ def main():
             # the smoothness penalty
             smoothness_weights[raw_mask.data > 1] = args.lambda3
         smoothness_weights = masks.contract(
-            smoothness_weights, args.mask_smooth_radius,
+            smoothness_weights, self.args.mask_smooth_radius,
             ceil=False, binary=False)
         smoothness_weights *= smoothness_binary_mask.float().detach()
         smoothness_weights = F.avg_pool2d(
-            smoothness_weights, 2*args.mask_smooth_radius+1, stride=1,
-            padding=args.mask_smooth_radius
+            smoothness_weights, 2*self.args.mask_smooth_radius+1, stride=1,
+            padding=self.args.mask_smooth_radius
         )**.5
         if raw_mask is not None:
             # reset the most significant smoothness penalty relaxation
-            smoothness_weights[raw_mask.data > 1] = args.lambda3
+            smoothness_weights[raw_mask.data > 1] = self.args.lambda3
         smoothness_weights = F.avg_pool2d(smoothness_weights, 5,
                                           stride=1, padding=2)
         if (torch.sum(smoothness_weights[smoothness_binary_mask.byte().data])
-                .data[0] < args.eps):
+                .data[0] < self.args.eps):
             print('Skipping all zero smoothness weights (factor == 0).')
             visualize_outputs(prefix('zero_smoothness_weights') + '{}',
                               {'src': input_src, 'target': input_target})
@@ -392,12 +315,12 @@ def main():
 
         smoothness_weights /= smoothness_mask_factor
         smoothness_weights = F.grid_sample(smoothness_weights.detach(), field)
-        if args.hm:
+        if self.args.hm:
             smoothness_weights = smoothness_weights.detach()
         smoothness_weights = smoothness_weights * border_mask.float().detach()
 
-        rfield = field - model.pyramid.get_identity_grid(field.size()[-2])
-        weighted_smoothness_error_field = smoothness(
+        rfield = field - self.model.pyramid.get_identity_grid(field.size()[-2])
+        weighted_smoothness_error_field = self.smoothness(
             [rfield], weights=smoothness_weights)
 
         if mask is not None:
@@ -429,6 +352,116 @@ def main():
             'smoothness_error_field': weighted_smoothness_error_field
         }
 
+    def forward(self, sample):
+        """Run single pair of slices
+        """
+        src, target = sample['src'], sample['tgt']
+
+        if (min(torch.var(src).data[0], torch.var(target).data[0])
+                < self.args.blank_var_threshold):
+            print("Skipping blank sections: ({}, {})."
+                  .format(torch.var(src).data[0],
+                          torch.var(target).data[0]))
+            visualize_outputs(prefix('blank_sections') + '{}',
+                              {'src': src, 'target': target})
+            continue
+
+        return run_pair(src, target)
+
+def main():
+    """Start training a net."""
+    args = parse_args()
+    name = args.name
+    trunclayer = args.trunc
+    skiplayers = args.skip
+    size = args.size
+    fall_time = args.fall_time
+    padding = args.padding
+    dim = args.dim + padding
+    kernel_size = args.k
+    log_path = 'out/' + name + '/'
+    log_file = log_path + name + '.log'
+    lr = args.lr
+    fine_tuning = args.fine_tuning
+    epoch = args.epoch
+    start_time = time.time()
+    history = []
+
+    # GPUs
+    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(args.gpu_ids)
+    normalizer = Normalizer(5 if args.hm else 2)
+
+    if args.mm:
+        paths = [args.hm_src, args.lm_src, args.vhm_src]
+    else:
+        if args.hm:
+            paths = [args.hm_src, args.vhm_src]
+        else:
+            paths = [args.lm_src]
+    h5_paths = [expanduser(x) for x in paths]
+    train_dataset = compile_dataset(h5_paths)
+    train_loader = DataLoader(
+        train_dataset, batch_size=args.batch_size, shuffle=True, 
+        num_workers=args.num_workers, pin_memory=True)
+
+    if not os.path.isdir(log_path):
+        os.makedirs(log_path)
+    if not os.path.isdir('pt'):
+        os.makedirs('pt')
+
+    with open(log_path + 'args.txt', 'a') as f:
+        f.write(str(args))
+
+    if args.state_archive is None:
+        model = PyramidTransformer(
+            size=size, dim=dim, skip=skiplayers, k=kernel_size).cuda()
+    else:
+        model = PyramidTransformer.load(
+            args.state_archive, height=size, dim=dim, skips=skiplayers,
+            k=kernel_size)
+        for p in model.parameters():
+            p.requires_grad = True
+        model.train(True)
+
+    model_wrapper = ModelWrapper(args, model)
+
+    def opt(layer):
+        params = []
+        if not args.pe_only and not args.enc_only:
+            if layer >= skiplayers and not fine_tuning:
+                print('Training only layer {}'.format(layer))
+                params.extend(model.pyramid.mlist[layer].parameters())
+            else:
+                print('Training all residual networks.')
+                params.extend(model.pyramid.mlist.parameters())
+
+            if fine_tuning or epoch < fall_time - 1:
+                print('Training all encoder parameters.')
+                params.extend(model.pyramid.enclist.parameters())
+                params.extend(model.pyramid.pe.parameters())
+            else:
+                print('Freezing encoder parameters.')
+        elif args.pe_only:
+            print('Training pre-encoder only.')
+            params.extend(model.pyramid.pe.parameters())
+        elif args.enc_only:
+            print('Training all encoder parameters only.')
+            params.extend(model.pyramid.enclist.parameters())
+            params.extend(model.pyramid.pe.parameters())
+
+        lr_ = lr if not fine_tuning else lr * args.fine_tuning_lr_factor
+        print(
+            'Building optimizer for layer {} (fine tuning: {}, lr: {})'
+            .format(layer, fine_tuning, lr_))
+        return torch.optim.Adam(
+            params, lr=lr_, weight_decay=0.0001 if args.pe_only else 0)
+
+    def prefix(tag=None):
+        if tag is None:
+            return '{}{}_e{}_t{}_'.format(log_path, name, epoch, t)
+        else:
+            return '{}{}_e{}_t{}_{}_'.format(log_path, name, epoch, t, tag)
+
     print('=========== BEGIN TRAIN LOOP ============')
     for epoch in range(args.epoch, args.num_epochs):
         print('Beginning training epoch: {}'.format(epoch))
@@ -455,21 +488,11 @@ def main():
                         fine_tuning = True
                         optimizer = opt(trunclayer)
 
-            ##################################
-            # RUN SINGLE PAIR OF SLICES ######
-            ##################################
-            src, target = sample['src'], sample['tgt']
+            if len(args.gpu_ids) > 1:
+                rf, rb = data_parallel(model_wrapper, sample)
+            else:
+                rf, rb = model_wrapper(sample)
 
-            if (min(torch.var(src).data[0], torch.var(target).data[0])
-                    < args.blank_var_threshold):
-                print("Skipping blank sections: ({}, {})."
-                      .format(torch.var(src).data[0],
-                              torch.var(target).data[0]))
-                visualize_outputs(prefix('blank_sections') + '{}',
-                                  {'src': src, 'target': target})
-                continue
-
-            rf, rb = run_pair(src, target)
             if rf is not None:
                 if not args.pe_only:
                     errs.append(rf['similarity_error'].data[0])
@@ -495,7 +518,8 @@ def main():
             ##################################
 
             optimizer.step()
-            model.zero_grad()
+            # model_wrapper.model.zero_grad()
+            optimizer.zero_grad()
 
             sample_idx += 1
 
@@ -506,7 +530,7 @@ def main():
                         (sum(contrast_errors) / len(contrast_errors))
                         if len(contrast_errors) > 0 else 0)
                     print('Mean contraster error: {}'.format(mean_contrast))
-                    torch.save(model.state_dict(), 'pt/' + name + '.pt')
+                    model_wrapper.save(name)
                 # Save some info
                 if len(errs) > 0:
                     mean_err_train = sum(errs) / len(errs)
@@ -522,7 +546,7 @@ def main():
                         time.time() - start_time,
                         mean_err_train + mean_penalty_train * smooth_factor,
                         mean_err_train, mean_penalty_train, mean_consensus))
-                    torch.save(model.state_dict(), 'pt/' + name + '.pt')
+                    model_wrapper.save(name)
 
                     print('Writing status to: {}'.format(log_file))
                     with open(log_file, 'a') as log:
@@ -684,6 +708,8 @@ def parse_args():
         help='Number of samples to be evaluated before each gradient update')
     parser.add_argument('--num_workers', type=int, default=1,
         help='Number of workers for the DataLoader')
+    parser.add_argument('--gpu_ids', type=str, default=['0'], nargs='+',
+        help='Specific GPUs to use during training')
     return parser.parse_args()
 
 
