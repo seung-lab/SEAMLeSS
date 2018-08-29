@@ -23,6 +23,7 @@ Todo:
 """
 
 import os
+from os.path import expanduser
 import time
 import torch
 import torch.nn.functional as F
@@ -68,22 +69,14 @@ def main():
     normalizer = Normalizer(5 if args.hm else 2)
 
     if args.mm:
-        train_dataset1 = StackDataset(os.path.expanduser(args.hm_src), mip=5)
-        train_dataset2 = StackDataset(os.path.expanduser(args.lm_src), mip=2)
-        train_dataset3 = StackDataset(os.path.expanduser(args.vhm_src), mip=8)
-        train_dataset = ConcatDataset(
-            [train_dataset1, train_dataset2, train_dataset3])
+        paths = [args.hm_src, args.lm_src, args.vhm_src]
     else:
         if args.hm:
-            train_dataset1 = StackDataset(
-                os.path.expanduser(args.hm_src), mip=5)
-            train_dataset2 = StackDataset(
-                os.path.expanduser(args.vhm_src), mip=8)
-            train_dataset = ConcatDataset([train_dataset1, train_dataset2])
+            paths = [args.hm_src, args.vhm_src]
         else:
-            train_dataset2 = StackDataset(  # dataset focused on extreme folds
-                os.path.expanduser(args.lm_src), mip=2)
-            train_dataset = ConcatDataset([train_dataset2])
+            paths = [args.lm_src]
+    h5_paths = [expanduser(x) for x in paths]
+    train_dataset = compile_dataset(h5_paths)
     train_loader = DataLoader(
         train_dataset, batch_size=1, shuffle=True, num_workers=5,
         pin_memory=True)
@@ -439,7 +432,15 @@ def main():
     print('=========== BEGIN TRAIN LOOP ============')
     for epoch in range(args.epoch, args.num_epochs):
         print('Beginning training epoch: {}'.format(epoch))
-        for t, tensor_dict in enumerate(train_loader):
+
+        sample_idx = 0
+        errs = []
+        penalties = []
+        consensus_list = []
+        contrast_errors = []
+        smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
+
+        for t, sample in enumerate(train_loader):
             if t == 0:
                 if epoch % fall_time == 0 and (trunclayer > 0
                                                or args.trunc == 0):
@@ -454,91 +455,90 @@ def main():
                         fine_tuning = True
                         optimizer = opt(trunclayer)
 
-            # Get inputs
-            X = Variable(tensor_dict['X'], requires_grad=False).cuda()
-            stacks, top, left = aug_stacks(
-                [X], padding=padding, jitter=not args.no_jitter,
-                jitter_displacement=2**(args.size-1))
-            X = stacks[0]
+            ##################################
+            # RUN SINGLE PAIR OF SLICES ######
+            ##################################
+            src, target = sample['src'], sample['tgt']
 
-            errs = []
-            penalties = []
-            consensus_list = []
-            contrast_errors = []
-            smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
-            for sample_idx, i in enumerate(range(1, X.size(1)-1)):
-                ##################################
-                # RUN SINGLE PAIR OF SLICES ######
-                ##################################
-                src, target = X[0, i], X[0, i+1]
+            if (min(torch.var(src).data[0], torch.var(target).data[0])
+                    < args.blank_var_threshold):
+                print("Skipping blank sections: ({}, {})."
+                      .format(torch.var(src).data[0],
+                              torch.var(target).data[0]))
+                visualize_outputs(prefix('blank_sections') + '{}',
+                                  {'src': src, 'target': target})
+                continue
 
-                if (min(torch.var(src).data[0], torch.var(target).data[0])
-                        < args.blank_var_threshold):
-                    print("Skipping blank sections: ({}, {})."
-                          .format(torch.var(src).data[0],
-                                  torch.var(target).data[0]))
-                    visualize_outputs(prefix('blank_sections') + '{}',
-                                      {'src': src, 'target': target})
-                    continue
+            rf, rb = run_pair(src, target)
+            if rf is not None:
+                if not args.pe_only:
+                    errs.append(rf['similarity_error'].data[0])
+                    penalties.append(rf['smoothness_error'].data[0])
+                    if args.lambda6 > 0 and 'consensus' in rf:
+                        consensus_list.append(rf['consensus'].data[0])
+                else:
+                    contrast_errors.append(rf['contrast_error'].data[0])
 
-                rf, rb = run_pair(src, target)
-                if rf is not None:
-                    if not args.pe_only:
-                        errs.append(rf['similarity_error'].data[0])
-                        penalties.append(rf['smoothness_error'].data[0])
-                        if args.lambda6 > 0 and 'consensus' in rf:
-                            consensus_list.append(rf['consensus'].data[0])
-                    else:
-                        contrast_errors.append(rf['contrast_error'].data[0])
+            if rb is not None:
+                if not args.pe_only:
+                    errs.append(rb['similarity_error'].data[0])
+                    penalties.append(rb['smoothness_error'].data[0])
+                    if args.lambda6 > 0 and 'consensus' in rb:
+                        consensus_list.append(rb['consensus'].data[0])
+                else:
+                    contrast_errors.append(rb['contrast_error'].data[0])
 
-                if rb is not None:
-                    if not args.pe_only:
-                        errs.append(rb['similarity_error'].data[0])
-                        penalties.append(rb['smoothness_error'].data[0])
-                        if args.lambda6 > 0 and 'consensus' in rb:
-                            consensus_list.append(rb['consensus'].data[0])
-                    else:
-                        contrast_errors.append(rb['contrast_error'].data[0])
+            if (sample_idx == 0 and t % args.vis_interval == 0
+                    and not args.pe_only):
+                visualize_outputs(prefix('forward') + '{}', rf)
+                visualize_outputs(prefix('backward') + '{}', rb)
+            ##################################
 
-                if (sample_idx == 0 and t % args.vis_interval == 0
-                        and not args.pe_only):
-                    visualize_outputs(prefix('forward') + '{}', rf)
-                    visualize_outputs(prefix('backward') + '{}', rb)
-                ##################################
+            optimizer.step()
+            model.zero_grad()
 
-                optimizer.step()
-                model.zero_grad()
+            sample_idx += 1
 
-            if args.pe_only:
-                mean_contrast = (
-                    (sum(contrast_errors) / len(contrast_errors))
-                    if len(contrast_errors) > 0 else 0)
-                print('Mean contraster error: {}'.format(mean_contrast))
-                torch.save(model.state_dict(), 'pt/' + name + '.pt')
-            # Save some info
-            if len(errs) > 0:
-                mean_err_train = sum(errs) / len(errs)
-                mean_penalty_train = sum(penalties) / len(penalties)
-                mean_consensus = (
-                    (sum(consensus_list) / len(consensus_list))
-                    if len(consensus_list) > 0 else 0)
-                print(t, smooth_factor, trunclayer,
-                      mean_err_train + args.lambda1
-                      * mean_penalty_train * smooth_factor,
-                      mean_err_train, mean_penalty_train, mean_consensus)
-                history.append((
-                    time.time() - start_time,
-                    mean_err_train + mean_penalty_train * smooth_factor,
-                    mean_err_train, mean_penalty_train, mean_consensus))
-                torch.save(model.state_dict(), 'pt/' + name + '.pt')
+            if t % 10:
 
-                print('Writing status to: {}'.format(log_file))
-                with open(log_file, 'a') as log:
-                    for tr in history:
-                        for val in tr:
-                            log.write(str(val) + ', ')
-                        log.write('\n')
-                    history = []
+                if args.pe_only:
+                    mean_contrast = (
+                        (sum(contrast_errors) / len(contrast_errors))
+                        if len(contrast_errors) > 0 else 0)
+                    print('Mean contraster error: {}'.format(mean_contrast))
+                    torch.save(model.state_dict(), 'pt/' + name + '.pt')
+                # Save some info
+                if len(errs) > 0:
+                    mean_err_train = sum(errs) / len(errs)
+                    mean_penalty_train = sum(penalties) / len(penalties)
+                    mean_consensus = (
+                        (sum(consensus_list) / len(consensus_list))
+                        if len(consensus_list) > 0 else 0)
+                    print(t, smooth_factor, trunclayer,
+                          mean_err_train + args.lambda1
+                          * mean_penalty_train * smooth_factor,
+                          mean_err_train, mean_penalty_train, mean_consensus)
+                    history.append((
+                        time.time() - start_time,
+                        mean_err_train + mean_penalty_train * smooth_factor,
+                        mean_err_train, mean_penalty_train, mean_consensus))
+                    torch.save(model.state_dict(), 'pt/' + name + '.pt')
+
+                    print('Writing status to: {}'.format(log_file))
+                    with open(log_file, 'a') as log:
+                        for tr in history:
+                            for val in tr:
+                                log.write(str(val) + ', ')
+                            log.write('\n')
+                        history = []
+
+                sample_idx = 0
+                errs = []
+                penalties = []
+                consensus_list = []
+                contrast_errors = []
+                smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
+
             else:
                 print(
                     "Skipping writing status for stack with no valid slices.")
