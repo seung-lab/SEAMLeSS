@@ -65,17 +65,6 @@ def main():
     smoothness = smoothness_penalty(args.penalty)
     history = []
 
-    # setup the defect detector
-    if args.mm or args.hm:
-        hm_defect_detector = DefectDetector(
-            torch.load(args.hm_defect_net).cpu().cuda(),
-            major_dilation_radius=args.mask_neighborhood_radius,
-            sigmoid_threshold = 0.5 if args.hm else 0.4)
-    if args.mm or (not args.hm):
-        lm_defect_detector = DefectDetector(
-            torch.load(args.lm_defect_net).cpu().cuda(),
-            major_dilation_radius=args.mask_neighborhood_radius,
-            sigmoid_threshold = 0.5 if args.hm else 0.4)
     normalizer = Normalizer(5 if args.hm else 2)
 
     if args.mm:
@@ -467,14 +456,10 @@ def main():
 
             # Get inputs
             X = Variable(tensor_dict['X'], requires_grad=False).cuda()
-            this_mip = tensor_dict['mip'][0]
-            mask_stack = (
-                lm_defect_detector.masks_from_stack(X) if this_mip == 2
-                else hm_defect_detector.masks_from_stack(X))
             stacks, top, left = aug_stacks(
-                [X, mask_stack], padding=padding, jitter=not args.no_jitter,
+                [X], padding=padding, jitter=not args.no_jitter,
                 jitter_displacement=2**(args.size-1))
-            X, mask_stack = stacks[0], stacks[1]
+            X = stacks[0]
 
             errs = []
             penalties = []
@@ -486,9 +471,6 @@ def main():
                 # RUN SINGLE PAIR OF SLICES ######
                 ##################################
                 src, target = X[0, i], X[0, i+1]
-                src_mask, target_mask = (
-                    (mask_stack[0, i], mask_stack[0, i+1]) if trunclayer == 0
-                    else (None, None))
 
                 if (min(torch.var(src).data[0], torch.var(target).data[0])
                         < args.blank_var_threshold):
@@ -499,7 +481,7 @@ def main():
                                       {'src': src, 'target': target})
                     continue
 
-                rf, rb = run_pair(src, target, src_mask, target_mask)
+                rf, rb = run_pair(src, target)
                 if rf is not None:
                     if not args.pe_only:
                         errs.append(rf['similarity_error'].data[0])
