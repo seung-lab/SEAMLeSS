@@ -26,7 +26,7 @@ class Aligner:
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
                flip_average=True, run_pairs=False, write_intermediaries=False,
-               upsample_residuals=False):
+               upsample_residuals=False, old_upsample=False):
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip
@@ -75,7 +75,7 @@ class Aligner:
     self.x_field_ng_paths = [os.path.join(r, 'x') for r in self.field_ng_paths]
     self.y_field_ng_paths = [os.path.join(r, 'y') for r in self.field_ng_paths]
 
-    self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip, size=size, flip_average=flip_average)
+    self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip, size=size, flip_average=flip_average, old_upsample=old_upsample)
     
     self.write_intermediaries = write_intermediaries
     self.upsample_residuals = upsample_residuals
@@ -350,8 +350,8 @@ class Aligner:
         
     
   def abs_to_rel_residual(self, abs_residual, patch, mip):
-    x_fraction = patch.x_size(mip=0) * 0.5
-    y_fraction = patch.y_size(mip=0) * 0.5
+    x_fraction = (patch.x_size(mip=0) - 1) * 0.5
+    y_fraction = (patch.y_size(mip=0) - 1) * 0.5
 
     rel_residual = deepcopy(abs_residual)
     rel_residual[0, :, :, 0] /= x_fraction

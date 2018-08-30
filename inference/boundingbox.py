@@ -142,5 +142,5 @@ class BoundingBox:
     result = np.expand_dims(result, 0)
     return result
 
-  def __str__(self, mip):
+  def __str__(self, mip=0):
     return "{}, {}".format(self.x_range(mip), self.y_range(mip))
