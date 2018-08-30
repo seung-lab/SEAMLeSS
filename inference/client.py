@@ -37,6 +37,7 @@ parser.add_argument('--write_intermediaries',
 parser.add_argument('--upsample_residuals', 
   help='upsample residuals & cumulative residuals when writing intermediaries; requires --write_intermediaries flag', 
   action='store_true')
+parser.add_argument('--old_upsample', help='revert to the old pytorch upsampling (using align_corners=True)', action='store_true')
 args = parser.parse_args()
 
 out_name = args.out_name
@@ -82,7 +83,7 @@ a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
             num_targets=num_targets, flip_average=not args.no_flip_average, 
             run_pairs=args.run_pairs, 
             write_intermediaries=args.write_intermediaries, 
-            upsample_residuals=args.upsample_residuals)
+            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample)
 
 bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=max_mip)
 

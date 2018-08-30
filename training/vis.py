@@ -17,7 +17,7 @@ def distortion_lines(field, spacing=4, thickness=2):
     for idx in range(thickness):
         grid[:,:,:,idx::spacing] = 0
         grid[:,:,idx::spacing,:] = 0
-    return grid, F.grid_sample(grid, field).data.cpu().numpy()
+    return grid, F.grid_sample(grid, field, mode='bilinear').data.cpu().numpy()
 
 def graph(series, fname):
     plt.plot(series)

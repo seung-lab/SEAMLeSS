@@ -47,7 +47,6 @@ from normalizer import Normalizer
 class ModelWrapper(nn.Module):
     """Abstraction to allow for multi-GPU training
     """
-
     def __init__(self, args, model):
         super(ModelWrapper, self).__init__()
         self.args = args
@@ -119,8 +118,10 @@ class ModelWrapper(nn.Module):
         target = reverse_dim(reverse_dim(target, 0), 1)
         input_src = reverse_dim(reverse_dim(input_src, 0), 1)
         input_target = reverse_dim(reverse_dim(input_target, 0), 1)
-        src_mask = reverse_dim(reverse_dim(src_mask, 0), 1)
-        target_mask = reverse_dim(reverse_dim(target_mask, 0), 1)
+        if src_mask is not None:
+            src_mask = reverse_dim(reverse_dim(src_mask, 0), 1)
+        if target_mask is not None:
+            target_mask = reverse_dim(reverse_dim(target_mask, 0), 1)
         src_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
                             for m in src_cutout_masks]
         target_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
@@ -143,11 +144,12 @@ class ModelWrapper(nn.Module):
         ##################################
         if (not self.args.pe_only and self.args.lambda6 > 0 and rf is not None
                 and rb is not None):
+            smaller_dim = dim // (2**trunclayer)
             zmf = (rf['pred'] != 0).float() * (rf['input_target'] != 0).float()
-            zmf = (zmf.detach().unsqueeze(0).view(1, 1, self.dim, self.dim)
+            zmf = (zmf.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
                    .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
             zmb = (rb['pred'] != 0).float() * (rb['input_target'] != 0).float()
-            zmb = (zmb.detach().unsqueeze(0).view(1, 1, self.dim, self.dim)
+            zmb = (zmb.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
                    .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
             rffield, rbfield = rf['rfield'] * zmf, rb['rfield'] * zmb
             rbfield_reversed = -reverse_dim(reverse_dim(rbfield, 1), 2)
@@ -175,8 +177,9 @@ class ModelWrapper(nn.Module):
             return None
 
         # if we're just training the pre-encoder, no need to do everything
-        if self.args.pe_only:
-            contrasted_stack = self.model.apply(input_src, input_target, pe=True)
+        if args.pe_only:
+            contrasted_stack = model.apply(input_src, input_target, 
+                                           use_preencoder=args.pe)
             pred = contrasted_stack.squeeze()
             y = torch.cat((src.unsqueeze(0), target.squeeze().unsqueeze(0)), 0)
             contrast_err = self.similarity(pred, y)
@@ -193,26 +196,29 @@ class ModelWrapper(nn.Module):
                                                  contrast_err_target), 0))
             return {'contrast_error': contrast_err}
 
-        pred, field, residuals = self.model.apply(input_src, input_target,
-                                             self.trunclayer)
+        pred, field, residuals = model.apply(input_src, input_target,
+                                             trunclayer, use_preencoder=args.pe)
         # resample tensors that are in our source coordinate space with our
         # new field prediction to move them into target coordinate space so
         # we can compare things fairly
-        pred = F.grid_sample(
-            downsample(self.trunclayer)(src.unsqueeze(0).unsqueeze(0)), field)
-        raw_mask = mask
+        src = downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0))
+        target = downsample(trunclayer)(target.unsqueeze(0).unsqueeze(0))
+        pred = F.grid_sample(src, field, mode='bilinear')
+        raw_mask = None
         if mask is not None:
-            mask = torch.ceil(
-                F.grid_sample(
-                    downsample(self.trunclayer)(mask.unsqueeze(0).unsqueeze(0)),
-                    field))
+            mask = downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0))
+            raw_mask = mask
+            mask = torch.ceil(F.grid_sample(mask, field, mode='bilinear', padding_mode='border'))
         if target_mask is not None:
-            target_mask = masks.dilate(
-                target_mask.unsqueeze(0).unsqueeze(0), 1, binary=False)
+            target_mask = downsample(trunclayer)(target_mask.unsqueeze(0).unsqueeze(0))
+            target_mask = masks.dilate(target_mask, 1, binary=False)
         if len(src_cutout_masks) > 0:
             src_cutout_masks = [
-                torch.ceil(F.grid_sample(m.float(), field)).byte()
+                torch.ceil(F.grid_sample(m.float(), field, mode='bilinear', padding_mode='border')).byte()
                 for m in src_cutout_masks]
+
+        if len(target_cutout_masks) > 0:
+             target_cutout_masks = [torch.ceil(downsample(trunclayer)(m.float())).byte() for m in target_cutout_masks]
 
         # first we'll build a binary mask to completely ignore
         # 'irrelevant' pixels
@@ -286,10 +292,10 @@ class ModelWrapper(nn.Module):
         if raw_mask is not None:
             # everywhere we have non-standard smoothness, slightly reduce
             # the smoothness penalty
-            smoothness_weights[raw_mask.data > 0] = args.lambda2
+            smoothness_weights[raw_mask > 0] = args.lambda2
             # on top of cracks and folds only, significantly reduce
             # the smoothness penalty
-            smoothness_weights[raw_mask.data > 1] = args.lambda3
+            smoothness_weights[raw_mask > 1] = args.lambda3
         smoothness_weights = masks.contract(
             smoothness_weights, self.args.mask_smooth_radius,
             ceil=False, binary=False)
@@ -300,7 +306,7 @@ class ModelWrapper(nn.Module):
         )**.5
         if raw_mask is not None:
             # reset the most significant smoothness penalty relaxation
-            smoothness_weights[raw_mask.data > 1] = self.args.lambda3
+            smoothness_weights[raw_mask > 1] = args.lambda3
         smoothness_weights = F.avg_pool2d(smoothness_weights, 5,
                                           stride=1, padding=2)
         if (torch.sum(smoothness_weights[smoothness_binary_mask.byte().data])
@@ -315,8 +321,8 @@ class ModelWrapper(nn.Module):
         smoothness_mask_factor = 1
 
         smoothness_weights /= smoothness_mask_factor
-        smoothness_weights = F.grid_sample(smoothness_weights.detach(), field)
-        if self.args.hm:
+        smoothness_weights = F.grid_sample(smoothness_weights.detach(), field, mode='bilinear', padding_mode='border')
+        if args.hm:
             smoothness_weights = smoothness_weights.detach()
         smoothness_weights = smoothness_weights * border_mask.float().detach()
 
@@ -333,8 +339,8 @@ class ModelWrapper(nn.Module):
         return {
             'src': src,
             'target': target,
-            'input_src': input_src.unsqueeze(0).unsqueeze(0),
-            'input_target': input_target.unsqueeze(0).unsqueeze(0),
+            'input_src': downsample(trunclayer)(input_src.unsqueeze(0).unsqueeze(0)),
+            'input_target': downsample(trunclayer)(input_target.unsqueeze(0).unsqueeze(0)),
             'field': field,
             'rfield': rfield,
             'residuals': residuals,
@@ -694,7 +700,11 @@ def parse_args():
         help='factor by which to reduce learning rate during fine tuning',
         type=float, default=0.2)
     parser.add_argument(
-        '--pe_only', action='store_true')
+        '--pe', action='store_true', 
+        help="Add a preencoder to preprocess the inputs")
+    parser.add_argument(
+        '--pe_only', action='store_true',
+        help="Only train the preencoder.")
     parser.add_argument(
         '--enc_only', action='store_true')
     parser.add_argument(

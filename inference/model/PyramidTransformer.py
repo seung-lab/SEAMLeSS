@@ -116,7 +116,7 @@ class EPyramid(nn.Module):
             self.identities[dim] = I.cuda()
         return self.identities[dim]
 
-    def __init__(self, size, dim, skip, topskips, k, num_targets=1, train_size=1280):
+    def __init__(self, size, dim, skip, topskips, k, num_targets=1, train_size=1280, old_upsample=False):
         super(EPyramid, self).__init__()
         rdim = dim // (2 ** (size - 1 - topskips))
         print('Constructing EPyramid with size {} ({} downsamples, input size {})...'.format(size, size-1, dim))
@@ -126,10 +126,11 @@ class EPyramid(nn.Module):
         self.skip = skip
         self.topskips = topskips
         self.size = size
+        self.dim = dim
         enc_outfms = [fm_0 + fm_coef * idx for idx in range(size)]
         enc_infms = [1] + enc_outfms[:-1]
         self.mlist = nn.ModuleList([G(k=k, infm=enc_outfms[level]*2) for level in range(size)])
-        self.up = nn.Upsample(scale_factor=2, mode='bilinear')
+        self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=old_upsample)
         self.down = nn.MaxPool2d(2)
         self.enclist = nn.ModuleList([Enc(infm=infm, outfm=outfm) for infm, outfm in zip(enc_infms, enc_outfms)])
         self.I = self.get_identity_grid(rdim)
@@ -160,29 +161,45 @@ class EPyramid(nn.Module):
 
         residuals = [self.I]
         cumulative_residuals = [self.I]
-        field_so_far = self.I
+        field_so_far = self.I * 0.0 # zero field
         for i in range(self.size - 1 - self.topskips, target_level - 1, -1):
             if i >= self.skip:
+                curr_dim = self.dim // (2 ** i)
+                field_so_far += self.get_identity_grid(curr_dim)
                 inputs_i = encodings[i]
                 resampled_source = grid_sample(inputs_i[:,0:inputs_i.size(1)//2], field_so_far, mode='bilinear')
                 new_input_i = torch.cat((resampled_source, inputs_i[:,inputs_i.size(1)//2:]), 1)
-                factor = ((self.TRAIN_SIZE / (2. ** i)) / new_input_i.size()[-1])
+                factor = ((self.TRAIN_SIZE / (2. ** i)) / (new_input_i.size()[-1] - 1))
                 rfield = self.mlist[i](new_input_i) * factor
                 residuals.append(rfield)
-                field_so_far = rfield + field_so_far
+                field_so_far = grid_sample(
+                    field_so_far.permute(0,3,1,2), 
+                    rfield + self.get_identity_grid(self.dim // (2 ** i)),
+                    mode='bilinear', padding_mode='border').permute(0,2,3,1)
+                field_so_far -= self.get_identity_grid(curr_dim)
                 cumulative_residuals.append(field_so_far - self.get_identity_grid(rfield.size(2)))
             if i != target_level:
-                field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
+                up_field = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
+                # account for shifting locations of -1 and +1 in upsampled field
+                up_field *= (field_so_far.shape[2]-1.0)/field_so_far.shape[2]
+                up_field /= (up_field.shape[2]-1.0)/up_field.shape[2]
+                field_so_far = up_field
+        curr_dim = self.dim // (2 ** target_level)
+        field_so_far += self.get_identity_grid(curr_dim)
         return field_so_far, residuals, encodings, cumulative_residuals
 
 class PyramidTransformer(nn.Module):
-    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, student=False, num_targets=1):
+    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, student=False, num_targets=1, old_upsample=False):
         super(PyramidTransformer, self).__init__()
         if not student:
-            self.pyramid = EPyramid(size, dim, skip, topskips, k, num_targets)
+            self.pyramid = EPyramid(size, dim, skip, topskips, k, num_targets, old_upsample=old_upsample)
         else:
             assert False # TODO: add student network
 
+    @staticmethod
+    def student(height, dim, skips, topskips, k):
+        return PyramidTransformer(height, dim, skips, topskips, k, student=True).cuda()
+    
     def open_layer(self):
         if self.pyramid.skip > 0:
             self.pyramid.skip -= 1
@@ -197,16 +214,19 @@ class PyramidTransformer(nn.Module):
         for g in self.pyramid.mlist:
             g.requires_grad = True
 
-    def forward(self, x, idx=0, vis=None):
-        field, residuals, encodings, cumulative_residuals = self.pyramid(x, idx, vis)
-        return grid_sample(x[:,0:1,:,:], field, mode='nearest'), field, residuals, encodings, cumulative_residuals
+    def forward(self, x, idx=0, vis=None, use_preencoder=False):
+        if use_preencoder == "only":
+            # only run the preencoder and return the results
+            return self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
+        field, residuals, encodings, cumulative_residuals = self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
+        return grid_sample(x[:,0:1,:,:], field, mode='bilinear'), field, residuals, encodings, cumulative_residuals
 
     ################################################################
     # Begin Sergiy API
     ################################################################
 
     @staticmethod
-    def load(archive_path=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True, num_targets=1):
+    def load(archive_path=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True, num_targets=1, old_upsample=False):
         """
         Builds and load a model with the specified architecture from
         an archive.
@@ -221,7 +241,7 @@ class PyramidTransformer(nn.Module):
         """
         assert archive_path is not None, "Must provide an archive"
 
-        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, topskips=topskips, num_targets=num_targets)
+        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, topskips=topskips, num_targets=num_targets, old_upsample=old_upsample)
         if cuda:
             model = model.cuda()
         for p in model.parameters():
@@ -234,7 +254,7 @@ class PyramidTransformer(nn.Module):
         print('Successfully loaded model state.')
         return model
 
-    def apply(self, source, target, skip=0, vis=None):
+    def apply(self, source, target, skip=0, vis=None, use_preencoder=False):
         """
         Applies the model to an input. Inputs (source and target) are
         expected to be of shape (dim // (2 ** skip), dim // (2 ** skip)),
@@ -248,4 +268,4 @@ class PyramidTransformer(nn.Module):
         source = source.unsqueeze(0)
         if len(target.size()) == 2:
             target = target.unsqueeze(0)
-        return self.forward(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis)
+        return self(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis, use_preencoder=use_preencoder)
