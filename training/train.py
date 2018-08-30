@@ -34,7 +34,7 @@ import argparse
 import random
 
 import masks
-from stack_dataset import StackDataset
+from stack_dataset import compile_dataset 
 from pyramid import PyramidTransformer
 from defect_net import *
 from defect_detector import DefectDetector
@@ -49,11 +49,12 @@ class ModelWrapper(nn.Module):
     """
 
     def __init__(self, args, model):
+        super(ModelWrapper, self).__init__()
         self.args = args
         self.model = model
         self.trunclayer = args.trunc
-        self.dim = args.dim + self.padding
         self.padding = args.padding
+        self.dim = args.dim + self.padding
         self.similarity = similarity_score(should_reduce=False)
         self.smoothness = smoothness_penalty(args.penalty)
 
@@ -357,15 +358,6 @@ class ModelWrapper(nn.Module):
         """
         src, target = sample['src'], sample['tgt']
 
-        if (min(torch.var(src).data[0], torch.var(target).data[0])
-                < self.args.blank_var_threshold):
-            print("Skipping blank sections: ({}, {})."
-                  .format(torch.var(src).data[0],
-                          torch.var(target).data[0]))
-            visualize_outputs(prefix('blank_sections') + '{}',
-                              {'src': src, 'target': target})
-            continue
-
         return run_pair(src, target)
 
 def main():
@@ -389,7 +381,6 @@ def main():
 
     # GPUs
     os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(args.gpu_ids)
-    normalizer = Normalizer(5 if args.hm else 2)
 
     if args.mm:
         paths = [args.hm_src, args.lm_src, args.vhm_src]
@@ -487,6 +478,18 @@ def main():
                     if not fine_tuning:
                         fine_tuning = True
                         optimizer = opt(trunclayer)
+
+            # Skip training if either src or target is empty
+            src, target = sample['src'], sample['tgt']
+            if (min(src.data[0], target.data[0])
+                    < self.args.blank_var_threshold):
+                print("Skipping blank sections: ({}, {})."
+                      .format(src.data[0],
+                              target.data[0]))
+                visualize_outputs(prefix('blank_sections') + '{}',
+                                  {'src': src, 'target': target})
+                continue
+
 
             if len(args.gpu_ids) > 1:
                 rf, rb = data_parallel(model_wrapper, sample)

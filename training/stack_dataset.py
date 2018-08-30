@@ -4,8 +4,10 @@ with warnings.catch_warnings():
     import h5py
 
 import torch
-import numpy as np
+from torch.autograd import Variable
 from torch.utils.data import Dataset, ConcatDataset
+# from normalizer import Normalizer
+import numpy as np
 
 def compile_dataset(h5_paths):
     datasets = []
@@ -18,9 +20,9 @@ def h5_to_dataset_list(h5_path):
     """
     stacks = []
     h5f = h5py.File(h5_path, 'r')
-    for k in h5py.keys:
-        d = h5py[k]
-        for i in range(d.shape[0])
+    for k in h5f.keys():
+        d = h5f[k]
+        for i in range(d.shape[0]):
             stacks.append(StackDataset(d[i:i+1]))
     return stacks
 
@@ -33,6 +35,7 @@ class StackDataset(Dataset):
 
     def __init__(self, stack):
         self.stack = stack
+        # self.normalizer = Normalizer(2)
 
     def __len__(self):
         # N-1 consecutive image pairs
@@ -40,10 +43,13 @@ class StackDataset(Dataset):
 
     def toFloatTensor(self, image):
         t = torch.FloatTensor(image) / 255.
-        return Variable(t, requires_grad=False).cuda()
+        # return Variable(t, requires_grad=False).cuda() 
+        return t 
 
     def __getitem__(self, k):
-        src = self.toFloatTensor(self.stack[k])
-        tgt = self.toFloatTensor(self.stack[k+1])
+        # print('Get {0} / {1}'.format(k, self.stack.shape))
+        src = self.toFloatTensor(self.stack[:, k:k+1, :, :])
+        tgt = self.toFloatTensor(self.stack[:, k+1:k+2, :, :])
+        print('sizes, src {0}; tgt {1}'.format(src.size(), tgt.size()))
         X = {'src': src, 'tgt': tgt}
         return X
