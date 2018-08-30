@@ -14,17 +14,18 @@ class G(nn.Module):
     def __init__(self, k=7, f=nn.LeakyReLU(inplace=True), infm=2):
         super(G, self).__init__()
         p = (k-1)//2
-        self.conv1 = nn.Conv2d(infm, 32, k, padding=p)
-        self.conv2 = nn.Conv2d(32, 64, k, padding=p)
-        self.conv3 = nn.Conv2d(64, 32, k, padding=p)
-        self.conv4 = nn.Conv2d(32, 16, k, padding=p)
-        self.conv5 = nn.Conv2d(16, 2, k, padding=p)
+        self.pad = nn.ReplicationPad2d(p)
+        self.conv1 = nn.Conv2d(infm, 32, k)
+        self.conv2 = nn.Conv2d(32, 64, k)
+        self.conv3 = nn.Conv2d(64, 32, k)
+        self.conv4 = nn.Conv2d(32, 16, k)
+        self.conv5 = nn.Conv2d(16, 2, k)
         self.tanh = nn.Tanh()
-        self.seq = nn.Sequential(self.conv1, f,
-                                 self.conv2, f,
-                                 self.conv3, f,
-                                 self.conv4, f,
-                                 self.conv5, self.tanh)
+        self.seq = nn.Sequential(self.pad, self.conv1, f,
+                                 self.pad, self.conv2, f,
+                                 self.pad, self.conv3, f,
+                                 self.pad, self.conv4, f,
+                                 self.pad, self.conv5, self.tanh)
         self.initc(self.conv1)
         self.initc(self.conv2)
         self.initc(self.conv3)
@@ -51,8 +52,9 @@ class Enc(nn.Module):
         if not outfm:
             outfm = infm
         self.f = nn.LeakyReLU(inplace=True)
-        self.c1 = nn.Conv2d(infm, outfm, 3, padding=1)
-        self.c2 = nn.Conv2d(outfm, outfm, 3, padding=1)
+        self.pad = nn.ReflectionPad2d(1)
+        self.c1 = nn.Conv2d(infm, outfm, 3)
+        self.c2 = nn.Conv2d(outfm, outfm, 3)
         self.initc(self.c1)
         self.initc(self.c2)
         self.infm = infm
@@ -62,9 +64,9 @@ class Enc(nn.Module):
         ch = x.size(1)
         ngroups = ch // self.infm
         ingroup_size = ch//ngroups
-        input_groups = [self.f(self.c1(x[:,idx*ingroup_size:(idx+1)*ingroup_size])) for idx in range(ngroups)]
+        input_groups = [self.f(self.c1(self.pad(x[:,idx*ingroup_size:(idx+1)*ingroup_size]))) for idx in range(ngroups)]
         out1 = torch.cat(input_groups, 1)
-        input_groups2 = [self.f(self.c2(out1[:,idx*self.outfm:(idx+1)*self.outfm])) for idx in range(ngroups)]
+        input_groups2 = [self.f(self.c2(self.pad(out1[:,idx*self.outfm:(idx+1)*self.outfm]))) for idx in range(ngroups)]
         out2 = torch.cat(input_groups2, 1)
         
         if vis is not None:
