@@ -49,31 +49,16 @@ class Aligner:
 
     self.enc_ng_paths   = [os.path.join(dst_ng_path, 'enc/{}'.format(i))
                                                      for i in range(self.process_high_mip + 10)] #TODO
-
     self.res_ng_paths   = [os.path.join(dst_ng_path, 'vec/{}'.format(i))
                                                     for i in range(self.process_high_mip + 10)] #TODO
-    self.x_res_ng_paths = [os.path.join(r, 'x') for r in self.res_ng_paths]
-    self.y_res_ng_paths = [os.path.join(r, 'y') for r in self.res_ng_paths]
-
     self.cumres_ng_paths   = [os.path.join(dst_ng_path, 'cumulative_vec/{}'.format(i))
                                                     for i in range(self.process_high_mip + 10)] #TODO
-    self.x_cumres_ng_paths = [os.path.join(r, 'x') for r in self.cumres_ng_paths]
-    self.y_cumres_ng_paths = [os.path.join(r, 'y') for r in self.cumres_ng_paths]
-
     self.resup_ng_paths   = [os.path.join(dst_ng_path, 'vec_up/{}'.format(i))
                                                     for i in range(self.process_high_mip + 10)] #TODO
-    self.x_resup_ng_paths = [os.path.join(r, 'x') for r in self.resup_ng_paths]
-    self.y_resup_ng_paths = [os.path.join(r, 'y') for r in self.resup_ng_paths]
-
     self.cumresup_ng_paths   = [os.path.join(dst_ng_path, 'cumulative_vec_up/{}'.format(i))
                                                     for i in range(self.process_high_mip + 10)] #TODO
-    self.x_cumresup_ng_paths = [os.path.join(r, 'x') for r in self.cumresup_ng_paths]
-    self.y_cumresup_ng_paths = [os.path.join(r, 'y') for r in self.cumresup_ng_paths]
-
     self.field_ng_paths   = [os.path.join(dst_ng_path, 'field/{}'.format(i))
                                                     for i in range(self.process_high_mip + 10)] #TODO
-    self.x_field_ng_paths = [os.path.join(r, 'x') for r in self.field_ng_paths]
-    self.y_field_ng_paths = [os.path.join(r, 'y') for r in self.field_ng_paths]
 
     self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip, size=size, flip_average=flip_average)
     
@@ -160,6 +145,7 @@ class Aligner:
     vec_info["data_type"] = "float32"
     for i in range(len(vec_info["scales"])):
       vec_info["scales"][i]["chunk_sizes"][0][2] = 1
+    vec_info['num_channels'] = 2      
 
     enc_dict = {x: 6*(x-self.process_low_mip)+12 for x in 
                     range(self.process_low_mip, self.process_high_mip+1)} 
@@ -171,16 +157,11 @@ class Aligner:
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
 
-      cv(self.x_field_ng_paths[i], info=vec_info).commit_info()
-      cv(self.y_field_ng_paths[i], info=vec_info).commit_info()
-      cv(self.x_res_ng_paths[i], info=vec_info).commit_info()
-      cv(self.y_res_ng_paths[i], info=vec_info).commit_info()
-      cv(self.x_cumres_ng_paths[i], info=vec_info).commit_info()
-      cv(self.y_cumres_ng_paths[i], info=vec_info).commit_info()
-      cv(self.x_resup_ng_paths[i], info=vec_info).commit_info()
-      cv(self.y_resup_ng_paths[i], info=vec_info).commit_info()
-      cv(self.x_cumresup_ng_paths[i], info=vec_info).commit_info()
-      cv(self.y_cumresup_ng_paths[i], info=vec_info).commit_info()
+      cv(self.field_ng_paths[i], info=vec_info).commit_info()
+      cv(self.res_ng_paths[i], info=vec_info).commit_info()
+      cv(self.cumres_ng_paths[i], info=vec_info).commit_info()
+      cv(self.resup_ng_paths[i], info=vec_info).commit_info()
+      cv(self.cumresup_ng_paths[i], info=vec_info).commit_info()
 
       if i in enc_dict.keys():
         enc_info = deepcopy(vec_info)
@@ -300,30 +281,25 @@ class Aligner:
     #                        crop_amount=self.crop_amount)
 
     # save the final vector field for warping
-    self.save_vector_patch(field, self.x_field_ng_paths[mip], self.y_field_ng_paths[mip], source_z, out_patch_bbox, mip)
+    self.save_vector_patch(field, self.field_ng_paths[mip], source_z, out_patch_bbox, mip)
 
     if self.write_intermediaries:
   
       mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
       for res_mip, res, cumres in zip(mip_range, residuals[1:], cum_residuals[1:]):
           crop = self.crop_amount // 2**(res_mip - self.process_low_mip)   
-          self.save_residual_patch(res, crop, self.x_res_ng_paths[res_mip], 
-                                   self.y_res_ng_paths[res_mip], source_z, 
-                                   out_patch_bbox, res_mip)
-          self.save_residual_patch(cumres, crop, self.x_cumres_ng_paths[res_mip], 
-                                   self.y_cumres_ng_paths[res_mip], source_z, 
-                                   out_patch_bbox, res_mip)
+          self.save_residual_patch(res, crop, self.res_ng_paths[res_mip], 
+                                   source_z, out_patch_bbox, res_mip)
+          self.save_residual_patch(cumres, crop, self.cumres_ng_paths[res_mip], 
+                                   source_z, out_patch_bbox, res_mip)
           if self.upsample_residuals:
             crop = self.crop_amount   
             res = self.scale_residuals(res, res_mip, self.process_low_mip)
-            self.save_residual_patch(res, crop, self.x_resup_ng_paths[res_mip], 
-                                     self.y_resup_ng_paths[res_mip], source_z, 
-                                     out_patch_bbox, self.process_low_mip)
+            self.save_residual_patch(res, crop, self.resup_ng_paths[res_mip], 
+                                 source_z, out_patch_bbox, self.process_low_mip)
             cumres = self.scale_residuals(cumres, res_mip, self.process_low_mip)
-            self.save_residual_patch(cumres, crop, self.x_cumresup_ng_paths[res_mip], 
-                                     self.y_cumresup_ng_paths[res_mip], source_z, 
-                                     out_patch_bbox, self.process_low_mip)
-
+            self.save_residual_patch(cumres, crop, self.cumresup_ng_paths[res_mip], 
+                                 source_z, out_patch_bbox, self.process_low_mip)
 
  
       # print('encoding size: {0}'.format(len(encodings)))
@@ -411,26 +387,19 @@ class Aligner:
       res = up(res.permute(0,3,1,2)).permute(0,2,3,1)
     return res
 
-  def save_residual_patch(self, res, crop, x_path, y_path, z, bbox, mip):
+  def save_residual_patch(self, res, crop, path, z, bbox, mip):
     print ("Saving residual patch {} at MIP {}".format(bbox.__str__(mip=0), mip))
     v = res * (res.shape[-2] / 2) * (2**mip)
     v = v[:,crop:-crop, crop:-crop,:]
     v = v.data.cpu().numpy() 
-    self.save_vector_patch(v, x_path, y_path, z, bbox, mip)
+    self.save_vector_patch(v, path, z, bbox, mip)
 
   def save_vector_patch(self, flow, x_path, y_path, z, bbox, mip):
-    x_res = flow[0, :, :, 0, np.newaxis]
-    y_res = flow[0, :, :, 1, np.newaxis]
-
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-
-    cv(x_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                       non_aligned_writes=False, progress=False)[x_range[0]:x_range[1],
-                                                   y_range[0]:y_range[1], z] = x_res
-    cv(y_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                       non_aligned_writes=False, progress=False)[x_range[0]:x_range[1],
-                                                   y_range[0]:y_range[1], z] = y_res
+    s = cv(path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
+                       non_aligned_writes=False, progress=False)
+    s[x_range[0]:x_range[1], y_range[0]:y_range[1], z] = flow.permute(1,2,0,3)
 
   ## Data loading
   def preprocess_data(self, data):
@@ -532,26 +501,19 @@ class Aligner:
     data = None
     while data is None:
       try:
-        data_ = cv(path, mip=mip, progress=False,
-                   bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
+        data_ = cv(path, mip=mip, progress=False, bounded=False, 
+            fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
         data = data_
       except AttributeError as e:
         pass
-    return data
+    return data.permute(2,0,1,3)
 
   def get_abs_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.x_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.y_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
-    result = np.stack((x, y), axis=2)
-    return np.expand_dims(result, axis=0)
+    return self.get_vector_data(self.field_ng_paths[mip], z, bbox, mip)
 
   def get_rel_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.x_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.y_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
-    abs_res = np.stack((x, y), axis=2)
-    abs_res = np.expand_dims(abs_res, axis=0)
-    rel_res = self.abs_to_rel_residual(abs_res, bbox, mip)
-    return rel_res
+    abs_res = self.get_vector_data(self.field_ng_paths[mip], z, bbox, mip)
+    return self.abs_to_rel_residual(abs_res, bbox, mip)
 
 
   def get_aggregate_rel_flow(self, z, bbox, res_mip_range, mip):
