@@ -17,7 +17,7 @@ class G(nn.Module):
         self.conv2 = nn.Conv2d(32, 64, k)
         self.conv3 = nn.Conv2d(64, 32, k)
         self.conv4 = nn.Conv2d(32, 16, k)
-        self.conv5 = nn.Conv2d(16, 2, k)
+        self.conv5 = nn.Conv2d(16, 2, k, bias=False)
         self.tanh = nn.Tanh()
         self.seq = nn.Sequential(self.pad, self.conv1, f,
                                  self.pad, self.conv2, f,
