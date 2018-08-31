@@ -51,90 +51,103 @@ class ModelWrapper(nn.Module):
         super(ModelWrapper, self).__init__()
         self.args = args
         self.model = model
-        self.trunclayer = args.trunc
+        self.trunclayer = 0 
+        self.smooth_factor = 1
+        self.set_trunclayer(self.trunclayer)
+        self.update_smooth_factor()
         self.padding = args.padding
         self.dim = args.dim + self.padding
         self.similarity = similarity_score(should_reduce=False)
         self.smoothness = smoothness_penalty(args.penalty)
+        self.norm = Normalizer(5 if args.hm else 2)
+
+    def set_trunclayer(self, trunc):
+        self.trunclayer = trunc
+
+    def update_smooth_factor(self):
+        self.smooth_factor = 1 if self.trunclayer == 0 and self.args.fine_tuning else 0.05
 
     def save(self, name):
         torch.save(self.model.state_dict(), 'pt/' + name + '.pt')
 
-    def run_pair(src, target, src_mask=None, target_mask=None, train=True):
+    def run_pair(self, src, tgt, src_mask=None, tgt_mask=None, train=True):
+        print('src size (before aug): {0}'.format(src.size()))
+        print('tgt size (before aug): {0}'.format(tgt.size()))
         if train and not self.args.skip_sample_aug:
             # random rotation
             should_rotate = random.randint(0, 1) == 0
             if should_rotate:
-                src, grid = rotate_and_scale(
-                    src.unsqueeze(0).unsqueeze(0), None)
-                target = rotate_and_scale(
-                    target.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
+                src, grid = rotate_and_scale(src, None)
+                tgt = rotate_and_scale(tgt, grid=grid)[0].squeeze()
                 if src_mask is not None:
                     src_mask = torch.ceil(
                         rotate_and_scale(
                             src_mask.unsqueeze(0).unsqueeze(0), grid=grid
                         )[0].squeeze())
-                    target_mask = torch.ceil(
+                    tgt_mask = torch.ceil(
                         rotate_and_scale(
-                            target_mask.unsqueeze(0).unsqueeze(0), grid=grid
+                            tgt_mask.unsqueeze(0).unsqueeze(0), grid=grid
                         )[0].squeeze())
 
-                src = src.squeeze()
+            src = src.squeeze()
+            tgt = tgt.squeeze()
 
+        print('src size (after aug): {0}'.format(src.size()))
+        print('tgt size (after aug): {0}'.format(tgt.size()))
         input_src = src.clone()
-        input_target = target.clone()
+        input_tgt = tgt.clone()
 
         src_cutout_masks = []
-        target_cutout_masks = []
+        tgt_cutout_masks = []
 
-        if train and not self.args.skip_sample_aug:
-            input_src, src_cutout_masks = aug_input(input_src)
-            input_target, target_cutout_masks = aug_input(input_target)
-        elif train:
-            print('Skipping sample-wise augmentation.')
+        # if train and not self.args.skip_sample_aug:
+        #     input_src, src_cutout_masks = aug_input(input_src)
+        #     input_tgt, tgt_cutout_masks = aug_input(input_tgt)
+        # elif train:
+        #     print('Skipping sample-wise augmentation.')
 
-        src = Variable(torch.FloatTensor(normalizer.apply(
+        src = Variable(torch.FloatTensor(self.norm.apply(
             src.data.cpu().numpy()))).cuda()
-        target = Variable(torch.FloatTensor(normalizer.apply(
-            target.data.cpu().numpy()))).cuda()
-        input_src = Variable(torch.FloatTensor(normalizer.apply(
+        tgt = Variable(torch.FloatTensor(self.norm.apply(
+            tgt.data.cpu().numpy()))).cuda()
+        input_src = Variable(torch.FloatTensor(self.norm.apply(
             input_src.data.cpu().numpy()))).cuda()
-        input_target = Variable(torch.FloatTensor(normalizer.apply(
-            input_target.data.cpu().numpy()))).cuda()
+        input_tgt = Variable(torch.FloatTensor(self.norm.apply(
+            input_tgt.data.cpu().numpy()))).cuda()
 
-        rf = run_sample(
-            src, target, input_src, input_target, src_mask, target_mask,
-            src_cutout_masks, target_cutout_masks, train)
+        rf = self.run_sample(
+            src, tgt, input_src, input_tgt, src_mask, tgt_mask,
+            src_cutout_masks, tgt_cutout_masks, train)
         if rf is not None:
             if not self.args.pe_only:
                 cost = (rf['similarity_error']
                         + self.args.lambda1
-                        * smooth_factor * rf['smoothness_error'])
+                        * self.smooth_factor * rf['smoothness_error'])
                 (cost/2).backward(retain_graph=self.args.lambda6 > 0)
             else:
                 (rf['contrast_error']/2).backward()
 
         src = reverse_dim(reverse_dim(src, 0), 1)
-        target = reverse_dim(reverse_dim(target, 0), 1)
+        tgt = reverse_dim(reverse_dim(tgt, 0), 1)
         input_src = reverse_dim(reverse_dim(input_src, 0), 1)
-        input_target = reverse_dim(reverse_dim(input_target, 0), 1)
+        input_tgt = reverse_dim(reverse_dim(input_tgt, 0), 1)
         if src_mask is not None:
             src_mask = reverse_dim(reverse_dim(src_mask, 0), 1)
-        if target_mask is not None:
-            target_mask = reverse_dim(reverse_dim(target_mask, 0), 1)
+        if tgt_mask is not None:
+            tgt_mask = reverse_dim(reverse_dim(tgt_mask, 0), 1)
         src_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
                             for m in src_cutout_masks]
-        target_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
-                               for m in target_cutout_masks]
+        tgt_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
+                               for m in tgt_cutout_masks]
 
-        rb = run_sample(
-            src, target, input_src, input_target, src_mask, target_mask,
-            src_cutout_masks, target_cutout_masks, train)
+        rb = self.run_sample(
+            src, tgt, input_src, input_tgt, src_mask, tgt_mask,
+            src_cutout_masks, tgt_cutout_masks, train)
         if rb is not None:
             if not self.args.pe_only:
                 cost = (rb['similarity_error']
                         + self.args.lambda1
-                        * smooth_factor * rb['smoothness_error'])
+                        * self.smooth_factor * rb['smoothness_error'])
                 (cost/2).backward(retain_graph=self.args.lambda6 > 0)
             else:
                 (rb['contrast_error']/2).backward()
@@ -144,11 +157,11 @@ class ModelWrapper(nn.Module):
         ##################################
         if (not self.args.pe_only and self.args.lambda6 > 0 and rf is not None
                 and rb is not None):
-            smaller_dim = dim // (2**trunclayer)
-            zmf = (rf['pred'] != 0).float() * (rf['input_target'] != 0).float()
+            smaller_dim = self.dim // (2**self.trunclayer)
+            zmf = (rf['pred'] != 0).float() * (rf['input_tgt'] != 0).float()
             zmf = (zmf.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
                    .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
-            zmb = (rb['pred'] != 0).float() * (rb['input_target'] != 0).float()
+            zmb = (rb['pred'] != 0).float() * (rb['input_tgt'] != 0).float()
             zmb = (zmb.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
                    .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
             rffield, rbfield = rf['rfield'] * zmf, rb['rfield'] * zmb
@@ -168,90 +181,90 @@ class ModelWrapper(nn.Module):
 
         return rf, rb
 
-    def run_sample(src, target, input_src, input_target, mask=None,
-                   target_mask=None, src_cutout_masks=[],
-                   target_cutout_masks=[], train=True):
+    def run_sample(self, src, tgt, input_src, input_tgt, mask=None,
+                   tgt_mask=None, src_cutout_masks=[],
+                   tgt_cutout_masks=[], train=True):
         self.model.train(train)
         if self.args.dry_run:
             print('Bailing for dry run [not an error].')
             return None
 
         # if we're just training the pre-encoder, no need to do everything
-        if args.pe_only:
-            contrasted_stack = model.apply(input_src, input_target, 
-                                           use_preencoder=args.pe)
+        if self.args.pe_only:
+            contrasted_stack = self.model.apply(input_src, input_tgt, 
+                                           use_preencoder=self.args.pe)
             pred = contrasted_stack.squeeze()
-            y = torch.cat((src.unsqueeze(0), target.squeeze().unsqueeze(0)), 0)
+            y = torch.cat((src.unsqueeze(0), tgt.squeeze().unsqueeze(0)), 0)
             contrast_err = self.similarity(pred, y)
             contrast_err_src = contrast_err[0:1]
-            contrast_err_target = contrast_err[1:2]
+            contrast_err_tgt = contrast_err[1:2]
             for m in src_cutout_masks:
                 contrast_err_src = (contrast_err_src
                                     * m.view(contrast_err_src.size()).float())
-            for m in target_cutout_masks:
-                contrast_err_target = (contrast_err_target
-                                       * m.view(contrast_err_target.size())
+            for m in tgt_cutout_masks:
+                contrast_err_tgt = (contrast_err_tgt
+                                       * m.view(contrast_err_tgt.size())
                                        .float())
             contrast_err = torch.mean(torch.cat((contrast_err_src,
-                                                 contrast_err_target), 0))
+                                                 contrast_err_tgt), 0))
             return {'contrast_error': contrast_err}
 
-        pred, field, residuals = model.apply(input_src, input_target,
-                                             trunclayer, use_preencoder=args.pe)
+        pred, field, residuals = self.model.apply(input_src, input_tgt,
+                                             self.trunclayer, use_preencoder=self.args.pe)
         # resample tensors that are in our source coordinate space with our
-        # new field prediction to move them into target coordinate space so
+        # new field prediction to move them into tgt coordinate space so
         # we can compare things fairly
-        src = downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0))
-        target = downsample(trunclayer)(target.unsqueeze(0).unsqueeze(0))
+        src = downsample(self.trunclayer)(src.unsqueeze(0).unsqueeze(0))
+        tgt = downsample(self.trunclayer)(tgt.unsqueeze(0).unsqueeze(0))
         pred = F.grid_sample(src, field, mode='bilinear')
         raw_mask = None
         if mask is not None:
-            mask = downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0))
+            mask = downsample(self.trunclayer)(mask.unsqueeze(0).unsqueeze(0))
             raw_mask = mask
             mask = torch.ceil(F.grid_sample(mask, field, mode='bilinear', padding_mode='border'))
-        if target_mask is not None:
-            target_mask = downsample(trunclayer)(target_mask.unsqueeze(0).unsqueeze(0))
-            target_mask = masks.dilate(target_mask, 1, binary=False)
+        if tgt_mask is not None:
+            tgt_mask = downsample(self.trunclayer)(tgt_mask.unsqueeze(0).unsqueeze(0))
+            tgt_mask = masks.dilate(tgt_mask, 1, binary=False)
         if len(src_cutout_masks) > 0:
             src_cutout_masks = [
                 torch.ceil(F.grid_sample(m.float(), field, mode='bilinear', padding_mode='border')).byte()
                 for m in src_cutout_masks]
 
-        if len(target_cutout_masks) > 0:
-             target_cutout_masks = [torch.ceil(downsample(trunclayer)(m.float())).byte() for m in target_cutout_masks]
+        if len(tgt_cutout_masks) > 0:
+             tgt_cutout_masks = [torch.ceil(downsample(self.trunclayer)(m.float())).byte() for m in tgt_cutout_masks]
 
         # first we'll build a binary mask to completely ignore
         # 'irrelevant' pixels
         similarity_binary_masks = []
 
         # mask away similarity error from pixels outside the boundary of
-        # either prediction or target
-        # in other words, we need valid data in both the target and prediction
+        # either prediction or tgt
+        # in other words, we need valid data in both the tgt and prediction
         # to count the error from that pixel
-        border_mask = masks.low_pass(masks.intersect([pred != 0, target != 0]))
+        border_mask = masks.low_pass(masks.intersect([pred != 0, tgt != 0]))
         border_mask, no_valid_pixels = masks.contract(border_mask, 5,
                                                       return_sum=True)
         if no_valid_pixels:
             print('Skipping empty border mask.')
-            visualize_outputs(prefix('empty_border_mask') + '{}',
-                              {'src': input_src, 'target': input_target})
+#             visualize_outputs(prefix('empty_border_mask') + '{}',
+#                               {'src': input_src, 'tgt': input_tgt})
             return None
         similarity_binary_masks.append(border_mask)
 
         # mask away similarity error from pixels within cutouts in either the
-        # source or target
-        cutout_similarity_masks = src_cutout_masks + target_cutout_masks
+        # source or tgt
+        cutout_similarity_masks = src_cutout_masks + tgt_cutout_masks
         if len(cutout_similarity_masks) > 0:
             cutout_similarity_mask = masks.union(cutout_similarity_masks)
             cutout_similarity_mask = masks.invert(cutout_similarity_mask)
             similarity_binary_masks.append(cutout_similarity_mask)
 
         # mask away similarity error for pixels within a defect in the
-        # target image
-        if target_mask is not None:
-            target_defect_similarity_mask = masks.contract(
-                target_mask < 2, 2).detach()
-            similarity_binary_masks.append(target_defect_similarity_mask)
+        # tgt image
+        if tgt_mask is not None:
+            tgt_defect_similarity_mask = masks.contract(
+                tgt_mask < 2, 2).detach()
+            similarity_binary_masks.append(tgt_defect_similarity_mask)
 
         similarity_binary_mask = masks.intersect(similarity_binary_masks)
 
@@ -269,8 +282,8 @@ class ModelWrapper(nn.Module):
 
         if torch.sum(similarity_weights[border_mask.data]).data[0] < self.args.eps:
             print('Skipping all zero similarity weights (factor == 0).')
-            visualize_outputs(prefix('zero_similarity_weights') + '{}',
-                              {'src': input_src, 'target': input_target})
+#             visualize_outputs(prefix('zero_similarity_weights') + '{}',
+#                               {'src': input_src, 'tgt': input_tgt})
             return None
 
         # similarity_mask_factor = (
@@ -279,23 +292,23 @@ class ModelWrapper(nn.Module):
         similarity_mask_factor = 1
 
         # compute raw similarity error and masked/weighted similarity error
-        similarity_error_field = self.similarity(pred, target)
+        similarity_error_field = self.similarity(pred, tgt)
         weighted_similarity_error_field = (similarity_error_field
                                            * similarity_weights
                                            * similarity_mask_factor)
 
         # perform masking/weighting for smoothness penalty
-        smoothness_binary_mask = (masks.intersect([src != 0, target != 0])
+        smoothness_binary_mask = (masks.intersect([src != 0, tgt != 0])
                                   .view(similarity_binary_mask.size()))
         smoothness_weights = Variable(
             torch.ones(smoothness_binary_mask.size())).cuda()
         if raw_mask is not None:
             # everywhere we have non-standard smoothness, slightly reduce
             # the smoothness penalty
-            smoothness_weights[raw_mask > 0] = args.lambda2
+            smoothness_weights[raw_mask > 0] = self.args.lambda2
             # on top of cracks and folds only, significantly reduce
             # the smoothness penalty
-            smoothness_weights[raw_mask > 1] = args.lambda3
+            smoothness_weights[raw_mask > 1] = self.args.lambda3
         smoothness_weights = masks.contract(
             smoothness_weights, self.args.mask_smooth_radius,
             ceil=False, binary=False)
@@ -306,14 +319,14 @@ class ModelWrapper(nn.Module):
         )**.5
         if raw_mask is not None:
             # reset the most significant smoothness penalty relaxation
-            smoothness_weights[raw_mask > 1] = args.lambda3
+            smoothness_weights[raw_mask > 1] = self.args.lambda3
         smoothness_weights = F.avg_pool2d(smoothness_weights, 5,
                                           stride=1, padding=2)
         if (torch.sum(smoothness_weights[smoothness_binary_mask.byte().data])
                 .data[0] < self.args.eps):
-            print('Skipping all zero smoothness weights (factor == 0).')
-            visualize_outputs(prefix('zero_smoothness_weights') + '{}',
-                              {'src': input_src, 'target': input_target})
+#             print('Skipping all zero smoothness weights (factor == 0).')
+#             visualize_outputs(prefix('zero_smoothness_weights') + '{}',
+#                               {'src': input_src, 'tgt': input_tgt})
             return None
 
         # smoothness_mask_factor = (dim**2. / torch.sum(
@@ -322,7 +335,7 @@ class ModelWrapper(nn.Module):
 
         smoothness_weights /= smoothness_mask_factor
         smoothness_weights = F.grid_sample(smoothness_weights.detach(), field, mode='bilinear', padding_mode='border')
-        if args.hm:
+        if self.args.hm:
             smoothness_weights = smoothness_weights.detach()
         smoothness_weights = smoothness_weights * border_mask.float().detach()
 
@@ -338,9 +351,9 @@ class ModelWrapper(nn.Module):
 
         return {
             'src': src,
-            'target': target,
-            'input_src': downsample(trunclayer)(input_src.unsqueeze(0).unsqueeze(0)),
-            'input_target': downsample(trunclayer)(input_target.unsqueeze(0).unsqueeze(0)),
+            'tgt': tgt,
+            'input_src': downsample(self.trunclayer)(input_src.unsqueeze(0).unsqueeze(0)),
+            'input_tgt': downsample(self.trunclayer)(input_tgt.unsqueeze(0).unsqueeze(0)),
             'field': field,
             'rfield': rfield,
             'residuals': residuals,
@@ -348,7 +361,7 @@ class ModelWrapper(nn.Module):
             'hpred': hpred,
             'src_mask': mask,
             'raw_src_mask': raw_mask,
-            'target_mask': target_mask,
+            'tgt_mask': tgt_mask,
             'similarity_error':
                 torch.mean(weighted_similarity_error_field[border_mask]),
             'smoothness_error':
@@ -362,9 +375,8 @@ class ModelWrapper(nn.Module):
     def forward(self, sample):
         """Run single pair of slices
         """
-        src, target = sample['src'], sample['tgt']
-
-        return run_pair(src, target)
+        src, tgt = sample['src'], sample['tgt']
+        return self.run_pair(src, tgt)
 
 def main():
     """Start training a net."""
@@ -468,7 +480,7 @@ def main():
         penalties = []
         consensus_list = []
         contrast_errors = []
-        smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
+        smooth_factor = model_wrapper.smooth_factor
 
         for t, sample in enumerate(train_loader):
             if t == 0:
@@ -478,6 +490,7 @@ def main():
                     fine_tuning = False or args.fine_tuning
                     if epoch > 0 and trunclayer > 0:
                         trunclayer -= 1
+                        model_wrapper.set_trunclayer(trunclayer)
                     optimizer = opt(trunclayer)
                 elif (epoch >= fall_time * size - 1
                       or epoch % fall_time == fall_time - 1):
@@ -485,21 +498,26 @@ def main():
                         fine_tuning = True
                         optimizer = opt(trunclayer)
 
-            # Skip training if either src or target is empty
-            src, target = sample['src'], sample['tgt']
-            if (min(src.data[0], target.data[0])
-                    < self.args.blank_var_threshold):
-                print("Skipping blank sections: ({}, {})."
-                      .format(src.data[0],
-                              target.data[0]))
-                visualize_outputs(prefix('blank_sections') + '{}',
-                                  {'src': src, 'target': target})
-                continue
+            # Skip training if either src or tgt is empty
+#            src, tgt = sample['src'], sample['tgt']
+            print('sample[src] size: {0}'.format(sample['src'].size()))
+#            if (min(src[0], tgt[0])
+#                    < self.args.blank_var_threshold):
+#                print("Skipping blank sections: ({}, {})."
+#                      .format(src.data[0],
+#                              tgt.data[0]))
+#                visualize_outputs(prefix('blank_sections') + '{}',
+#                                  {'src': src, 'tgt': tgt})
+#                continue
 
+            sample['src'] = Variable(sample['src'], requires_grad=False).cuda() 
+            sample['tgt'] = Variable(sample['tgt'], requires_grad=False).cuda() 
 
             if len(args.gpu_ids) > 1:
+                print('using multiple gpus')
                 rf, rb = data_parallel(model_wrapper, sample)
             else:
+                print('not using multiple gpus')
                 rf, rb = model_wrapper(sample)
 
             if rf is not None:
@@ -520,10 +538,10 @@ def main():
                 else:
                     contrast_errors.append(rb['contrast_error'].data[0])
 
-            if (sample_idx == 0 and t % args.vis_interval == 0
-                    and not args.pe_only):
-                visualize_outputs(prefix('forward') + '{}', rf)
-                visualize_outputs(prefix('backward') + '{}', rb)
+#             if (sample_idx == 0 and t % args.vis_interval == 0
+#                     and not args.pe_only):
+#                 visualize_outputs(prefix('forward') + '{}', rf)
+#                 visualize_outputs(prefix('backward') + '{}', rb)
             ##################################
 
             optimizer.step()
@@ -570,7 +588,8 @@ def main():
                 penalties = []
                 consensus_list = []
                 contrast_errors = []
-                smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
+                model_wrapper.update_smooth_factor()
+                smooth_factor = model_wrapper.smooth_factor
 
             else:
                 print(
@@ -716,7 +735,7 @@ def parse_args():
         help='high mip source (mip 5)', type=str, default='~/mip5_mixed.h5')
     parser.add_argument(
         '--lm_src',
-        help='low mip source (mip 2)', type=str, default='~/mip2_mixed.h5')
+        help='low mip source (mip 2)', type=str, default='~/test_mip2_drosophila.h5')
     parser.add_argument('--batch_size', type=int, default=1, 
         help='Number of samples to be evaluated before each gradient update')
     parser.add_argument('--num_workers', type=int, default=1,
