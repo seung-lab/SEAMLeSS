@@ -50,7 +50,7 @@ class Enc(nn.Module):
         self.f = nn.LeakyReLU(inplace=True)
         self.pad = nn.ReflectionPad2d(1)
         self.c1 = nn.Conv2d(infm, outfm, 3)
-        self.c2 = nn.Conv2d(outfm, outfm, 3)
+        self.c2 = nn.Conv2d(outfm, outfm - 1, 3)
         nn.init.kaiming_normal_(self.c1.weight, a=self.f.negative_slope)
         nn.init.kaiming_normal_(self.c2.weight, a=self.f.negative_slope)
         self.infm = infm
@@ -62,7 +62,8 @@ class Enc(nn.Module):
         ingroup_size = ch//ngroups
         input_groups = [self.f(self.c1(self.pad(x[:,idx*ingroup_size:(idx+1)*ingroup_size]))) for idx in range(ngroups)]
         out1 = torch.cat(input_groups, 1)
-        input_groups2 = [self.f(self.c2(self.pad(out1[:,idx*self.outfm:(idx+1)*self.outfm]))) for idx in range(ngroups)]
+        input_groups2 = [torch.cat([self.f(self.c2(self.pad(out1[:,idx*self.outfm:(idx+1)*self.outfm]))),
+                                        x[:,(idx+1)*ingroup_size-1:(idx+1)*ingroup_size]], 1) for idx in range(ngroups)]
         out2 = torch.cat(input_groups2, 1)
         
         if vis is not None:
