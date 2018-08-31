@@ -8,13 +8,11 @@ from helpers import save_chunk, gif, copy_state_to_model
 import random
 
 class G(nn.Module):
-    def initc(self, m):
-        m.weight.data *= np.sqrt(6)
-
     def __init__(self, k=7, f=nn.LeakyReLU(inplace=True), infm=2):
         super(G, self).__init__()
         p = (k-1)//2
         self.pad = nn.ReplicationPad2d(p)
+        self.f = f
         self.conv1 = nn.Conv2d(infm, 32, k)
         self.conv2 = nn.Conv2d(32, 64, k)
         self.conv3 = nn.Conv2d(64, 32, k)
@@ -26,11 +24,12 @@ class G(nn.Module):
                                  self.pad, self.conv3, f,
                                  self.pad, self.conv4, f,
                                  self.pad, self.conv5, self.tanh)
-        self.initc(self.conv1)
-        self.initc(self.conv2)
-        self.initc(self.conv3)
-        self.initc(self.conv4)
-        self.initc(self.conv5)
+        nn.init.kaiming_normal_(self.conv1.weight, a=self.f.negative_slope)
+        nn.init.kaiming_normal_(self.conv2.weight, a=self.f.negative_slope)
+        nn.init.kaiming_normal_(self.conv3.weight, a=self.f.negative_slope)
+        nn.init.kaiming_normal_(self.conv4.weight, a=self.f.negative_slope)
+        gain = nn.init.calculate_gain("tanh")
+        nn.init.xavier_normal_(self.conv5.weight, gain=gain)
         
     def forward(self, x):
         return self.seq(x).permute(0,2,3,1)
@@ -44,9 +43,6 @@ def gif_prep(s):
     return s
 
 class Enc(nn.Module):
-    def initc(self, m):
-        m.weight.data *= np.sqrt(6)
-        
     def __init__(self, infm, outfm):
         super(Enc, self).__init__()
         if not outfm:
@@ -55,8 +51,8 @@ class Enc(nn.Module):
         self.pad = nn.ReflectionPad2d(1)
         self.c1 = nn.Conv2d(infm, outfm, 3)
         self.c2 = nn.Conv2d(outfm, outfm, 3)
-        self.initc(self.c1)
-        self.initc(self.c2)
+        nn.init.kaiming_normal_(self.c1.weight, a=self.f.negative_slope)
+        nn.init.kaiming_normal_(self.c2.weight, a=self.f.negative_slope)
         self.infm = infm
         self.outfm = outfm
         
