@@ -48,8 +48,8 @@ class StackDataset(Dataset):
 
     def __getitem__(self, k):
         # print('Get {0} / {1}'.format(k, self.stack.shape))
-        src = self.toFloatTensor(self.stack[:, k:k+1, :, :])
-        tgt = self.toFloatTensor(self.stack[:, k+1:k+2, :, :])
-        print('sizes, src {0}; tgt {1}'.format(src.size(), tgt.size()))
+        src = self.toFloatTensor(self.stack[0, k, :, :])
+        tgt = self.toFloatTensor(self.stack[0, k+1, :, :])
+        # print('sizes, src {0}; tgt {1}'.format(src.size(), tgt.size()))
         X = {'src': src, 'tgt': tgt}
         return X
