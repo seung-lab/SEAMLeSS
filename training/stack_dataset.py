@@ -43,7 +43,7 @@ class StackDataset(Dataset):
 
     def toFloatTensor(self, image):
         t = torch.FloatTensor(image) / 255.
-        # return Variable(t, requires_grad=False).cuda() 
+        t.requires_grad_(False)
         return t 
 
     def __getitem__(self, k):

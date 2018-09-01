@@ -71,8 +71,8 @@ class ModelWrapper(nn.Module):
         torch.save(self.model.state_dict(), 'pt/' + name + '.pt')
 
     def run_pair(self, src, tgt, src_mask=None, tgt_mask=None, train=True):
-        print('src size (before aug): {0}'.format(src.size()))
-        print('tgt size (before aug): {0}'.format(tgt.size()))
+        # print('src size (before aug): {0}'.format(src.size()))
+        # print('tgt size (before aug): {0}'.format(tgt.size()))
         if train and not self.args.skip_sample_aug:
             # random rotation
             should_rotate = random.randint(0, 1) == 0
@@ -92,8 +92,8 @@ class ModelWrapper(nn.Module):
             src = src.squeeze()
             tgt = tgt.squeeze()
 
-        print('src size (after aug): {0}'.format(src.size()))
-        print('tgt size (after aug): {0}'.format(tgt.size()))
+        # print('src size (after aug): {0}'.format(src.size()))
+        # print('tgt size (after aug): {0}'.format(tgt.size()))
         input_src = src.clone()
         input_tgt = tgt.clone()
 
@@ -179,6 +179,7 @@ class ModelWrapper(nn.Module):
             consensus = self.args.lambda6 * mean_consensus
             consensus.backward()
 
+        print('type(rf), type(rb): {0} {1}'.format(type(rf), type(rb)))
         return rf, rb
 
     def run_sample(self, src, tgt, input_src, input_tgt, mask=None,
@@ -209,6 +210,7 @@ class ModelWrapper(nn.Module):
                                                  contrast_err_tgt), 0))
             return {'contrast_error': contrast_err}
 
+        # print('input_src/tgt device: {0} {1}'.format(input_src.device, input_tgt.device))
         pred, field, residuals = self.model.apply(input_src, input_tgt,
                                              self.trunclayer, use_preencoder=self.args.pe)
         # resample tensors that are in our source coordinate space with our
@@ -247,7 +249,7 @@ class ModelWrapper(nn.Module):
         if no_valid_pixels:
             print('Skipping empty border mask.')
 #             visualize_outputs(prefix('empty_border_mask') + '{}',
-#                               {'src': input_src, 'tgt': input_tgt})
+#                               {'src': input_src, 'tgt': input_tgt}
             return None
         similarity_binary_masks.append(border_mask)
 
@@ -280,11 +282,11 @@ class ModelWrapper(nn.Module):
 
         similarity_weights *= similarity_binary_mask.float()
 
-        if torch.sum(similarity_weights[border_mask.data]).data[0] < self.args.eps:
-            print('Skipping all zero similarity weights (factor == 0).')
-#             visualize_outputs(prefix('zero_similarity_weights') + '{}',
-#                               {'src': input_src, 'tgt': input_tgt})
-            return None
+        # if torch.sum(similarity_weights[border_mask.data]).data[0] < self.args.eps:
+        #     print('Skipping all zero similarity weights (factor == 0).')
+#       #       visualize_outputs(prefix('zero_similarity_weights') + '{}',
+#       #                         {'src': input_src, 'tgt': input_tgt})
+        #     return None
 
         # similarity_mask_factor = (
         #     torch.sum(border_mask.float())
@@ -324,10 +326,10 @@ class ModelWrapper(nn.Module):
                                           stride=1, padding=2)
         if (torch.sum(smoothness_weights[smoothness_binary_mask.byte().data])
                 .data[0] < self.args.eps):
-#             print('Skipping all zero smoothness weights (factor == 0).')
+             print('Skipping all zero smoothness weights (factor == 0).')
 #             visualize_outputs(prefix('zero_smoothness_weights') + '{}',
 #                               {'src': input_src, 'tgt': input_tgt})
-            return None
+             return None
 
         # smoothness_mask_factor = (dim**2. / torch.sum(
         #     smoothness_weights[smoothness_binary_mask.byte().data]).data[0])
@@ -339,7 +341,7 @@ class ModelWrapper(nn.Module):
             smoothness_weights = smoothness_weights.detach()
         smoothness_weights = smoothness_weights * border_mask.float().detach()
 
-        rfield = field - self.model.pyramid.get_identity_grid(field.size()[-2])
+        rfield = field - self.model.pyramid.get_identity_grid(field.size()[-2], src.device)
         weighted_smoothness_error_field = self.smoothness(
             [rfield], weights=smoothness_weights)
 
@@ -375,7 +377,10 @@ class ModelWrapper(nn.Module):
     def forward(self, sample):
         """Run single pair of slices
         """
+        # src = Variable(sample['src'], requires_grad=False).cuda() 
+        # tgt = Variable(sample['tgt'], requires_grad=False).cuda() 
         src, tgt = sample['src'], sample['tgt']
+        print('src/tgt device: {0} {1}'.format(src.device, tgt.device))
         return self.run_pair(src, tgt)
 
 def main():
@@ -430,7 +435,7 @@ def main():
             k=kernel_size)
         for p in model.parameters():
             p.requires_grad = True
-        model.train(True)
+        model.train().cuda()
 
     model_wrapper = ModelWrapper(args, model)
 
@@ -500,7 +505,7 @@ def main():
 
             # Skip training if either src or tgt is empty
 #            src, tgt = sample['src'], sample['tgt']
-            print('sample[src] size: {0}'.format(sample['src'].size()))
+            # print('sample[src] size: {0}'.format(sample['src'].size()))
 #            if (min(src[0], tgt[0])
 #                    < self.args.blank_var_threshold):
 #                print("Skipping blank sections: ({}, {})."
@@ -509,9 +514,6 @@ def main():
 #                visualize_outputs(prefix('blank_sections') + '{}',
 #                                  {'src': src, 'tgt': tgt})
 #                continue
-
-            sample['src'] = Variable(sample['src'], requires_grad=False).cuda() 
-            sample['tgt'] = Variable(sample['tgt'], requires_grad=False).cuda() 
 
             if len(args.gpu_ids) > 1:
                 print('using multiple gpus')
@@ -543,7 +545,7 @@ def main():
 #                 visualize_outputs(prefix('forward') + '{}', rf)
 #                 visualize_outputs(prefix('backward') + '{}', rb)
             ##################################
-
+            print('optimizer.step()')
             optimizer.step()
             # model_wrapper.model.zero_grad()
             optimizer.zero_grad()
