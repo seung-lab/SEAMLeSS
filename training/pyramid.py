@@ -50,7 +50,7 @@ class Enc(nn.Module):
         if not outfm:
             outfm = infm
         self.f = nn.LeakyReLU(inplace=True)
-        self.pad = nn.ReflectionPad2d(1)
+        self.pad = nn.ReplicationPad2d(1)
         self.c1 = nn.Conv2d(infm, outfm, 3)
         self.c2 = nn.Conv2d(outfm, outfm, 3)
         nn.init.kaiming_normal_(self.c1.weight, a=self.f.negative_slope)
