@@ -6,6 +6,7 @@ from torch.nn.functional import grid_sample
 import numpy as np
 from helpers import save_chunk, gif, copy_state_to_model
 import random
+import sys
 
 class G(nn.Module):
     def __init__(self, k=7, f=nn.LeakyReLU(inplace=True), infm=2):
@@ -34,7 +35,41 @@ class G(nn.Module):
         nn.init.xavier_normal_(self.conv5.weight, gain=3)
 
     def forward(self, x):
-        return self.seq(x).permute(0,2,3,1)
+        print("----------", file=sys.stderr)
+        print("aligner", file=sys.stderr)
+        print("----------", file=sys.stderr)
+        x1 = x
+        print("before: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        x = self.pad(x)
+        x = self.conv1(x)
+        print("1: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        x = self.f(x)
+        print("1 ReLU: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        x = self.pad(x)
+        x = self.conv2(x)
+        print("2: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        x = self.f(x)
+        print("2 ReLU: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        x = self.pad(x)
+        x = self.conv3(x)
+        print("3: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        x = self.f(x)
+        print("3 ReLU: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        x = self.pad(x)
+        x = self.conv4(x)
+        print("4: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        x = self.f(x)
+        print("4 ReLU: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        x = self.softmax(x)
+        print("4 SoftMax: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        x = self.pad(x)
+        print("size:", x.size(), file=sys.stderr)
+        x = self.conv5(x)
+        print("5: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        x = self.tanh(x)
+        print("5 tanh: ", x.mean().data.cpu().numpy(), "+/-", x.std().data.cpu().numpy(), file=sys.stderr)
+        return x.permute(0,2,3,1)
+        #return self.seq(x1).permute(0,2,3,1)
 
 def gif_prep(s):
     if type(s) != np.ndarray:
@@ -62,10 +97,29 @@ class Enc(nn.Module):
         ch = x.size(1)
         ngroups = ch // self.infm
         ingroup_size = ch//ngroups
-        input_groups = [self.f(self.c1(self.pad(x[:,idx*ingroup_size:(idx+1)*ingroup_size]))) for idx in range(ngroups)]
+        input_groups = [None]*ngroups
+        for idx in range(ngroups):
+            xi = x[:,idx*ingroup_size:(idx+1)*ingroup_size]
+            xi = self.pad(xi)
+            print("before c1: ", "s:" if idx == 0 else "t:", xi.mean().data.cpu().numpy(), "+/-", xi.std().data.cpu().numpy(), file=sys.stderr)
+            xi = self.c1(xi)
+            print("@@ c1: ", "s:" if idx == 0 else "t:", xi.mean().data.cpu().numpy(), "+/-", xi.std().data.cpu().numpy(), file=sys.stderr)
+            input_groups[idx] = self.f(xi)
+            print("@@ f: ", "s:" if idx == 0 else "t:", input_groups[idx].mean().data.cpu().numpy(), "+/-", input_groups[idx].std().data.cpu().numpy(), file=sys.stderr)
+        # input_groups = [self.f(self.c1(self.pad(x[:,idx*ingroup_size:(idx+1)*ingroup_size]))) for idx in range(ngroups)]
         out1 = torch.cat(input_groups, 1)
-        input_groups2 = [self.f(self.c2(self.pad(out1[:,idx*self.outfm:(idx+1)*self.outfm]))) for idx in range(ngroups)]
+        input_groups2 = [None]*ngroups
+        for idx in range(ngroups):
+            xi = out1[:,idx*self.outfm:(idx+1)*self.outfm]
+            xi = self.pad(xi)
+            print("before c2: ", "s:" if idx == 0 else "t:", xi.mean().data.cpu().numpy(), "+/-", xi.std().data.cpu().numpy(), file=sys.stderr)
+            xi = self.c2(xi)
+            print("@@ c2: ", "s:" if idx == 0 else "t:", xi.mean().data.cpu().numpy(), "+/-", xi.std().data.cpu().numpy(), file=sys.stderr)
+            input_groups2[idx] = self.f(xi)
+            print("@@ f: ", "s:" if idx == 0 else "t:", input_groups2[idx].mean().data.cpu().numpy(), "+/-", input_groups2[idx].std().data.cpu().numpy(), file=sys.stderr)
+        # input_groups2 = [self.f(self.c2(self.pad(out1[:,idx*self.outfm:(idx+1)*self.outfm]))) for idx in range(ngroups)]
         out2 = torch.cat(input_groups2, 1)
+        print("after encoder: ", out2.mean().data.cpu().numpy(), "+/-", out2.std().data.cpu().numpy(), file=sys.stderr)
         
         if vis is not None:
             visinput1, visinput2 = gif_prep(out1), gif_prep(out2)
@@ -156,8 +210,16 @@ class EPyramid(nn.Module):
                 # only run the preencoder and return the results
                 return stack
 
+        print("----------------------", file=sys.stderr)
+        print("self.dim: ", self.dim, file=sys.stderr)
+        print("----------------------", file=sys.stderr)
         encodings = [self.enclist[0](stack)]
+        curr_dim = self.dim
         for idx in range(1, self.size-self.topskips):
+            curr_dim //= 2
+            print("----------------------", file=sys.stderr)
+            print("curr_dim: ", curr_dim, file=sys.stderr)
+            print("----------------------", file=sys.stderr)
             encodings.append(self.enclist[idx](self.down(encodings[-1]), vis=vis))
 
         residuals = [self.I]
