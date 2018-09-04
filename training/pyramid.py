@@ -17,12 +17,14 @@ class G(nn.Module):
         self.conv2 = nn.Conv2d(32, 64, k)
         self.conv3 = nn.Conv2d(64, 32, k)
         self.conv4 = nn.Conv2d(32, 16, k)
+        self.softmax = torch.nn.Softmax(dim=1)
         self.conv5 = nn.Conv2d(16, 2, k, bias=False)
         self.tanh = nn.Tanh()
         self.seq = nn.Sequential(self.pad, self.conv1, f,
                                  self.pad, self.conv2, f,
                                  self.pad, self.conv3, f,
                                  self.pad, self.conv4, f,
+                                 self.softmax,
                                  self.pad, self.conv5, self.tanh)
         nn.init.kaiming_normal_(self.conv1.weight, a=self.f.negative_slope)
         nn.init.kaiming_normal_(self.conv2.weight, a=self.f.negative_slope)
