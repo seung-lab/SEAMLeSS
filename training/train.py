@@ -553,15 +553,16 @@ def main():
                 mean_penalty_train = sum(penalties) / len(penalties)
                 mean_consensus = (
                     (sum(consensus_list) / len(consensus_list))
-                    if len(consensus_list) > 0 else 0)
+                    if len(consensus_list) > 0 else torch.tensor(0.))
                 print(t, smooth_factor, trunclayer,
                       mean_err_train + args.lambda1
                       * mean_penalty_train * smooth_factor,
                       mean_err_train, mean_penalty_train, mean_consensus)
                 history.append((
                     time.time() - start_time,
-                    mean_err_train + mean_penalty_train * smooth_factor,
-                    mean_err_train, mean_penalty_train, mean_consensus))
+                    (mean_err_train + mean_penalty_train * smooth_factor).item(),
+                    mean_err_train.item(), mean_penalty_train.item(),
+                    mean_consensus.item()))
                 torch.save(model.state_dict(), 'pt/' + name + '.pt')
 
                 print('Writing status to: {}'.format(log_file))
