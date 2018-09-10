@@ -6,7 +6,7 @@ with warnings.catch_warnings():
 import torch
 from torch.autograd import Variable
 from torch.utils.data import Dataset, ConcatDataset
-# from normalizer import Normalizer
+from normalizer import Normalizer
 import numpy as np
 
 def compile_dataset(h5_paths):
@@ -33,23 +33,26 @@ class StackDataset(Dataset):
         stack (4D ndarray): 1xZxHxW image array
     """
 
-    def __init__(self, stack):
+    def __init__(self, stack, mip=2):
         self.stack = stack
-        # self.normalizer = Normalizer(2)
+        self.normalizer = Normalizer(mip)
 
     def __len__(self):
         # N-1 consecutive image pairs
         return self.stack.shape[1]-1
 
-    def toFloatTensor(self, image):
+    def normalize(self, image):
+        return self.normalizer.apply(image)
+
+    def to_float_tensor(self, image):
         t = torch.FloatTensor(image) / 255.
         t.requires_grad_(False)
         return t 
 
     def __getitem__(self, k):
         # print('Get {0} / {1}'.format(k, self.stack.shape))
-        src = self.toFloatTensor(self.stack[0, k, :, :])
-        tgt = self.toFloatTensor(self.stack[0, k+1, :, :])
+        src = self.to_float_tensor(self.normalize(self.stack[0, k, :, :]))
+        tgt = self.to_float_tensor(self.normalize(self.stack[0, k+1, :, :]))
         # print('sizes, src {0}; tgt {1}'.format(src.size(), tgt.size()))
         X = {'src': src, 'tgt': tgt}
         return X
