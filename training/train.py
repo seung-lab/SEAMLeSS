@@ -564,6 +564,8 @@ def main():
                     mean_err_train.item(), mean_penalty_train.item(),
                     mean_consensus.item()))
                 torch.save(model.state_dict(), 'pt/' + name + '.pt')
+                if t % 100 == 0:
+                    torch.save(model.state_dict(), 'pt/' + name + '_' + str(t) + '.pt')
 
                 print('Writing status to: {}'.format(log_file))
                 with open(log_file, 'a') as log:
