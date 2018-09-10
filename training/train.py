@@ -42,7 +42,6 @@ from helpers import reverse_dim, downsample
 from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
 from vis import visualize_outputs
 from loss import similarity_score, smoothness_penalty
-from normalizer import Normalizer
 
 class ModelWrapper(nn.Module):
     """Abstraction to allow for multi-GPU training
@@ -59,7 +58,7 @@ class ModelWrapper(nn.Module):
         self.dim = args.dim + self.padding
         self.similarity = similarity_score(should_reduce=False)
         self.smoothness = smoothness_penalty(args.penalty)
-        self.norm = Normalizer(5 if args.hm else 2)
+        # self.norm = Normalizer(5 if args.hm else 2)
 
     def set_trunclayer(self, trunc):
         self.trunclayer = trunc
@@ -106,14 +105,14 @@ class ModelWrapper(nn.Module):
         # elif train:
         #     print('Skipping sample-wise augmentation.')
 
-        src = Variable(torch.FloatTensor(self.norm.apply(
-            src.data.cpu().numpy()))).cuda()
-        tgt = Variable(torch.FloatTensor(self.norm.apply(
-            tgt.data.cpu().numpy()))).cuda()
-        input_src = Variable(torch.FloatTensor(self.norm.apply(
-            input_src.data.cpu().numpy()))).cuda()
-        input_tgt = Variable(torch.FloatTensor(self.norm.apply(
-            input_tgt.data.cpu().numpy()))).cuda()
+        # src = Variable(torch.FloatTensor(self.norm.apply(
+        #     src.data.cpu().numpy()))).cuda()
+        # tgt = Variable(torch.FloatTensor(self.norm.apply(
+        #     tgt.data.cpu().numpy()))).cuda()
+        # input_src = Variable(torch.FloatTensor(self.norm.apply(
+        #     input_src.data.cpu().numpy()))).cuda()
+        # input_tgt = Variable(torch.FloatTensor(self.norm.apply(
+        #     input_tgt.data.cpu().numpy()))).cuda()
 
         rf = self.run_sample(
             src, tgt, input_src, input_tgt, src_mask, tgt_mask,
@@ -179,7 +178,7 @@ class ModelWrapper(nn.Module):
             consensus = self.args.lambda6 * mean_consensus
             consensus.backward()
 
-        print('type(rf), type(rb): {0} {1}'.format(type(rf), type(rb)))
+        # print('type(rf), type(rb): {0} {1}'.format(type(rf), type(rb)))
         return rf, rb
 
     def run_sample(self, src, tgt, input_src, input_tgt, mask=None,
@@ -380,7 +379,7 @@ class ModelWrapper(nn.Module):
         # src = Variable(sample['src'], requires_grad=False).cuda() 
         # tgt = Variable(sample['tgt'], requires_grad=False).cuda() 
         src, tgt = sample['src'], sample['tgt']
-        print('src/tgt device: {0} {1}'.format(src.device, tgt.device))
+        # print('src/tgt device: {0} {1}'.format(src.device, tgt.device))
         return self.run_pair(src, tgt)
 
 def main():
@@ -480,46 +479,33 @@ def main():
     for epoch in range(args.epoch, args.num_epochs):
         print('Beginning training epoch: {}'.format(epoch))
 
-        sample_idx = 0
         errs = []
         penalties = []
         consensus_list = []
         contrast_errors = []
         smooth_factor = model_wrapper.smooth_factor
 
-        for t, sample in enumerate(train_loader):
-            if t == 0:
-                if epoch % fall_time == 0 and (trunclayer > 0
-                                               or args.trunc == 0):
-                    # only fine tune if running a tuning session
-                    fine_tuning = False or args.fine_tuning
-                    if epoch > 0 and trunclayer > 0:
-                        trunclayer -= 1
-                        model_wrapper.set_trunclayer(trunclayer)
-                    optimizer = opt(trunclayer)
-                elif (epoch >= fall_time * size - 1
-                      or epoch % fall_time == fall_time - 1):
-                    if not fine_tuning:
-                        fine_tuning = True
-                        optimizer = opt(trunclayer)
+        if epoch % fall_time == 0 and (trunclayer > 0
+                                       or args.trunc == 0):
+            # only fine tune if running a tuning session
+            fine_tuning = False or args.fine_tuning
+            if epoch > 0 and trunclayer > 0:
+                trunclayer -= 1
+                model_wrapper.set_trunclayer(trunclayer)
+            optimizer = opt(trunclayer)
+        elif (epoch >= fall_time * size - 1
+              or epoch % fall_time == fall_time - 1):
+            if not fine_tuning:
+                fine_tuning = True
+                optimizer = opt(trunclayer)
 
-            # Skip training if either src or tgt is empty
-#            src, tgt = sample['src'], sample['tgt']
-            # print('sample[src] size: {0}'.format(sample['src'].size()))
-#            if (min(src[0], tgt[0])
-#                    < self.args.blank_var_threshold):
-#                print("Skipping blank sections: ({}, {})."
-#                      .format(src.data[0],
-#                              tgt.data[0]))
-#                visualize_outputs(prefix('blank_sections') + '{}',
-#                                  {'src': src, 'tgt': tgt})
-#                continue
+        for t, sample in enumerate(train_loader):
 
             if len(args.gpu_ids) > 1:
-                print('using multiple gpus')
+                # print('using multiple gpus')
                 rf, rb = data_parallel(model_wrapper, sample)
             else:
-                print('not using multiple gpus')
+                # print('not using multiple gpus')
                 rf, rb = model_wrapper(sample)
 
             if rf is not None:
@@ -545,57 +531,42 @@ def main():
 #                 visualize_outputs(prefix('forward') + '{}', rf)
 #                 visualize_outputs(prefix('backward') + '{}', rb)
             ##################################
-            print('optimizer.step()')
+            # print('optimizer.step()')
             optimizer.step()
             # model_wrapper.model.zero_grad()
             optimizer.zero_grad()
 
-            sample_idx += 1
 
-            if t % 10:
-
-                if args.pe_only:
-                    mean_contrast = (
-                        (sum(contrast_errors) / len(contrast_errors))
-                        if len(contrast_errors) > 0 else 0)
-                    print('Mean contraster error: {}'.format(mean_contrast))
-                    model_wrapper.save(name)
-                # Save some info
-                if len(errs) > 0:
-                    mean_err_train = sum(errs) / len(errs)
-                    mean_penalty_train = sum(penalties) / len(penalties)
-                    mean_consensus = (
-                        (sum(consensus_list) / len(consensus_list))
-                        if len(consensus_list) > 0 else 0)
-                    print(t, smooth_factor, trunclayer,
-                          mean_err_train + args.lambda1
-                          * mean_penalty_train * smooth_factor,
-                          mean_err_train, mean_penalty_train, mean_consensus)
-                    history.append((
-                        time.time() - start_time,
-                        mean_err_train + mean_penalty_train * smooth_factor,
-                        mean_err_train, mean_penalty_train, mean_consensus))
-                    model_wrapper.save(name)
-
-                    print('Writing status to: {}'.format(log_file))
-                    with open(log_file, 'a') as log:
-                        for tr in history:
-                            for val in tr:
-                                log.write(str(val) + ', ')
-                            log.write('\n')
-                        history = []
-
-                sample_idx = 0
-                errs = []
-                penalties = []
-                consensus_list = []
-                contrast_errors = []
-                model_wrapper.update_smooth_factor()
-                smooth_factor = model_wrapper.smooth_factor
-
-            else:
-                print(
-                    "Skipping writing status for stack with no valid slices.")
+        if args.pe_only:
+            mean_contrast = (
+                (sum(contrast_errors) / len(contrast_errors))
+                if len(contrast_errors) > 0 else 0)
+            print('Mean contraster error: {}'.format(mean_contrast))
+            model_wrapper.save(name)
+        # Save some info
+        if len(errs) > 0:
+            mean_err_train = sum(errs) / len(errs)
+            mean_penalty_train = sum(penalties) / len(penalties)
+            mean_consensus = (
+                (sum(consensus_list) / len(consensus_list))
+                if len(consensus_list) > 0 else 0)
+            print(epoch, smooth_factor, trunclayer,
+                  mean_err_train + args.lambda1
+                  * mean_penalty_train * smooth_factor,
+                  mean_err_train, mean_penalty_train, mean_consensus)
+            history.append((
+                time.time() - start_time,
+                mean_err_train + mean_penalty_train * smooth_factor,
+                mean_err_train, mean_penalty_train, mean_consensus))
+            model_wrapper.save(name)
+  
+            print('Writing status to: {}'.format(log_file))
+            with open(log_file, 'a') as log:
+                for tr in history:
+                    for val in tr:
+                        log.write(str(val) + ', ')
+                    log.write('\n')
+                history = []
 
 
 def parse_args():
@@ -737,7 +708,7 @@ def parse_args():
         help='high mip source (mip 5)', type=str, default='~/mip5_mixed.h5')
     parser.add_argument(
         '--lm_src',
-        help='low mip source (mip 2)', type=str, default='~/test_mip2_drosophila.h5')
+        help='low mip source (mip 2)', type=str, default='/mnt/data02/tmacrina/test_mip2_drosophila_cleaned_trimmed.h5')
     parser.add_argument('--batch_size', type=int, default=1, 
         help='Number of samples to be evaluated before each gradient update')
     parser.add_argument('--num_workers', type=int, default=1,
