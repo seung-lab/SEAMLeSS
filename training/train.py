@@ -708,7 +708,7 @@ def parse_args():
         help='high mip source (mip 5)', type=str, default='~/mip5_mixed.h5')
     parser.add_argument(
         '--lm_src',
-        help='low mip source (mip 2)', type=str, default='/mnt/data02/tmacrina/test_mip2_drosophila_cleaned_trimmed.h5')
+        help='low mip source (mip 2)', type=str, default='~/test_mip2_drosophila_cleaned.h5')
     parser.add_argument('--batch_size', type=int, default=1, 
         help='Number of samples to be evaluated before each gradient update')
     parser.add_argument('--num_workers', type=int, default=1,
