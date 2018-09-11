@@ -26,18 +26,17 @@ import os
 from os.path import expanduser
 import time
 import torch
+from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.utils.data import DataLoader, ConcatDataset
 from torch.nn.parallel import data_parallel
+from torchvision import transforms
 import argparse
-import random
 
 import masks
-from stack_dataset import compile_dataset 
+from stack_dataset import compile_dataset, Normalize, ToFloatTensor, RandomRotateAndScale 
 from pyramid import PyramidTransformer
-from defect_net import *
-from defect_detector import DefectDetector
 from helpers import reverse_dim, downsample
 from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
 from vis import visualize_outputs
@@ -70,29 +69,6 @@ class ModelWrapper(nn.Module):
         torch.save(self.model.state_dict(), 'pt/' + name + '.pt')
 
     def run_pair(self, src, tgt, src_mask=None, tgt_mask=None, train=True):
-        # print('src size (before aug): {0}'.format(src.size()))
-        # print('tgt size (before aug): {0}'.format(tgt.size()))
-        if train and not self.args.skip_sample_aug:
-            # random rotation
-            should_rotate = random.randint(0, 1) == 0
-            if should_rotate:
-                src, grid = rotate_and_scale(src, None)
-                tgt = rotate_and_scale(tgt, grid=grid)[0].squeeze()
-                if src_mask is not None:
-                    src_mask = torch.ceil(
-                        rotate_and_scale(
-                            src_mask.unsqueeze(0).unsqueeze(0), grid=grid
-                        )[0].squeeze())
-                    tgt_mask = torch.ceil(
-                        rotate_and_scale(
-                            tgt_mask.unsqueeze(0).unsqueeze(0), grid=grid
-                        )[0].squeeze())
-
-            src = src.squeeze()
-            tgt = tgt.squeeze()
-
-        # print('src size (after aug): {0}'.format(src.size()))
-        # print('tgt size (after aug): {0}'.format(tgt.size()))
         input_src = src.clone()
         input_tgt = tgt.clone()
 
@@ -378,7 +354,8 @@ class ModelWrapper(nn.Module):
         """
         # src = Variable(sample['src'], requires_grad=False).cuda() 
         # tgt = Variable(sample['tgt'], requires_grad=False).cuda() 
-        src, tgt = sample['src'], sample['tgt']
+        # src, tgt = sample['src'], sample['tgt']
+        src, tgt = sample['src'].squeeze(), sample['tgt'].squeeze()
         # print('src/tgt device: {0} {1}'.format(src.device, tgt.device))
         return self.run_pair(src, tgt)
 
@@ -412,7 +389,9 @@ def main():
         else:
             paths = [args.lm_src]
     h5_paths = [expanduser(x) for x in paths]
-    train_dataset = compile_dataset(h5_paths)
+    transform = transforms.Compose([Normalize(2), ToFloatTensor(), 
+                                     RandomRotateAndScale()])
+    train_dataset = compile_dataset(h5_paths, transform)
     train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, 
         num_workers=args.num_workers, pin_memory=True)
