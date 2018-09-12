@@ -35,10 +35,9 @@ from torchvision import transforms
 import argparse
 
 import masks
-from stack_dataset import compile_dataset, Normalize, ToFloatTensor, RandomRotateAndScale 
+from stack_dataset import * 
 from pyramid import PyramidTransformer
 from helpers import reverse_dim, downsample
-from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
 from vis import visualize_outputs
 from loss import similarity_score, smoothness_penalty
 
@@ -68,31 +67,26 @@ class ModelWrapper(nn.Module):
     def save(self, name):
         torch.save(self.model.state_dict(), 'pt/' + name + '.pt')
 
-    def run_pair(self, src, tgt, src_mask=None, tgt_mask=None, train=True):
-        input_src = src.clone()
-        input_tgt = tgt.clone()
-
-        src_cutout_masks = []
-        tgt_cutout_masks = []
-
-        # if train and not self.args.skip_sample_aug:
-        #     input_src, src_cutout_masks = aug_input(input_src)
-        #     input_tgt, tgt_cutout_masks = aug_input(input_tgt)
-        # elif train:
-        #     print('Skipping sample-wise augmentation.')
-
-        # src = Variable(torch.FloatTensor(self.norm.apply(
-        #     src.data.cpu().numpy()))).cuda()
-        # tgt = Variable(torch.FloatTensor(self.norm.apply(
-        #     tgt.data.cpu().numpy()))).cuda()
-        # input_src = Variable(torch.FloatTensor(self.norm.apply(
-        #     input_src.data.cpu().numpy()))).cuda()
-        # input_tgt = Variable(torch.FloatTensor(self.norm.apply(
-        #     input_tgt.data.cpu().numpy()))).cuda()
-
+    def run_pair(self, src, tgt, aug_src, aug_tgt,
+                                 aug_src_masks=[], aug_tgt_masks=[], 
+                                 src_mask=None, tgt_mask=None, 
+                                 train=True):
+        """Compute forward/backward passes with src & tgt
+        
+        Args:
+        * src: image without contrast & cutout augmentation
+        * tgt: image without contrast & cutout augmentation
+        * aug_srg: image with contrast & cutout augmentation
+        * aug_tgt: image with contrast & cutout augmentation
+        * aug_src_masks: masks that produced contrast & cutout augmentation
+        * aug_tgt_masks: masks that produced contrast & cutout augmentation
+        * src_mask: defect mask based on src
+        * tgt_mask: defect mask based on tgt
+        * train: bool
+        """
         rf = self.run_sample(
-            src, tgt, input_src, input_tgt, src_mask, tgt_mask,
-            src_cutout_masks, tgt_cutout_masks, train)
+            src, tgt, aug_src, aug_tgt, src_mask, tgt_mask,
+            aug_src_masks, aug_tgt_masks, train)
         if rf is not None:
             if not self.args.pe_only:
                 cost = (rf['similarity_error']
@@ -104,20 +98,20 @@ class ModelWrapper(nn.Module):
 
         src = reverse_dim(reverse_dim(src, 0), 1)
         tgt = reverse_dim(reverse_dim(tgt, 0), 1)
-        input_src = reverse_dim(reverse_dim(input_src, 0), 1)
-        input_tgt = reverse_dim(reverse_dim(input_tgt, 0), 1)
+        aug_src = reverse_dim(reverse_dim(aug_src, 0), 1)
+        aug_tgt = reverse_dim(reverse_dim(aug_tgt, 0), 1)
         if src_mask is not None:
             src_mask = reverse_dim(reverse_dim(src_mask, 0), 1)
         if tgt_mask is not None:
             tgt_mask = reverse_dim(reverse_dim(tgt_mask, 0), 1)
-        src_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
-                            for m in src_cutout_masks]
-        tgt_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
-                               for m in tgt_cutout_masks]
+        aug_src_masks = [reverse_dim(reverse_dim(m, -2), -1)
+                            for m in aug_src_masks]
+        aug_tgt_masks = [reverse_dim(reverse_dim(m, -2), -1)
+                               for m in aug_tgt_masks]
 
         rb = self.run_sample(
-            src, tgt, input_src, input_tgt, src_mask, tgt_mask,
-            src_cutout_masks, tgt_cutout_masks, train)
+            src, tgt, aug_src, aug_tgt, src_mask, tgt_mask,
+            aug_src_masks, aug_tgt_masks, train)
         if rb is not None:
             if not self.args.pe_only:
                 cost = (rb['similarity_error']
@@ -133,10 +127,10 @@ class ModelWrapper(nn.Module):
         if (not self.args.pe_only and self.args.lambda6 > 0 and rf is not None
                 and rb is not None):
             smaller_dim = self.dim // (2**self.trunclayer)
-            zmf = (rf['pred'] != 0).float() * (rf['input_tgt'] != 0).float()
+            zmf = (rf['pred'] != 0).float() * (rf['aug_tgt'] != 0).float()
             zmf = (zmf.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
                    .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
-            zmb = (rb['pred'] != 0).float() * (rb['input_tgt'] != 0).float()
+            zmb = (rb['pred'] != 0).float() * (rb['aug_tgt'] != 0).float()
             zmb = (zmb.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
                    .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
             rffield, rbfield = rf['rfield'] * zmf, rb['rfield'] * zmb
@@ -157,9 +151,9 @@ class ModelWrapper(nn.Module):
         # print('type(rf), type(rb): {0} {1}'.format(type(rf), type(rb)))
         return rf, rb
 
-    def run_sample(self, src, tgt, input_src, input_tgt, mask=None,
-                   tgt_mask=None, src_cutout_masks=[],
-                   tgt_cutout_masks=[], train=True):
+    def run_sample(self, src, tgt, aug_src, aug_tgt, mask=None,
+                   tgt_mask=None, aug_src_masks=[],
+                   aug_tgt_masks=[], train=True):
         self.model.train(train)
         if self.args.dry_run:
             print('Bailing for dry run [not an error].')
@@ -167,17 +161,17 @@ class ModelWrapper(nn.Module):
 
         # if we're just training the pre-encoder, no need to do everything
         if self.args.pe_only:
-            contrasted_stack = self.model.apply(input_src, input_tgt, 
+            contrasted_stack = self.model.apply(aug_src, aug_tgt, 
                                            use_preencoder=self.args.pe)
             pred = contrasted_stack.squeeze()
             y = torch.cat((src.unsqueeze(0), tgt.squeeze().unsqueeze(0)), 0)
             contrast_err = self.similarity(pred, y)
             contrast_err_src = contrast_err[0:1]
             contrast_err_tgt = contrast_err[1:2]
-            for m in src_cutout_masks:
+            for m in aug_src_masks:
                 contrast_err_src = (contrast_err_src
                                     * m.view(contrast_err_src.size()).float())
-            for m in tgt_cutout_masks:
+            for m in aug_tgt_masks:
                 contrast_err_tgt = (contrast_err_tgt
                                        * m.view(contrast_err_tgt.size())
                                        .float())
@@ -185,8 +179,8 @@ class ModelWrapper(nn.Module):
                                                  contrast_err_tgt), 0))
             return {'contrast_error': contrast_err}
 
-        # print('input_src/tgt device: {0} {1}'.format(input_src.device, input_tgt.device))
-        pred, field, residuals = self.model.apply(input_src, input_tgt,
+        # print('aug_src/tgt device: {0} {1}'.format(aug_src.device, aug_tgt.device))
+        pred, field, residuals = self.model.apply(aug_src, aug_tgt,
                                              self.trunclayer, use_preencoder=self.args.pe)
         # resample tensors that are in our source coordinate space with our
         # new field prediction to move them into tgt coordinate space so
@@ -202,13 +196,13 @@ class ModelWrapper(nn.Module):
         if tgt_mask is not None:
             tgt_mask = downsample(self.trunclayer)(tgt_mask.unsqueeze(0).unsqueeze(0))
             tgt_mask = masks.dilate(tgt_mask, 1, binary=False)
-        if len(src_cutout_masks) > 0:
-            src_cutout_masks = [
+        if len(aug_src_masks) > 0:
+            aug_src_masks = [
                 torch.ceil(F.grid_sample(m.float(), field, mode='bilinear', padding_mode='border')).byte()
-                for m in src_cutout_masks]
+                for m in aug_src_masks]
 
-        if len(tgt_cutout_masks) > 0:
-             tgt_cutout_masks = [torch.ceil(downsample(self.trunclayer)(m.float())).byte() for m in tgt_cutout_masks]
+        if len(aug_tgt_masks) > 0:
+             aug_tgt_masks = [torch.ceil(downsample(self.trunclayer)(m.float())).byte() for m in aug_tgt_masks]
 
         # first we'll build a binary mask to completely ignore
         # 'irrelevant' pixels
@@ -224,13 +218,13 @@ class ModelWrapper(nn.Module):
         if no_valid_pixels:
             print('Skipping empty border mask.')
 #             visualize_outputs(prefix('empty_border_mask') + '{}',
-#                               {'src': input_src, 'tgt': input_tgt}
+#                               {'src': aug_src, 'tgt': aug_tgt}
             return None
         similarity_binary_masks.append(border_mask)
 
         # mask away similarity error from pixels within cutouts in either the
         # source or tgt
-        cutout_similarity_masks = src_cutout_masks + tgt_cutout_masks
+        cutout_similarity_masks = aug_src_masks + aug_tgt_masks
         if len(cutout_similarity_masks) > 0:
             cutout_similarity_mask = masks.union(cutout_similarity_masks)
             cutout_similarity_mask = masks.invert(cutout_similarity_mask)
@@ -260,7 +254,7 @@ class ModelWrapper(nn.Module):
         # if torch.sum(similarity_weights[border_mask.data]).data[0] < self.args.eps:
         #     print('Skipping all zero similarity weights (factor == 0).')
 #       #       visualize_outputs(prefix('zero_similarity_weights') + '{}',
-#       #                         {'src': input_src, 'tgt': input_tgt})
+#       #                         {'src': aug_src, 'tgt': aug_tgt})
         #     return None
 
         # similarity_mask_factor = (
@@ -303,7 +297,7 @@ class ModelWrapper(nn.Module):
                 .data[0] < self.args.eps):
              print('Skipping all zero smoothness weights (factor == 0).')
 #             visualize_outputs(prefix('zero_smoothness_weights') + '{}',
-#                               {'src': input_src, 'tgt': input_tgt})
+#                               {'src': aug_src, 'tgt': aug_tgt})
              return None
 
         # smoothness_mask_factor = (dim**2. / torch.sum(
@@ -329,8 +323,8 @@ class ModelWrapper(nn.Module):
         return {
             'src': src,
             'tgt': tgt,
-            'input_src': downsample(self.trunclayer)(input_src.unsqueeze(0).unsqueeze(0)),
-            'input_tgt': downsample(self.trunclayer)(input_tgt.unsqueeze(0).unsqueeze(0)),
+            'aug_src': downsample(self.trunclayer)(aug_src.unsqueeze(0).unsqueeze(0)),
+            'aug_tgt': downsample(self.trunclayer)(aug_tgt.unsqueeze(0).unsqueeze(0)),
             'field': field,
             'rfield': rfield,
             'residuals': residuals,
@@ -349,15 +343,17 @@ class ModelWrapper(nn.Module):
             'smoothness_error_field': weighted_smoothness_error_field
         }
 
-    def forward(self, sample):
+    def forward(self, X):
         """Run single pair of slices
         """
-        # src = Variable(sample['src'], requires_grad=False).cuda() 
-        # tgt = Variable(sample['tgt'], requires_grad=False).cuda() 
-        # src, tgt = sample['src'], sample['tgt']
-        src, tgt = sample['src'].squeeze(), sample['tgt'].squeeze()
+        # src = Variable(X['src'], requires_grad=False).cuda() 
+        # tgt = Variable(X['tgt'], requires_grad=False).cuda() 
+        # src, tgt = X['src'], X['tgt']
+        src, tgt = X['src'].squeeze(), X['tgt'].squeeze()
+        aug_src, aug_tgt = X['aug_src'].squeeze(), X['aug_tgt'].squeeze()
+        aug_src_masks, aug_tgt_masks = X['aug_src_masks'], X['aug_tgt_masks']
         # print('src/tgt device: {0} {1}'.format(src.device, tgt.device))
-        return self.run_pair(src, tgt)
+        return self.run_pair(src, tgt, aug_src, aug_tgt, aug_src_masks, aug_tgt_masks)
 
 def main():
     """Start training a net."""
@@ -389,8 +385,12 @@ def main():
         else:
             paths = [args.lm_src]
     h5_paths = [expanduser(x) for x in paths]
-    transform = transforms.Compose([Normalize(2), ToFloatTensor(), 
-                                     RandomRotateAndScale()])
+    transform = transforms.Compose([Normalize(2), 
+                                    ToFloatTensor(),
+                                    RandomTranslation(2**(size-1)), 
+                                    RandomRotateAndScale(), 
+                                    RandomFlip(), 
+                                    RandomAugmentation()])
     train_dataset = compile_dataset(h5_paths, transform)
     train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, 
@@ -479,7 +479,7 @@ def main():
                 optimizer = opt(trunclayer)
 
         for t, sample in enumerate(train_loader):
-
+            print('start training example {0}'.format(t))
             if len(args.gpu_ids) > 1:
                 # print('using multiple gpus')
                 rf, rb = data_parallel(model_wrapper, sample)
@@ -487,6 +487,7 @@ def main():
                 # print('not using multiple gpus')
                 rf, rb = model_wrapper(sample)
 
+            print('stop training example {0}'.format(t))
             if rf is not None:
                 if not args.pe_only:
                     errs.append(rf['similarity_error'].data[0])
@@ -504,11 +505,11 @@ def main():
                         consensus_list.append(rb['consensus'].data[0])
                 else:
                     contrast_errors.append(rb['contrast_error'].data[0])
+            print('stop error summary {0}'.format(t))
 
-#             if (sample_idx == 0 and t % args.vis_interval == 0
-#                     and not args.pe_only):
-#                 visualize_outputs(prefix('forward') + '{}', rf)
-#                 visualize_outputs(prefix('backward') + '{}', rb)
+            # if t % args.vis_interval == 0 and not args.pe_only:
+            #     visualize_outputs(prefix('forward') + '{}', rf)
+            #     visualize_outputs(prefix('backward') + '{}', rb)
             ##################################
             # print('optimizer.step()')
             optimizer.step()

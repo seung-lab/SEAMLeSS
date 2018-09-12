@@ -7,7 +7,8 @@ import torch
 from torch.autograd import Variable
 from torch.utils.data import Dataset, ConcatDataset
 from normalizer import Normalizer
-from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
+from aug import aug_input, rotate_and_scale, random_translation
+from helpers import reverse_dim
 import numpy as np
 import random
 
@@ -28,6 +29,48 @@ def h5_to_dataset_list(h5_path, transform=None):
             stacks.append(StackDataset(d[i:i+1], transform=transform))
     return stacks
 
+class RandomAugmentation(object):
+    """Apply random Gaussian noise, cutouts, & brightness adjustment
+    """
+    def __init__(self, factor=2):
+        self.factor = factor
+
+    def __call__(self, X):
+        src, tgt = X['src'].clone(), X['tgt'].clone()
+        aug_src, aug_src_masks = aug_input(src)
+        aug_tgt, aug_tgt_masks = aug_input(tgt)
+        X['aug_src'] = aug_src
+        X['aug_tgt'] = aug_tgt
+        X['aug_src_masks'] = aug_src_masks
+        X['aug_tgt_masks'] = aug_src_masks
+        return X
+
+class RandomFlip(object):
+    """Randomly flip src & tgt images
+    """
+    def __call__(self, X):
+        src, tgt = X['src'], X['tgt']
+        if random.randint(0,1) == 0:
+            src = reverse_dim(src, 0)
+            tgt = reverse_dim(tgt, 0)
+        if random.randint(0,1) == 0:
+            src = reverse_dim(src, 1)
+            tgt = reverse_dim(tgt, 1)
+        return {'src': src, 'tgt': tgt}        
+
+class RandomTranslation(object):
+    """Randomly translate src & tgt images separately
+    """
+    def __init__(self, max_displacement=2**6):
+        self.max_displacement = max_displacement
+
+    def __call__(self, X):
+        src, tgt = X['src'], X['tgt']
+        if random.randint(0,1) == 0:
+            src = random_translation(src, self.max_displacement)
+        if random.randint(0,1) == 0:
+            tgt = random_translation(tgt, self.max_displacement)
+        return {'src': src, 'tgt': tgt}        
 
 class RandomRotateAndScale(object):
     """Randomly rotate & scale src and tgt images
