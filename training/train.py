@@ -385,12 +385,12 @@ def main():
         else:
             paths = [args.lm_src]
     h5_paths = [expanduser(x) for x in paths]
-    transform = transforms.Compose([Normalize(2), 
-                                    ToFloatTensor(),
+    transform = transforms.Compose([ToFloatTensor(),
                                     RandomTranslation(2**(size-1)), 
                                     RandomRotateAndScale(), 
                                     RandomFlip(), 
-                                    RandomAugmentation()])
+                                    RandomAugmentation(),
+                                    Normalize(2)])
     train_dataset = compile_dataset(h5_paths, transform)
     train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, 
@@ -479,7 +479,6 @@ def main():
                 optimizer = opt(trunclayer)
 
         for t, sample in enumerate(train_loader):
-            print('start training example {0}'.format(t))
             if len(args.gpu_ids) > 1:
                 # print('using multiple gpus')
                 rf, rb = data_parallel(model_wrapper, sample)
@@ -487,7 +486,6 @@ def main():
                 # print('not using multiple gpus')
                 rf, rb = model_wrapper(sample)
 
-            print('stop training example {0}'.format(t))
             if rf is not None:
                 if not args.pe_only:
                     errs.append(rf['similarity_error'].data[0])
@@ -505,7 +503,6 @@ def main():
                         consensus_list.append(rb['consensus'].data[0])
                 else:
                     contrast_errors.append(rb['contrast_error'].data[0])
-            print('stop error summary {0}'.format(t))
 
             if t % args.vis_interval == 0 and not args.pe_only:
                 visualize_outputs(prefix('forward') + '{}', rf)
