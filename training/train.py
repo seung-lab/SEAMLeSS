@@ -565,7 +565,7 @@ def main():
                     mean_consensus.item()))
                 torch.save(model.state_dict(), 'pt/' + name + '.pt')
                 if t % 100 == 0:
-                    torch.save(model.state_dict(), 'pt/' + name + '_' + str(t) + '.pt')
+                    torch.save(model.state_dict(), prefix() + '.pt')
 
                 print('Writing status to: {}'.format(log_file))
                 with open(log_file, 'a') as log:
