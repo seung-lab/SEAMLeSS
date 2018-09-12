@@ -95,16 +95,16 @@ class RandomRotateAndScale(object):
         return {'src': src, 'tgt': tgt}
 
 class Normalize(object):
-    """Normalize range of image
+    """Normalize range of all tensors
     """
     def __init__(self, mip=2):
         self.normalize = Normalizer(mip)
 
     def __call__(self, X):
-        src, tgt = X['src'], X['tgt']
-        src = self.normalize.apply(src)
-        tgt = self.normalize.apply(tgt)
-        return {'src': src, 'tgt': tgt}
+        for k, v in X.items():
+            if isinstance(v, torch.Tensor):
+                X[k] = torch.FloatTensor(self.normalize.apply(v.numpy()))
+        return X 
 
 class ToFloatTensor(object):
     """Convert ndarray to FloatTensor
