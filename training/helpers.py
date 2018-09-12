@@ -10,6 +10,7 @@ from skimage.transform import rescale
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 import matplotlib.cm as cm
 
 def compose_functions(fseq):
@@ -197,7 +198,7 @@ def save_chunk(chunk, name, norm=True):
         chunk[-10:,-10:] = 0
     plt.imsave(name + '.png', 1 - chunk, cmap='Greys')
 
-def gif(filename, array, fps=8, scale=1.0):
+def gif(filename, array, fps=2, scale=1.0):
     """Creates a gif given a stack of images using moviepy
     >>> X = randn(100, 64, 64)
     >>> gif('test.gif', X)

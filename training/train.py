@@ -507,9 +507,9 @@ def main():
                     contrast_errors.append(rb['contrast_error'].data[0])
             print('stop error summary {0}'.format(t))
 
-            # if t % args.vis_interval == 0 and not args.pe_only:
-            #     visualize_outputs(prefix('forward') + '{}', rf)
-            #     visualize_outputs(prefix('backward') + '{}', rb)
+            if t % args.vis_interval == 0 and not args.pe_only:
+                visualize_outputs(prefix('forward') + '{}', rf)
+                visualize_outputs(prefix('backward') + '{}', rb)
             ##################################
             # print('optimizer.step()')
             optimizer.step()
