@@ -174,7 +174,7 @@ class EPyramid(nn.Module):
             if i >= self.skip:
                 curr_dim = self.dim // (2 ** i)
                 inputs_i = encodings[i]
-                I = self.get_identity_grid(curr_dim)
+                I = self.get_identity_grid(curr_dim, stack.device)
                 resampled_source = grid_sample(inputs_i[:,0:inputs_i.size(1)//2],
                                              field_so_far + I, mode='bilinear')
                 new_input_i = torch.cat((resampled_source, inputs_i[:,inputs_i.size(1)//2:]), 1)
@@ -186,7 +186,7 @@ class EPyramid(nn.Module):
                 # field_so_far residual.
                 resampled_field_so_far = grid_sample(
                     field_so_far.permute(0,3,1,2),
-                    rfield + self.get_identity_grid(self.dim // (2 ** i)),
+                    rfield + self.get_identity_grid(self.dim // (2 ** i), stack.device),
                     mode='bilinear', padding_mode='border').permute(0,2,3,1)
                 field_so_far = rfield + resampled_field_so_far
             if i != target_level:
