@@ -173,20 +173,22 @@ class EPyramid(nn.Module):
         for i in range(self.size - 1 - self.topskips, target_level - 1, -1):
             if i >= self.skip:
                 curr_dim = self.dim // (2 ** i)
-                field_so_far += self.get_identity_grid(curr_dim, stack.device)
                 inputs_i = encodings[i]
-                # print('inputs_i/field_so_far device: {0} {1}'.format(inputs_i.device, 
-                #                                                     field_so_far.device))
-                resampled_source = grid_sample(inputs_i[:,0:inputs_i.size(1)//2], field_so_far, mode='bilinear')
+                I = self.get_identity_grid(curr_dim)
+                resampled_source = grid_sample(inputs_i[:,0:inputs_i.size(1)//2],
+                                             field_so_far + I, mode='bilinear')
                 new_input_i = torch.cat((resampled_source, inputs_i[:,inputs_i.size(1)//2:]), 1)
                 factor = ((self.TRAIN_SIZE / (2. ** i)) / (new_input_i.size()[-1] - 1))
                 rfield = self.mlist[i](new_input_i) * factor
                 residuals.append(rfield)
-                field_so_far = grid_sample(
-                    field_so_far.permute(0,3,1,2), 
-                    rfield + self.get_identity_grid(self.dim // (2 ** i), stack.device),
+                # Resample residual at field_so_far using rfield correspondence.
+                # Add result to rfield residual to produce the new
+                # field_so_far residual.
+                resampled_field_so_far = grid_sample(
+                    field_so_far.permute(0,3,1,2),
+                    rfield + self.get_identity_grid(self.dim // (2 ** i)),
                     mode='bilinear', padding_mode='border').permute(0,2,3,1)
-                field_so_far -= self.get_identity_grid(curr_dim, stack.device)
+                field_so_far = rfield + resampled_field_so_far
             if i != target_level:
                 up_field = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
                 # account for shifting locations of -1 and +1 in upsampled field

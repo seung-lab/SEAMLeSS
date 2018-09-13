@@ -55,8 +55,8 @@ class Process(object):
             x = x.cuda()
         x = torch.autograd.Variable(x, requires_grad=False)
         image, field, residuals, encodings, cumulative_residuals = self.model(x)
-        res = field - self.model.pyramid.get_identity_grid(x.size(3))
-        res *= (res.shape[-2] / 2) * (2 ** self.mip)
+        res = self.model(x)[1] - self.model.pyramid.get_identity_grid(x.size(3))
+        res *= (res.shape[-2] - 1) / 2 * (2 ** self.mip)
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
         nonflipped = res.data.cpu().numpy()
@@ -74,8 +74,8 @@ class Process(object):
             x = x.cuda()
         x = torch.autograd.Variable(x, requires_grad=False)
         image_fl, field_fl, residuals_fl, encodings_fl, cumulative_residuals_fl = self.model(x)
-        res = field_fl - self.model.pyramid.get_identity_grid(x.size(3))
-        res *= (res.shape[-2] / 2) * (2 ** self.mip)
+        res = self.model(x)[1] - self.model.pyramid.get_identity_grid(x.size(3))
+        res *= (res.shape[-2] - 1) / 2 * (2 ** self.mip)
         if crop>0:
             res = res[:,crop:-crop, crop:-crop,:]
         res = res.data.cpu().numpy()
