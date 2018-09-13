@@ -89,4 +89,3 @@ bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, 
 
 stack_start = v_off[2]
 a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=not args.no_anchor)
-
