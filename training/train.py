@@ -457,7 +457,6 @@ def main():
     print('=========== BEGIN TRAIN LOOP ============')
     for epoch in range(args.epoch, args.num_epochs):
         print('Beginning training epoch: {}'.format(epoch))
-
         errs = []
         penalties = []
         consensus_list = []
