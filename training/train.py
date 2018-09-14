@@ -478,7 +478,7 @@ def main():
                 optimizer = opt(trunclayer)
 
         for t, sample in enumerate(train_loader):
-            if len(args.gpu_ids) > 1:
+            if len(args.gpu_ids) > 0:
                 # print('using multiple gpus')
                 rf, rb = data_parallel(model_wrapper, sample)
             else:
