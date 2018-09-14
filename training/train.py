@@ -503,7 +503,7 @@ def main():
                 else:
                     contrast_errors.append(rb['contrast_error'].data[0])
 
-            if t % args.vis_interval == 0 and not args.pe_only:
+            if t % args.vis_interval == 0 and not args.pe_only and t > 0:
                 visualize_outputs(prefix('forward') + '{}', rf)
                 visualize_outputs(prefix('backward') + '{}', rb)
             ##################################
@@ -554,7 +554,7 @@ def parse_args():
         action='store_true')
     parser.add_argument(
         '--vis_interval',
-        help='the number of stacks in between each visualization',
+        help='the number of samples in between each visualization',
         type=int, default=10)
     parser.add_argument(
         '--log_interval',
