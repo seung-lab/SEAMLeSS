@@ -510,37 +510,37 @@ def main():
             # model_wrapper.model.zero_grad()
             optimizer.zero_grad()
 
-
-        if args.pe_only:
-            mean_contrast = (
-                (sum(contrast_errors) / len(contrast_errors))
-                if len(contrast_errors) > 0 else 0)
-            print('Mean contraster error: {}'.format(mean_contrast))
-            model_wrapper.save(name)
-        # Save some info
-        if len(errs) > 0:
-            mean_err_train = sum(errs) / len(errs)
-            mean_penalty_train = sum(penalties) / len(penalties)
-            mean_consensus = (
-                (sum(consensus_list) / len(consensus_list))
-                if len(consensus_list) > 0 else 0)
-            print(epoch, smooth_factor, trunclayer,
-                  mean_err_train + args.lambda1
-                  * mean_penalty_train * smooth_factor,
-                  mean_err_train, mean_penalty_train, mean_consensus)
-            history.append((
-                time.time() - start_time,
-                mean_err_train + mean_penalty_train * smooth_factor,
-                mean_err_train, mean_penalty_train, mean_consensus))
-            model_wrapper.save(name)
-  
-            print('Writing status to: {}'.format(log_file))
-            with open(log_file, 'a') as log:
-                for tr in history:
-                    for val in tr:
-                        log.write(str(val) + ', ')
-                    log.write('\n')
-                history = []
+            if t % args.log_interval == 0 and t > 0:
+                if args.pe_only:
+                    mean_contrast = (
+                        (sum(contrast_errors) / len(contrast_errors))
+                        if len(contrast_errors) > 0 else 0)
+                    print('Mean contraster error: {}'.format(mean_contrast))
+                    model_wrapper.save(name)
+                # Save some info
+                if len(errs) > 0:
+                    mean_err_train = sum(errs) / len(errs)
+                    mean_penalty_train = sum(penalties) / len(penalties)
+                    mean_consensus = (
+                        (sum(consensus_list) / len(consensus_list))
+                        if len(consensus_list) > 0 else 0)
+                    print(epoch, smooth_factor, trunclayer,
+                          mean_err_train + args.lambda1
+                          * mean_penalty_train * smooth_factor,
+                          mean_err_train, mean_penalty_train, mean_consensus)
+                    history.append((
+                        time.time() - start_time,
+                        mean_err_train + mean_penalty_train * smooth_factor,
+                        mean_err_train, mean_penalty_train, mean_consensus))
+                    model_wrapper.save(name)
+          
+                    print('Writing status to: {}'.format(log_file))
+                    with open(log_file, 'a') as log:
+                        for tr in history:
+                            for val in tr:
+                                log.write(str(val) + ', ')
+                            log.write('\n')
+                        history = []
 
 
 def parse_args():
@@ -553,6 +553,10 @@ def parse_args():
     parser.add_argument(
         '--vis_interval',
         help='the number of stacks in between each visualization',
+        type=int, default=10)
+    parser.add_argument(
+        '--log_interval',
+        help='the number of samples in between each log',
         type=int, default=10)
     parser.add_argument(
         '--mask_smooth_radius',
