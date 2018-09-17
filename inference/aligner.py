@@ -162,8 +162,8 @@ class Aligner:
       vec_info["scales"][i]["chunk_sizes"][0][2] = 1
 
     enc_dict = {x: 6*(x-self.process_low_mip)+12 for x in 
-                    range(self.process_low_mip, self.process_high_mip+1)} 
-
+                                 range(self.process_low_mip, 
+                                       self.process_low_mip + self.size + 1)}
     scales = deepcopy(vec_info["scales"])
     # print('src_info scales: {0}'.format(len(scales)))
     for i in range(len(scales)):
