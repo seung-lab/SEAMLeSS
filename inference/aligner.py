@@ -18,6 +18,7 @@ from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
 
 import torch.nn as nn
+from task_handler import TaskHandler, make_residual_task_message, make_render_task_message, make_copy_task_message, make_downsample_task_message
 
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
@@ -26,7 +27,16 @@ class Aligner:
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
                flip_average=True, run_pairs=False, write_intermediaries=False,
-               upsample_residuals=False, old_upsample=False):
+               upsample_residuals=False, old_upsample=False,
+               queue_name=None):
+    if queue_name != None:
+        self.task_handler = TaskHandler(queue_name)
+        self.distributed  = True
+    else:
+        self.task_handler = None
+        self.distributed  = False
+
+    self.threads          = threads
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip
@@ -76,7 +86,7 @@ class Aligner:
     self.y_field_ng_paths = [os.path.join(r, 'y') for r in self.field_ng_paths]
 
     self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip, size=size, flip_average=flip_average, old_upsample=old_upsample)
-    
+
     self.write_intermediaries = write_intermediaries
     self.upsample_residuals = upsample_residuals
 
@@ -91,7 +101,7 @@ class Aligner:
     self.img_cache = {}
 
     self.img_cache_lock = Lock()
-    
+
     #if not chunk_size[0] :
     #  raise Exception("The chunk size has to be aligned with ng chunk size")
 
@@ -161,8 +171,8 @@ class Aligner:
     for i in range(len(vec_info["scales"])):
       vec_info["scales"][i]["chunk_sizes"][0][2] = 1
 
-    enc_dict = {x: 6*(x-self.process_low_mip)+12 for x in 
-                    range(self.process_low_mip, self.process_high_mip+1)} 
+    enc_dict = {x: 6*(x-self.process_low_mip)+12 for x in
+                    range(self.process_low_mip, self.process_high_mip+1)}
 
     scales = deepcopy(vec_info["scales"])
     # print('src_info scales: {0}'.format(len(scales)))
@@ -303,29 +313,29 @@ class Aligner:
     self.save_vector_patch(field, self.x_field_ng_paths[mip], self.y_field_ng_paths[mip], source_z, out_patch_bbox, mip)
 
     if self.write_intermediaries:
-  
+
       mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
       for res_mip, res, cumres in zip(mip_range, residuals[1:], cum_residuals[1:]):
-          crop = self.crop_amount // 2**(res_mip - self.process_low_mip)   
-          self.save_residual_patch(res, crop, self.x_res_ng_paths[res_mip], 
-                                   self.y_res_ng_paths[res_mip], source_z, 
+          crop = self.crop_amount // 2**(res_mip - self.process_low_mip)
+          self.save_residual_patch(res, crop, self.x_res_ng_paths[res_mip],
+                                   self.y_res_ng_paths[res_mip], source_z,
                                    out_patch_bbox, res_mip)
-          self.save_residual_patch(cumres, crop, self.x_cumres_ng_paths[res_mip], 
-                                   self.y_cumres_ng_paths[res_mip], source_z, 
+          self.save_residual_patch(cumres, crop, self.x_cumres_ng_paths[res_mip],
+                                   self.y_cumres_ng_paths[res_mip], source_z,
                                    out_patch_bbox, res_mip)
           if self.upsample_residuals:
-            crop = self.crop_amount   
+            crop = self.crop_amount
             res = self.scale_residuals(res, res_mip, self.process_low_mip)
-            self.save_residual_patch(res, crop, self.x_resup_ng_paths[res_mip], 
-                                     self.y_resup_ng_paths[res_mip], source_z, 
+            self.save_residual_patch(res, crop, self.x_resup_ng_paths[res_mip],
+                                     self.y_resup_ng_paths[res_mip], source_z,
                                      out_patch_bbox, self.process_low_mip)
             cumres = self.scale_residuals(cumres, res_mip, self.process_low_mip)
-            self.save_residual_patch(cumres, crop, self.x_cumresup_ng_paths[res_mip], 
-                                     self.y_cumresup_ng_paths[res_mip], source_z, 
+            self.save_residual_patch(cumres, crop, self.x_cumresup_ng_paths[res_mip],
+                                     self.y_cumresup_ng_paths[res_mip], source_z,
                                      out_patch_bbox, self.process_low_mip)
 
 
- 
+
       # print('encoding size: {0}'.format(len(encodings)))
       for k, enc in enumerate(encodings):
           mip = self.process_low_mip + k
@@ -333,7 +343,7 @@ class Aligner:
           crop = self.crop_amount // 2**k
           enc = enc[:,:,crop:-crop, crop:-crop].permute(2,3,0,1)
           enc = enc.data.cpu().numpy()
-          
+
           def write_encodings(j_slice, z):
             x_range = out_patch_bbox.x_range(mip=mip)
             y_range = out_patch_bbox.y_range(mip=mip)
@@ -342,13 +352,13 @@ class Aligner:
             cv(self.enc_ng_paths[mip], mip=mip, bounded=False, fill_missing=True, autocrop=True,
                                     progress=False)[x_range[0]:x_range[1],
                                                     y_range[0]:y_range[1], z, j_slice] = patch # uint_patch
-  
+
           # src_image encodings
           write_encodings(slice(0, enc.shape[-1] // 2), source_z)
           # dst_image_encodings
           write_encodings(slice(enc.shape[-1] // 2, enc.shape[-1]), target_z)
-        
-    
+
+
   def abs_to_rel_residual(self, abs_residual, patch, mip):
     x_fraction = (patch.x_size(mip=0) - 1) * 0.5
     y_fraction = (patch.y_size(mip=0) - 1) * 0.5
@@ -388,7 +398,7 @@ class Aligner:
     preprocessed = self.preprocess_data(result * 255)
 
     return preprocessed
-    
+
   def downsample_patch(self, ng_path, z, bbox, mip):
     in_data = self.get_image_data(ng_path, z, bbox, mip - 1)
     result  = downsample_mip(in_data)
@@ -415,7 +425,7 @@ class Aligner:
     print ("Saving residual patch {} at MIP {}".format(bbox.__str__(mip=0), mip))
     v = res * (res.shape[-2] / 2) * (2**mip)
     v = v[:,crop:-crop, crop:-crop,:]
-    v = v.data.cpu().numpy() 
+    v = v.data.cpu().numpy()
     self.save_vector_patch(v, x_path, y_path, z, bbox, mip)
 
   def save_vector_patch(self, flow, x_path, y_path, z, bbox, mip):
@@ -441,7 +451,7 @@ class Aligner:
 
   def dilate_mask(self, mask, radius=5):
     return skmaximum(np.squeeze(mask).astype(np.uint8), skdisk(radius)).reshape(mask.shape).astype(np.bool)
-    
+
   def missing_data_mask(self, img, bbox, mip):
     (img_xs, img_xe), (img_ys, img_ye) = bbox.x_range(mip=mip), bbox.y_range(mip=mip)
     (total_xs, total_xe), (total_ys, total_ye) = self.total_bbox.x_range(mip=mip), self.total_bbox.y_range(mip=mip)
@@ -450,7 +460,7 @@ class Aligner:
     ys_inset = max(0, total_ys - img_ys)
     ye_inset = max(0, img_ye - total_ye)
     mask = np.logical_or(img == 0, img >= 253)
-    
+
     fov_mask = np.ones(mask.shape).astype(np.bool)
     if xs_inset > 0:
       fov_mask[:xs_inset] = False
@@ -462,7 +472,7 @@ class Aligner:
       fov_mask[:,-ye_inset:] = False
 
     return np.logical_and(fov_mask, mask)
-    
+
   def supplement_target_with_backup(self, target, still_missing_mask, backup, bbox, mip):
     backup_missing_mask = self.missing_data_mask(backup, bbox, mip)
     fill_in = backup_missing_mask < still_missing_mask
@@ -501,7 +511,7 @@ class Aligner:
         data = data_
       except AttributeError as e:
         pass
-    
+
     if self.num_targets > 1 and should_backtrack:
       for backtrack in range(1, self.num_targets):
         if z-backtrack < self.zs:
@@ -517,9 +527,9 @@ class Aligner:
             backup = backup_
           except AttributeError as e:
             pass
-          
+
         self.supplement_target_with_backup(data, still_missing_mask, backup, bbox, mip)
-        
+
     data = self.preprocess_data(data)
     #self.add_to_image_cache(path, bbox, mip, data)
 
@@ -576,11 +586,21 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
     #for patch_bbox in chunks:
-    def chunkwise(patch_bbox):
-      raw_patch = self.get_image_data(source, z, patch_bbox, mip)
-      self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
+    if self.distributed and len(chunks) > self.threads * 2:
+      for i in range(0, len(chunks), self.threads):
+        task_patches = []
+        for j in range(i, min(len(chunks), i + self.threads)):
+          task_patches.append(chunks[j])
+          copy_task = make_copy_task_message(z, source, dest, task_pathces, mip=mip)
+          self.task_handler.put_tast_order(copy_task)
 
-    self.pool.map(chunkwise, chunks)
+        self.task_handler.wait_until_ready()
+    else:
+      def chunkwise(patch_bbox):
+        raw_patch = self.get_image_data(source, z, patch_bbox, mip)
+        self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
+
+      self.pool.map(chunkwise, chunks)
 
     end = time()
     print (": {} sec".format(end - start))
@@ -608,15 +628,24 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
 
-    def chunkwise(patch_bbox):
-      warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
-                                    (mip, self.process_high_mip), mip)
-      if (self.run_pairs):
-        # save the image in the previous slice so it's easier to compare pairs
-        self.save_image_patch(self.dst_ng_path, warped_patch, z-1, patch_bbox, mip)
-      else:
-        self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
-    self.pool.map(chunkwise, chunks)
+    if self.distributed:
+      for i inr range(0, len(chunks), self.threads):
+        task_patches = []
+        for j in range(i, min(len(chunks), i + self.threads)):
+          task_patches.append(chunks[j])
+        render_task = make_render_task_message(z, task_patches, mip=mip)
+        self.task_handler.send_message(render_task)
+      self.task_handler.wait_until_ready()
+    else:
+      def chunkwise(patch_bbox):
+        warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
+                                      (mip, self.process_high_mip), mip)
+        if (self.run_pairs):
+          # save the image in the previous slice so it's easier to compare pairs
+          self.save_image_patch(self.dst_ng_path, warped_patch, z-1, patch_bbox, mip)
+        else:
+          self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+      self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
 
@@ -629,16 +658,24 @@ class Aligner:
     for m in range(source_mip+1, target_mip + 1):
       chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
                                       self.dst_voxel_offsets[m], mip=m, render=True)
-
-      def chunkwise(patch_bbox):
-        print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
-        if (self.run_pairs):
-          downsampled_patch = self.downsample_patch(self.dst_ng_path, z-1, patch_bbox, m)
-          self.save_image_patch(self.dst_ng_path, downsampled_patch, z-1, patch_bbox, m)
-        else:
-          downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
-          self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
-      self.pool.map(chunkwise, chunks)
+      if self.distributed and len(chunks) > self.threads * 2:
+        for i in range(0, len(chunks), self.threads):
+          task_patches = []
+          for j in range(i, min(len(chunks), i + self.threads)):
+            task_patches.append(chunk[j])
+          downsample_task = make_downsample_task_message(z, task_patches, mip=m)
+          self.task_handler.send_message(downsample_task)
+        self.task_handler.wait_until_ready()
+      else:
+        def chunkwise(patch_bbox):
+          print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
+          if (self.run_pairs):
+            downsampled_patch = self.downsample_patch(self.dst_ng_path, z-1, patch_bbox, m)
+            self.save_image_patch(self.dst_ng_path, downsampled_patch, z-1, patch_bbox, m)
+          else:
+            downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
+            self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
+        self.pool.map(chunkwise, chunks)
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
     for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
@@ -650,12 +687,14 @@ class Aligner:
                                                                         m,
                                                                         len(chunks)),
              flush=True)
-      #for patch_bbox in chunks:
-      def chunkwise(patch_bbox):
-      #FIXME Torch runs out of memory
-      #FIXME batchify download and upload
-        self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
-      self.pool.map(chunkwise, chunks)
+      for patch_bbox in chunks:
+      #def chunkwise(patch_bbox):
+        if self.distributed:
+          residual_task = maker_residual_task_message(source_z, target_z, patch_bbox, mip=m)
+          self.task_handler.send_message(residual_task)
+          self.task_handler.wait_until_ready()
+        else:
+          self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
       end = time()
       print (": {} sec".format(end - start))
 
@@ -672,7 +711,7 @@ class Aligner:
     #  raise Exception("Have to align a chunkaligned size")
 
     self.total_bbox = bbox
-    
+
     start = time()
     if move_anchor:
       for m in range(self.render_low_mip, self.high_mip+1):
