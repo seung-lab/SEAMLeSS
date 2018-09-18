@@ -125,15 +125,19 @@ class StackDataset(Dataset):
 
     def __init__(self, stack, transform=None):
         self.stack = stack
+        self.N = self.stack.shape[1]-1
         self.transform = transform
 
     def __len__(self):
-        # N-1 consecutive image pairs
-        return self.stack.shape[1]-1
+        # 2*(stack.shape[1]-1) consecutive image pairs
+        return 2*self.N
 
     def __getitem__(self, k):
-        src = self.stack[0, k, :, :]
-        tgt = self.stack[0, k+1, :, :]
+        # match i -> i+1 if k < stack.shape[1], else match i -> i-1
+        i = self.N - abs(k - self.N)
+        j = self.N - abs(k+1 - self.N)
+        src = self.stack[0, i, :, :]
+        tgt = self.stack[0, j, :, :]
         X = {'src': src, 'tgt': tgt}
         if self.transform:
             X = self.transform(X)
