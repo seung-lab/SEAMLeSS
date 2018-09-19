@@ -279,7 +279,15 @@ def gridsample(source, field, padding_mode):
         raise NotImplementedError('Grid sampling from non-square tensors '
                                   'not yet implementd here.')
     scaled_field = field * source.shape[2] / (source.shape[2] - 1)
-    return F.grid_sample(source, scaled_field, padding_mode=padding_mode)
+    return F.grid_sample(source, scaled_field, mode="bilinear", padding_mode=padding_mode)
+
+def gridsample_residual(source, residual, padding_mode):
+    """
+    Similar to `gridsample()`, but takes a residual field.
+    This abstracts away generation of the appropriate identity grid.
+    """
+    field = residual + identity_grid(residual.shape, device=residual.device)
+    return gridsample(source, field, padding_mode)
 
 def _create_identity_grid(size):
     with torch.no_grad():
