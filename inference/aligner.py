@@ -592,7 +592,7 @@ class Aligner:
         for j in range(i, min(len(chunks), i + self.threads)):
           task_patches.append(chunks[j])
           copy_task = make_copy_task_message(z, source, dest, task_patches, mip=mip)
-          self.task_handler.put_tast_order(copy_task)
+          self.task_handler.send_message(copy_task)
 
         self.task_handler.wait_until_ready()
     else:

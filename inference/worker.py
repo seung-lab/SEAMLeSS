@@ -9,6 +9,7 @@ parser.add_argument('--size', type=int, default=8)
 parser.add_argument('--skip', type=int, default=0)
 parser.add_argument('--model_path', type=str)
 parser.add_argument('--out_name', type=str)
+parser.add_argument('--queue_name', type=str, default=None)
 parser.add_argument('--mip', type=int)
 parser.add_argument('--render_mip', type=int)
 parser.add_argument('--should_contrast', type=int)
@@ -84,6 +85,7 @@ a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
             num_targets=num_targets, flip_average=not args.no_flip_average,
             run_pairs=args.run_pairs,
             write_intermediaries=args.write_intermediaries,
-            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample)
+            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample, queue_name=args.queue_name)
 
-a.listen_for_tasks()
+
+a.listen_to_tasks()
