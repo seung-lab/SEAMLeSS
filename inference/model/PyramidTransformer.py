@@ -247,4 +247,5 @@ class PyramidTransformer(nn.Module):
         source = source.unsqueeze(0)
         if len(target.size()) == 2:
             target = target.unsqueeze(0)
-        return self(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis, use_preencoder=use_preencoder)
+        with torch.no_grad():
+            return self(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis, use_preencoder=use_preencoder)
