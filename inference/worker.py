@@ -87,5 +87,4 @@ a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
             write_intermediaries=args.write_intermediaries,
             upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample, queue_name=args.queue_name)
 
-
-a.listen_to_tasks()
+a.listen_for_tasks()
