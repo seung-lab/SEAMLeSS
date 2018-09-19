@@ -23,7 +23,7 @@ from task_handler import TaskHandler, make_residual_task_message, make_render_ta
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
-               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=5,
+               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=10,
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
                flip_average=True, run_pairs=False, write_intermediaries=False,
@@ -290,7 +290,7 @@ class Aligner:
     abs_residual = self.net.process(s, t, mip)
 
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
-    print ("Computing residual for region {}.".format(out_patch_bbox.__str__(mip=0)), flush=True)
+    #print ("Computing residual for region {}.".format(out_patch_bbox.__str__(mip=0)), flush=True)
     precrop_patch_bbox = deepcopy(out_patch_bbox)
     precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
 
@@ -629,7 +629,7 @@ class Aligner:
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
 
     if self.distributed:
-      for i inr range(0, len(chunks), self.threads):
+      for i in range(0, len(chunks), self.threads):
         task_patches = []
         for j in range(i, min(len(chunks), i + self.threads)):
           task_patches.append(chunks[j])
@@ -668,7 +668,7 @@ class Aligner:
         self.task_handler.wait_until_ready()
       else:
         def chunkwise(patch_bbox):
-          print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
+          #print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
           if (self.run_pairs):
             downsampled_patch = self.downsample_patch(self.dst_ng_path, z-1, patch_bbox, m)
             self.save_image_patch(self.dst_ng_path, downsampled_patch, z-1, patch_bbox, m)
