@@ -5,6 +5,7 @@ import collections
 import functools
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.autograd import Variable
 from skimage.transform import rescale
 import matplotlib
@@ -158,8 +159,6 @@ def reverse_dim(var, dim):
         return var
     idx = range(var.size()[dim] - 1, -1, -1)
     idx = torch.LongTensor(idx)
-    if type(var) == Variable:
-        idx = Variable(idx)
     if var.is_cuda:
         idx = idx.cuda()
     return var.index_select(dim, idx)

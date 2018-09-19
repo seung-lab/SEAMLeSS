@@ -75,7 +75,7 @@ def get_colors(angles, f, c):
 def dv(vfield, name=None, downsample=0.5):
     dim = vfield.shape[-2]
     assert type(vfield) == np.ndarray
-    
+
     lengths = np.squeeze(np.sqrt(vfield[:,:,:,0] ** 2 + vfield[:,:,:,1] ** 2))
     lengths = (lengths - np.min(lengths)) / (np.max(lengths) - np.min(lengths))
     angles = np.squeeze(np.angle(vfield[:,:,:,0] + vfield[:,:,:,1]*1j))
@@ -85,7 +85,7 @@ def dv(vfield, name=None, downsample=0.5):
     angles[angles<0] += np.pi
     off_angles = angles + np.pi/4
     off_angles[off_angles>np.pi] -= np.pi
-    
+
     scolors = get_colors(angles, f=lambda x: np.sin(x) ** 1.4, c=cm.viridis)
     ccolors = get_colors(off_angles, f=lambda x: np.sin(x) ** 1.4, c=cm.magma)
 
@@ -96,7 +96,7 @@ def dv(vfield, name=None, downsample=0.5):
     scolors = 1 - (1 - scolors) * lengths.reshape((dim, dim, 1)) ** .8 #
 
     img = np_upsample(scolors, downsample) if downsample is not None else scolors
-    
+
     if name is not None:
         plt.imsave(name + '.png', img)
     else:
@@ -125,7 +125,7 @@ def center_field(field):
         vfield[:,:,:,1] = vfield[:,:,:,1] - np.mean(vfield[:,:,:,1])
         field[idx] = vfield
     return field[0] if wrap else field
-        
+
 def display_v(vfield, name=None, center=False):
     if center:
         center_field(vfield)
@@ -140,8 +140,12 @@ def display_v(vfield, name=None, center=False):
     else:
         assert (name is not None)
         dv(vfield, name)
-    
-def dvl(V_pred, name):
+
+def dvl(V_pred, name, mag=10):
+    factor = V_pred.shape[1] // 100
+    if factor > 1:
+        V_pred = V_pred[:,::factor,::factor,:]
+    V_pred *= 10
     plt.figure(figsize=(6,6))
     X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
     U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
@@ -156,8 +160,10 @@ def dvl(V_pred, name):
     plt.clf()
 
 def reverse_dim(var, dim):
+    if var is None:
+        return var
     idx = range(var.size()[dim] - 1, -1, -1)
-    idx = Variable(torch.LongTensor(idx))
+    idx = torch.LongTensor(idx)
     if var.is_cuda:
         idx = idx.cuda()
     return var.index_select(dim, idx)
@@ -194,7 +200,7 @@ def save_chunk(chunk, name, norm=True):
         chunk[-50:,-50:] = 1
         chunk[-10:,-10:] = 0
     plt.imsave(name + '.png', 1 - chunk, cmap='Greys')
-        
+
 def gif(filename, array, fps=8, scale=1.0):
     """Creates a gif given a stack of images using moviepy
     >>> X = randn(100, 64, 64)
@@ -221,12 +227,26 @@ def gif(filename, array, fps=8, scale=1.0):
         array = array[..., np.newaxis] * np.ones(3)
 
     # add 'signature' block to top left and bottom right
-    array[:,:50,:50] = 0
-    array[:,:10,:10] = 255
-    array[:,-50:,-50:] = 255
-    array[:,-10:,-10:] = 0
-        
+    if array.shape[1] > 1000:
+        array[:,:50,:50] = 0
+        array[:,:10,:10] = 255
+        array[:,-50:,-50:] = 255
+        array[:,-10:,-10:] = 0
+
     # make the moviepy clip
     clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
     clip.write_gif(filename, fps=fps, verbose=False)
     return clip
+
+
+def downsample(x):
+    if x > 0:
+        return nn.AvgPool2d(2**x, 2**x, count_include_pad=False)
+    else:
+        return (lambda y: y)
+
+def upsample(x):
+    if x > 0:
+        return nn.Upsample(scale_factor=2**x, mode='bilinear')
+    else:
+        return (lambda y: y)
