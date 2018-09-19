@@ -724,3 +724,76 @@ class Aligner:
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
                                                           end - start))
+  def handle_residual_task(self, message):
+    source_z = message['source_z']
+    target_z = message['target_z']
+    patch_bbox = deserialize_bbox(message['patch_bbox'])
+    mip = message['mip']
+    self.compute_residual_patch(source_z, target_z, patch_bbox, mip)
+
+  def handle_render_task(self, message):
+    z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    mip = message['mip']
+    def chunkwise(patch_bbox):
+      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+              end='', flush=True)
+      self.warp_patch(self.src_ng_path, z, patch_bbox, (mip, self.process_high_mip), mip)
+    self.pool.map(chunkwise, patches)
+
+  def handle_copy_task(self, message):
+    z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    mip = message['mip']
+    source = message['source']
+    dest = message['dest']
+    def chunkwise(patch_bbox):
+      raw_patch = data_handler.get_image_data(source, z, patch_bbox, mip)
+      data_handler.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
+    self.pool.map(chunkwise, patches)
+
+  def handle_downsample_task(self, message):
+    z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    mip = message['mip']
+    def chunkwise(patch_bbox):
+      downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, mip)
+      data_handler.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, mip)
+    self.pool.map(chunkwise, patches)
+
+  def handle_task_message(self, message):
+    #message types:
+    # -compute residual
+    # -prerender future target
+    # -render final result
+    # -downsample
+    # -copy
+
+    #import pdb; pdb.set_trace()
+    body = json.loads(message['Body'])
+    task_type = body['type']
+    if task_type == 'residual_task':
+      self.handle_residual_task(body)
+    elif task_type == 'render_task':
+      self.handle_render_task(body)
+    elif task_type == 'copy_task':
+      self.handle_copy_task(body)
+    elif task_type == 'downsample_task':
+      self.handle_downsample_task(body)
+    else:
+      raise Exception("Unsupported task type '{}' received from queue '{}'".format(task_type,
+                                                                 self.task_handler.queue_name))
+
+  def listen_for_tasks(self):
+    while (True):
+      message = self.task_handler.get_message()
+      if message != None:
+        print ("Got a job")
+        s = time()
+        self.handle_task_message(message)
+        self.task_handler.delete_message(message)
+        e = time()
+        print ("Done: {} sec".format(e - s))
+      else:
+        sleep(3)
+        print ("Waiting for jobs...")
