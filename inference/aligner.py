@@ -741,7 +741,14 @@ class Aligner:
     def chunkwise(patch_bbox):
       print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
               end='', flush=True)
-      self.warp_patch(self.src_ng_path, z, patch_bbox, (mip, self.process_high_mip), mip)
+      warped_patch == self.warp_patch(self.src_ng_path, z, patch_bbox,
+                                      (mip, self.process_high_mip), mip)
+      if (self.run_pairs):
+        # save the image in the previous slice so it's easier to compare pairs
+        self.save_image_patch(self.dst_ng_path, warped_patch, z-1, patch_bbox, mip)
+      else:
+        self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+
     self.pool.map(chunkwise, patches)
 
   def handle_copy_task(self, message):
