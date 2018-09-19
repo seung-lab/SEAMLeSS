@@ -688,14 +688,16 @@ class Aligner:
                                                                         m,
                                                                         len(chunks)),
              flush=True)
-      for patch_bbox in chunks:
+      if self.distributed:
+        for patch_bbox in chunks:
       #def chunkwise(patch_bbox):
-        if self.distributed:
           residual_task = make_residual_task_message(source_z, target_z, patch_bbox, mip=m)
           self.task_handler.send_message(residual_task)
-        else:
+        self.task_handler.wait_until_ready()
+      else:
+        for patch_bbox in chunks:
           self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
-      self.task_handler.wait_until_ready()
+
       end = time()
       print (": {} sec".format(end - start))
 
