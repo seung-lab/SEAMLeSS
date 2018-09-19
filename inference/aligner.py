@@ -35,7 +35,7 @@ class Aligner:
     else:
         self.task_handler = None
         self.distributed  = False
-
+    self.zs = 357 #TODO: fix
     self.threads          = threads
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
@@ -512,7 +512,8 @@ class Aligner:
       except AttributeError as e:
         pass
 
-    if self.num_targets > 1 and should_backtrack:
+    #TODO: missing data handling is turned off here because global total_bbox is not set in worker
+    if False and self.num_targets > 1 and should_backtrack:
       for backtrack in range(1, self.num_targets):
         if z-backtrack < self.zs:
           break
@@ -586,15 +587,15 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
     #for patch_bbox in chunks:
-    if self.distributed and len(chunks) > self.threads * 2:
-      for i in range(0, len(chunks), self.threads):
+    if self.distributed and len(chunks) > self.threads * 4:
+      for i in range(0, len(chunks), self.threads * 4):
         task_patches = []
         for j in range(i, min(len(chunks), i + self.threads)):
           task_patches.append(chunks[j])
           copy_task = make_copy_task_message(z, source, dest, task_patches, mip=mip)
           self.task_handler.send_message(copy_task)
 
-        self.task_handler.wait_until_ready()
+      self.task_handler.wait_until_ready()
     else:
       def chunkwise(patch_bbox):
         raw_patch = self.get_image_data(source, z, patch_bbox, mip)
@@ -659,7 +660,7 @@ class Aligner:
       chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
                                       self.dst_voxel_offsets[m], mip=m, render=True)
       if self.distributed and len(chunks) > self.threads * 2:
-        for i in range(0, len(chunks), self.threads):
+        for i in range(0, len(chunks), self.threads * 2):
           task_patches = []
           for j in range(i, min(len(chunks), i + self.threads)):
             task_patches.append(chunk[j])
@@ -690,11 +691,11 @@ class Aligner:
       for patch_bbox in chunks:
       #def chunkwise(patch_bbox):
         if self.distributed:
-          residual_task = maker_residual_task_message(source_z, target_z, patch_bbox, mip=m)
+          residual_task = make_residual_task_message(source_z, target_z, patch_bbox, mip=m)
           self.task_handler.send_message(residual_task)
-          self.task_handler.wait_until_ready()
         else:
           self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
+      self.task_handler.wait_until_ready()
       end = time()
       print (": {} sec".format(end - start))
 
@@ -747,6 +748,7 @@ class Aligner:
     mip = message['mip']
     source = message['source']
     dest = message['dest']
+
     def chunkwise(patch_bbox):
       raw_patch = self.get_image_data(source, z, patch_bbox, mip)
       self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
