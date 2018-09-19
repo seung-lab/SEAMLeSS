@@ -695,8 +695,10 @@ class Aligner:
           self.task_handler.send_message(residual_task)
         self.task_handler.wait_until_ready()
       else:
-        for patch_bbox in chunks:
+        def chunkwise(patch_bbox):
+        #for patch_bbox in chunks:
           self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
+        self.pool.map(chunkwise, patches)
 
       end = time()
       print (": {} sec".format(end - start))
