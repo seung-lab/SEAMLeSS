@@ -146,7 +146,7 @@ class EPyramid(nn.Module):
         for idx in range(1, self.size-self.topskips):
             encodings.append(self.enclist[idx](self.down(encodings[-1]), vis=vis))
 
-        field_so_far = torch.zeros((1,self.rdim,self.rdim,2)) # zero field
+        field_so_far = torch.zeros((1,self.rdim,self.rdim,2), device=encodings[0].device) # zero field
         residuals = []
         for i in range(self.size - 1 - self.topskips, target_level - 1, -1):
             if i >= self.skip:
