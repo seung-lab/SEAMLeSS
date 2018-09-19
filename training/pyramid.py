@@ -2,9 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from torch.nn.functional import grid_sample
 import numpy as np
-from helpers import save_chunk, gif, copy_state_to_model
+from helpers import save_chunk, gif, copy_state_to_model, gridsample_residual, identity_grid
 import random
 
 class G(nn.Module):
@@ -105,20 +104,8 @@ class PreEnc(nn.Module):
         return torch.cat(outputs, 1)
 
 class EPyramid(nn.Module):
-    def get_identity_grid(self, dim):
-        if dim not in self.identities:
-            gx, gy = np.linspace(-1, 1, dim), np.linspace(-1, 1, dim)
-            I = np.stack(np.meshgrid(gx, gy))
-            I = np.expand_dims(I, 0)
-            I = torch.FloatTensor(I)
-            I = torch.autograd.Variable(I, requires_grad=False)
-            I = I.permute(0,2,3,1)
-            self.identities[dim] = I.cuda()
-        return self.identities[dim]
-
     def __init__(self, size, dim, skip, topskips, k, num_targets=1, train_size=1280):
         super(EPyramid, self).__init__()
-        rdim = dim // (2 ** (size - 1 - topskips))
         print('Constructing EPyramid with size {} ({} downsamples, input size {})...'.format(size, size-1, dim))
         fm_0 = 12
         fm_coef = 6
@@ -127,13 +114,13 @@ class EPyramid(nn.Module):
         self.topskips = topskips
         self.size = size
         self.dim = dim
+        self.rdim = dim // (2 ** (size - 1 - topskips))
         enc_outfms = [fm_0 + fm_coef * idx for idx in range(size)]
         enc_infms = [1] + enc_outfms[:-1]
         self.mlist = nn.ModuleList([G(k=k, infm=enc_outfms[level]*2) for level in range(size)])
         self.up = nn.Upsample(scale_factor=2, mode='bilinear')
         self.down = nn.MaxPool2d(2)
         self.enclist = nn.ModuleList([Enc(infm=infm, outfm=outfm) for infm, outfm in zip(enc_infms, enc_outfms)])
-        self.I = self.get_identity_grid(rdim)
         self.TRAIN_SIZE = train_size
         self.pe = PreEnc(fm_0)
 
@@ -159,35 +146,25 @@ class EPyramid(nn.Module):
         for idx in range(1, self.size-self.topskips):
             encodings.append(self.enclist[idx](self.down(encodings[-1]), vis=vis))
 
-        residuals = [self.I]
-        field_so_far = self.I * 0.0 # zero field
+        residuals = []
+        field_so_far = identity_grid(self.rdim) * 0.0 # zero field
         for i in range(self.size - 1 - self.topskips, target_level - 1, -1):
             if i >= self.skip:
-                curr_dim = self.dim // (2 ** i)
                 inputs_i = encodings[i]
-                I = self.get_identity_grid(curr_dim)
-                resampled_source = grid_sample(inputs_i[:,0:inputs_i.size(1)//2],
-                                             field_so_far + I, mode='bilinear')
+                resampled_source = gridsample_residual(inputs_i[:,0:inputs_i.size(1)//2],
+                                             field_so_far, padding_mode='zero')
                 new_input_i = torch.cat((resampled_source, inputs_i[:,inputs_i.size(1)//2:]), 1)
-                factor = ((self.TRAIN_SIZE / (2. ** i)) / (new_input_i.size()[-1] - 1))
+                factor = (self.TRAIN_SIZE / (2. ** i)) / new_input_i.size()[-1]
                 rfield = self.mlist[i](new_input_i) * factor
                 residuals.append(rfield)
-                # Resample residual at field_so_far using rfield correspondence.
-                # Add result to rfield residual to produce the new
-                # field_so_far residual.
-                resampled_field_so_far = grid_sample(
-                    field_so_far.permute(0,3,1,2),
-                    rfield + self.get_identity_grid(self.dim // (2 ** i)),
-                    mode='bilinear', padding_mode='border').permute(0,2,3,1)
+                # Resample field_so_far using rfield. Add rfield to the result 
+                # to produce the new field_so_far.
+                resampled_field_so_far = gridsample_residual(
+                    field_so_far.permute(0,3,1,2), rfield, 
+                    padding_mode='border').permute(0,2,3,1)
                 field_so_far = rfield + resampled_field_so_far
             if i != target_level:
-                up_field = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
-                # account for shifting locations of -1 and +1 in upsampled field
-                up_field *= (field_so_far.shape[2]-1.0)/field_so_far.shape[2]
-                up_field /= (up_field.shape[2]-1.0)/up_field.shape[2]
-                field_so_far = up_field
-        curr_dim = self.dim // (2 ** target_level)
-        field_so_far += self.get_identity_grid(curr_dim)
+                field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
         return field_so_far, residuals
 
 class PyramidTransformer(nn.Module):
@@ -221,7 +198,7 @@ class PyramidTransformer(nn.Module):
             # only run the preencoder and return the results
             return self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
         field, residuals = self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
-        return grid_sample(x[:,0:1,:,:], field, mode='bilinear'), field, residuals
+        return gridsample_residual(x[:,0:1,:,:], field, padding_mode='zero'), field, residuals
 
     ################################################################
     # Begin Sergiy API
