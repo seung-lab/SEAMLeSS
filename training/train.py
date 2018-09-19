@@ -36,7 +36,7 @@ from stack_dataset import StackDataset
 from pyramid import PyramidTransformer
 from defect_net import *
 from defect_detector import DefectDetector
-from helpers import reverse_dim, downsample
+from helpers import reverse_dim, downsample, gridsample_residual
 from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
 from vis import visualize_outputs
 from loss import similarity_score, smoothness_penalty
@@ -249,7 +249,7 @@ def main():
             zmb = (rb['pred'] != 0).float() * (rb['input_target'] != 0).float()
             zmb = (zmb.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
                    .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
-            rffield, rbfield = rf['rfield'] * zmf, rb['rfield'] * zmb
+            rffield, rbfield = rf['field'] * zmf, rb['field'] * zmb
             rbfield_reversed = -reverse_dim(reverse_dim(rbfield, 1), 2)
             consensus_diff = rffield - rbfield_reversed
             consensus_error_field = (consensus_diff[:, :, :, 0] ** 2
@@ -301,18 +301,18 @@ def main():
         # we can compare things fairly
         src = downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0))
         target = downsample(trunclayer)(target.unsqueeze(0).unsqueeze(0))
-        pred = F.grid_sample(src, field, mode='bilinear')
+        pred = gridsample_residual(src, field, padding_mode='zero')
         raw_mask = None
         if mask is not None:
             mask = downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0))
             raw_mask = mask
-            mask = torch.ceil(F.grid_sample(mask, field, mode='bilinear', padding_mode='border'))
+            mask = torch.ceil(gridsample_residual(mask, field, padding_mode='border'))
         if target_mask is not None:
             target_mask = downsample(trunclayer)(target_mask.unsqueeze(0).unsqueeze(0))
             target_mask = masks.dilate(target_mask, 1, binary=False)
         if len(src_cutout_masks) > 0:
             src_cutout_masks = [
-                torch.ceil(F.grid_sample(m.float(), field, mode='bilinear', padding_mode='border')).byte()
+                torch.ceil(gridsample_residual(m.float(), field, padding_mode='border')).byte()
                 for m in src_cutout_masks]
 
         if len(target_cutout_masks) > 0:
@@ -419,14 +419,13 @@ def main():
         smoothness_mask_factor = 1
 
         smoothness_weights /= smoothness_mask_factor
-        smoothness_weights = F.grid_sample(smoothness_weights.detach(), field, mode='bilinear', padding_mode='border')
+        smoothness_weights = gridsample_residual(smoothness_weights.detach(), field, padding_mode='border')
         if args.hm:
             smoothness_weights = smoothness_weights.detach()
         smoothness_weights = smoothness_weights * border_mask.float().detach()
 
-        rfield = field - model.pyramid.get_identity_grid(field.size()[-2])
         weighted_smoothness_error_field = smoothness(
-            [rfield], weights=smoothness_weights)
+            [field], weights=smoothness_weights)
 
         if mask is not None:
             hpred = pred.clone().detach()
@@ -440,7 +439,6 @@ def main():
             'input_src': downsample(trunclayer)(input_src.unsqueeze(0).unsqueeze(0)),
             'input_target': downsample(trunclayer)(input_target.unsqueeze(0).unsqueeze(0)),
             'field': field,
-            'rfield': rfield,
             'residuals': residuals,
             'pred': pred,
             'hpred': hpred,
