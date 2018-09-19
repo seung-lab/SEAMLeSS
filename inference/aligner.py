@@ -4,7 +4,7 @@ from cloudvolume.lib import Vec
 import numpy as np
 import os
 import json
-from time import time
+from time import time, sleep
 from copy import deepcopy, copy
 from helpers import save_chunk
 
@@ -12,7 +12,7 @@ from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum
 
 from util import crop, warp, upsample_flow, downsample_mip
-from boundingbox import BoundingBox
+from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
@@ -748,8 +748,8 @@ class Aligner:
     source = message['source']
     dest = message['dest']
     def chunkwise(patch_bbox):
-      raw_patch = data_handler.get_image_data(source, z, patch_bbox, mip)
-      data_handler.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
+      raw_patch = self.get_image_data(source, z, patch_bbox, mip)
+      self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
     self.pool.map(chunkwise, patches)
 
   def handle_downsample_task(self, message):
@@ -758,7 +758,7 @@ class Aligner:
     mip = message['mip']
     def chunkwise(patch_bbox):
       downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, mip)
-      data_handler.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, mip)
+      self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, mip)
     self.pool.map(chunkwise, patches)
 
   def handle_task_message(self, message):
