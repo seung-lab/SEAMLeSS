@@ -2,12 +2,12 @@ import os
 from moviepy.editor import ImageSequenceClip
 import numpy as np
 import collections
-import functools
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from skimage.transform import rescale
+from functools import reduce
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -16,7 +16,7 @@ import matplotlib.cm as cm
 def compose_functions(fseq):
     def compose(f1, f2):
         return lambda x: f2(f1(x))
-    return functools.reduce(compose, fseq, lambda _: _)
+    return reduce(compose, fseq, lambda _: _)
 
 def copy_state_to_model(archive_params, model):
     size_map = [
@@ -111,6 +111,11 @@ def np_upsample(img, factor):
     else:
         assert False
 
+def np_downsample(img, factor):
+    data_4d = np.expand_dims(img, axis=1)
+    result = nn.AvgPool2d(factor)(torch.from_numpy(data_4d))
+    return result.numpy()[:, 0, :, :]
+
 def center_field(field):
     wrap = type(field) == np.ndarray
     if wrap:
@@ -176,6 +181,9 @@ def center(var, dims, d):
         var = var.narrow(dim, d[idx]/2, var.size()[dim] - d[idx])
     return var
 
+def crop(data_2d, crop):
+    return data_2d[crop:-crop,crop:-crop]
+
 def save_chunk(chunk, name, norm=True):
     if type(chunk) != np.ndarray:
         try:
@@ -233,10 +241,9 @@ def gif(filename, array, fps=8, scale=1.0):
     clip.write_gif(filename, fps=fps, verbose=False)
     return clip
 
-
 def downsample(x):
     if x > 0:
-        return nn.AvgPool2d(2**x, 2**x, count_include_pad=False)
+        return nn.AvgPool2d(2**x, count_include_pad=False)
     else:
         return (lambda y: y)
 

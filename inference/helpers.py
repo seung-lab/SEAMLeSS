@@ -1,15 +1,17 @@
-import torch
-import torch.nn.functional as F
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import os
 from moviepy.editor import ImageSequenceClip
+import numpy as np
 import collections
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from torch.autograd import Variable
 from skimage.transform import rescale
 from functools import reduce
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
 def compose_functions(fseq):
     def compose(f1, f2):
@@ -245,7 +247,6 @@ def gif(filename, array, fps=8, scale=1.0):
     clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
     clip.write_gif(filename, fps=fps, verbose=False)
     return clip
-
 
 def downsample(x):
     if x > 0:
