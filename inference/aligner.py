@@ -741,7 +741,7 @@ class Aligner:
     def chunkwise(patch_bbox):
       print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
               end='', flush=True)
-      warped_patch == self.warp_patch(self.src_ng_path, z, patch_bbox,
+      warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                       (mip, self.process_high_mip), mip)
       if (self.run_pairs):
         # save the image in the previous slice so it's easier to compare pairs
