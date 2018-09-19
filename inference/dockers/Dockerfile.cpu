@@ -1,0 +1,17 @@
+FROM ubuntu:16.04 
+
+RUN apt-get update -y 
+RUN apt-get upgrade -y
+RUN apt-get install -y python3-pip vim screen tmux htop
+
+RUN pip3 install http://download.pytorch.org/whl/cu90/torch-0.4.0-cp35-cp35m-linux_x86_64.whl
+RUN pip3 install numpy pathos torchvision 
+RUN pip3 install cloud-volume
+
+WORKDIR /opt
+RUN apt-get install -y git
+RUN pwd
+RUN git clone https://github.com/seung-lab/nflow_inference.git 
+
+
+

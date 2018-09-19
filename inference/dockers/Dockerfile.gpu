@@ -1,0 +1,13 @@
+FROM nvidia/cuda:9.0-cudnn7-runtime-ubuntu16.04
+
+RUN apt-get update -y 
+RUN apt-get upgrade -y
+RUN apt-get install -y python3-pip vim screen tmux htop
+RUN pip3 install numpy
+
+WORKDIR /opt
+RUN pwd
+
+RUN apt-get install -y git
+ADD . ./SEAMLeSS
+RUN cd SEAMLeSS && pip3 install -r requirements.txt
