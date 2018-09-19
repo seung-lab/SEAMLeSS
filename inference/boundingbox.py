@@ -1,5 +1,5 @@
 import numpy as np
-from util import crop
+from helpers import crop
 
 class BoundingBox:
   def __init__(self, xs, xe, ys, ye, mip, max_mip=12):
@@ -101,29 +101,6 @@ class BoundingBox:
 
   def zeros(self, mip):
     return np.zeros((self.x_size(mip), self.y_size(mip)), dtype=np.float32)
-
-  def y_identity(self, mip):
-    row  = np.arange(self.x_size(mip), dtype=np.float32)[:, np.newaxis]
-    full = np.tile(row, (1, self.y_size(mip)))
-    norm = (full / (self.x_size(mip) -1)) * 2 - 1
-    return norm
-
-  def x_identity(self, mip):
-    row  = np.arange(self.y_size(mip), dtype=np.float32)[:, np.newaxis]
-    full = np.tile(row, (1, self.x_size(mip)))
-    norm = (full / (self.y_size(mip)-1)) * 2 - 1
-    return norm.T
-
-  def identity(self, mip):
-    x_id = self.x_identity(mip=mip)
-    y_id = self.y_identity(mip=mip)
-    result = np.stack((x_id, y_id), axis=2)
-    return result
-
-  def is_identity_flow(self, flow, mip):
-    x_id = np.array_equal(self.x_identity(mip), flow[0, :, :, 0])
-    y_id = np.array_equal(self.y_identity(mip), flow[0, :, :, 1])
-    return x_id and y_id
 
   def x_res_displacement(self, d_pixels, mip):
     disp_prop = d_pixels / self.x_size(mip=0)
