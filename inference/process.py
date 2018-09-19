@@ -39,14 +39,14 @@ class Process(object):
         x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
-        res = self.model(x)[1]
-        res *= res.shape[-2] / 2 * (2 ** self.mip)
+        image, field, residuals, encodings, cumulative_residuals = self.model(x)
+        field *= (field.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
-            res = res[:,crop:-crop, crop:-crop,:]
-        nonflipped = res.cpu().numpy()
+            field = field[:,crop:-crop, crop:-crop,:]
+        nonflipped = field.cpu().numpy()
 
         if not self.flip_average:
-            return nonflipped
+            return nonflipped, residuals, encodings, cumulative_residuals
 
         # flipped
         s = np.flip(s,1)
@@ -56,16 +56,18 @@ class Process(object):
         x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
-        res = self.model(x)[1]
-        res *= res.shape[-2] / 2 * (2 ** self.mip)
+        image_fl, field_fl, residuals_fl, encodings_fl, cumulative_residuals_fl = self.model(x)
+        field_fl *= (field_fl.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
-            res = res[:,crop:-crop, crop:-crop,:]
-        res = res.cpu().numpy()
-        res = np.flip(res,1)
-        res = np.flip(res,2)
-        flipped = -res
-        return (flipped + nonflipped)/2.0
+            field_fl = field_fl[:,crop:-crop, crop:-crop,:]
+        field_fl = field_fl.cpu().numpy()
+        field_fl = np.flip(field_fl,1)
+        field_fl = np.flip(field_fl,2)
+        flipped = -field_fl
         
+        return (flipped + nonflipped)/2.0, residuals, encodings, cumulative_residuals # TODO: include flipped resid & enc
+#        return flipped, residuals_fl, encodings_fl, cumulative_residuals_fl # TODO: include flipped resid & enc
+
 #Simple test
 if __name__ == "__main__":
     print('Testing...')

@@ -142,12 +142,13 @@ class EPyramid(nn.Module):
                 # only run the preencoder and return the results
                 return stack
 
-        encodings = [self.enclist[0](stack)]
+        encodings = [self.enclist[0](stack, vis=vis)]
         for idx in range(1, self.size-self.topskips):
             encodings.append(self.enclist[idx](self.down(encodings[-1]), vis=vis))
 
         field_so_far = torch.zeros((1,self.rdim,self.rdim,2), device=encodings[0].device) # zero field
         residuals = []
+        cumulative_residuals = []
         for i in range(self.size - 1 - self.topskips, target_level - 1, -1):
             if i >= self.skip:
                 inputs_i = encodings[i]
@@ -163,9 +164,10 @@ class EPyramid(nn.Module):
                     field_so_far.permute(0,3,1,2), rfield, 
                     padding_mode='border').permute(0,2,3,1)
                 field_so_far = rfield + resampled_field_so_far
+                cumulative_residuals.append(field_so_far)
             if i != target_level:
                 field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
-        return field_so_far, residuals
+        return field_so_far, residuals, encodings, cumulative_residuals
 
 class PyramidTransformer(nn.Module):
     def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, student=False, num_targets=1, old_upsample=False):
@@ -197,8 +199,8 @@ class PyramidTransformer(nn.Module):
         if use_preencoder == "only":
             # only run the preencoder and return the results
             return self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
-        field, residuals = self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
-        return gridsample_residual(x[:,0:1,:,:], field, padding_mode='zeros'), field, residuals
+        field, residuals, encodings, cumulative_residuals = self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
+        return gridsample_residual(x[:,0:1,:,:], field, padding_mode='zeros'), field, residuals, encodings, cumulative_residuals
 
     ################################################################
     # Begin Sergiy API

@@ -6,6 +6,7 @@ matplotlib
 cloud-volume
 h5py
 moviepy
+neuroglancer
 visdom
 pathos
 pyshorteners
