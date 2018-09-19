@@ -9,7 +9,6 @@ parser.add_argument('--size', type=int, default=8)
 parser.add_argument('--skip', type=int, default=0)
 parser.add_argument('--model_path', type=str)
 parser.add_argument('--out_name', type=str)
-parser.add_argument('--queue_name', type=str, default=None)
 parser.add_argument('--mip', type=int)
 parser.add_argument('--render_mip', type=int)
 parser.add_argument('--should_contrast', type=int)
@@ -85,9 +84,6 @@ a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
             num_targets=num_targets, flip_average=not args.no_flip_average,
             run_pairs=args.run_pairs,
             write_intermediaries=args.write_intermediaries,
-            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample, queue_name=args.queue_name)
+            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample)
 
-bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=max_mip)
-
-stack_start = v_off[2]
-a.align_ng_stack(stack_start, stack_start+stack_size, bbox, move_anchor=not args.no_anchor)
+a.listen_for_tasks()
