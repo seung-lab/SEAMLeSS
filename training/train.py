@@ -301,7 +301,7 @@ def main():
         # we can compare things fairly
         src = downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0))
         target = downsample(trunclayer)(target.unsqueeze(0).unsqueeze(0))
-        pred = gridsample_residual(src, field, padding_mode='zero')
+        pred = gridsample_residual(src, field, padding_mode='zeros')
         raw_mask = None
         if mask is not None:
             mask = downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0))

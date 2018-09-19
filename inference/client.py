@@ -1,4 +1,5 @@
 import sys
+import torch
 from aligner import Aligner, BoundingBox
 from link_builder import ng_link
 import argparse
@@ -63,6 +64,8 @@ print('Mip:', mip)
 print('Contrast:', should_contrast)
 print('Max mip:', max_mip)
 print('NG link:', ng_link(out_name, 'precomputed://' + 'gs://neuroglancer/seamless/' + model_name+'_'+out_name+'/image', source[source.rindex('/')+1:], 'precomputed://' + source, (xs+xe)//2, (ys+ye)//2, zs))
+
+torch.set_grad_enabled(False)
 
 a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk, source,
             'gs://neuroglancer/seamless/{}_{}'.format(model_name, out_name), render_low_mip=render_mip, render_high_mip=max_mip,

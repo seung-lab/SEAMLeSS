@@ -146,13 +146,13 @@ class EPyramid(nn.Module):
         for idx in range(1, self.size-self.topskips):
             encodings.append(self.enclist[idx](self.down(encodings[-1]), vis=vis))
 
+        field_so_far = torch.zeros((1,self.rdim,self.rdim,2)) # zero field
         residuals = []
-        field_so_far = identity_grid(self.rdim) * 0.0 # zero field
         for i in range(self.size - 1 - self.topskips, target_level - 1, -1):
             if i >= self.skip:
                 inputs_i = encodings[i]
                 resampled_source = gridsample_residual(inputs_i[:,0:inputs_i.size(1)//2],
-                                             field_so_far, padding_mode='zero')
+                                             field_so_far, padding_mode='zeros')
                 new_input_i = torch.cat((resampled_source, inputs_i[:,inputs_i.size(1)//2:]), 1)
                 factor = (self.TRAIN_SIZE / (2. ** i)) / new_input_i.size()[-1]
                 rfield = self.mlist[i](new_input_i) * factor
@@ -198,7 +198,7 @@ class PyramidTransformer(nn.Module):
             # only run the preencoder and return the results
             return self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
         field, residuals = self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
-        return gridsample_residual(x[:,0:1,:,:], field, padding_mode='zero'), field, residuals
+        return gridsample_residual(x[:,0:1,:,:], field, padding_mode='zeros'), field, residuals
 
     ################################################################
     # Begin Sergiy API
