@@ -71,9 +71,9 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
         save_chunk(grid, path.format('grid'))
         save_chunk(distorted_grid, path.format('dgrid'))
 
-        rfield = v('rfield').data.cpu().numpy()
-        display_v(rfield, path.format('field'))
-        display_v(rfield, path.format('cfield'), center=True)
+        field = v('field').data.cpu().numpy()
+        display_v(field, path.format('field'))
+        display_v(field, path.format('cfield'), center=True)
 
     if v('consensus_error_field') is not None:
         cfield = v('consensus_error_field').data.cpu().numpy()
@@ -89,7 +89,7 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
 
     if v('residuals') is not None and len(v('residuals')) > 1:
         residuals = [r.data.cpu().numpy() for r in v('residuals')[1:]]
-        display_v(residuals, path.format('rfield'))
+        display_v(residuals, path.format('field'))
         display_v(residuals, path.format('crfield'), center=True)
 
     if v('similarity_error_field') is not None:
