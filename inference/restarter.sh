@@ -1,22 +1,24 @@
-#!/bin/sh
+#!/bin/bash
 signal=KILL
 
 sleep_a_while () {
-    sleep $[ ( $RANDOM % 1 ) + 1 ]m
+    let "mins = ($RANDOM % 50) + 2"
+    echo "Sleeping " $mins " minutes"
+    sleep ${mins}m 
 }
 
 while true; do
     # Note: command launched in background:
-    $1
+    nohup $1 & 
 
     # Save PID of command just launched:
     last_pid=$!
-
+    echo "Last PID: " $last_pid " !!!!!!!!!!!!!!!!!!!!!!!!!!!"
     # Sleep for a while:
     sleep_a_while
 
     # See if the command is still running, and kill it and sleep more if it is:
-    if ps -p $last_pid -o comm= | grep -qs '^applicationfile$'; then
+    if ps -p $last_pid -o comm= | grep -qs '^neuroglancer$'; then
         kill -$signal $last_pid 2> /dev/null
         sleep_a_while
     fi
