@@ -590,10 +590,10 @@ class Aligner:
     if self.distributed and len(chunks) > self.threads * 4:
       for i in range(0, len(chunks), self.threads * 4):
         task_patches = []
-        for j in range(i, min(len(chunks), i + self.threads)):
+        for j in range(i, min(len(chunks), i + self.threads * 4)):
           task_patches.append(chunks[j])
-          copy_task = make_copy_task_message(z, source, dest, task_patches, mip=mip)
-          self.task_handler.send_message(copy_task)
+        copy_task = make_copy_task_message(z, source, dest, task_patches, mip=mip)
+        self.task_handler.send_message(copy_task)
 
       self.task_handler.wait_until_ready()
     else:
@@ -651,7 +651,7 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def render_section_all_mips(self, z, bbox):
-    self.render(z, bbox, self.render_low_mip)
+    #self.render(z, bbox, self.render_low_mip)
     self.downsample(z, bbox, self.render_low_mip, self.render_high_mip)
 
   def downsample(self, z, bbox, source_mip, target_mip):
@@ -659,11 +659,12 @@ class Aligner:
     for m in range(source_mip+1, target_mip + 1):
       chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
                                       self.dst_voxel_offsets[m], mip=m, render=True)
-      if self.distributed and len(chunks) > self.threads * 2:
-        for i in range(0, len(chunks), self.threads * 2):
+      if self.distributed and len(chunks) > self.threads * 4:
+        for i in range(0, len(chunks), self.threads * 4):
           task_patches = []
-          for j in range(i, min(len(chunks), i + self.threads)):
-            task_patches.append(chunk[j])
+          for j in range(i, min(len(chunks), i + self.threads * 4)):
+            task_patches.append(chunks[j])
+
           downsample_task = make_downsample_task_message(z, task_patches, mip=m)
           self.task_handler.send_message(downsample_task)
         self.task_handler.wait_until_ready()
@@ -695,10 +696,10 @@ class Aligner:
           self.task_handler.send_message(residual_task)
         self.task_handler.wait_until_ready()
       else:
-        def chunkwise(patch_bbox):
-        #for patch_bbox in chunks:
+        #def chunkwise(patch_bbox):
+        for patch_bbox in chunks:
           self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
-        self.pool.map(chunkwise, patches)
+        #self.pool.map(chunkwise, chunks)
 
       end = time()
       print (": {} sec".format(end - start))
@@ -724,7 +725,7 @@ class Aligner:
     self.zs = start_section
     for z in range(start_section, end_section):
       self.img_cache = {}
-      self.compute_section_pair_residuals(z + 1, z, bbox)
+      #self.compute_section_pair_residuals(z + 1, z, bbox)
       self.render_section_all_mips(z + 1, bbox)
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
@@ -772,6 +773,7 @@ class Aligner:
     def chunkwise(patch_bbox):
       downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, mip)
       self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, mip)
+
     self.pool.map(chunkwise, patches)
 
   def handle_task_message(self, message):
