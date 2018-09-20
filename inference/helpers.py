@@ -1,15 +1,17 @@
-import torch
-import torch.nn.functional as F
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import os
 from moviepy.editor import ImageSequenceClip
+import numpy as np
 import collections
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from torch.autograd import Variable
 from skimage.transform import rescale
 from functools import reduce
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import tqdm
 
 def compose_functions(fseq):
@@ -76,7 +78,7 @@ def get_colors(angles, f, c):
 def dv(vfield, name=None, downsample=0.5):
     dim = vfield.shape[-2]
     assert type(vfield) == np.ndarray
-    
+
     lengths = np.squeeze(np.sqrt(vfield[:,:,:,0] ** 2 + vfield[:,:,:,1] ** 2))
     lengths = (lengths - np.min(lengths)) / (np.max(lengths) - np.min(lengths))
     angles = np.squeeze(np.angle(vfield[:,:,:,0] + vfield[:,:,:,1]*1j))
@@ -86,7 +88,7 @@ def dv(vfield, name=None, downsample=0.5):
     angles[angles<0] += np.pi
     off_angles = angles + np.pi/4
     off_angles[off_angles>np.pi] -= np.pi
-    
+
     scolors = get_colors(angles, f=lambda x: np.sin(x) ** 1.4, c=cm.viridis)
     ccolors = get_colors(off_angles, f=lambda x: np.sin(x) ** 1.4, c=cm.magma)
 
@@ -97,7 +99,7 @@ def dv(vfield, name=None, downsample=0.5):
     scolors = 1 - (1 - scolors) * lengths.reshape((dim, dim, 1)) ** .8 #
 
     img = np_upsample(scolors, downsample) if downsample is not None else scolors
-    
+
     if name is not None:
         plt.imsave(name + '.png', img)
     else:
@@ -117,6 +119,11 @@ def np_upsample(img, factor):
     else:
         assert False
 
+def np_downsample(img, factor):
+    data_4d = np.expand_dims(img, axis=1)
+    result = nn.AvgPool2d(factor)(torch.from_numpy(data_4d))
+    return result.numpy()[:, 0, :, :]
+
 def center_field(field):
     wrap = type(field) == np.ndarray
     if wrap:
@@ -126,7 +133,7 @@ def center_field(field):
         vfield[:,:,:,1] = vfield[:,:,:,1] - np.mean(vfield[:,:,:,1])
         field[idx] = vfield
     return field[0] if wrap else field
-        
+
 def display_v(vfield, name=None, center=False):
     if center:
         center_field(vfield)
@@ -141,8 +148,12 @@ def display_v(vfield, name=None, center=False):
     else:
         assert (name is not None)
         dv(vfield, name)
-    
-def dvl(V_pred, name):
+
+def dvl(V_pred, name, mag=10):
+    factor = V_pred.shape[1] // 100
+    if factor > 1:
+        V_pred = V_pred[:,::factor,::factor,:]
+    V_pred *= 10
     plt.figure(figsize=(6,6))
     X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
     U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
@@ -157,8 +168,10 @@ def dvl(V_pred, name):
     plt.clf()
 
 def reverse_dim(var, dim):
+    if var is None:
+        return var
     idx = range(var.size()[dim] - 1, -1, -1)
-    idx = Variable(torch.LongTensor(idx))
+    idx = torch.LongTensor(idx)
     if var.is_cuda:
         idx = idx.cuda()
     return var.index_select(dim, idx)
@@ -176,7 +189,10 @@ def center(var, dims, d):
         var = var.narrow(dim, d[idx]/2, var.size()[dim] - d[idx])
     return var
 
-def save_chunk(chunk, name, norm=False):
+def crop(data_2d, crop):
+    return data_2d[crop:-crop,crop:-crop]
+
+def save_chunk(chunk, name, norm=True):
     if type(chunk) != np.ndarray:
         try:
             if chunk.is_cuda:
@@ -223,7 +239,7 @@ def gif(filename, array, fps=8, scale=1.0, norm=False):
     if array.ndim == 3:
         array = array[..., np.newaxis] * np.ones(3)
 
-    if norm:
+    if norm and array.shape[1] > 1000:
         # add 'signature' block to top left and bottom right
         array[:,:50,:50] = 0
         array[:,:10,:10] = 255
@@ -234,3 +250,94 @@ def gif(filename, array, fps=8, scale=1.0, norm=False):
     clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
     clip.write_gif(filename, fps=fps, verbose=False)
     return clip
+
+def downsample(x):
+    if x > 0:
+        return nn.AvgPool2d(2**x, count_include_pad=False)
+    else:
+        return (lambda y: y)
+
+def upsample(x):
+    if x > 0:
+        return nn.Upsample(scale_factor=2**x, mode='bilinear')
+    else:
+        return (lambda y: y)
+
+def gridsample(source, field, padding_mode):
+    """
+    A version of the PyTorch grid sampler that uses size-agnostic conventions.
+    Vectors with values -1 or +1 point to the actual edges of the images
+    (as opposed to the centers of the border pixels as in PyTorch 4.1).
+
+    `source` and `field` should be PyTorch tensors on the same GPU, with
+    `source` arranged as a PyTorch image, and `field` as a PyTorch vector field.
+
+    `padding_mode` is required because it is a significant consideration.
+    It determines the value sampled when a vector is outside the range [-1,1]
+    Options are:
+     - "zero" : produce the value zero (okay for sampling images with zero as
+                background, but potentially problematic for sampling masks and
+                terrible for sampling from other vector fields)
+     - "border" : produces the value at the nearest inbounds pixel (great for
+                  masks and residual fields)
+
+    If sampling a field (ie. `source` is a vector field), best practice is to
+    subtract out the identity field from `source` first (if present) to get a
+    residual field.
+    Then sample it with `padding_mode = "border"`.
+    This should behave as if source was extended as a uniform vector field
+    beyond each of its boundaries.
+    Note that to sample from a field, the source field must be rearranged to
+    fit the conventions for image dimensions in PyTorch. This can be done by
+    calling `source.permute(0,3,1,2)` before passing to `gridsample()` and
+    `result.permute(0,2,3,1)` to restore the result.
+    """
+    if source.shape[2] != source.shape[3]:
+        raise NotImplementedError('Grid sampling from non-square tensors '
+                                  'not yet implementd here.')
+    scaled_field = field * source.shape[2] / (source.shape[2] - 1)
+    return F.grid_sample(source, scaled_field, mode="bilinear", padding_mode=padding_mode)
+
+def gridsample_residual(source, residual, padding_mode):
+    """
+    Similar to `gridsample()`, but takes a residual field.
+    This abstracts away generation of the appropriate identity grid.
+    """
+    field = residual + identity_grid(residual.shape, device=residual.device)
+    return gridsample(source, field, padding_mode)
+
+def _create_identity_grid(size):
+    with torch.no_grad():
+        id_theta = torch.Tensor([[[1,0,0],[0,1,0]]]) # identity affine transform
+        I = F.affine_grid(id_theta,torch.Size((1,1,size,size)))
+        I *= (size - 1) / size # rescale the identity provided by PyTorch
+        return I
+
+def identity_grid(size, cache=False, device=None):
+    """
+    Returns a size-agnostic identity field with -1 and +1 pointing to the
+    corners of the image (not the centers of the border pixels as in
+    PyTorch 4.1).
+
+    Use `cache = True` to cache the identity for faster recall.
+    This can speed up recall, but may be a burden on cpu/gpu memory.
+
+    `size` can be either an `int` or a `torch.Size` of the form
+    `(N, C, H, W)`. `H` and `W` must be the same (a square tensor).
+    `N` and `C` are ignored.
+    """
+    if isinstance(size,torch.Size):
+        if (size[2] == size[3] # image
+            or (size[3] == 2 and size[1] == size[2])): # field
+            size = size[2]
+        else:
+            raise ValueError("Bad size: {}. Expected a square tensor size.".format(size))
+    if device is None:
+        device = torch.cuda.current_device()
+    if size in identity_grid._identities:
+        return identity_grid._identities[size].to(device)
+    I = _create_identity_grid(size)
+    if cache:
+        identity_grid._identities[size] = I
+    return I.to(device)
+identity_grid._identities = {}

@@ -19,16 +19,6 @@ class Process(object):
         self.should_contrast = contrast
         self.normalizer = Normalizer(min(5, self.mip))
         self.flip_average = flip_average
-        
-    def contrast(self, t):
-        zeromask = (t == 0)
-        l,h = 145.0, 210.0
-        t[t < l/255.0] = l/255.0
-        t[t > h/255.0] = h/255.0
-        t *= 255.0 / (h-l+1)
-        t -= np.min(t)
-        t += 1.0/255.0
-        t[zeromask] = 0
 
     def process(self, s, t, level=0, crop=0):        
         if level != self.mip:
@@ -36,11 +26,8 @@ class Process(object):
         if self.should_contrast:
             s = self.normalizer.apply(s.squeeze()).reshape(t.shape)
             t = self.normalizer.apply(t.squeeze()).reshape(t.shape)
-            #self.contrast_(s)
-            #self.contrast_(t)
         else:
             print('Skipping contrast...')
-        level -= self.mip
 
         '''
         Run the net twice.
@@ -48,18 +35,15 @@ class Process(object):
         Then average the resulting (unflipped) vector fields.
         This eliminates the effect of any gradual drift.
         '''
-        
         # nonflipped
         x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
-        x = torch.autograd.Variable(x, requires_grad=False)
         image, field, residuals, encodings, cumulative_residuals = self.model(x)
-        res = self.model(x)[1] - self.model.pyramid.get_identity_grid(x.size(3))
-        res *= (res.shape[-2] - 1) / 2 * (2 ** self.mip)
+        field *= (field.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
-            res = res[:,crop:-crop, crop:-crop,:]
-        nonflipped = res.data.cpu().numpy()
+            field = field[:,crop:-crop, crop:-crop,:]
+        nonflipped = field.cpu().numpy()
 
         if not self.flip_average:
             return nonflipped, residuals, encodings, cumulative_residuals
@@ -72,16 +56,14 @@ class Process(object):
         x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
-        x = torch.autograd.Variable(x, requires_grad=False)
         image_fl, field_fl, residuals_fl, encodings_fl, cumulative_residuals_fl = self.model(x)
-        res = self.model(x)[1] - self.model.pyramid.get_identity_grid(x.size(3))
-        res *= (res.shape[-2] - 1) / 2 * (2 ** self.mip)
+        field_fl *= (field_fl.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
-            res = res[:,crop:-crop, crop:-crop,:]
-        res = res.data.cpu().numpy()
-        res = np.flip(res,1)
-        res = np.flip(res,2)
-        flipped = -res
+            field_fl = field_fl[:,crop:-crop, crop:-crop,:]
+        field_fl = field_fl.cpu().numpy()
+        field_fl = np.flip(field_fl,1)
+        field_fl = np.flip(field_fl,2)
+        flipped = -field_fl
         
         return (flipped + nonflipped)/2.0, residuals, encodings, cumulative_residuals # TODO: include flipped resid & enc
 #        return flipped, residuals_fl, encodings_fl, cumulative_residuals_fl # TODO: include flipped resid & enc

@@ -133,7 +133,7 @@ class ModelWrapper(nn.Module):
             zmb = (rb['pred'] != 0).float() * (rb['aug_tgt'] != 0).float()
             zmb = (zmb.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
                    .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
-            rffield, rbfield = rf['rfield'] * zmf, rb['rfield'] * zmb
+            rffield, rbfield = rf['field'] * zmf, rb['field'] * zmb
             rbfield_reversed = -reverse_dim(reverse_dim(rbfield, 1), 2)
             consensus_diff = rffield - rbfield_reversed
             consensus_error_field = (consensus_diff[:, :, :, 0] ** 2
@@ -187,18 +187,18 @@ class ModelWrapper(nn.Module):
         # we can compare things fairly
         src = downsample(self.trunclayer)(src.unsqueeze(0).unsqueeze(0))
         tgt = downsample(self.trunclayer)(tgt.unsqueeze(0).unsqueeze(0))
-        pred = F.grid_sample(src, field, mode='bilinear')
+        pred = gridsample_residual(src, field, padding_mode='zeros')
         raw_mask = None
         if mask is not None:
             mask = downsample(self.trunclayer)(mask.unsqueeze(0).unsqueeze(0))
             raw_mask = mask
-            mask = torch.ceil(F.grid_sample(mask, field, mode='bilinear', padding_mode='border'))
+            mask = torch.ceil(gridsample_residual(mask, field, padding_mode='border'))
         if tgt_mask is not None:
             tgt_mask = downsample(self.trunclayer)(tgt_mask.unsqueeze(0).unsqueeze(0))
             tgt_mask = masks.dilate(tgt_mask, 1, binary=False)
         if len(aug_src_masks) > 0:
             aug_src_masks = [
-                torch.ceil(F.grid_sample(m.float(), field, mode='bilinear', padding_mode='border')).byte()
+                torch.ceil(gridsample_residual(m.float(), field, padding_mode='border')).byte()
                 for m in aug_src_masks]
 
         if len(aug_tgt_masks) > 0:
@@ -305,14 +305,13 @@ class ModelWrapper(nn.Module):
         smoothness_mask_factor = 1
 
         smoothness_weights /= smoothness_mask_factor
-        smoothness_weights = F.grid_sample(smoothness_weights.detach(), field, mode='bilinear', padding_mode='border')
-        if self.args.hm:
+        smoothness_weights = gridsample_residual(smoothness_weights.detach(), field, padding_mode='border')
+        if args.hm:
             smoothness_weights = smoothness_weights.detach()
         smoothness_weights = smoothness_weights * border_mask.float().detach()
 
-        rfield = field - self.model.pyramid.get_identity_grid(field.size()[-2], src.device)
         weighted_smoothness_error_field = self.smoothness(
-            [rfield], weights=smoothness_weights)
+            [field], weights=smoothness_weights)
 
         if mask is not None:
             hpred = pred.clone().detach()
@@ -326,7 +325,6 @@ class ModelWrapper(nn.Module):
             'aug_src': downsample(self.trunclayer)(aug_src.unsqueeze(0).unsqueeze(0)),
             'aug_tgt': downsample(self.trunclayer)(aug_tgt.unsqueeze(0).unsqueeze(0)),
             'field': field,
-            'rfield': rfield,
             'residuals': residuals,
             'pred': pred,
             'hpred': hpred,

@@ -70,7 +70,7 @@ def smoothness_penalty(ptype):
         elif ptype == 'jacob': field = jacob(fields)
         elif ptype == 'cjacob': field = cjacob(fields)
         elif ptype ==    'tv': field = tv(fields)
-        else: crash # invalid penalty
+        else: raise ValueError("Invalid penalty type: {}".format(ptype))
 
         if weights is not None:
             field = field * weights

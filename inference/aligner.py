@@ -1,17 +1,17 @@
 from process import Process
 from cloudvolume import CloudVolume as cv
 from cloudvolume.lib import Vec
+import torch
 import numpy as np
 import os
 import json
 from time import time
 from copy import deepcopy, copy
-from helpers import save_chunk
+from helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
 
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum
 
-from util import crop, warp, upsample_flow, downsample_mip
 from boundingbox import BoundingBox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -274,11 +274,6 @@ class Aligner:
 
     return chunks
 
-
-  ## Residual computation
-  def run_net_test(self, s, t, mip):
-    abs_residual = self.net.process(s, t, mip)
-
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
     print ("Computing residual for region {}.".format(out_patch_bbox.__str__(mip=0)), flush=True)
     precrop_patch_bbox = deepcopy(out_patch_bbox)
@@ -350,8 +345,8 @@ class Aligner:
         
     
   def abs_to_rel_residual(self, abs_residual, patch, mip):
-    x_fraction = (patch.x_size(mip=0) - 1) * 0.5
-    y_fraction = (patch.y_size(mip=0) - 1) * 0.5
+    x_fraction = patch.x_size(mip=0) * 0.5
+    y_fraction = patch.y_size(mip=0) * 0.5
 
     rel_residual = deepcopy(abs_residual)
     rel_residual[0, :, :, 0] /= x_fraction
@@ -363,35 +358,24 @@ class Aligner:
   def warp_patch(self, ng_path, z, bbox, res_mip_range, mip):
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
-
-    agg_flow = influence_bbox.identity(mip=mip)
-    agg_flow = np.expand_dims(agg_flow, axis=0)
     start = time()
-    agg_res  = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
 
-    agg_flow += agg_res
-    raw_data = self.get_image_data(ng_path, z, influence_bbox, mip)
+    agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
+    image = torch.from_numpy(self.get_image_data(ng_path, z, influence_bbox, mip))
+    image = image.unsqueeze(0)
 
-    #no need to warp if flow is identity
-    #warp introduces noise
-    if not influence_bbox.is_identity_flow(agg_flow, mip=mip):
-      warped   = warp(raw_data, agg_flow)
+    #no need to warp if flow is identity since warp introduces noise
+    if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
+      image = gridsample_residual(image, agg_flow, padding_mode='zeros')
     else:
       print ("not warping")
-      warped = raw_data[0]
 
     mip_disp = int(self.max_displacement / 2**mip)
-    result   = crop(warped, mip_disp)
+    return image.numpy()[0,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
 
-    #preprocess divides by 256 and puts it into right dimensions
-    #this data range is good already, so mult by 256
-    preprocessed = self.preprocess_data(result * 255)
-
-    return preprocessed
-    
   def downsample_patch(self, ng_path, z, bbox, mip):
     in_data = self.get_image_data(ng_path, z, bbox, mip - 1)
-    result  = downsample_mip(in_data)
+    result = np_downsample(in_data, 2)
     return result
 
   ## Data saving
@@ -555,16 +539,13 @@ class Aligner:
 
 
   def get_aggregate_rel_flow(self, z, bbox, res_mip_range, mip):
-    result = np.zeros((1, bbox.x_size(mip), bbox.y_size(mip), 2), dtype=np.float32)
+    result = torch.zeros((1, bbox.x_size(mip), bbox.y_size(mip), 2), dtype=torch.float)
     start_mip = max(res_mip_range[0], self.process_low_mip)
     end_mip   = min(res_mip_range[1], self.process_high_mip)
 
     for res_mip in range(start_mip, end_mip + 1):
-      scale_factor = 2**(res_mip - mip)
-
-      rel_res = self.get_rel_residual(z, bbox, res_mip)
-      up_rel_res = upsample_flow(rel_res, scale_factor)
-
+      rel_res = torch.from_numpy(self.get_rel_residual(z, bbox, res_mip))
+      up_rel_res = upsample(res_mip - mip)(rel_res.permute(0,3,1,2)).permute(0,2,3,1)
       result += up_rel_res
 
     return result
@@ -645,11 +626,9 @@ class Aligner:
       start = time()
       chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[m],
                                       self.vec_voxel_offsets[m], mip=m)
-      print ("Aligning slice {} to slice {} at mip {} ({} chunks)".format(source_z,
-                                                                        target_z,
-                                                                        m,
-                                                                        len(chunks)),
-             flush=True)
+      print ("Aligning slice {} to slice {} at mip {} ({} chunks)".
+             format(source_z, target_z, m, len(chunks)), flush=True)
+
       #for patch_bbox in chunks:
       def chunkwise(patch_bbox):
       #FIXME Torch runs out of memory
@@ -661,8 +640,6 @@ class Aligner:
 
       if m > self.process_low_mip:
           self.prepare_source(source_z, bbox, m - 1)
-
-
 
   ## Whole stack operations
   def align_ng_stack(self, start_section, end_section, bbox, move_anchor=True):

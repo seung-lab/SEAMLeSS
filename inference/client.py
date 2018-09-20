@@ -1,4 +1,5 @@
 import sys
+import torch
 from aligner import Aligner, BoundingBox
 from link_builder import ng_link
 import argparse
@@ -31,13 +32,14 @@ parser.add_argument('--no_flip_average',
 parser.add_argument('--run_pairs', 
   help='only run on consecutive pairs of input slices, rather than sequentially aligning a whole stack', 
   action='store_true')
+parser.add_argument('--old_upsample', help='revert to the old pytorch upsampling (using align_corners=True)',
+  action='store_true')
 parser.add_argument('--write_intermediaries', 
   help='write encodings, residuals, & cumulative residuals to cloudvolumes', 
   action='store_true')
 parser.add_argument('--upsample_residuals', 
   help='upsample residuals & cumulative residuals when writing intermediaries; requires --write_intermediaries flag', 
   action='store_true')
-parser.add_argument('--old_upsample', help='revert to the old pytorch upsampling (using align_corners=True)', action='store_true')
 args = parser.parse_args()
 
 out_name = args.out_name
@@ -77,11 +79,11 @@ print('Contrast:', should_contrast)
 print('Max mip:', max_mip)
 print('NG link:', ng_link(out_name, 'precomputed://' + 'gs://neuroglancer/seamless/' + model_name+'_'+out_name+'/image', source[source.rindex('/')+1:], 'precomputed://' + source, (xs+xe)//2, (ys+ye)//2, zs))
 
-a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk, 
+a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
             source, out_cv, render_low_mip=render_mip, render_high_mip=max_mip,
             skip=args.skip, topskip=0, size=args.size, should_contrast=should_contrast,
-            num_targets=num_targets, flip_average=not args.no_flip_average, 
-            run_pairs=args.run_pairs, 
+            num_targets=num_targets, flip_average=not args.no_flip_average,
+            run_pairs=args.run_pairs,
             write_intermediaries=args.write_intermediaries, 
             upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample)
 
