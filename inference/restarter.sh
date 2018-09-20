@@ -2,7 +2,7 @@
 signal=KILL
 
 sleep_a_while () {
-    sleep $[ ( $RANDOM % 1 ) + 1 ]m
+    sleep 1m
 }
 
 while true; do
