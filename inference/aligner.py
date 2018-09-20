@@ -651,7 +651,7 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def render_section_all_mips(self, z, bbox):
-    #self.render(z, bbox, self.render_low_mip)
+    self.render(z, bbox, self.render_low_mip)
     self.downsample(z, bbox, self.render_low_mip, self.render_high_mip)
 
   def downsample(self, z, bbox, source_mip, target_mip):
@@ -725,7 +725,7 @@ class Aligner:
     self.zs = start_section
     for z in range(start_section, end_section):
       self.img_cache = {}
-      #self.compute_section_pair_residuals(z + 1, z, bbox)
+      self.compute_section_pair_residuals(z + 1, z, bbox)
       self.render_section_all_mips(z + 1, bbox)
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
