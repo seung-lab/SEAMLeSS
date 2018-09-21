@@ -19,7 +19,7 @@ while true; do
 
     # See if the command is still running, and kill it and sleep more if it is:
     if ps -p $last_pid -o comm= | grep -qs '^neuroglancer$'; then
-        kill -$signal $last_pid 2> /dev/null
+        kill $last_pid 2> /dev/null
         sleep 5 
     fi
 
