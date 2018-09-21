@@ -30,14 +30,25 @@ def adjust_range(img):
 def to_uint8(img):
   return img.astype(np.uint8)
 
-def get_composite_image(vol, bbox):
+def get_composite_image(vol, bbox, reverse=True):
   """Collapse 3D image into a 2D image, replacing black pixels in the first 
       z slice with the nearest nonzero pixel in other slices.
+  
+  Args:
+  * vol: CloudVolume object
+  * bbox: CloudVolume Bbox object
+  * reverse: bool indicating to start with the last section (highest z),
+      then fill in missing data with earlier secitons.
   """
   img = get_image(vol, bbox)
-  o = img[:,:,:1,:]
-  for z in range(1, img.shape[2]):
-    o[o <= 1] = img[:,:,z:z+1,:][o <= 1]
+  if reverse:
+    o = img[:,:,-1:,:]
+    for z in range(img.shape[2]-1,0,-1):
+      o[o <= 1] = img[:,:,z-1:z,:][o <= 1]
+  else:
+    o = img[:,:,:1,:]
+    for z in range(1, img.shape[2]):
+      o[o <= 1] = img[:,:,z:z+1,:][o <= 1]
   return o
 
 def create_cloudvolume(dst_path, info, src_mip, dst_mip):

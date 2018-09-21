@@ -49,11 +49,17 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--composite_z', type=int, default=0,
-    help='Number of z slices to create a composite image for scoring')
+    help='No. of z slices to create composite image')
+  parser.add_argument('--z_offset', type=int, default=1,
+    help='Offset in z for target slice')
+  parser.add_argument('--forward_z', action='store_true',
+    help='Create composite image from upcoming z indices')
   parser.add_argument('--disable_cuda', action='store_true', help='Disable CUDA')
   args = parser.parse_args()
 
   args.tgt_path = args.tgt_path if args.tgt_path else args.src_path
+  args.composite_z = abs(args.composite_z)
+  args.z_offset = abs(args.z_offset)
   bbox = Bbox(args.bbox_start, args.bbox_stop)
   args.device = None
   if not args.disable_cuda and torch.cuda.is_available():
@@ -69,19 +75,27 @@ if __name__ == '__main__':
   src_bbox = src_bbox.round_to_chunk_size(dst_chunk, offset=src.voxel_offset)
   dst = util.create_cloudvolume(args.dst_path, src.info, 
                                      args.src_mip, args.dst_mip)
-  dst_bbox = dst.bbox_to_mip(src_bbox, args.src_mip, args.dst_mip) 
  
   for z in range(src_bbox.minpt[2], src_bbox.maxpt[2]):
     print('Scoring z={0}'.format(z))
     src_bbox.minpt[2] = z
     src_bbox.maxpt[2] = z+1
-    if args.tgt_path != args.src_path:
-      tgt_bbox = src_bbox
+    dst_bbox = dst.bbox_to_mip(src_bbox, args.src_mip, args.dst_mip) 
+    tgt_adj = Vec(0,0,args.z_offset)
+    if args.forward_z:
+        min_adj = tgt_adj
+        max_adj = Vec(0,0,args.composite_z) + tgt_adj
     else:
-      tgt_bbox = Bbox(src_bbox.minpt+Vec(0,0,1), 
-                      src_bbox.maxpt+Vec(0,0,args.composite_z+1))
+        min_adj = Vec(0,0,-args.composite_z) - tgt_adj
+        max_adj = -tgt_adj
+    tgt_bbox = Bbox(src_bbox.minpt + min_adj, 
+                    src_bbox.maxpt + max_adj)
+    print('src_bbox {0}'.format(src_bbox))
+    print('tgt_bbox {0}'.format(tgt_bbox))
+    # print('dst_bbox {0}'.format(dst_bbox))
     S = util.to_float(util.get_image(src, src_bbox))
-    T = util.to_float(util.get_composite_image(tgt, tgt_bbox))
+    T = util.to_float(util.get_composite_image(tgt, tgt_bbox, 
+                                               reverse=not args.forward_z))
     S = util.to_tensor(S, device=args.device)
     T = util.to_tensor(T, device=args.device)
     R = cpc(S, T, scale_factor, device=args.device)
