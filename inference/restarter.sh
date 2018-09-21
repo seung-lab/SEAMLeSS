@@ -2,7 +2,7 @@
 signal=KILL
 
 sleep_a_while () {
-    let "mins = ($RANDOM % 1) + 1"
+    let "mins = ($RANDOM % 60) + 30"
     echo "Sleeping " $mins " minutes"
     sleep ${mins}m 
 }
