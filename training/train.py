@@ -37,7 +37,7 @@ import argparse
 import masks
 from stack_dataset import * 
 from pyramid import PyramidTransformer
-from helpers import reverse_dim, downsample
+from helpers import reverse_dim, downsample, gridsample_residual
 from vis import visualize_outputs
 from loss import similarity_score, smoothness_penalty
 
@@ -306,7 +306,7 @@ class ModelWrapper(nn.Module):
 
         smoothness_weights /= smoothness_mask_factor
         smoothness_weights = gridsample_residual(smoothness_weights.detach(), field, padding_mode='border')
-        if args.hm:
+        if self.args.hm:
             smoothness_weights = smoothness_weights.detach()
         smoothness_weights = smoothness_weights * border_mask.float().detach()
 

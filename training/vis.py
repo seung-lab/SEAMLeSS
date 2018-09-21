@@ -71,7 +71,7 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
         save_chunk(grid, path.format('grid'))
         save_chunk(distorted_grid, path.format('dgrid'))
 
-        rfield = v('rfield').data.cpu().numpy()[:1,...]
+        rfield = v('field').data.cpu().numpy()[:1,...]
         display_v(rfield, path.format('field'))
         display_v(rfield, path.format('cfield'), center=True)
 
