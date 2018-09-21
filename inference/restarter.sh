@@ -2,7 +2,7 @@
 signal=KILL
 
 sleep_a_while () {
-    let "mins = ($RANDOM % 50) + 2"
+    let "mins = ($RANDOM % 60) + 60"
     echo "Sleeping " $mins " minutes"
     sleep ${mins}m 
 }
@@ -20,7 +20,7 @@ while true; do
     # See if the command is still running, and kill it and sleep more if it is:
     if ps -p $last_pid -o comm= | grep -qs '^neuroglancer$'; then
         kill -$signal $last_pid 2> /dev/null
-        sleep_a_while
+        sleep 5 
     fi
 
     # Go back to the beginning and launch the command again
