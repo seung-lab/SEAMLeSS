@@ -2,16 +2,16 @@
 Toolkit to assess alignment quality.
 
 ## Tools   
-**chunked** Create an image by scoring overlapping chunks in neighboring 
-sections with a similarity metric. Currently, only pearson r is available. 
+**cpc** Create an image by scoring overlapping chunks in neighboring 
+sections with Pearson R (chunked pearson correlation).
 
 **inspect** Inspect the vector fields produced by SEAMLeSS.
 
 ## How to use  
-### chunked
+### cpc
 For more information, use argparse help, e.g.  
 ```
-python chunked.py -h
+python cpc.py -h
 ```
 
 ### inspect
