@@ -55,7 +55,7 @@ class TaskHandler:
       MessageBody=message_body
     )
 
-  def get_message(self, processing_time=60):
+  def get_message(self, processing_time=3600):
     response = self.sqs.receive_message(
       QueueUrl=self.queue_url,
       MaxNumberOfMessages=1,
