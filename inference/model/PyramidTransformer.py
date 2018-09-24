@@ -200,11 +200,7 @@ class PyramidTransformer(nn.Module):
             # only run the preencoder and return the results
             return self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
         field, residuals, encodings, cumulative_residuals = self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
-<<<<<<< HEAD
-        return grid_sample(x[:,0:1,:,:], field, mode='bilinear'), field, residuals, encodings, cumulative_residuals
-=======
         return gridsample_residual(x[:,0:1,:,:], field, padding_mode='zeros'), field, residuals, encodings, cumulative_residuals
->>>>>>> master
 
     ################################################################
     # Begin Sergiy API
