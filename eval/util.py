@@ -24,8 +24,11 @@ def to_numpy(ten):
     img = ten.permute(3,2,1,0).numpy()
   return img
 
-def adjust_range(img):
+def norm_to_int8(img):
   return ((img + 1) / 2)*255
+
+def int8_to_norm(img):
+  return (img / 255) * 2 - 1
 
 def to_uint8(img):
   return img.astype(np.uint8)

@@ -1,6 +1,6 @@
 import torch
 from torch import pow, mul, reciprocal
-from torch.nn.functional import conv2d, interpolate
+from torch.nn.functional import interpolate
 from torch.nn import AvgPool2d, LPPool2d
 from cloudvolume.lib import Bbox, Vec
 
@@ -99,6 +99,6 @@ if __name__ == '__main__':
     S = util.to_tensor(S, device=args.device)
     T = util.to_tensor(T, device=args.device)
     R = cpc(S, T, scale_factor, device=args.device)
-    img = util.to_uint8(util.adjust_range(util.to_numpy(R)))
+    img = util.to_uint8(util.norm_to_int8(util.to_numpy(R)))
     util.save_image(dst, dst_bbox, img)
 
