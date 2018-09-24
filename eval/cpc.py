@@ -54,6 +54,8 @@ if __name__ == '__main__':
     help='Offset in z for target slice')
   parser.add_argument('--forward_z', action='store_true',
     help='Create composite image from upcoming z indices')
+  parser.add_argument('--dry_run', action='store_true',
+    help='Only print out bboxes of src & tgt') 
   parser.add_argument('--disable_cuda', action='store_true', help='Disable CUDA')
   args = parser.parse_args()
 
@@ -67,20 +69,23 @@ if __name__ == '__main__':
   else:
     args.device = torch.device('cpu')
 
+  print('dry_run {0}'.format(args.dry_run)) 
   src = util.get_cloudvolume(args.src_path, mip=args.src_mip)
   tgt = util.get_cloudvolume(args.tgt_path, mip=args.src_mip)
   scale_factor = 2**(args.dst_mip - args.src_mip)
   dst_chunk = Vec(scale_factor, scale_factor, 1)
   src_bbox = src.bbox_to_mip(bbox, args.bbox_mip, args.src_mip)
   src_bbox = src_bbox.round_to_chunk_size(dst_chunk, offset=src.voxel_offset)
-  dst = util.create_cloudvolume(args.dst_path, src.info, 
+  if not args.dry_run:
+    dst = util.create_cloudvolume(args.dst_path, src.info, 
                                      args.src_mip, args.dst_mip)
- 
+
   for z in range(src_bbox.minpt[2], src_bbox.maxpt[2]):
     print('Scoring z={0}'.format(z))
     src_bbox.minpt[2] = z
     src_bbox.maxpt[2] = z+1
-    dst_bbox = dst.bbox_to_mip(src_bbox, args.src_mip, args.dst_mip) 
+    if not args.dry_run:
+      dst_bbox = dst.bbox_to_mip(src_bbox, args.src_mip, args.dst_mip) 
     tgt_adj = Vec(0,0,args.z_offset)
     if args.forward_z:
         min_adj = tgt_adj
@@ -93,12 +98,13 @@ if __name__ == '__main__':
     print('src_bbox {0}'.format(src_bbox))
     print('tgt_bbox {0}'.format(tgt_bbox))
     # print('dst_bbox {0}'.format(dst_bbox))
-    S = util.to_float(util.get_image(src, src_bbox))
-    T = util.to_float(util.get_composite_image(tgt, tgt_bbox, 
-                                               reverse=not args.forward_z))
-    S = util.to_tensor(S, device=args.device)
-    T = util.to_tensor(T, device=args.device)
-    R = cpc(S, T, scale_factor, device=args.device)
-    img = util.to_uint8(util.adjust_range(util.to_numpy(R)))
-    util.save_image(dst, dst_bbox, img)
+    if not args.dry_run:
+      S = util.to_float(util.get_image(src, src_bbox))
+      T = util.to_float(util.get_composite_image(tgt, tgt_bbox, 
+                                                 reverse=not args.forward_z))
+      S = util.to_tensor(S, device=args.device)
+      T = util.to_tensor(T, device=args.device)
+      R = cpc(S, T, scale_factor, device=args.device)
+      img = util.to_uint8(util.adjust_range(util.to_numpy(R)))
+      util.save_image(dst, dst_bbox, img)
 
