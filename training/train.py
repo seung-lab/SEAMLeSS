@@ -555,9 +555,10 @@ def main():
                     (sum(consensus_list) / len(consensus_list))
                     if len(consensus_list) > 0 else torch.tensor(0.))
                 print(t, smooth_factor, trunclayer,
-                      mean_err_train + args.lambda1
-                      * mean_penalty_train * smooth_factor,
-                      mean_err_train, mean_penalty_train, mean_consensus)
+                      (mean_err_train + args.lambda1
+                      * mean_penalty_train * smooth_factor).item(),
+                      mean_err_train.item(), mean_penalty_train.item(),
+                      mean_consensus.item())
                 history.append((
                     time.time() - start_time,
                     (mean_err_train + mean_penalty_train * smooth_factor).item(),
