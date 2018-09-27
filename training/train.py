@@ -28,6 +28,7 @@ import torch
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.utils.data import DataLoader, ConcatDataset
+import numpy as np
 import argparse
 import random
 
@@ -46,6 +47,16 @@ from normalizer import Normalizer
 def main():
     """Start training a net."""
     args = parse_args()
+
+    _init_fn = None
+    if args.deterministic:
+        arbitrary_seed = 999
+        random.seed(arbitrary_seed)
+        np.random.seed(arbitrary_seed)
+        torch.backends.cudnn.deterministic = True
+        torch.manual_seed(arbitrary_seed)
+        _init_fn = (lambda worker_id : np.random.seed(arbitrary_seed + worker_id))
+
     name = args.name
     trunclayer = args.trunc
     skiplayers = args.skip
@@ -97,9 +108,10 @@ def main():
             train_dataset2 = StackDataset(  # dataset focused on extreme folds
                 os.path.expanduser(args.lm_src), mip=2)
             train_dataset = ConcatDataset([train_dataset2])
+
     train_loader = DataLoader(
         train_dataset, batch_size=1, shuffle=True, num_workers=5,
-        pin_memory=True)
+        pin_memory=True, worker_init_fn=_init_fn)
 
     if not os.path.isdir(log_path):
         os.makedirs(log_path)
@@ -720,6 +732,9 @@ def parse_args():
     parser.add_argument(
         '--lm_src',
         help='low mip source (mip 2)', type=str, default='~/mip2_mixed.h5')
+    parser.add_argument(
+        '--deterministic', action='store_true',
+        help="Seed deterministically to get consistent training results.")
     return parser.parse_args()
 
 
