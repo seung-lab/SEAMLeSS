@@ -55,7 +55,7 @@ def main():
         np.random.seed(arbitrary_seed)
         torch.backends.cudnn.deterministic = True
         torch.manual_seed(arbitrary_seed)
-        _init_fn = (lambda worker_id : np.random.seed(arbitrary_seed + worker_id))
+        _init_fn = (lambda worker_id : np.random.seed(arbitrary_seed))
 
     name = args.name
     trunclayer = args.trunc
