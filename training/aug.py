@@ -247,6 +247,8 @@ def weighted_draw(l,h,exp=2, wf=None, max_factor=4):
     a uniform distribution). The max factor caps the ratio max(weights) / min(weights)
     so that lower values don't become virtually non-existent.
     """
+    if l > h:
+        return l
     weight_function = lambda x: (abs(x) - min(abs(l), abs(h)) + 1) ** float(exp) if wf is None else wf
     vals = range(l,h+1)
     weights = np.array([weight_function(v) for v in vals]).astype(np.float32)
