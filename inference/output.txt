@@ -1,0 +1,2349 @@
+Model name: vector_fixer30_fine_tuning_low_mip_e9_t200_
+Tag: pinky100_zhen_test_int16
+Source: gs://neuroglancer/pinky40_alignment/prealigned_rechunked
+Coordinates: (0, 0, 357) (20000, 20000, 377)
+Mip: 2
+Contrast: True
+Max mip: 6
+NG link: http://bit.ly/2O8u8v6
+Constructing EPyramid with size 8 (7 downsamples, input size 1536)...
+Loading model state from model_repository/vector_fixer30_fine_tuning_low_mip_e9_t200_.pt...
+[WARNING]   Key pyramid.pe.pelist.0.bias present in archive but not in model; skipping.
+[WARNING]   Key pyramid.pe.pelist.0.weight present in archive but not in model; skipping.
+[WARNING]   Key pyramid.pe.pelist.1.bias present in archive but not in model; skipping.
+[WARNING]   Key pyramid.pe.pelist.1.weight present in archive but not in model; skipping.
+[WARNING]   Key pyramid.pe.pelist.2.bias present in archive but not in model; skipping.
+[WARNING]   Key pyramid.pe.pelist.2.weight present in archive but not in model; skipping.
+[WARNING]   Key pyramid.pe.pelist.3.bias present in archive but not in model; skipping.
+[WARNING]   Key pyramid.pe.pelist.3.weight present in archive but not in model; skipping.
+[WARNING]   Key pyramid.pe.pelist.4.bias present in archive but not in model; skipping.
+[WARNING]   Key pyramid.pe.pelist.4.weight present in archive but not in model; skipping.
+Copied 122 parameters exactly, 0 parameters partially. Skipped 10 parameters.
+Successfully loaded model state.
+moving section 357 mip 2 to dest: 20.199061155319214 sec
+moving section 357 mip 3 to dest: 6.3876025676727295 sec
+moving section 357 mip 4 to dest: 2.7413570880889893 sec
+moving section 357 mip 5 to dest: 1.7579591274261475 sec
+moving section 357 mip 6 to dest: 3.357621669769287 sec
+Aligning slice 358 to slice 357 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 203.3627278804779 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 38.40837812423706 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 359 to slice 358 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 165.7229266166687 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 41.32709622383118 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 360 to slice 359 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 166.95789694786072 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 35.07210826873779 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 361 to slice 360 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 165.27047276496887 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 37.613863706588745 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 362 to slice 361 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 165.62151265144348 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 36.78804659843445 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 363 to slice 362 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 164.8115096092224 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 43.92820644378662 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 364 to slice 363 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 164.50813102722168 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 36.34770393371582 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 365 to slice 364 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 171.03727388381958 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 38.601837158203125 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 366 to slice 365 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 164.52084517478943 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 37.33502268791199 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 367 to slice 366 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 165.42522859573364 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 37.025593996047974 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 368 to slice 367 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 198.5496256351471 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 38.638010025024414 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 369 to slice 368 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 200.83382725715637 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 37.17270374298096 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 370 to slice 369 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 166.29849481582642 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 38.27709603309631 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 371 to slice 370 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 166.18755292892456 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 37.55740189552307 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 372 to slice 371 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 165.79600977897644 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 37.21266531944275 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 373 to slice 372 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 165.80131316184998 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 39.74516296386719 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 374 to slice 373 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 165.54302644729614 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 35.88111186027527 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 375 to slice 374 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 170.29397249221802 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 38.24198246002197 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 376 to slice 375 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 165.33292984962463 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 35.48944711685181 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Aligning slice 377 to slice 376 at mip 2 (30 chunks)
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+Warning: couldn't rescale chunk (0.0 == 0.0).
+: 167.98302793502808 sec
+Rendering mip 2not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+not warping
+: 37.01398849487305 sec
+Downsampling (0, 20000), (0, 20000) from mip 2 to mip 6
+Total time for aligning 20 slices: 4387.6666560173035
