@@ -4,29 +4,86 @@ from torch.nn.functional import interpolate
 from torch.nn import AvgPool2d, LPPool2d
 from cloudvolume.lib import Bbox, Vec
 
-import util
+from eval import util
 import argparse
 
 def get_chunk_dim(scale_factor):
-    return scale_factor, scale_factor
+  return scale_factor, scale_factor
 
 def center(X, scale_factor, device=torch.device('cpu')):
-    chunk_dim = get_chunk_dim(scale_factor)
-    avg_pool = AvgPool2d(chunk_dim, stride=chunk_dim).to(device=device)
-    X_bar_down = avg_pool(X)
-    X_bar = interpolate(X_bar_down, scale_factor=scale_factor, mode='nearest')
-    return X - X_bar    
+  chunk_dim = get_chunk_dim(scale_factor)
+  avg_pool = AvgPool2d(chunk_dim, stride=chunk_dim).to(device=device)
+  X_bar_down = avg_pool(X)
+  X_bar = interpolate(X_bar_down, scale_factor=scale_factor, mode='nearest')
+  return X - X_bar    
 
 def cpc(S, T, scale_factor, device=torch.device('cpu')):
-    chunk_dim = get_chunk_dim(scale_factor)
-    sum_pool = LPPool2d(1, chunk_dim, stride=chunk_dim).to(device=device)
-    S_hat = center(S, scale_factor, device=device)
-    T_hat = center(T, scale_factor, device=device)
-    S_hat_std = pow(sum_pool(pow(S_hat, 2)), 0.5)
-    T_hat_std = pow(sum_pool(pow(T_hat, 2)), 0.5)
-    norm = reciprocal(mul(S_hat_std, T_hat_std))
-    R = mul(sum_pool(mul(S_hat, T_hat)), norm)
-    return R
+  chunk_dim = get_chunk_dim(scale_factor)
+  sum_pool = LPPool2d(1, chunk_dim, stride=chunk_dim).to(device=device)
+  S_hat = center(S, scale_factor, device=device)
+  T_hat = center(T, scale_factor, device=device)
+  S_hat_std = pow(sum_pool(pow(S_hat, 2)), 0.5)
+  T_hat_std = pow(sum_pool(pow(T_hat, 2)), 0.5)
+  norm = reciprocal(mul(S_hat_std, T_hat_std))
+  R = mul(sum_pool(mul(S_hat, T_hat)), norm)
+  return R
+
+class CPC():
+
+  def __init__(self, src_path, tgt_path, dst_path, src_mip, dst_mip, 
+            bbox_start, bbox_stop, bbox_mip, composite_z, z_offset, 
+            forward_z, disable_cuda):
+    self.src_mip = src_mip
+    self.dst_mip = dst_mip
+    self.forward_z = forward_z
+    self.composite_z = abs(composite_z)
+    self.z_offset = abs(z_offset)
+    bbox = Bbox(bbox_start, bbox_stop)
+    self.device = None
+    if not disable_cuda and torch.cuda.is_available():
+      self.device = torch.device('cuda')
+    else:
+      self.device = torch.device('cpu')
+  
+    tgt_path = tgt_path if tgt_path else src_path
+    
+    self.src = util.get_cloudvolume(src_path, mip=src_mip)
+    self.tgt = util.get_cloudvolume(tgt_path, mip=src_mip)
+    self.scale_factor = 2**(dst_mip - src_mip)
+    dst_chunk = Vec(self.scale_factor, self.scale_factor, 1)
+    src_bbox = self.src.bbox_to_mip(bbox, bbox_mip, src_mip)
+    self.src_bbox = src_bbox.round_to_chunk_size(dst_chunk, 
+                                           offset=self.src.voxel_offset)
+    self.dst = util.create_cloudvolume(dst_path, self.src.info, 
+                                         src_mip, dst_mip)
+  def run(self):
+    z_range = range(self.src_bbox.minpt[2], self.src_bbox.maxpt[2])
+    for z in z_range:
+      print('Scoring z={0}'.format(z))
+      self.src_bbox.minpt[2] = z
+      self.src_bbox.maxpt[2] = z+1
+      dst_bbox = self.dst.bbox_to_mip(self.src_bbox, self.src_mip, self.dst_mip) 
+      tgt_adj = Vec(0,0,self.z_offset)
+      if self.forward_z:
+          min_adj = tgt_adj
+          max_adj = Vec(0,0,self.composite_z) + tgt_adj
+      else:
+          min_adj = Vec(0,0,-self.composite_z) - tgt_adj
+          max_adj = -tgt_adj
+      tgt_bbox = Bbox(self.src_bbox.minpt + min_adj, 
+                      self.src_bbox.maxpt + max_adj)
+      print('src_bbox {0}'.format(self.src_bbox))
+      print('tgt_bbox {0}'.format(tgt_bbox))
+      print('dst_bbox {0}'.format(dst_bbox))
+      S = util.to_float(util.get_image(self.src, self.src_bbox))
+      T = util.to_float(util.get_composite_image(self.tgt, tgt_bbox, 
+                                                 reverse=not self.forward_z))
+      S = util.to_tensor(S, device=self.device)
+      T = util.to_tensor(T, device=self.device)
+      R = cpc(S, T, self.scale_factor, device=self.device)
+      img = util.to_uint8(util.norm_to_int8(util.to_numpy(R)))
+      util.save_image(self.dst, dst_bbox, img)
+    
 
 if __name__ == '__main__':
 
@@ -57,48 +114,6 @@ if __name__ == '__main__':
   parser.add_argument('--disable_cuda', action='store_true', help='Disable CUDA')
   args = parser.parse_args()
 
-  args.tgt_path = args.tgt_path if args.tgt_path else args.src_path
-  args.composite_z = abs(args.composite_z)
-  args.z_offset = abs(args.z_offset)
-  bbox = Bbox(args.bbox_start, args.bbox_stop)
-  args.device = None
-  if not args.disable_cuda and torch.cuda.is_available():
-    args.device = torch.device('cuda')
-  else:
-    args.device = torch.device('cpu')
-
-  src = util.get_cloudvolume(args.src_path, mip=args.src_mip)
-  tgt = util.get_cloudvolume(args.tgt_path, mip=args.src_mip)
-  scale_factor = 2**(args.dst_mip - args.src_mip)
-  dst_chunk = Vec(scale_factor, scale_factor, 1)
-  src_bbox = src.bbox_to_mip(bbox, args.bbox_mip, args.src_mip)
-  src_bbox = src_bbox.round_to_chunk_size(dst_chunk, offset=src.voxel_offset)
-  dst = util.create_cloudvolume(args.dst_path, src.info, 
-                                     args.src_mip, args.dst_mip)
- 
-  for z in range(src_bbox.minpt[2], src_bbox.maxpt[2]):
-    print('Scoring z={0}'.format(z))
-    src_bbox.minpt[2] = z
-    src_bbox.maxpt[2] = z+1
-    dst_bbox = dst.bbox_to_mip(src_bbox, args.src_mip, args.dst_mip) 
-    tgt_adj = Vec(0,0,args.z_offset)
-    if args.forward_z:
-        min_adj = tgt_adj
-        max_adj = Vec(0,0,args.composite_z) + tgt_adj
-    else:
-        min_adj = Vec(0,0,-args.composite_z) - tgt_adj
-        max_adj = -tgt_adj
-    tgt_bbox = Bbox(src_bbox.minpt + min_adj, 
-                    src_bbox.maxpt + max_adj)
-    print('src_bbox {0}'.format(src_bbox))
-    print('tgt_bbox {0}'.format(tgt_bbox))
-    # print('dst_bbox {0}'.format(dst_bbox))
-    S = util.to_float(util.get_image(src, src_bbox))
-    T = util.to_float(util.get_composite_image(tgt, tgt_bbox, 
-                                               reverse=not args.forward_z))
-    S = util.to_tensor(S, device=args.device)
-    T = util.to_tensor(T, device=args.device)
-    R = cpc(S, T, scale_factor, device=args.device)
-    img = util.to_uint8(util.norm_to_int8(util.to_numpy(R)))
-    util.save_image(dst, dst_bbox, img)
+  r = CPC(*args)
+  r.run()
 
