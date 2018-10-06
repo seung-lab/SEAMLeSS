@@ -22,13 +22,13 @@ import torch.nn as nn
 
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
-               mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
+               mip_range, high_mip_chunk, src_path, tgt_path, dst_path,
                render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=5,
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
-               flip_average=True, run_pairs=False, write_intermediaries=False,
+               flip_average=True, write_intermediaries=False,
                upsample_residuals=False, old_upsample=False, old_vectors=False,
-               ignore_field_init=False):
+               ignore_field_init=False, z_offset=0):
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip
@@ -38,15 +38,18 @@ class Aligner:
     self.max_chunk        = max_chunk
     self.max_render_chunk = max_render_chunk
     self.num_targets      = num_targets
-    self.run_pairs = run_pairs
     self.size = size
     self.old_vectors=old_vectors
     self.ignore_field_init = ignore_field_init
+    self.z_offset = z_offset
 
     self.max_displacement = max_displacement
     self.crop_amount      = crop
 
-    self.ng_paths = self.get_ng_paths(src_ng_path, dst_ng_path)
+    self.orig_src_path = src_path
+    self.orig_tgt_path = tgt_path
+    self.orig_dst_path = dst_path
+    self.paths = self.get_paths(src_path, tgt_path, dst_path)
 
     self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip, size=size, flip_average=flip_average, old_upsample=old_upsample)
     
@@ -64,47 +67,49 @@ class Aligner:
     self.img_cache = {}
 
     self.img_cache_lock = Lock()
-    
-    #if not chunk_size[0] :
-    #  raise Exception("The chunk size has to be aligned with ng chunk size")
 
-  def get_ng_paths(self, src_path, dst_path):
-    ng_paths = {}
-    ng_paths['src_image'] = src_path
-    ng_paths['dst_image'] = join(dst_path, 'image')
-    ng_paths['tmp_image'] = join(dst_path, 'intermediate')
+  def reset_paths(self):
+    self.paths = self.get_paths(self.orig_src_path, self.orig_dst_path)
+
+  def get_paths(self, src_path, tgt_path, dst_path):
+    paths = {}
+    paths['dst_path'] = dst_path
+    paths['src_img'] = src_path
+    paths['tgt_img'] = tgt_path
+    paths['dst_img'] = join(dst_path, 'image')
+    paths['tmp_img'] = join(dst_path, 'intermediate')
     mip_range = range(self.process_high_mip + 10) #TODO
-    ng_paths['enc'] = [join(dst_path, 'enc/{}'.format(i)) for i in mip_range]
+    paths['enc'] = [join(dst_path, 'enc/{}'.format(i)) for i in mip_range]
 
-    res   = [join(dst_path, 'vec/{}'.format(i) for i in mip_range]
-    ng_paths['x_res'] = [join(r, 'x') for r in res]
-    ng_paths['y_res'] = [join(r, 'y') for r in res]
+    res   = [join(dst_path, 'vec/{}'.format(i)) for i in mip_range]
+    paths['x_res'] = [join(r, 'x') for r in res]
+    paths['y_res'] = [join(r, 'y') for r in res]
 
     cumres   = [join(dst_path, 'cumulative_vec/{}'.format(i)) 
                                                      for i in mip_range] 
-    ng_paths['x_cumres'] = [join(r, 'x') for r in cumres]
-    ng_paths['y_cumres'] = [join(r, 'y') for r in cumres]
+    paths['x_cumres'] = [join(r, 'x') for r in cumres]
+    paths['y_cumres'] = [join(r, 'y') for r in cumres]
 
     resup   = [join(dst_path, 'vec_up/{}'.format(i)) for i in mip_range]
-    ng_paths['x_resup'] = [join(r, 'x') for r in resup]
-    ng_paths['y_resup'] = [join(r, 'y') for r in resup]
+    paths['x_resup'] = [join(r, 'x') for r in resup]
+    paths['y_resup'] = [join(r, 'y') for r in resup]
 
     cumresup   = [join(dst_path, 'cumulative_vec_up/{}'.format(i)) 
                                                      for i in mip_range]
-    ng_paths['x_cumresup'] = [join(r, 'x') for r in cumresup]
-    ng_paths['y_cumresup'] = [join(r, 'y') for r in cumresup]
+    paths['x_cumresup'] = [join(r, 'x') for r in cumresup]
+    paths['y_cumresup'] = [join(r, 'y') for r in cumresup]
 
     field   = [join(dst_path, 'field/{}'.format(i)) for i in mip_range]
-    ng_paths['x_field'] = [join(r, 'x') for r in field]
-    ng_paths['y_field'] = [join(r, 'y') for r in field]
+    paths['x_field'] = [join(r, 'x') for r in field]
+    paths['y_field'] = [join(r, 'y') for r in field]
 
-    return ng_paths
+    return paths
 
   def set_chunk_size(self, chunk_size):
     self.high_mip_chunk = chunk_size
 
   def _create_info_files(self, max_offset):
-    src_cv = cv(self.ng_path['src_img'])
+    src_cv = cv(self.paths['src_img'])
     src_info = src_cv.info
     m = len(src_info['scales'])
     each_factor = Vec(2,2,1)
@@ -155,8 +160,8 @@ class Aligner:
       self.dst_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.dst_voxel_offsets.append(scales[i]["voxel_offset"])
 
-    cv(self.ng_paths['dst_image'], info=dst_info).commit_info()
-    cv(self.ng_paths['tmp_image'], info=dst_info).commit_info()
+    cv(self.paths['dst_img'], info=dst_info).commit_info()
+    cv(self.paths['tmp_img'], info=dst_info).commit_info()
 
     ##########################################################
     #### Create vec info file
@@ -176,22 +181,22 @@ class Aligner:
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
       if not self.ignore_field_init:
-        cv(self.ng_paths['x_field'][i], info=vec_info).commit_info()
-        cv(self.ng_paths['y_field'][i], info=vec_info).commit_info()
-      cv(self.ng_paths['x_res'][i], info=vec_info).commit_info()
-      cv(self.ng_paths['y_res'][i], info=vec_info).commit_info()
-      cv(self.ng_paths['x_cumres'][i], info=vec_info).commit_info()
-      cv(self.ng_paths['y_cumres'][i], info=vec_info).commit_info()
-      cv(self.ng_paths['x_resup'][i], info=vec_info).commit_info()
-      cv(self.ng_paths['y_resup'][i], info=vec_info).commit_info()
-      cv(self.ng_paths['x_cumresup'][i], info=vec_info).commit_info()
-      cv(self.ng_paths['y_cumresup'][i], info=vec_info).commit_info()
+        cv(self.paths['x_field'][i], info=vec_info).commit_info()
+        cv(self.paths['y_field'][i], info=vec_info).commit_info()
+      cv(self.paths['x_res'][i], info=vec_info).commit_info()
+      cv(self.paths['y_res'][i], info=vec_info).commit_info()
+      cv(self.paths['x_cumres'][i], info=vec_info).commit_info()
+      cv(self.paths['y_cumres'][i], info=vec_info).commit_info()
+      cv(self.paths['x_resup'][i], info=vec_info).commit_info()
+      cv(self.paths['y_resup'][i], info=vec_info).commit_info()
+      cv(self.paths['x_cumresup'][i], info=vec_info).commit_info()
+      cv(self.paths['y_cumresup'][i], info=vec_info).commit_info()
 
       if i in enc_dict.keys():
         enc_info = deepcopy(vec_info)
         enc_info['num_channels'] = enc_dict[i]
         # enc_info['data_type'] = 'uint8'
-        cv(self.ng_paths['enc'][i], info=enc_info).commit_info()
+        cv(self.paths['enc'][i], info=enc_info).commit_info()
 
   def check_all_params(self):
     return True
@@ -285,43 +290,38 @@ class Aligner:
     precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
 
     if mip == self.process_high_mip:
-      src_patch = self.get_image_data(self.ng_paths['src_image'], source_z, precrop_patch_bbox, mip)
+      src_patch = self.get_image_data(self.paths['src_img'], source_z, precrop_patch_bbox, mip)
     else:
-      src_patch = self.get_image_data(self.ng_paths['tmp_image'], source_z, precrop_patch_bbox, mip)
+      src_patch = self.get_image_data(self.paths['tmp_img'], source_z, precrop_patch_bbox, mip)
 
-    if (self.run_pairs):
-         # only align consecutive pairs of source slices TODO: write function to compse resulting vector fields
-        tgt_patch = self.get_image_data(self.ng_paths['src_image'], target_z, precrop_patch_bbox, mip, should_backtrack=True)
-    else:
-        # align to the newly aligned previous slice
-        tgt_patch = self.get_image_data(self.ng_paths['dst_image'], target_z, precrop_patch_bbox, mip, should_backtrack=True)
+    tgt_patch = self.get_image_data(self.paths['tgt_img'], target_z, precrop_patch_bbox, mip, should_backtrack=True)
     field, residuals, encodings, cum_residuals = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount, old_vectors=self.old_vectors)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
 
     # save the final vector field for warping
-    self.save_vector_patch(field, self.ng_paths['x_field'][mip], self.ng_paths['y_field'][mip], source_z, out_patch_bbox, mip)
+    self.save_vector_patch(field, self.paths['x_field'][mip], self.paths['y_field'][mip], source_z, out_patch_bbox, mip)
 
     if self.write_intermediaries:
   
       mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
       for res_mip, res, cumres in zip(mip_range, residuals[1:], cum_residuals[1:]):
           crop = self.crop_amount // 2**(res_mip - self.process_low_mip)   
-          self.save_residual_patch(res, crop, self.ng_paths['x_res'][res_mip], 
-                                   self.ng_paths['y_res'][res_mip], source_z, 
+          self.save_residual_patch(res, crop, self.paths['x_res'][res_mip], 
+                                   self.paths['y_res'][res_mip], source_z, 
                                    out_patch_bbox, res_mip)
-          self.save_residual_patch(cumres, crop, self.ng_paths['x_cumres'][res_mip], 
-                                   self.ng_paths['y_cumres'][res_mip], source_z, 
+          self.save_residual_patch(cumres, crop, self.paths['x_cumres'][res_mip], 
+                                   self.paths['y_cumres'][res_mip], source_z, 
                                    out_patch_bbox, res_mip)
           if self.upsample_residuals:
             crop = self.crop_amount   
             res = self.scale_residuals(res, res_mip, self.process_low_mip)
-            self.save_residual_patch(res, crop, self.ng_paths['x_resup'][res_mip], 
-                                     self.ng_paths['y_resup'][res_mip], source_z, 
+            self.save_residual_patch(res, crop, self.paths['x_resup'][res_mip], 
+                                     self.paths['y_resup'][res_mip], source_z, 
                                      out_patch_bbox, self.process_low_mip)
             cumres = self.scale_residuals(cumres, res_mip, self.process_low_mip)
-            self.save_residual_patch(cumres, crop, self.ng_paths['x_cumresup'][res_mip], 
-                                     self.ng_paths['y_cumresup'][res_mip], source_z, 
+            self.save_residual_patch(cumres, crop, self.paths['x_cumresup'][res_mip], 
+                                     self.paths['y_cumresup'][res_mip], source_z, 
                                      out_patch_bbox, self.process_low_mip)
 
 
@@ -339,7 +339,7 @@ class Aligner:
             y_range = out_patch_bbox.y_range(mip=mip)
             patch = enc[:, :, :, j_slice]
             # uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
-            cv(self.ng_paths['enc'][mip], mip=mip, bounded=False, fill_missing=True, autocrop=True,
+            cv(self.paths['enc'][mip], mip=mip, bounded=False, fill_missing=True, autocrop=True,
                                     progress=False)[x_range[0]:x_range[1],
                                                     y_range[0]:y_range[1], z, j_slice] = patch # uint_patch
   
@@ -360,13 +360,13 @@ class Aligner:
 
 
   ## Patch manipulation
-  def warp_patch(self, ng_path, z, bbox, res_mip_range, mip):
+  def warp_patch(self, path, z, bbox, res_mip_range, mip):
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
 
     agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
-    image = torch.from_numpy(self.get_image_data(ng_path, z, influence_bbox, mip))
+    image = torch.from_numpy(self.get_image_data(path, z, influence_bbox, mip))
     image = image.unsqueeze(0)
 
     #no need to warp if flow is identity since warp introduces noise
@@ -378,18 +378,18 @@ class Aligner:
     mip_disp = int(self.max_displacement / 2**mip)
     return image.numpy()[0,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
 
-  def downsample_patch(self, ng_path, z, bbox, mip):
-    in_data = self.get_image_data(ng_path, z, bbox, mip - 1)
+  def downsample_patch(self, path, z, bbox, mip):
+    in_data = self.get_image_data(path, z, bbox, mip - 1)
     result = np_downsample(in_data, 2)
     return result
 
   ## Data saving
-  def save_image_patch(self, ng_path, float_patch, z, bbox, mip):
+  def save_image_patch(self, path, float_patch, z, bbox, mip):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = float_patch[0, :, :, np.newaxis]
     uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
-    cv(ng_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
+    cv(path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
                                   progress=False)[x_range[0]:x_range[1],
                                                   y_range[0]:y_range[1], z] = uint_patch
 
@@ -529,14 +529,14 @@ class Aligner:
     return data
 
   def get_abs_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.ng_paths['x_field'][mip], z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.ng_paths['y_field'][mip], z, bbox, mip)[..., 0, 0]
+    x = self.get_vector_data(self.paths['x_field'][mip], z, bbox, mip)[..., 0, 0]
+    y = self.get_vector_data(self.paths['y_field'][mip], z, bbox, mip)[..., 0, 0]
     result = np.stack((x, y), axis=2)
     return np.expand_dims(result, axis=0)
 
   def get_rel_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.ng_paths['x_field'][mip], z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.ng_paths['y_field'][mip], z, bbox, mip)[..., 0, 0]
+    x = self.get_vector_data(self.paths['x_field'][mip], z, bbox, mip)[..., 0, 0]
+    y = self.get_vector_data(self.paths['y_field'][mip], z, bbox, mip)[..., 0, 0]
     abs_res = np.stack((x, y), axis=2)
     abs_res = np.expand_dims(abs_res, axis=0)
     rel_res = self.abs_to_rel_residual(abs_res, bbox, mip)
@@ -580,9 +580,9 @@ class Aligner:
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
 
     def chunkwise(patch_bbox):
-      warped_patch = self.warp_patch(self.ng_paths['src_image'], z, patch_bbox,
+      warped_patch = self.warp_patch(self.paths['src_img'], z, patch_bbox,
                                      (mip + 1, self.process_high_mip), mip)
-      self.save_image_patch(self.ng_paths['tmp_image'], warped_patch, z, patch_bbox, mip)
+      self.save_image_patch(self.paths['tmp_img'], warped_patch, z, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
@@ -595,13 +595,9 @@ class Aligner:
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
 
     def chunkwise(patch_bbox):
-      warped_patch = self.warp_patch(self.ng_paths['src_image'], z, patch_bbox,
+      warped_patch = self.warp_patch(self.paths['src_img'], z, patch_bbox,
                                     (mip, self.process_high_mip), mip)
-      if (self.run_pairs):
-        # save the image in the previous slice so it's easier to compare pairs
-        self.save_image_patch(self.ng_paths['dst_image'], warped_patch, z-1, patch_bbox, mip)
-      else:
-        self.save_image_patch(self.ng_paths['dst_image'], warped_patch, z, patch_bbox, mip)
+      self.save_image_patch(self.paths['dst_img'], warped_patch, z+self.z_offset, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
@@ -618,12 +614,8 @@ class Aligner:
 
       def chunkwise(patch_bbox):
         print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
-        if (self.run_pairs):
-          downsampled_patch = self.downsample_patch(self.ng_paths['dst_image'], z-1, patch_bbox, m)
-          self.save_image_patch(self.ng_paths['dst_image'], downsampled_patch, z-1, patch_bbox, m)
-        else:
-          downsampled_patch = self.downsample_patch(self.ng_paths['dst_image'], z, patch_bbox, m)
-          self.save_image_patch(self.ng_paths['dst_image'], downsampled_patch, z, patch_bbox, m)
+        downsampled_patch = self.downsample_patch(self.paths['dst_img'], z+self.z_offset, patch_bbox, m)
+        self.save_image_patch(self.paths['dst_img'], downsampled_patch, z+self.z_offset, patch_bbox, m)
       self.pool.map(chunkwise, chunks)
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
@@ -657,7 +649,7 @@ class Aligner:
     start = time()
     if move_anchor:
       for m in range(self.render_low_mip, self.high_mip+1):
-        self.copy_section(self.ng_paths['src_image'], self.ng_paths['dst_image'], start_section, bbox, mip=m)
+        self.copy_section(self.paths['src_img'], self.paths['dst_img'], start_section, bbox, mip=m)
     self.zs = start_section
     for z in range(start_section, end_section):
       self.img_cache = {}
@@ -666,3 +658,29 @@ class Aligner:
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
                                                           end - start))
+
+  def multi_match(self, tgt_z, src_z_list):
+    """Match series of sources to single target section. Primary purpose is to
+    compare alignments of multiple sections to use consensus in generating
+    masks for the target section.
+
+    Args:
+       tgt_z: z index of target section
+       src_z_list: list of z indices for source sections
+    """
+    orig_src_path = self.orig_src_path
+    orig_tgt_path = self.orig_tgt_path
+    orig_dst_path = self.orig_dst_path 
+    bbox = self.total_bbox
+    for src_z in src_z_list:
+      print('Aligning {0} to {1}'.format(src_z, tgt_z))
+      self.zs = src_z
+      z_offset = tgt_z - src_z
+      self.z_offset = z_offset
+      dst_path = '{0}/z{1}'.format(orig_dst_path, z_offset)
+      self.paths = self.get_paths(orig_src_path, orig_tgt_path, dst_path)
+      self._create_info_files(self.max_displacement)
+      self.compute_section_pair_residuals(src_z, tgt_z, bbox)
+      print('Rendering to {0}'.format(self.paths['dst_img'])) 
+      self.render_section_all_mips(src_z, bbox)
+
