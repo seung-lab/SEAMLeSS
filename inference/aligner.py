@@ -26,7 +26,8 @@ class Aligner:
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
                flip_average=True, run_pairs=False, write_intermediaries=False,
-               upsample_residuals=False, old_upsample=False, old_vectors=False):
+               upsample_residuals=False, old_upsample=False, old_vectors=False,
+               ignore_field_init=False):
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip
@@ -39,6 +40,7 @@ class Aligner:
     self.run_pairs = run_pairs
     self.size = size
     self.old_vectors=old_vectors
+    self.ignore_field_init = ignore_field_init
 
     self.max_displacement = max_displacement
     self.crop_amount      = crop
@@ -171,9 +173,9 @@ class Aligner:
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
-
-      cv(self.x_field_ng_paths[i], info=vec_info).commit_info()
-      cv(self.y_field_ng_paths[i], info=vec_info).commit_info()
+      if not self.ignore_field_init:
+        cv(self.x_field_ng_paths[i], info=vec_info).commit_info()
+        cv(self.y_field_ng_paths[i], info=vec_info).commit_info()
       cv(self.x_res_ng_paths[i], info=vec_info).commit_info()
       cv(self.y_res_ng_paths[i], info=vec_info).commit_info()
       cv(self.x_cumres_ng_paths[i], info=vec_info).commit_info()

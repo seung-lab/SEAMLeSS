@@ -35,6 +35,11 @@ parser.add_argument('--run_pairs',
   action='store_true')
 parser.add_argument('--old_upsample', help='revert to the old pytorch upsampling (using align_corners=True)',
   action='store_true')
+parser.add_argument('--old_vectors', help='expect the net to return vectors in the old vector field convention, '
+  'where -1 and 1 refer to the centers of the border pixels rather than the image edges.',
+  action='store_true')
+parser.add_argument('--ignore_field_init', help='do not initialize the field cloudvolume (already exists)',
+  action='store_true')
 parser.add_argument('--write_intermediaries', 
   help='write encodings, residuals, & cumulative residuals to cloudvolumes', 
   action='store_true')
@@ -87,7 +92,8 @@ a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
             num_targets=num_targets, flip_average=not args.no_flip_average,
             run_pairs=args.run_pairs,
             write_intermediaries=args.write_intermediaries, 
-            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample)
+            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample, 
+            old_vectors=args.old_vectors, ignore_field_init=args.ignore_field_init)
 
 bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=max_mip)
 if not a.check_all_params():
@@ -96,6 +102,8 @@ if not a.check_all_params():
 #  raise Exception("Have to align a chunkaligned size")
 
 a.total_bbox = bbox
-self.zs = src_z
-self.compute_section_pair_residuals(src_z, tgt_z, bbox)
-self.render_section_all_mips(src_z, bbox)
+a.zs = src_z
+# for m in range(a.render_low_mip, a.high_mip):
+#   a.copy_section(a.src_ng_path, a.dst_ng_path, tgt_z, bbox, mip=m)
+# a.compute_section_pair_residuals(src_z, tgt_z, bbox)
+a.render_section_all_mips(src_z, bbox)
