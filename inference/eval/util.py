@@ -4,11 +4,16 @@ from cloudvolume.lib import Bbox, Vec, find_closest_divisor
 import numpy as np
 from copy import copy
 
+from os.path import join
+
 def get_cloudvolume(path, mip):
   return CloudVolume(path, mip=mip, fill_missing=True)
 
 def get_image(vol, bbox):
   return vol[bbox.to_slices()]
+
+def save_image(dst, bbox, img):
+  dst[bbox.to_slices()] = img
 
 def to_float(img):
   return img.astype(np.float)
@@ -22,6 +27,13 @@ def to_numpy(ten):
     img = ten.permute(3,2,1,0).cpu().numpy()
   else:
     img = ten.permute(3,2,1,0).numpy()
+  return img
+  
+def diff_to_numpy(ten):
+  if ten.is_cuda:
+    img = ten.permute(2,3,1,0).cpu().numpy()
+  else:
+    img = ten.permute(2,3,1,0).numpy()
   return img
 
 def norm_to_int8(img):
@@ -62,15 +74,49 @@ def create_cloudvolume(dst_path, info, src_mip, dst_mip):
   for m in range(1, dst_mip+1):
     add_scale(factor, dst_info)
     factor *= each_factor
-  dst_info['data_type'] = 'uint8'
+  # dst_info['data_type'] = 'uint8'
   dst = CloudVolume(dst_path, mip=dst_mip, info=dst_info, 
              fill_missing=True, non_aligned_writes=True, cdn_cache=False)
   dst.commit_info()
   return dst
 
-def save_image(dst, bbox, img):
-  dst[bbox.to_slices()] = img
- 
+def create_field_cloudvolume(dst_path, info, src_mip, dst_mip):
+  x_path = join(dst_path, str(dst_mip), 'x')
+  y_path = join(dst_path, str(dst_mip), 'y')
+  x_cv = create_cloudvolume(x_path, info, src_mip, dst_mip)
+  y_cv = create_cloudvolume(y_path, info, src_mip, dst_mip)
+  return x_cv, y_cv
+
+def get_field_cloudvolume(path, mip):
+  x_cv = CloudVolume(join(path, str(mip), 'x'), 
+                          mip=mip, fill_missing=True)
+  y_cv = CloudVolume(join(path, str(mip), 'y'), 
+                          mip=mip, fill_missing=True)
+  return x_cv, y_cv
+
+def get_field(cv, bbox, device=torch.device('cpu')):
+  x_cv, y_cv = cv 
+  x = x_cv[bbox.to_slices()] 
+  y = y_cv[bbox.to_slices()]
+  v = np.concatenate((x,y), axis=3)
+  t = torch.from_numpy(v)
+  return t.permute(2,0,1,3).to(device=device)
+
+def field_to_numpy(field):
+  if field.is_cuda:
+    x = field[:,:,:,0:1].permute(1,2,0,3).cpu().numpy()
+    y = field[:,:,:,1:2].permute(1,2,0,3).cpu().numpy()
+  else:
+    x = field[:,:,:,0:1].permute(1,2,0,3).numpy()
+    y = field[:,:,:,1:2].permute(1,2,0,3).numpy()
+  return x, y
+  
+def save_field(cv, bbox, field):
+  x_cv, y_cv = cv
+  x, y = field
+  x_cv[bbox.to_slices()] = x
+  y_cv[bbox.to_slices()] = y
+
 def add_scale(factor, info):
   """
   Generate a new downsample scale to for the info file and return an updated dictionary.
