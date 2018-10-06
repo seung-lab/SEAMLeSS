@@ -17,6 +17,9 @@ class BoundingBox:
 
     return dxs and dys and dxe and dye
 
+  def get_bounding_pts(self):
+    return (self.m0_x[0], self.m0_y[0]), (self.m0_x[1], self.m0_y[1])
+
   def intersects(self, other):
     assert type(other) == type(self)
 
