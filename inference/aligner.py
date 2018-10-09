@@ -47,6 +47,7 @@ class Aligner:
 
     self.dst_ng_path = os.path.join(dst_ng_path, 'image')
     self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
+    self.field_sf_ng_path = os.path.join(dst_ng_path, 'filed_sf')
 
     self.enc_ng_paths   = [os.path.join(dst_ng_path, 'enc/{}'.format(i))
                                                      for i in range(self.process_high_mip + 10)] #TODO
@@ -167,6 +168,7 @@ class Aligner:
 
     scales = deepcopy(vec_info["scales"])
     # print('src_info scales: {0}'.format(len(scales)))
+    cv(self.field_sf_ng_path, info=vec_info).commit_info()
     for i in range(len(scales)):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
@@ -361,16 +363,21 @@ class Aligner:
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
 
-    agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
+    agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip) # download  vect 
+    field sf = self.get_field_sf_residual(z,influence_bbox,mip) 
+
     image = torch.from_numpy(self.get_image_data(ng_path, z, influence_bbox, mip))
     image = image.unsqueeze(0)
 
     #no need to warp if flow is identity since warp introduces noise
     if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
       image = gridsample_residual(image, agg_flow, padding_mode='zeros')
+      image = gridsample_residual(image, field_sf, padding_mode='zeros')
+      field_sf += gridsample_residual(agg_flow, field_sf, padding_mode='zeros')
+      self.save_field_patch(field_sf, influence_bbox, mip)
     else:
       print ("not warping")
-
+    # write to cv
     mip_disp = int(self.max_displacement / 2**mip)
     return image.numpy()[0,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
 
@@ -537,6 +544,16 @@ class Aligner:
     abs_res = np.expand_dims(abs_res, axis=0)
     rel_res = self.abs_to_rel_residual(abs_res, bbox, mip)
     return rel_res
+ 
+  def get_field_sf_residual(self, z, bbox, mip):
+    field_sf = self.get_vector_data(self.field_sf_ng_path, z, bbox, mip)
+    rel_res = self.abs_to_rel_residual(field_sf, bbox, mip)
+    return rel_res
+
+  def save_field_patch(self, field_sf, bbox, mip):
+    cv(self.field_sf_ng_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
+                                  progress=False) = field_sf
+
 
 
   def get_aggregate_rel_flow(self, z, bbox, res_mip_range, mip):
@@ -566,6 +583,11 @@ class Aligner:
 
     end = time()
     print (": {} sec".format(end - start))
+
+  def copy_field(self,z,bbox,mip):
+      print ("copy filed")
+      field_sf = get_rel_residual(z,bbox,mip)
+      save_field_patch(field_sf,bbox,mip)
 
   def prepare_source(self, z, bbox, mip):
     print ("Prerendering mip {}".format(mip),
@@ -659,6 +681,8 @@ class Aligner:
     for z in range(start_section, end_section):
       self.img_cache = {}
       self.compute_section_pair_residuals(z + 1, z, bbox)
+      if z == start_section:
+          self.copy_field(z,bbox,self.render_low_mip)
       self.render_section_all_mips(z + 1, bbox)
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
