@@ -48,7 +48,7 @@ class Aligner:
 
         self.dst_ng_path = os.path.join(dst_ng_path, 'image')
         self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
-        self.field_sf_ng_path = os.path.join(dst_ng_path, 'filed_sf')
+        self.field_sf_ng_path = os.path.join(dst_ng_path, 'field_sf')
 
         self.enc_ng_paths = [os.path.join(dst_ng_path, 'enc/{}'.format(i))
                              for i in range(self.process_high_mip + 10)]  # TODO
@@ -652,7 +652,7 @@ class Aligner:
         print(": {} sec".format(end - start))
 
     def copy_field(self, z, bbox, mip):
-        print("copy filed --------------")
+        print("copy field --------------")
         chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                         self.dst_voxel_offsets[mip], mip=mip, render=True)
 
