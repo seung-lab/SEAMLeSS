@@ -10,3 +10,4 @@ neuroglancer
 visdom
 pathos
 pyshorteners
+argcomplete
