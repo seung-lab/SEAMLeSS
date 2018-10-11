@@ -179,7 +179,7 @@ class Aligner:
 
         scales = deepcopy(vec_info["scales"])
         # print('src_info scales: {0}'.format(len(scales)))
-        field_sf_info =deepcopy(vec_info)
+        field_sf_info = deepcopy(vec_info)
         field_sf_info['num_channels'] = 2
         cv(self.field_sf_ng_path, info=field_sf_info).commit_info()
         for i in range(len(scales)):
@@ -390,6 +390,7 @@ class Aligner:
         image = torch.from_numpy(self.get_image_data(
             ng_path, z, influence_bbox, mip))
         image = image.unsqueeze(0)
+        mip_disp = int(self.max_displacement / 2**mip)
         print("image shape ---", image.shape)
         print("agg_flow shape ---", agg_flow.shape)
         # no need to warp if flow is identity since warp introduces noise
@@ -410,13 +411,13 @@ class Aligner:
                 field_sf[0, :, :, 0] += field_sf_x[0, 0, ...]
                 field_sf[0, :, :, 1] += field_sf_y[0, 0, ...]
                 self.save_field_patch(
-                    field_sf.numpy(), influence_bbox, mip, z+1)
+                    field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
             else:
-                self.save_field_patch(agg_flow.numpy(), influence_bbox, mip, z+1)
+                self.save_field_patch(
+                    agg_flow.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
         else:
             print("not warping")
         # write to cv
-        mip_disp = int(self.max_displacement / 2**mip)
         return image.numpy()[0, :, mip_disp:-mip_disp, mip_disp:-mip_disp]
 
     def downsample_patch(self, ng_path, z, bbox, mip):
@@ -690,13 +691,13 @@ class Aligner:
         def chunkwise(patch_bbox):
             warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                            (mip, self.process_high_mip), mip, start_z)
-            if (self.run_pairs):
-                # save the image in the previous slice so it's easier to compare pairs
-                self.save_image_patch(
-                    self.dst_ng_path, warped_patch, z-1, patch_bbox, mip)
-            else:
-                self.save_image_patch(
-                    self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+           # if (self.run_pairs):
+           #     # save the image in the previous slice so it's easier to compare pairs
+           #     self.save_image_patch(
+           #         self.dst_ng_path, warped_patch, z-1, patch_bbox, mip)
+           # else:
+            self.save_image_patch(
+                self.dst_ng_path, warped_patch, z, patch_bbox, mip)
         self.pool.map(chunkwise, chunks)
         end = time()
         print(": {} sec".format(end - start))
