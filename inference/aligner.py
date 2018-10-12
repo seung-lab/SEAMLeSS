@@ -181,7 +181,7 @@ class Aligner:
         # print('src_info scales: {0}'.format(len(scales)))
         field_sf_info = deepcopy(dst_info)
         field_sf_info["data_type"] = "float32"
-        for i in range(len(field_sf_info ["scales"])):
+        for i in range(len(field_sf_info["scales"])):
             field_sf_info["scales"][i]["chunk_sizes"][0][2] = 1
         field_sf_info['num_channels'] = 2
         cv(self.field_sf_ng_path, info=field_sf_info).commit_info()
@@ -397,11 +397,11 @@ class Aligner:
         print("image shape ---", image.shape)
         print("agg_flow shape ---", agg_flow.shape)
         # no need to warp if flow is identity since warp introduces noise
-        #if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
+        # if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
         image = gridsample_residual(image, agg_flow, padding_mode='zeros')
         if z != start_z:
             field_sf = torch.from_numpy(
-                self.get_field_sf_residual(z, influence_bbox, mip))
+                self.get_field_sf_residual(z-1, influence_bbox, mip))
             image = gridsample_residual(
                 image, field_sf, padding_mode='zeros')
             agg_flow_pure = np.squeeze(agg_flow)
@@ -415,12 +415,12 @@ class Aligner:
             field_sf[0, :, :, 1] += field_sf_y[0, 0, ...]
             v = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
             self.save_field_patch(
-                v.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
+                v.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z)
         else:
             v = agg_flow * (agg_flow.shape[-2] / 2) * (2**mip)
             self.save_field_patch(
-                v.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
-        #else:
+                v.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z)
+        # else:
         #    print("not warping")
         # write to cv
         return image.numpy()[0, :, mip_disp:-mip_disp, mip_disp:-mip_disp]
