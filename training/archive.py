@@ -21,24 +21,19 @@ The archive is intended to be explicit enough that
 
 Usage:
     Create a new model archive and save the current training state:
-    ```
-    mymodel = ModelArchive('mymodel_v01', readonly=False)
-    mymodel.update(model, optimizer, random_generator)
-    ```
+    >>> mymodel = ModelArchive('mymodel_v01', readonly=False)
+    >>> mymodel.update(model, optimizer, random_generator)
 
     Load an existing trained model and run it on data:
-    ```
-    existing_model = ModelArchive('existing_model', readonly=True)
-    net = existing_model.get_dict()['model']
-    output = net(data)
-    ```
+    >>> existing_model = ModelArchive('existing_model', readonly=True)
+    >>> net = existing_model.model
+    >>> output = net(data)
 
     Create a new model archive from an existing one:
-    ```
-    old_model = ModelArchive('old_model')
-    new_model = old_model.start_new('new_model_v01')
-    # then train and update the new model
-    ```
+    >>> old_model = ModelArchive('old_model')
+    >>> new_model = old_model.start_new('new_model_v01')
+    (some training code ...)
+    >>> new_model.update(model, optimizer, random_generator)
 """
 import torch
 import shutil
@@ -157,7 +152,7 @@ class ModelArchive(object):
             self.paths[key].touch(exist_ok=False)
 
         # copy the architecture definition into the archive
-        _copy(git_root/'training'/'pyramid.py', self.paths['architecture'])
+        _copy(git_root/'training'/'architecture.py', self.paths['architecture'])
 
         # record the status of the git repository
         with self.paths['commit'].open(mode='wb') as f:
@@ -182,7 +177,7 @@ class ModelArchive(object):
         copy. To update the weights, use `update()`.
         """
         if self.readonly:
-            raise ReadOnlyError()
+            raise ReadOnlyError(self.name)
         check_name = 'e{}_t{}.pt'
         _copy(self.paths['model'], self.intermediate_models / check_name)
 
@@ -194,20 +189,25 @@ class ModelArchive(object):
         contents of `values`, which must be an iterable.
         """
         if self.readonly:
-            raise ReadOnlyError()
+            raise ReadOnlyError(self.name)
         with self.paths['loss.csv'].open(mode='a') as f:
             line = ', '.join(str(v) for v in values)
             f.writelines(line + '\n')
             if printout:
                 print('log: {}'.format(line))
 
-    def update(self, model, optimizer, prg):
+    def update(self, model, optimizer, prng):
         """
         Updates the saved training state
         """
         if self.readonly:
-            raise ReadOnlyError()
-        pass  # TODO: code to write out the pickles
+            raise ReadOnlyError(self.name)
+        if model:
+            torch.save(model.state_dict(), self.paths['model'])
+        if optimizer:
+            torch.save(optimizer.state_dict(), self.paths['optimizer'])
+        if prng:
+            torch.save(prng, self.paths['prng'])
 
     def start_new(self, name):
         """
@@ -219,7 +219,7 @@ class ModelArchive(object):
         """
         if ModelArchive.model_exists(name):
             raise ValueError('The model "{}" already exists.'.format(name))
-        new_archive = ModelArchive(name, readonly=False)
+        new_archive = type(self)(name, readonly=False)
         _copy(self.paths['model'], new_archive.paths['model'])
 
         tempfile = new_archive.directory / 'history.log.temp'
@@ -230,12 +230,35 @@ class ModelArchive(object):
         tempfile.unlink()  # delete the temporary file
         return new_archive
 
-    def get_dict():
-        """
-        Returns a dictionary containing relevant elements of the archive.
-        """
-        pass  # TODO: decide what appears in the dict and implement
+    @property
+    def architecture(self):
+        sys.path.insert(str(self.directory))
+        import architecture
+        return architecture.Model()
 
+    @property
+    def model(self):
+        return torch.load(self.paths['model'])
+
+    @property
+    def optimizer(self):
+        return torch.load(self.paths['optimizer'])
+
+    @property
+    def prng(self):
+        return torch.load(self.paths['prng'])
+
+    @property
+    def commit(self):
+        """
+        The git hash for the commit on which the model was first trained
+        """
+        saved_commit = ''
+        if not self.paths['commit'].exists():
+            return None
+        with self.paths['commit'].open(mode='r') as f:
+            saved_commit = f.readline()
+        return saved_commit.strip()
 
 def _copy(src, dst):
     """
