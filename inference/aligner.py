@@ -618,8 +618,9 @@ class Aligner:
         # print("x_range", x_range)
         # print("y_range", y_range)
         # print("field shape" , field_sf.shape)
-        v = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
-        new_field = np.squeeze(v)[:, :, np.newaxis, :]
+        #v = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
+        new_field = np.squeeze(field_sf)[:, :, np.newaxis, :]
+        #new_field = np.squeeze(v)[:, :, np.newaxis, :]
         # print("new field shape" , new_field.shape)
         cv(self.field_sf_ng_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
            progress=False)[x_range[0]:x_range[1], y_range[0]:y_range[1], z] = new_field
