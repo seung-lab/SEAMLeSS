@@ -397,29 +397,29 @@ class Aligner:
         print("image shape ---", image.shape)
         print("agg_flow shape ---", agg_flow.shape)
         # no need to warp if flow is identity since warp introduces noise
-        if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
-            image = gridsample_residual(image, agg_flow, padding_mode='zeros')
-            if z != start_z:
-                field_sf = torch.from_numpy(
-                    self.get_field_sf_residual(z, influence_bbox, mip))
-                image = gridsample_residual(
-                    image, field_sf, padding_mode='zeros')
-                agg_flow_pure = np.squeeze(agg_flow)
-                agg_flow_x = agg_flow_pure[..., 0][np.newaxis, np.newaxis, ...]
-                agg_flow_y = agg_flow_pure[..., 1][np.newaxis, np.newaxis, ...]
-                field_sf_x = gridsample_residual(
-                    agg_flow_x, field_sf, padding_mode='zeros')
-                field_sf_y = gridsample_residual(
-                    agg_flow_y, field_sf, padding_mode='zeros')
-                field_sf[0, :, :, 0] += field_sf_x[0, 0, ...]
-                field_sf[0, :, :, 1] += field_sf_y[0, 0, ...]
-                self.save_field_patch(
-                    field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
-            else:
-                self.save_field_patch(
-                    agg_flow.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
+        #if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
+        image = gridsample_residual(image, agg_flow, padding_mode='zeros')
+        if z != start_z:
+            field_sf = torch.from_numpy(
+                self.get_field_sf_residual(z, influence_bbox, mip))
+            image = gridsample_residual(
+                image, field_sf, padding_mode='zeros')
+            agg_flow_pure = np.squeeze(agg_flow)
+            agg_flow_x = agg_flow_pure[..., 0][np.newaxis, np.newaxis, ...]
+            agg_flow_y = agg_flow_pure[..., 1][np.newaxis, np.newaxis, ...]
+            field_sf_x = gridsample_residual(
+                agg_flow_x, field_sf, padding_mode='zeros')
+            field_sf_y = gridsample_residual(
+                agg_flow_y, field_sf, padding_mode='zeros')
+            field_sf[0, :, :, 0] += field_sf_x[0, 0, ...]
+            field_sf[0, :, :, 1] += field_sf_y[0, 0, ...]
+            self.save_field_patch(
+                field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
         else:
-            print("not warping")
+            self.save_field_patch(
+                agg_flow.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
+        #else:
+        #    print("not warping")
         # write to cv
         return image.numpy()[0, :, mip_disp:-mip_disp, mip_disp:-mip_disp]
 
