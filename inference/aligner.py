@@ -413,11 +413,13 @@ class Aligner:
                 agg_flow_y, field_sf, padding_mode='zeros')
             field_sf[0, :, :, 0] += field_sf_x[0, 0, ...]
             field_sf[0, :, :, 1] += field_sf_y[0, 0, ...]
+            v = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
             self.save_field_patch(
-                field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
+                v.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
         else:
+            v = agg_flow * (agg_flow.shape[-2] / 2) * (2**mip)
             self.save_field_patch(
-                agg_flow.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
+                v.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z+1)
         #else:
         #    print("not warping")
         # write to cv
