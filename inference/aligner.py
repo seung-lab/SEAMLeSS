@@ -179,7 +179,10 @@ class Aligner:
 
         scales = deepcopy(vec_info["scales"])
         # print('src_info scales: {0}'.format(len(scales)))
-        field_sf_info = deepcopy(vec_info)
+        field_sf_info = deepcopy(dst_info)
+        field_sf_info["data_type"] = "float32"
+        for i in range(len(field_sf_info ["scales"])):
+            field_sf_info["scales"][i]["chunk_sizes"][0][2] = 1
         field_sf_info['num_channels'] = 2
         cv(self.field_sf_ng_path, info=field_sf_info).commit_info()
         for i in range(len(scales)):
