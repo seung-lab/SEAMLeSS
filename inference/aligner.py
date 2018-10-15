@@ -411,8 +411,10 @@ class Aligner:
                 agg_flow_x, field_sf, padding_mode='zeros')
             field_sf_y = gridsample_residual(
                 agg_flow_y, field_sf, padding_mode='zeros')
-            field_sf[0, :, :, 0] += field_sf_x[0, 0, ...]
-            field_sf[0, :, :, 1] += field_sf_y[0, 0, ...]
+            field_sf[0, :, :, 0] += 0.8 * field_sf_x[0, 0, ...] + \
+                0.2 * np.mean(field_sf_x[0, 0, ...])
+            field_sf[0, :, :, 1] += 0.8 * field_sf_y[0, 0, ...] + \
+                0.2 * np.mean(field_sf_y[0, 0, ...])
             v = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
             self.save_field_patch(
                 v.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z)
