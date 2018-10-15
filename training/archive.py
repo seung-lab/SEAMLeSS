@@ -112,26 +112,24 @@ class ModelArchive(object):
 
         # check for matching commits
         # this can prevent errors arising from working on the wrong git branch
-        with self.paths['commit'].open(mode='r') as f:
-            saved_commit = f.readline()
-            current_commit = subprocess.check_output('git rev-parse HEAD'
-                                                     .split())
-            if int(saved_commit, 16) != int(current_commit, 16):
-                message = ('The repository has changed since this '
-                           'net was last trained.')
-                print('Warning: ' + message)
-                if not self.readonly:
-                    print('Continuing may overwrite the archive by '
-                          'running the new code. If this was the intent, '
-                          'then it might not be a problem.'
-                          '\nIf not, exit the process and return to the '
-                          'old commit by running `git checkout {}`'
-                          '\nDo you wish to proceed?  [y/N]'
-                          .format(saved_commit.strip()))
-                    choice = input().lower()
-                    if choice not in {'yes', 'y'}:
-                        print('Exiting')
-                        sys.exit()
+        saved_commit = self.commit
+        current_commit = subprocess.check_output('git rev-parse HEAD'
+                                                 .split()).strip()
+        if int(saved_commit, 16) != int(current_commit, 16):
+            message = ('The repository has changed since this '
+                       'net was last trained.')
+            print('Warning: ' + message)
+            if not self.readonly:
+                print('Continuing may overwrite the archive by '
+                      'running the new code. If this was the intent, '
+                      'then it might not be a problem.'
+                      '\nIf not, exit the process and return to the '
+                      'old commit by running `git checkout {}`'
+                      '\nDo you wish to proceed?  [y/N]'
+                      .format(saved_commit.strip()))
+                if input().lower() not in {'yes', 'y'}:
+                    print('Exiting')
+                    sys.exit()
 
     def _create(self):
         print('Creating a new model archive: {}'.format(self.name))
