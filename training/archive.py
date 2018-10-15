@@ -64,6 +64,8 @@ class ModelArchive(object):
             raise ValueError('"name" must have non-zero length')
 
     def __init__(self, name, readonly=True):
+        if not name.replace('_','').isalnum():
+            raise ValueError('Malformated name: {}'.format(name))
         self.name = name
         self.readonly = readonly
         self.directory = models_location / self.name
