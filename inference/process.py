@@ -20,7 +20,7 @@ class Process(object):
         self.normalizer = Normalizer(min(5, self.mip))
         self.flip_average = flip_average
 
-    def process(self, s, t, level=0, crop=0):        
+    def process(self, s, t, level=0, crop=0, old_vectors=False):
         if level != self.mip:
             return None
         if self.should_contrast:
@@ -39,7 +39,7 @@ class Process(object):
         x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
-        image, field, residuals, encodings, cumulative_residuals = self.model(x)
+        image, field, residuals, encodings, cumulative_residuals = self.model(x, old_vectors=old_vectors)
         field *= (field.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
             field = field[:,crop:-crop, crop:-crop,:]
@@ -56,7 +56,7 @@ class Process(object):
         x = torch.from_numpy(np.stack((s,t), axis=1))
         if self.cuda:
             x = x.cuda()
-        image_fl, field_fl, residuals_fl, encodings_fl, cumulative_residuals_fl = self.model(x)
+        image_fl, field_fl, residuals_fl, encodings_fl, cumulative_residuals_fl = self.model(x, old_vectors=old_vectors)
         field_fl *= (field_fl.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
             field_fl = field_fl[:,crop:-crop, crop:-crop,:]
