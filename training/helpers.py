@@ -1,4 +1,6 @@
 import os
+import shutil
+from pathlib import Path
 from moviepy.editor import ImageSequenceClip
 import numpy as np
 import collections
@@ -18,6 +20,21 @@ def compose_functions(fseq):
     def compose(f1, f2):
         return lambda x: f2(f1(x))
     return reduce(compose, fseq, lambda _: _)
+
+
+def copy(src, dst):
+    """
+    A wrapper for the shutil copy function, but that accepts path objects.
+    The shutil library will be updated to accept them directly in a later
+    version of python, and so this will no longer be needed, but for now,
+    this seemed cleaner than having explicit conversions everywere.
+    """
+    if isinstance(src, Path):
+        src = str(src)
+    if isinstance(dst, Path):
+        dst = str(dst)
+    shutil.copy(src, dst)
+
 
 def copy_state_to_model(archive_params, model):
     size_map = [

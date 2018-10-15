@@ -42,6 +42,8 @@ import warnings
 import sys
 from pathlib import Path
 
+from helpers import copy
+
 git_root = Path(subprocess.check_output('git rev-parse --show-toplevel'
                                         .split()).strip().decode("utf-8"))
 models_location = git_root / Path('models/')
@@ -152,7 +154,7 @@ class ModelArchive(object):
             self.paths[key].touch(exist_ok=False)
 
         # copy the architecture definition into the archive
-        _copy(git_root/'training'/'architecture.py', self.paths['architecture'])
+        copy(git_root/'training'/'architecture.py', self.paths['architecture'])
 
         # record the status of the git repository
         with self.paths['commit'].open(mode='wb') as f:
@@ -179,7 +181,7 @@ class ModelArchive(object):
         if self.readonly:
             raise ReadOnlyError(self.name)
         check_name = 'e{}_t{}.pt'
-        _copy(self.paths['model'], self.intermediate_models / check_name)
+        copy(self.paths['model'], self.intermediate_models / check_name)
 
     def log(self, values, printout=True):
         """
@@ -220,11 +222,11 @@ class ModelArchive(object):
         if ModelArchive.model_exists(name):
             raise ValueError('The model "{}" already exists.'.format(name))
         new_archive = type(self)(name, readonly=False)
-        _copy(self.paths['model'], new_archive.paths['model'])
+        copy(self.paths['model'], new_archive.paths['model'])
 
         tempfile = new_archive.directory / 'history.log.temp'
-        _copy(new_archive.paths['history'], tempfile)
-        _copy(self.paths['history'], new_archive.paths['history'])
+        copy(new_archive.paths['history'], tempfile)
+        copy(self.paths['history'], new_archive.paths['history'])
         with new_archive.paths['history'].open(mode='a') as f:
             f.writelines(tempfile.read_text())
         tempfile.unlink()  # delete the temporary file
@@ -260,18 +262,6 @@ class ModelArchive(object):
             saved_commit = f.readline()
         return saved_commit.strip()
 
-def _copy(src, dst):
-    """
-    A wrapper for the shutil copy function, but that accepts path objects.
-    The shutil library will be updated to accept them directly in a later
-    version of python, and so this will no longer be needed, but for now,
-    this seemed cleaner than having explicit conversions everywere.
-    """
-    if isinstance(src, Path):
-        src = str(src)
-    if isinstance(dst, Path):
-        dst = str(dst)
-    shutil.copy(src, dst)
 
 
 def copy_aligner(mip_from, mip_to):
