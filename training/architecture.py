@@ -6,6 +6,7 @@ import numpy as np
 from helpers import save_chunk, gif, copy_state_to_model, gridsample_residual, identity_grid
 import random
 
+
 class G(nn.Module):
     def initc(self, m):
         m.weight.data *= np.sqrt(6)
@@ -28,9 +29,10 @@ class G(nn.Module):
         self.initc(self.conv3)
         self.initc(self.conv4)
         self.initc(self.conv5)
-        
+
     def forward(self, x):
         return self.seq(x).permute(0,2,3,1) / 10
+
 
 def gif_prep(s):
     if type(s) != np.ndarray:
@@ -40,10 +42,11 @@ def gif_prep(s):
         s[slice_idx] *= 255 / np.max(s[slice_idx])
     return s
 
+
 class Enc(nn.Module):
     def initc(self, m):
         m.weight.data *= np.sqrt(6)
-        
+
     def __init__(self, infm, outfm):
         super(Enc, self).__init__()
         if not outfm:
@@ -55,7 +58,7 @@ class Enc(nn.Module):
         self.initc(self.c2)
         self.infm = infm
         self.outfm = outfm
-        
+
     def forward(self, x, vis=None):
         ch = x.size(1)
         ngroups = ch // self.infm
@@ -64,12 +67,11 @@ class Enc(nn.Module):
         out1 = torch.cat(input_groups, 1)
         input_groups2 = [self.f(self.c2(out1[:,idx*self.outfm:(idx+1)*self.outfm])) for idx in range(ngroups)]
         out2 = torch.cat(input_groups2, 1)
-        
+
         if vis is not None:
             visinput1, visinput2 = gif_prep(out1), gif_prep(out2)
-            gif(vis + '_out1_' + str(self.infm), visinput1)    
+            gif(vis + '_out1_' + str(self.infm), visinput1)
             gif(vis + '_out2_' + str(self.infm), visinput2)
-            
         return out2
 
 class PreEnc(nn.Module):
@@ -102,6 +104,7 @@ class PreEnc(nn.Module):
 
             outputs.append(out)
         return torch.cat(outputs, 1)
+
 
 class EPyramid(nn.Module):
     def __init__(self, size, dim, skip, topskips, k, num_targets=1, train_size=1280):
@@ -167,18 +170,12 @@ class EPyramid(nn.Module):
                 field_so_far = self.up(field_so_far.permute(0,3,1,2)).permute(0,2,3,1)
         return field_so_far, residuals
 
-class PyramidTransformer(nn.Module):
-    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, student=False, num_targets=1):
-        super(PyramidTransformer, self).__init__()
-        if not student:
-            self.pyramid = EPyramid(size, dim, skip, topskips, k, num_targets)
-        else:
-            assert False # TODO: add student network
 
-    @staticmethod
-    def student(height, dim, skips, topskips, k):
-        return PyramidTransformer(height, dim, skips, topskips, k, student=True).cuda()
-    
+class Model(nn.Module):
+    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, num_targets=1):
+        super(type(self), self).__init__()
+        self.pyramid = EPyramid(size, dim, skip, topskips, k, num_targets)
+
     def open_layer(self):
         if self.pyramid.skip > 0:
             self.pyramid.skip -= 1
@@ -204,8 +201,8 @@ class PyramidTransformer(nn.Module):
     # Begin Sergiy API
     ################################################################
 
-    @staticmethod
-    def load(archive_path=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True, num_targets=1):
+    @classmethod
+    def load(cls, archive_path=None, weights=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True, num_targets=1):
         """
         Builds and load a model with the specified architecture from
         an archive.
@@ -218,9 +215,8 @@ class PyramidTransformer(nn.Module):
                     pyramid) to skip
             cuda:   whether or not to move the model to the GPU
         """
-        assert archive_path is not None, "Must provide an archive"
 
-        model = PyramidTransformer(size=height, dim=dim, k=k, skip=skips, topskips=topskips, num_targets=num_targets)
+        model = type(cls)(size=height, dim=dim, k=k, skip=skips, topskips=topskips, num_targets=num_targets)
         if cuda:
             model = model.cuda()
         for p in model.parameters():
@@ -228,8 +224,11 @@ class PyramidTransformer(nn.Module):
         model.train(False)
 
         print('Loading model state from {}...'.format(archive_path))
-        state_dict = torch.load(archive_path)
-        copy_state_to_model(state_dict, model)
+        if archive_path is not None:
+            weights = torch.load(archive_path)
+        if weights is None:
+            raise ValueError("Must provide an archive")
+        copy_state_to_model(weights, model)
         print('Successfully loaded model state.')
         return model
 
