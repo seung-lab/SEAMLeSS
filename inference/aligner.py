@@ -407,7 +407,7 @@ class Aligner:
       if z != start_z:
         field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
         image = gridsample_residual(image, field_sf, padding_mode='zeros')
-        agg_flow = torch.from_numpy(agg_flow).permute(0,3,1,2)
+        agg_flow = agg_flow.permute(0,3,1,2)
         field_sf = field_sf + gridsample_residual(
             agg_flow, field_sf, padding_mode='border').permute(0,2,3,1)
         field_sf = deccay_factor * field_sf + (1 - deccay_factor) * field_sf.mean()
