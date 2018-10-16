@@ -22,7 +22,9 @@ The archive is intended to be explicit enough that
 Usage:
     Create a new model archive and save the current training state:
     >>> mymodel = ModelArchive('mymodel_v01', readonly=False)
-    >>> mymodel.update(model, optimizer, random_generator)
+    (some training code ...)
+    >>> mymodel.log(loss)
+    >>> mymodel.update()  # save the updated state to disk
 
     Load an existing trained model and run it on data:
     >>> existing_model = ModelArchive('existing_model', readonly=True)
@@ -33,13 +35,15 @@ Usage:
     >>> old_model = ModelArchive('old_model')
     >>> new_model = old_model.start_new('new_model_v01')
     (some training code ...)
-    >>> new_model.update(model, optimizer, random_generator)
+    >>> new_model.update()  # save the updated state of the new model to disk
 """
-import torch
-import shutil
-import subprocess
-import warnings
 import sys
+import warnings
+import subprocess
+import random
+import torch
+import numpy as np
+import json
 from pathlib import Path
 
 from helpers import copy
@@ -54,18 +58,30 @@ class ModelArchive(object):
     Abstraction for the maintainence of trained model archives
     """
 
-    def model_exists(name):
+    @classmethod
+    def model_exists(cls, name):
         """
         Returns whether a trained model of this name exists
         """
-        if len(name):
-            return (models_location / name).is_dir()
-        else:
-            raise ValueError('"name" must have non-zero length')
+        cls._check_name(name)
+        return (models_location / name).is_dir()
 
-    def __init__(self, name, readonly=True):
-        if not name.replace('_','').isalnum():
-            raise ValueError('Malformated name: {}'.format(name))
+    @classmethod
+    def _check_name(cls, name):
+        """
+        Checks a proposed name for formatting irregularities.
+        Checking this prevents accidentally writing to arbitrary
+        file locations.
+        """
+        if not len(name):
+            raise ValueError('Model name must have non-zero length.')
+        if not name.replace('_', '').isalnum():
+            raise ValueError('Malformated name: {}\n'
+                             'Model name can only contain alphanumeric '
+                             'characters and underscores _.'.format(name))
+
+    def __init__(self, name, readonly=True, *args, **kwargs):
+        self._check_name(name)  # check name formatting
         self.name = name
         self.readonly = readonly
         self.directory = models_location / self.name
@@ -73,11 +89,11 @@ class ModelArchive(object):
         self.debug_outputs = self.directory / 'debug_outputs/'
         self.paths = {
             # the model's trained weights
-            "model": self.directory / 'model.pt',
+            'weights': self.directory / 'weights.pt',
             # the state of the optimizer
-            "optimizer": self.directory / 'optimizer.pt',
+            'optimizer': self.directory / 'optimizer.pt',
             # the state of the pseudorandom number gerenrators
-            "prng": self.directory / 'prng.pt',
+            'prand': self.directory / 'prand.pt',
             # other paths are added below
         }
         for filename in [
@@ -89,21 +105,24 @@ class ModelArchive(object):
             'seed.txt',
             'architecture.py',
             'commit.txt',
+            'state.json',
         ]:
             key = filename.split('.')[0]
             self.paths[key] = self.directory / filename
+        self._model = None
+        self._optimizer = None
 
         if ModelArchive.model_exists(name):
-            self._load()
+            self._load(*args, **kwargs)
         elif not self.readonly:
-            self._create()
+            self._create(*args, **kwargs)
         else:
             raise ValueError('Could not find a trained model named "{}".\n'
                              'If the intention was to create one, use '
                              '`ModelArchive("{}", readonly=False)`.'
                              .format(name, name))
 
-    def _load(self):
+    def _load(self, *args, **kwargs):
         if not self.readonly:
             print('Writing to exisiting model archive: {}'.format(self.name))
         else:
@@ -116,9 +135,8 @@ class ModelArchive(object):
         current_commit = subprocess.check_output('git rev-parse HEAD'
                                                  .split()).strip()
         if int(saved_commit, 16) != int(current_commit, 16):
-            message = ('The repository has changed since this '
-                       'net was last trained.')
-            print('Warning: ' + message)
+            print('Warning: The repository has changed since this '
+                  'net was last trained.')
             if not self.readonly:
                 print('Continuing may overwrite the archive by '
                       'running the new code. If this was the intent, '
@@ -126,12 +144,18 @@ class ModelArchive(object):
                       '\nIf not, exit the process and return to the '
                       'old commit by running `git checkout {}`'
                       '\nDo you wish to proceed?  [y/N]'
-                      .format(saved_commit.strip()))
+                      .format(saved_commit))
                 if input().lower() not in {'yes', 'y'}:
                     print('Exiting')
                     sys.exit()
+                print('OK, proceeding...')
 
-    def _create(self):
+        # load the model, optimizer, and pseudorandom number generator
+        self._load_model(*args, **kwargs)
+        self._load_optimizer(*args, **kwargs)
+        self._load_prand(self, *args, **kwargs)
+
+    def _create(self, no_optimizer=False, *args, **kwargs):
         print('Creating a new model archive: {}'.format(self.name))
 
         # create directories
@@ -147,8 +171,8 @@ class ModelArchive(object):
             'history.log',  # nets it was fine_tuned from
             'progress.log',
             'seed.txt',
-            'architecture.py',
             'commit.txt',
+            'state.json',
         ]:
             key = filename.split('.')[0]
             self.paths[key].touch(exist_ok=False)
@@ -170,6 +194,12 @@ class ModelArchive(object):
         with self.paths['history'].open(mode='w'):
             pass  # TODO
 
+        # initialize the model, optimizer, and pseudorandom number generator
+        self._load_model(*args, **kwargs)
+        if not no_optimizer:
+            self._load_optimizer(*args, **kwargs)
+        self._load_prand(self, *args, **kwargs)
+
     def create_checkpoint(self, epoch, time):
         """
         Save a checkpoint in the training.
@@ -180,38 +210,51 @@ class ModelArchive(object):
         """
         if self.readonly:
             raise ReadOnlyError(self.name)
-        check_name = 'e{}_t{}.pt'
-        copy(self.paths['model'], self.intermediate_models / check_name)
+        checkpt_name = 'e{}_t{}.pt'
+        copy(self.paths['weights'], self.intermediate_models / checkpt_name)
 
     def log(self, values, printout=True):
         """
         Add a new log entry to `loss.csv`.
 
         A new row is added to the spreadsheet and populated with the
-        contents of `values`, which must be an iterable.
+        contents of `values`. If `values` is a list, each element is
+        written in its own column.
+        Warning: If the string verion of any value contains a comma,
+        this will separate that value over two columns.
         """
         if self.readonly:
             raise ReadOnlyError(self.name)
+        if not isinstance(values, list):
+            values = [values]
+        line = ', '.join(str(v) for v in values)
         with self.paths['loss.csv'].open(mode='a') as f:
-            line = ', '.join(str(v) for v in values)
             f.writelines(line + '\n')
-            if printout:
-                print('log: {}'.format(line))
+        if printout:
+            print('log: {}'.format(line))
 
-    def update(self, model, optimizer, prng):
+    def update(self, **kwargs):
         """
-        Updates the saved training state
+        Updates the saved training state.
+        Any optional arguments will be written out to the file `state.json`
         """
         if self.readonly:
             raise ReadOnlyError(self.name)
-        if model:
-            torch.save(model.state_dict(), self.paths['model'])
-        if optimizer:
-            torch.save(optimizer.state_dict(), self.paths['optimizer'])
-        if prng:
-            torch.save(prng, self.paths['prng'])
+        if self._model:
+            torch.save(self._model.state_dict(), self.paths['weights'])
+            # also write to a json for debugging
+            with self.paths['weights'].with_suffix('.json').open('w') as f:
+                f.write(json.dumps(self._model.state_dict()))
+        if self._optimizer:
+            torch.save(self._optimizer.state_dict(), self.paths['optimizer'])
+            # also write to a json for debugging
+            with self.paths['optimizer'].with_suffix('.json').open('w') as f:
+                f.write(json.dumps(self._optimizer.state_dict()))
+        torch.save(get_random_generator_state(), self.paths['prand'])
+        with self.paths['state'].open('w') as f:
+            f.write(json.dumps(kwargs))
 
-    def start_new(self, name):
+    def start_new(self, name, *args, **kwargs):
         """
         Creates and returns a new model archive initialized with the
         weights of this model.
@@ -219,36 +262,20 @@ class ModelArchive(object):
         The new model's training history is copied from the old model
         and appended to.
         """
-        if ModelArchive.model_exists(name):
+        if self.model_exists(name):
             raise ValueError('The model "{}" already exists.'.format(name))
-        new_archive = type(self)(name, readonly=False)
-        copy(self.paths['model'], new_archive.paths['model'])
+        new_archive = type(self)(name, readonly=False, *args, **kwargs)
+        copy(self.paths['weights'], new_archive.paths['weights'])
 
+        # Copy the old history into the new archive
         tempfile = new_archive.directory / 'history.log.temp'
         copy(new_archive.paths['history'], tempfile)
         copy(self.paths['history'], new_archive.paths['history'])
         with new_archive.paths['history'].open(mode='a') as f:
             f.writelines(tempfile.read_text())
         tempfile.unlink()  # delete the temporary file
+
         return new_archive
-
-    @property
-    def architecture(self):
-        sys.path.insert(str(self.directory))
-        import architecture
-        return architecture.Model()
-
-    @property
-    def model(self):
-        return torch.load(self.paths['model'])
-
-    @property
-    def optimizer(self):
-        return torch.load(self.paths['optimizer'])
-
-    @property
-    def prng(self):
-        return torch.load(self.paths['prng'])
 
     @property
     def commit(self):
@@ -262,14 +289,118 @@ class ModelArchive(object):
             saved_commit = f.readline()
         return saved_commit.strip()
 
+    @property
+    def model(self):
+        """
+        A live version of the model's architecture.
+        """
+        return self._model
+
+    @property
+    def optimizer(self):
+        """
+        The model's optimizer
+        """
+        return self._optimizer
+
+    def _load_model(self, *args, **kwargs):
+        """
+        Loads a working version of the model's architecture,
+        initialized with its pretrained weights.
+
+        If the model is untrained, loads a newly initialized model.
+        """
+        sys.path.insert(0, str(self.directory))
+        import architecture
+        sys.path.remove(str(self.directory))
+        if self.paths['weights'].is_file:
+            weights = torch.load(self.paths['weights'])
+            self._model = architecture.Model.load(*args, weights=weights,
+                                                  **kwargs)
+        else:
+            self._model = architecture.Model(*args, **kwargs)
+
+        # set model to eval or train mode
+        if self.readonly:
+            for p in self._model.parameters():
+                p.requires_grad = False
+            self._model.eval().cuda()
+        else:
+            for p in self._model.parameters():
+                p.requires_grad = True
+            self._model.train().cuda()
+
+        return self._model
+
+    def _load_optimizer(self, *args, **kwargs):
+        """
+        Loads the saved state of the optimizer.
+
+        If the model is untrained, loads a newly initialized optimizer.
+        """
+        assert self.model is not None, 'The model has not yet been loaded.'
+        self._optimizer = torch.optim.Adam(self.model.parameters())
+        if self.paths['optimizer'].is_file:
+            opt_state_dict = torch.load(self.paths['optimizer'])
+            self._optimizer.load_state_dict(opt_state_dict)
+        return self._optimizer
+
+    def _load_prand(self, seed=None, *args, **kwargs):
+        """
+        Loads the saved state of the pseudorandom number generators.
+        """
+        assert self.optimizer is not None, 'Should not seed before init.'
+        if self.paths['prand'].is_file:
+            prand_state = torch.load(self.paths['prand'])
+            set_random_generator_state(prand_state)
+        else:
+            with self.paths['seed'].open('w') as f:
+                f.write(str(seed))
+            set_seed(seed)
 
 
-def copy_aligner(mip_from, mip_to):
-    pass
+def set_seed(seed):
+    """
+    Seeds all the random number genertators used.
+    If `seed` is not None, the seeding is deterministic and reproducible.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if seed is not None:
+        torch.backends.cudnn.deterministic = True
+        warnings.warn('You have chosen to seed training. '
+                      'This will turn on the CUDNN deterministic setting, '
+                      'which can slow down your training considerably! '
+                      'You may see unexpected behavior when restarting '
+                      'from checkpoints.')
 
 
-def copy_encoder(mip_from, mip_to):
-    pass
+def get_random_generator_state():
+    """
+    Returns a tuple of states of the random generators used in training
+    """
+    python_state = random.getstate()
+    numpy_state = np.random.get_state()
+    torch_state = torch.get_rng_state()
+    return python_state, numpy_state, torch_state
+
+
+def set_random_generator_state(state):
+    """
+    Resets the random generators to the given state.
+    Useful when resuming training.
+
+    The state should be a state generated by calling
+    `get_random_generator_state()`
+    """
+    python_state, numpy_state, torch_state = state
+    random.setstate(python_state)
+    np.random.set_state(numpy_state)
+    torch.set_rng_state(torch_state)
+    if not torch.backends.cudnn.deterministic:
+        warnings.warn('Resetting random state might not seed GPU correctly.')
+        torch.backends.cudnn.deterministic = True
 
 
 class ReadOnlyError(AttributeError):

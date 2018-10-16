@@ -172,7 +172,8 @@ class EPyramid(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, num_targets=1):
+    def __init__(self, size=4, dim=192, skip=0, topskips=0, k=7, num_targets=1,
+                 *args, **kwargs):
         super(type(self), self).__init__()
         self.pyramid = EPyramid(size, dim, skip, topskips, k, num_targets)
 
@@ -202,7 +203,8 @@ class Model(nn.Module):
     ################################################################
 
     @classmethod
-    def load(cls, archive_path=None, weights=None, height=5, dim=1024, skips=0, topskips=0, k=7, cuda=True, num_targets=1):
+    def load(cls, archive_path=None, weights=None, height=5, dim=1024, skips=0,
+             topskips=0, k=7, cuda=True, num_targets=1, *args, **kwargs):
         """
         Builds and load a model with the specified architecture from
         an archive.
@@ -217,12 +219,6 @@ class Model(nn.Module):
         """
 
         model = type(cls)(size=height, dim=dim, k=k, skip=skips, topskips=topskips, num_targets=num_targets)
-        if cuda:
-            model = model.cuda()
-        for p in model.parameters():
-            p.requires_grad = False
-        model.train(False)
-
         print('Loading model state from {}...'.format(archive_path))
         if archive_path is not None:
             weights = torch.load(archive_path)
@@ -247,3 +243,15 @@ class Model(nn.Module):
         if len(target.size()) == 2:
             target = target.unsqueeze(0)
         return self(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis, use_preencoder=use_preencoder)
+
+    def copy_aligner(mip_from, mip_to):
+        """
+        Copy the kernel weights from one aligner module to another
+        """
+        raise NotImplementedError()
+
+    def copy_encoder(mip_from, mip_to):
+        """
+        Copy the kernel weights from one aligner module to another
+        """
+        raise NotImplementedError()
