@@ -47,6 +47,11 @@ class Aligner:
 
     self.dst_ng_path = os.path.join(dst_ng_path, 'image')
     self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
+   
+    if (self.run_pairs): 
+        self.field_sf_ng_path = os.path.join(dst_ng_path, 'field_sf')
+    else: 
+        self.field_sf_ng_path = ""
 
     self.enc_ng_paths   = [os.path.join(dst_ng_path, 'enc/{}'.format(i))
                                                      for i in range(self.process_high_mip + 10)] #TODO
@@ -167,6 +172,14 @@ class Aligner:
 
     scales = deepcopy(vec_info["scales"])
     # print('src_info scales: {0}'.format(len(scales)))
+    if (self.run_pairs):
+        field_sf_info = deepcopy(dst_info)
+        field_sf_info["data_type"] = "float32"
+        for i in range(len(field_sf_info["scales"])):
+            field_sf_info["scales"][i]["chunk_sizes"][0][2] = 1
+        field_sf_info['num_channels'] = 2
+        cv(self.field_sf_ng_path, info=field_sf_info).commit_info() 
+
     for i in range(len(scales)):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
@@ -225,6 +238,25 @@ class Aligner:
                          y_start_m0, y_start_m0 + bbox.y_size(mip=0),
                          mip=0, max_mip=self.process_high_mip)
     return result
+
+  def get_field_sf_residual(self, z, bbox, mip):
+    x_range = bbox.x_range(mip=mip)
+    y_range = bbox.y_range(mip=mip)
+    field_sf = cv(self.field_sf_ng_path, mip=mip, bounded=False, 
+                  fill_missing=True, progress=False)[x_range[0]:x_range[1], 
+                                                     y_range[0]:y_range[1], z]
+    abs_res = np.expand_dims(np.squeeze(field_sf), axis=0)
+    rel_res = self.abs_to_rel_residual(abs_res, bbox, mip)
+    return rel_res
+  
+  def save_field_patch(self, field_sf, bbox, mip, z):
+    x_range = bbox.x_range(mip=mip)
+    y_range = bbox.y_range(mip=mip)
+    new_field = np.squeeze(field_sf)[:, :, np.newaxis, :]
+    cv(self.field_sf_ng_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
+       progress=False)[x_range[0]:x_range[1], y_range[0]:y_range[1], z] = new_field
+
+
 
   def break_into_chunks(self, bbox, ng_chunk_size, offset, mip, render=False):
     chunks = []
@@ -356,7 +388,7 @@ class Aligner:
 
 
   ## Patch manipulation
-  def warp_patch(self, ng_path, z, bbox, res_mip_range, mip):
+  def warp_patch(self, ng_path, z, bbox, res_mip_range, mip, start_z=-1):
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
@@ -364,14 +396,36 @@ class Aligner:
     agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
     image = torch.from_numpy(self.get_image_data(ng_path, z, influence_bbox, mip))
     image = image.unsqueeze(0)
-
-    #no need to warp if flow is identity since warp introduces noise
-    if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
-      image = gridsample_residual(image, agg_flow, padding_mode='zeros')
-    else:
-      print ("not warping")
-
     mip_disp = int(self.max_displacement / 2**mip)
+    #no need to warp if flow is identity since warp introduces noise
+    if (self.run_pairs):
+      image = gridsample_residual(image, agg_flow, padding_mode='zeros')
+      if z != start_z:
+        field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
+        image = gridsample_residual(image, field_sf, padding_mode='zeros')
+        agg_flow_pure = np.squeeze(agg_flow)
+        agg_flow_x = agg_flow_pure[..., 0][np.newaxis, np.newaxis, ...]
+        agg_flow_y = agg_flow_pure[..., 1][np.newaxis, np.newaxis, ...]
+        field_sf_x = gridsample_residual(
+            agg_flow_x, field_sf, padding_mode='zeros')
+        field_sf_y = gridsample_residual(
+            agg_flow_y, field_sf, padding_mode='zeros')
+        field_sf[0, :, :, 0] += 0.8 * field_sf_x[0, 0, ...] + \
+            0.2 * np.mean(field_sf_x[0, 0, ...])
+        field_sf[0, :, :, 1] += 0.8 * field_sf_y[0, 0, ...] + \
+            0.2 * np.mean(field_sf_y[0, 0, ...])
+        v = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
+        self.save_field_patch(
+            v.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z)
+      else:
+        v = agg_flow * (agg_flow.shape[-2] / 2) * (2**mip)
+        self.save_field_patch(v.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z)
+    else: 
+      if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
+        image = gridsample_residual(image, agg_flow, padding_mode='zeros')
+      else:
+        print ("not warping")
+
     return image.numpy()[0,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
 
   def downsample_patch(self, ng_path, z, bbox, mip):
@@ -583,7 +637,7 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def render(self, z, bbox, mip):
+  def render(self, z, bbox, mip, start_z):
     print ("Rendering mip {}".format(mip),
               end='', flush=True)
     start = time()
@@ -592,7 +646,7 @@ class Aligner:
 
     def chunkwise(patch_bbox):
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
-                                    (mip, self.process_high_mip), mip)
+                                    (mip, self.process_high_mip), mip, start_z)
       if (self.run_pairs):
         # save the image in the previous slice so it's easier to compare pairs
         self.save_image_patch(self.dst_ng_path, warped_patch, z-1, patch_bbox, mip)
@@ -603,7 +657,7 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def render_section_all_mips(self, z, bbox):
-    self.render(z, bbox, self.render_low_mip)
+    self.render(z, bbox, self.render_low_mip, start_z)
     self.downsample(z, bbox, self.render_low_mip, self.render_high_mip)
 
   def downsample(self, z, bbox, source_mip, target_mip):
@@ -659,7 +713,7 @@ class Aligner:
     for z in range(start_section, end_section):
       self.img_cache = {}
       self.compute_section_pair_residuals(z + 1, z, bbox)
-      self.render_section_all_mips(z + 1, bbox)
+      self.render_section_all_mips(z + 1, bbox, start_section + 1)
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
                                                           end - start))
