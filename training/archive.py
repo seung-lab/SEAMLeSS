@@ -105,7 +105,7 @@ class ModelArchive(object):
             'seed.txt',
             'architecture.py',
             'commit.txt',
-            'state.json',
+            'state_vars.json',
         ]:
             key = filename.split('.')[0]
             self.paths[key] = self.directory / filename
@@ -172,7 +172,7 @@ class ModelArchive(object):
             'progress.log',
             'seed.txt',
             'commit.txt',
-            'state.json',
+            'state_vars.json',
         ]:
             key = filename.split('.')[0]
             self.paths[key].touch(exist_ok=False)
@@ -199,6 +199,8 @@ class ModelArchive(object):
         if not no_optimizer:
             self._load_optimizer(*args, **kwargs)
         self._load_prand(self, *args, **kwargs)
+
+        self.update()
 
     def start_new(self, name, *args, **kwargs):
         """
@@ -234,6 +236,18 @@ class ModelArchive(object):
         with self.paths['commit'].open(mode='r') as f:
             saved_commit = f.readline()
         return saved_commit.strip()
+
+    @property
+    def state_vars(self):
+        """
+        Returns a dict of the state variables stored in `state_vars.json`
+        """
+        dict = {}
+        if not self.paths['state_vars'].exists():
+            return dict
+        with self.paths['state_vars'].open(mode='r') as f:
+            dict = json.load(f)
+        return dict
 
     @property
     def model(self):
@@ -275,6 +289,7 @@ class ModelArchive(object):
             for p in self._model.parameters():
                 p.requires_grad = True
             self._model.train().cuda()
+            self._model = torch.nn.DataParallel(self._model)
 
         return self._model
 
@@ -307,7 +322,7 @@ class ModelArchive(object):
     def update(self, **kwargs):
         """
         Updates the saved training state.
-        Any optional arguments will be written out to the file `state.json`
+        Any optional arguments will be written out to the file `state_vars.json`
         """
         if self.readonly:
             raise ReadOnlyError(self.name)
@@ -322,7 +337,7 @@ class ModelArchive(object):
             with self.paths['optimizer'].with_suffix('.json').open('w') as f:
                 f.write(json.dumps(self._optimizer.state_dict()))
         torch.save(get_random_generator_state(), self.paths['prand'])
-        with self.paths['state'].open('w') as f:
+        with self.paths['state_vars'].open('w') as f:
             f.write(json.dumps(kwargs))
 
     def create_checkpoint(self, epoch, time):
@@ -335,7 +350,7 @@ class ModelArchive(object):
         """
         if self.readonly:
             raise ReadOnlyError(self.name)
-        checkpt_name = 'e{}_t{}.pt'
+        checkpt_name = 'e{}_t{}.pt'.format(epoch, time)
         copy(self.paths['weights'], self.intermediate_models / checkpt_name)
 
     def log(self, values, printout=True):
@@ -409,3 +424,19 @@ class ReadOnlyError(AttributeError):
                    'read-only. If modifying is necessary, open it with '
                    '`ModelArchive("{}", readonly=False)`.'.format(name))
         super().__init__(message)
+
+
+def warn_change(param_name, before, now):
+    warnings.warn('The {} has been changed since '
+                  'this model was last saved.\n'
+                  'Before: {}\n'
+                  'Now: {}\n'
+                  'If this is not intentional, then something may have gone '
+                  'wrong. Proceeding may overwrite the appropriate value '
+                  'in the archive.\n'
+                  'Would you like to proceed?  [y/N]'
+                  .format(param_name, before, now))
+    if input().lower() not in {'yes', 'y'}:
+        print('Exiting')
+        sys.exit()
+    print('OK, proceeding...')
