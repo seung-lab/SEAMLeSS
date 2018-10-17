@@ -44,6 +44,7 @@ import random
 import torch
 import numpy as np
 import json
+import datetime
 from pathlib import Path
 
 from helpers import copy
@@ -190,9 +191,17 @@ class ModelArchive(object):
             diff = subprocess.check_output('git diff'.split())
             f.write(diff)
 
+        # write out the command used
+        with self.paths['command'].open(mode='w') as f:
+            f.writelines(' '.join(sys.argv))
+
         # create a history entry
-        with self.paths['history'].open(mode='w'):
-            pass  # TODO
+        with self.paths['history'].open(mode='w') as f:
+            f.writelines('Model: {}'.format(self.name))
+            f.writelines('Time: {}'.format(datetime.datetime.now()))
+            f.writelines('Commit: {}'.format(self.commit))
+            f.writelines(' '.join(sys.argv))
+            f.writelines('')
 
         # initialize the model, optimizer, and pseudorandom number generator
         self._load_model(*args, **kwargs)
