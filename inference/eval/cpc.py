@@ -4,7 +4,7 @@ from torch.nn.functional import interpolate
 from torch.nn import AvgPool2d, LPPool2d
 from cloudvolume.lib import Bbox, Vec
 
-from eval import util
+import util
 import argparse
 
 def get_chunk_dim(scale_factor):
@@ -56,6 +56,7 @@ class CPC():
                                            offset=self.src.voxel_offset)
     self.dst = util.create_cloudvolume(dst_path, self.src.info, 
                                          src_mip, dst_mip)
+
   def run(self):
     z_range = range(self.src_bbox.minpt[2], self.src_bbox.maxpt[2])
     for z in z_range:
@@ -114,6 +115,6 @@ if __name__ == '__main__':
   parser.add_argument('--disable_cuda', action='store_true', help='Disable CUDA')
   args = parser.parse_args()
 
-  r = CPC(*args)
+  r = CPC(**vars(args))
   r.run()
 
