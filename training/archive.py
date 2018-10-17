@@ -27,8 +27,8 @@ Usage:
     >>> mymodel.update()  # save the updated state to disk
 
     Load an existing trained model and run it on data:
-    >>> existing_model = ModelArchive('existing_model', readonly=True)
-    >>> net = existing_model.model
+    >>> existing_archive = ModelArchive('existing_archive', readonly=True)
+    >>> net = existing_archive.model
     >>> output = net(data)
 
     Create a new model archive from an existing one:
@@ -200,60 +200,6 @@ class ModelArchive(object):
             self._load_optimizer(*args, **kwargs)
         self._load_prand(self, *args, **kwargs)
 
-    def create_checkpoint(self, epoch, time):
-        """
-        Save a checkpoint in the training.
-        This saves an snapshot of the model's current weights.
-
-        Note: This does not update the model, but merely creates a backup
-        copy. To update the weights, use `update()`.
-        """
-        if self.readonly:
-            raise ReadOnlyError(self.name)
-        checkpt_name = 'e{}_t{}.pt'
-        copy(self.paths['weights'], self.intermediate_models / checkpt_name)
-
-    def log(self, values, printout=True):
-        """
-        Add a new log entry to `loss.csv`.
-
-        A new row is added to the spreadsheet and populated with the
-        contents of `values`. If `values` is a list, each element is
-        written in its own column.
-        Warning: If the string verion of any value contains a comma,
-        this will separate that value over two columns.
-        """
-        if self.readonly:
-            raise ReadOnlyError(self.name)
-        if not isinstance(values, list):
-            values = [values]
-        line = ', '.join(str(v) for v in values)
-        with self.paths['loss.csv'].open(mode='a') as f:
-            f.writelines(line + '\n')
-        if printout:
-            print('log: {}'.format(line))
-
-    def update(self, **kwargs):
-        """
-        Updates the saved training state.
-        Any optional arguments will be written out to the file `state.json`
-        """
-        if self.readonly:
-            raise ReadOnlyError(self.name)
-        if self._model:
-            torch.save(self._model.state_dict(), self.paths['weights'])
-            # also write to a json for debugging
-            with self.paths['weights'].with_suffix('.json').open('w') as f:
-                f.write(json.dumps(self._model.state_dict()))
-        if self._optimizer:
-            torch.save(self._optimizer.state_dict(), self.paths['optimizer'])
-            # also write to a json for debugging
-            with self.paths['optimizer'].with_suffix('.json').open('w') as f:
-                f.write(json.dumps(self._optimizer.state_dict()))
-        torch.save(get_random_generator_state(), self.paths['prand'])
-        with self.paths['state'].open('w') as f:
-            f.write(json.dumps(kwargs))
-
     def start_new(self, name, *args, **kwargs):
         """
         Creates and returns a new model archive initialized with the
@@ -357,6 +303,60 @@ class ModelArchive(object):
             with self.paths['seed'].open('w') as f:
                 f.write(str(seed))
             set_seed(seed)
+
+    def update(self, **kwargs):
+        """
+        Updates the saved training state.
+        Any optional arguments will be written out to the file `state.json`
+        """
+        if self.readonly:
+            raise ReadOnlyError(self.name)
+        if self._model:
+            torch.save(self._model.state_dict(), self.paths['weights'])
+            # also write to a json for debugging
+            with self.paths['weights'].with_suffix('.json').open('w') as f:
+                f.write(json.dumps(self._model.state_dict()))
+        if self._optimizer:
+            torch.save(self._optimizer.state_dict(), self.paths['optimizer'])
+            # also write to a json for debugging
+            with self.paths['optimizer'].with_suffix('.json').open('w') as f:
+                f.write(json.dumps(self._optimizer.state_dict()))
+        torch.save(get_random_generator_state(), self.paths['prand'])
+        with self.paths['state'].open('w') as f:
+            f.write(json.dumps(kwargs))
+
+    def create_checkpoint(self, epoch, time):
+        """
+        Save a checkpoint in the training.
+        This saves an snapshot of the model's current weights.
+
+        Note: This does not update the model, but merely creates a backup
+        copy. To update the weights, use `update()`.
+        """
+        if self.readonly:
+            raise ReadOnlyError(self.name)
+        checkpt_name = 'e{}_t{}.pt'
+        copy(self.paths['weights'], self.intermediate_models / checkpt_name)
+
+    def log(self, values, printout=True):
+        """
+        Add a new log entry to `loss.csv`.
+
+        A new row is added to the spreadsheet and populated with the
+        contents of `values`. If `values` is a list, each element is
+        written in its own column.
+        Warning: If the string verion of any value contains a comma,
+        this will separate that value over two columns.
+        """
+        if self.readonly:
+            raise ReadOnlyError(self.name)
+        if not isinstance(values, list):
+            values = [values]
+        line = ', '.join(str(v) for v in values)
+        with self.paths['loss.csv'].open(mode='a') as f:
+            f.writelines(line + '\n')
+        if printout:
+            print('log: {}'.format(line))
 
 
 def set_seed(seed):
