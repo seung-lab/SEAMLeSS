@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
-from helpers import save_chunk, gif, copy_state_to_model, gridsample_residual, identity_grid
+from helpers import save_chunk, gif, copy_state_to_model, gridsample_residual
 import random
 
 
@@ -177,30 +177,12 @@ class Model(nn.Module):
         super(type(self), self).__init__()
         self.pyramid = EPyramid(size, dim, skip, topskips, k, num_targets)
 
-    def open_layer(self):
-        if self.pyramid.skip > 0:
-            self.pyramid.skip -= 1
-            print('Pyramid now using', self.pyramid.size - self.pyramid.skip, 'layers.')
-
-    def select_module(self, idx):
-        for g in self.pyramid.mlist:
-            g.requires_grad = False
-        self.pyramid.mlist[idx].requires_grad = True
-
-    def select_all(self):
-        for g in self.pyramid.mlist:
-            g.requires_grad = True
-
     def forward(self, x, idx=0, vis=None, use_preencoder=False):
         if use_preencoder == "only":
             # only run the preencoder and return the results
             return self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
         field, residuals = self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
         return gridsample_residual(x[:,0:1,:,:], field, padding_mode='zeros'), field, residuals
-
-    ################################################################
-    # Begin Sergiy API
-    ################################################################
 
     @classmethod
     def load(cls, archive_path=None, weights=None, height=5, dim=1024, skips=0,
@@ -244,14 +226,42 @@ class Model(nn.Module):
             target = target.unsqueeze(0)
         return self(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis, use_preencoder=use_preencoder)
 
-    def copy_aligner(mip_from, mip_to):
+    def get_params(self, index=None):
         """
-        Copy the kernel weights from one aligner module to another
-        """
-        raise NotImplementedError()
+        Select the parameters to be trained based on `index`.
+        In general, parameters selected with lower indices are intended to
+        be trained earlier than those with higher indices.
 
-    def copy_encoder(mip_from, mip_to):
+        If `index` is None, this selects all the model's parameters.
+        """
+        if index is None or index >= self.pyramid.size:
+            return self.parameters()
+        else:
+            params = []
+            params.extend(self.pyramid.mlist[index])
+            params.extend(self.pyramid.enclist[index])
+            return params
+
+    def copy_aligner(self, id_from, id_to):
         """
         Copy the kernel weights from one aligner module to another
         """
-        raise NotImplementedError()
+        if (id_from < 0 or id_to < 0
+                or id_from >= self.pyramid.size or id_to >= self.pyramid.size):
+            raise ValueError('Values "from": {} and/or "to": {} are not in '
+                             'the expected range of 0 up to {}.'
+                             .format(id_from, id_to, self.pyramid.size - 1))
+        state_dict = self.pyramid.mlist[id_from].state_dict()
+        self.pyramid.mlist[id_to].load_state_dict(state_dict)
+
+    def copy_encoder(self, id_from, id_to):
+        """
+        Copy the kernel weights from one encoder module to another
+        """
+        if (id_from < 0 or id_to < 0
+                or id_from >= self.pyramid.size or id_to >= self.pyramid.size):
+            raise ValueError('Values "from": {} and/or "to": {} are not in '
+                             'the expected range of 0 up to {}.'
+                             .format(id_from, id_to, self.pyramid.size - 1))
+        state_dict = self.pyramid.enclist[id_from].state_dict()
+        self.pyramid.enclist[id_to].load_state_dict(state_dict)
