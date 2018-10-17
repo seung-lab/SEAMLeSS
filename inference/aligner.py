@@ -639,7 +639,7 @@ class Aligner:
                                     (mip, self.process_high_mip), mip, start_z)
       if (self.run_pairs):
         # save the image in the previous slice so it's easier to compare pairs
-        self.save_image_patch(self.dst_ng_path, warped_patch, z-1, patch_bbox, mip)
+        self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
       else:
         self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
