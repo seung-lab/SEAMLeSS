@@ -17,7 +17,17 @@ net_name_prefixes = [
 def parse_args(args=None):
     parser = argparse.ArgumentParser(prog='train',
                                      description='SEAMLeSS training')
-    subparsers = parser.add_subparsers(title='subcommands')
+    subparsers = parser.add_subparsers(title='subcommands', dest='command')
+
+    parallel_group = parser.add_argument_group('parallelization')
+    parallel_group.add_argument(
+        '--num_workers', type=int, default=1, metavar='W',
+        help='Number of workers for the DataLoader',
+    )
+    parallel_group.add_argument(
+        '--gpu_ids', type=str, default=['0'], nargs='+', metavar='X',
+        help='Specific GPUs to use during training',
+    )
 
     resume_help = ('Resume training a paused model '
                    'using the saved training parameters.')
@@ -50,12 +60,12 @@ def parse_args(args=None):
         metavar='LR', help='initial learning rate',
     )
     param_group.add_argument(
-        '--epochs', default=None, type=int, metavar='N',
+        '--num_epochs', default=None, type=int, metavar='N',
         help='number of total epochs to run',
     )
     default_low, default_high = 2, 9
     param_group.add_argument(
-        '--lm', '--low-mip', metavar='L',
+        '--lm', '--low_mip', metavar='L',
         help='mip of lowest aligner to train', type=int,
         default=default_low,
     ).completer = (lambda **kwargs: str(default_low))
@@ -67,23 +77,27 @@ def parse_args(args=None):
     # param_group.add_argument(
     #     '--momentum', default=0.9, type=float, metavar='M',
     #     help='momentum')
+    param_group.add_argument(
+        '--wd', '--weight_decay', default=1e-4, type=float,
+        metavar='W', help='weight decay (default: 1e-4)')
     # param_group.add_argument(
-    #     '--weight-decay', '--wd', default=1e-4, type=float,
-    #     metavar='W', help='weight decay (default: 1e-4)')
-    param_group.add_argument(
-        '-A', '--skip_aug',
-        help='skip data augmentation (no cutouts, etc)',
-        action='store_true',
-    )
-    param_group.add_argument(
-        '--plan', type=str,
-        help='path to a training plan',
-    )
+    #     '-A', '--skip_aug',
+    #     help='skip data augmentation (no cutouts, etc)',
+    #     action='store_true',
+    # )  # not implemented yet. Uncomment once implemented
+    # param_group.add_argument(
+    #     '--plan', type=str,
+    #     help='path to a training plan',
+    # )  # not implemented yet. Uncomment once implemented
     param_group.add_argument(
         '--seed', default=None, type=int,
         help='seed for initializing training. '
         'Triggers deterministic behavior if specified.',
     ).completer = (lambda **kwargs: [str(random.getrandbits(10))])
+    param_group.add_argument(
+        '--batch_size', type=int, default=1, metavar='SIZE',
+        help='Number of samples to be evaluated before each gradient update',
+    )
 
     loss_group = start_parser.add_argument_group('training loss')
     loss_type = loss_group.add_mutually_exclusive_group()
@@ -91,13 +105,15 @@ def parse_args(args=None):
         '-s', '--supervisied',
         help='Train in a supervised fashion on randomly generated ground '
              'truth vector fields and false slice pairs. This is the default.',
+        dest='supervised',
         action='store_true',
     )
     loss_type.add_argument(
         '-u', '--unsupervised',
         help='Train on real slice pairs based on MSE and smoothness '
              'penalties.',
-        action='store_true',
+        dest='supervised',
+        action='store_false',
     )
     loss_group.add_argument(
         '--lambda1',
@@ -154,20 +170,6 @@ def parse_args(args=None):
         '-i', '--interval',
         help='combines the log, checkpoint, and visualization intervals',
         type=int, default=None, metavar='T',
-    )
-
-    parallel_group = start_parser.add_argument_group('parallelization')
-    parallel_group.add_argument(
-        '--batch_size', type=int, default=1, metavar='SIZE',
-        help='Number of samples to be evaluated before each gradient update',
-    )
-    parallel_group.add_argument(
-        '--num_workers', type=int, default=1, metavar='W',
-        help='Number of workers for the DataLoader',
-    )
-    parallel_group.add_argument(
-        '--gpu_ids', type=str, default=['0'], nargs='+', metavar='X',
-        help='Specific GPUs to use during training',
     )
 
     argcomplete.autocomplete(parser)
