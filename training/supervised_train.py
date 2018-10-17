@@ -55,9 +55,10 @@ import torchvision.transforms as transforms
 import numpy as np
 from pathlib import Path
 
-from arguments import parse_args
+from arguments import parse_args  # TODO: move up for faster arg access
 from archive import ModelArchive, warn_change
 import stack_dataset as stack
+from helpers import gridsample_residual
 
 best_prec1 = 0
 
@@ -66,15 +67,13 @@ def main():
     global args, state_vars, best_prec1
     args = parse_args()
 
-    if args.command == 'start':
-        if ModelArchive.model_exists(args.name):
-            raise ValueError('The model "{}" already exists.'.format(args.name))
-
     # set available GPUs
     os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(args.gpu_ids)
 
     # create or load the model, optimizer, and parameters
     if args.command == 'start':  # TODO: factor out
+        if ModelArchive.model_exists(args.name):
+            raise ValueError('The model "{}" already exists.'.format(args.name))
         archive = ModelArchive(args.name, readonly=False, seed=args.seed)
         model = archive.model
 
@@ -151,8 +150,9 @@ def main():
     }
     archive.update(**state_vars)
     log_titles = [
-        'Time',
+        'Time Stamp',
         'Epoch',
+        'Iteration',
         'Training Loss',
         'Validation Loss',
     ]
@@ -198,15 +198,16 @@ def main():
         select_params(model, optimizer, epoch)
 
         # train for one epoch
-        train_loss = train(train_loader, model, criterion, optimizer, epoch)
+        train_loss = train(train_loader, archive, criterion, optimizer, epoch)
 
         # evaluate on validation set
-        val_loss = validate(val_loader, model, criterion)
+        val_loss = validate(val_loader, archive, criterion)
 
         archive.update(**state_vars)
         log_vals = [
             datetime.datetime.now(),
             epoch,
+            len(train_loader),
             train_loss,
             val_loss,
         ]
@@ -214,34 +215,98 @@ def main():
         archive.create_checkpoint(epoch, time='f')
 
 
-def train(train_loader, model, criterion, optimizer, epoch):
+def train(train_loader, archive, criterion, optimizer, epoch):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
 
     # switch to train mode
-    model.train()
+    archive.model.train()
 
     end = time.time()
-    for i, (input, target) in enumerate(train_loader):
-        pass
+    for i, sample in enumerate(train_loader):
+        # measure data loading time
+        data_time.update(time.time() - end)
+
+        # input = input.cuda(args.gpu, non_blocking=True)
+        # target = target.cuda(args.gpu, non_blocking=True)
+
+        sct, tgt, truth = prepare_input(sample)
+
+        # compute output
+        output = archive.model(input)
+        loss = criterion(output, tgt)
+
+        # measure accuracy and record loss
+        losses.update(loss.item(), input.size(0))
+
+        # compute gradient and do optimizer step
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if i % state_vars['log_time'] == 0:
+            print('Epoch: [{0}][{1}/{2}]\t'
+                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
+                   epoch, i, len(train_loader), batch_time=batch_time,
+                   data_time=data_time, loss=losses))
+            log_vals = [
+               datetime.datetime.now(),
+               epoch,
+               i,
+               loss,
+               '',
+            ]
+            archive.log(log_vals, printout=True)
+    return losses.avg
 
 
-def validate(val_loader, model, criterion):
+def validate(val_loader, archive, criterion):
     batch_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
 
     # switch to evaluate mode
-    model.eval()
+    archive.model.eval()
 
-    with torch.no_grad():
-        end = time.time()
-        for i, (input, target) in enumerate(val_loader):
-            pass
+    # with torch.no_grad():
+    #     end = time.time()
+    #     for i, (input, target) in enumerate(val_loader):
+    #         input = input.cuda(args.gpu, non_blocking=True)
+    #         target = target.cuda(args.gpu, non_blocking=True)
+
+    #         # compute output
+    #         output = archive.model(input)
+    #         loss = criterion(output, target)
+
+    #         # measure accuracy and record loss
+    #         prec1, prec5 = accuracy(output, target, topk=(1, 5))
+    #         losses.update(loss.item(), input.size(0))
+    #         top1.update(prec1[0], input.size(0))
+    #         top5.update(prec5[0], input.size(0))
+
+    #         # measure elapsed time
+    #         batch_time.update(time.time() - end)
+    #         end = time.time()
+
+    #         if i % args.print_freq == 0:
+    #             print('Test: [{0}/{1}]\t'
+    #                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+    #                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+    #                   'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+    #                   'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+    #                    i, len(val_loader), batch_time=batch_time, loss=losses,
+    #                    top1=top1, top5=top5))
+
+    #     print(' * Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}'
+    #           .format(top1=top1, top5=top5))
 
     return top1.avg
 
@@ -286,6 +351,37 @@ def select_params(model, optimizer, epoch):
         p.requires_grad = False
     for p in model.get_params(epoch):
         p.requires_grad = True
+
+
+def select_submodule(model, optimizer, epoch):
+    """
+    Selects the submodule to be trained based on the current epoch.
+    Freezes all other submodules of `model`.
+    """
+    for p in model.parameters():
+        p.requires_grad = False
+    submodule = model.get_submodule(epoch)
+    for p in submodule.parameters():
+        p.requires_grad = True
+    return submodule
+
+
+def prepare_input(sample):
+    if state_vars['supervised']:
+        src = sample['src']
+        truth_field = random_field(src.shape)
+        return (src,
+                gridsample_residual(src, truth_field, padding_mode='zeros'),
+                truth_field)
+    else:
+        return sample['src'], sample['tgt'], None
+
+
+def random_field(shape):
+    zero = torch.zeros(shape)
+    warnings.warn('random_field is not implemented yet. '
+                  'Using an identity field instead.')
+    return zero
 
 
 if __name__ == '__main__':
