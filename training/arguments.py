@@ -149,9 +149,10 @@ def parse_args(args=None):
 
     checkpoint_group = start_parser.add_argument_group('checkpointing')
     checkpoint_group.add_argument(
-        '--log', '--log_interval',
+        '--log', '--log_interval', '--log_time',
         help='the number of samples in between each log. '
              'Use 0 to disable.',
+        dest='log_time',
         type=int, default=10, metavar='T',
     )
     checkpoint_group.add_argument(
@@ -175,7 +176,7 @@ def parse_args(args=None):
     argcomplete.autocomplete(parser)
     args = parser.parse_args(args)
     if args.i is not None:
-        args.log = args.i
+        args.log_time = args.i
         args.cpoint = args.i
         args.vis = args.i
     del args.i
