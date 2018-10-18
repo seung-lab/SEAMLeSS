@@ -405,8 +405,8 @@ class Aligner:
     x_chunk = self.dst_chunk_sizes[mip][0]
     y_chunk = self.dst_chunk_sizes[mip][1]
 
-    x_offset = slef.dst_voxel_offsets[mip][0]
-    y_offset = slef.dst_voxel_offseto[mip][1]
+    x_offset = self.dst_voxel_offsets[mip][0]
+    y_offset = self.dst_voxel_offsets[mip][1]
 
     x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
     y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
@@ -415,13 +415,13 @@ class Aligner:
     calign_y_range = [raw_y_range[0] - y_remainder, raw_y_range[1]]
 
     calign_x_len = raw_x_range[1] - raw_x_range[0] + x_remainder
-    calign_y_len = raw_y_range[1] - raw_y_range[0] + y_remainder
+    #calign_y_len = raw_y_range[1] - raw_y_range[0] + y_remainder
 
     in_x_range = in_bbox.x_range(mip=mip)
     in_y_range = in_bbox.y_range(mip=mip)
     in_x_len = in_x_range[1] - in_x_range[0]
     in_y_len = in_y_range[1] - in_y_range[0]
-    line_bbox_num = calign_x_range // in_x_len
+    line_bbox_num = (calign_x_len + in_x_len -1)// in_x_len
     cid = ((in_y_range[0] - calign_y_range[0]) // in_y_len) * line_bbox_num + (in_x_range[0] - calign_x_range[0]) // in_x_len
     return cid
 
@@ -444,20 +444,21 @@ class Aligner:
       print ("not warping")
     if (self.run_pairs):
       cid = self.get_bbox_id(bbox, mip) 
+      print ("cid is ", cid)
       decay_factor = 0.8
       if z != start_z:
         field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
-        field_sf = decay_factor * field_sf + (1 - decay_factor) * self.reg_field
+        field_sf = decay_factor * field_sf + (1 - decay_factor) * torch.from_numpy(self.reg_field)
         image = gridsample_residual(image, field_sf, padding_mode='zeros')
         agg_flow = agg_flow.permute(0,3,1,2)
         field_sf = field_sf + gridsample_residual(
             agg_flow, field_sf, padding_mode='border').permute(0,2,3,1)
       else:
         field_sf = agg_flow
+      self.calc_image_mean_field(image.numpy()[0,0,mip_disp:-mip_disp,mip_disp:-mip_disp], field_sf[0, mip_disp:-mip_disp, mip_disp:-mip_disp, :], cid)
       field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
-      field_sf = fidld_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
+      field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
       self.save_field_patch(field_sf, bbox, mip, z)
-      calc_image_mean_field(image.numpy()[0,0,mip_disp:-mip_disp,mip_disp:-mip_disp], field_sf[0,...], cid)
 
     return image.numpy()[0,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
 
@@ -676,6 +677,7 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
+    print("\n total chunsk is ", len(chunks))
     if (self.run_pairs and (z!=start_z)):
         total_chunks = len(chunks) 
         self.reg_field= np.sum(self.field_sf_sum, axis=0) / np.sum(self.image_pixels_sum)
