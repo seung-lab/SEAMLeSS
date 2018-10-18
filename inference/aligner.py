@@ -398,19 +398,34 @@ class Aligner:
                   self.image_pixels_sum[cid] +=1
                   self.field_sf_sum[cid] += field[i,j]
 
-  def get_bbox_id(self, bbox, mip):
-    raw_x_range = bbox.x_range(mip=mip)
-    raw_y_range = bbox.y_range(mip=mip)
+  def get_bbox_id(self, in_bbox, mip):
+    raw_x_range = self.total_bbox.x_range(mip=mip)
+    raw_y_range = self.total_bbox.y_range(mip=mip)
 
-    x_chunk = ng_chunk_size[0]
-    y_chunk = ng_chunk_size[1]
+    x_chunk = self.dst_chunk_sizes[mip][0]
+    y_chunk = self.dst_chunk_sizes[mip][1]
 
-    x_offset = offset[0]
-    y_offset = offset[1]
+    x_offset = slef.dst_voxel_offsets[mip][0]
+    y_offset = slef.dst_voxel_offseto[mip][1]
 
     x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
     y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
+     
+    calign_x_range = [raw_x_range[0] - x_remainder, raw_x_range[1]]
+    calign_y_range = [raw_y_range[0] - y_remainder, raw_y_range[1]]
 
+    calign_x_len = raw_x_range[1] - raw_x_range[0] + x_remainder
+    calign_y_len = raw_y_range[1] - raw_y_range[0] + y_remainder
+
+    in_x_range = in_bbox.x_range(mip=mip)
+    in_y_range = in_bbox.y_range(mip=mip)
+    in_x_len = in_x_range[1] - in_x_range[0]
+    in_y_len = in_y_range[1] - in_y_range[0]
+    line_bbox_num = calign_x_range // in_x_len
+    cid = ((in_y_range[0] - calign_y_range[0]) // in_y_len) * line_bbox_num + (in_x_range[0] - calign_x_range[0]) // in_x_len
+    return cid
+
+    
 
   ## Patch manipulation
   def warp_patch(self, ng_path, z, bbox, res_mip_range, mip, start_z=-1):
@@ -428,11 +443,7 @@ class Aligner:
     else:
       print ("not warping")
     if (self.run_pairs):
-      x_range = bbox.x_range(mip=mip) 
-      y_range = bbox.y_range(mip=mip)
-      x_seg = x_range[1] - x_range[0]
-      y_seg = y_range[1] - y_range[0]
-      cid =((y_range[0] + y_seg - 1) // y_seg) * 
+      cid = self.get_bbox_id(bbox, mip) 
       decay_factor = 0.8
       if z != start_z:
         field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
