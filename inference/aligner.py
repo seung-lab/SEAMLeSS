@@ -50,6 +50,9 @@ class Aligner:
    
     if (self.run_pairs): 
         self.field_sf_ng_path = os.path.join(dst_ng_path, 'field_sf')
+        self.image_pixels_sum = np.empty()
+        self.field_sf_sum =np.empty()
+        self.reg_field = np.zeros(2, dtype=np.float32)
     else: 
         self.field_sf_ng_path = ""
 
@@ -97,8 +100,8 @@ class Aligner:
     self.img_cache = {}
 
     self.img_cache_lock = Lock()
-    
-    #if not chunk_size[0] :
+
+#if not chunk_size[0] :
     #  raise Exception("The chunk size has to be aligned with ng chunk size")
 
   def set_chunk_size(self, chunk_size):
@@ -386,9 +389,15 @@ class Aligner:
     rel_residual[0, :, :, 1] /= y_fraction
     return rel_residual
 
+  def calc_image_mean_field(self, image, field, cid):
+      for i in range(0,image.shape[0]):
+          for j in range(0,image.shape[1]):
+              if(image[i,j]!=0):
+                  self.image_pixels_sum[cid] +=1
+                  self.field_sf_sum[cid] += field[i,j]
 
   ## Patch manipulation
-  def warp_patch(self, ng_path, z, bbox, res_mip_range, mip, start_z=-1):
+  def warp_patch(self, ng_path, z, bbox, res_mip_range, mip, start_z=-1, cid=0):
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
@@ -403,18 +412,20 @@ class Aligner:
     else:
       print ("not warping")
     if (self.run_pairs):
-      deccay_factor = 0.8
+      decay_factor = 0.8
       if z != start_z:
         field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
+        field_sf = decay_factor * field_sf + (1 - decay_factor) * self.reg_field
         image = gridsample_residual(image, field_sf, padding_mode='zeros')
         agg_flow = agg_flow.permute(0,3,1,2)
         field_sf = field_sf + gridsample_residual(
             agg_flow, field_sf, padding_mode='border').permute(0,2,3,1)
-        field_sf = deccay_factor * field_sf + (1 - deccay_factor) * field_sf.mean()
       else:
         field_sf = agg_flow
       field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
-      self.save_field_patch(field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], bbox, mip, z)
+      field_sf = fidld_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
+      self.save_field_patch(field_sf, bbox, mip, z)
+      calc_image_mean_field(image.numpy()[0,0,mip_disp:-mip_disp,mip_disp:-mip_disp], field_sf[0,...], cid)
 
     return image.numpy()[0,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
 
@@ -633,16 +644,23 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
+    total_chunks = len(chunks)
+    chunk_id_list = range(0,total_chunks)
+    
+    if (self.run_pairs & z!=start_z):
+        self.reg_field= np.sum(self.field_sf_sum, axis=0, keepdims=True) / np.sum(self.image_pixels_sum)
+        self.image_pixels_sum = np.zeros(total_chunks)
+        self.field_sf_sum = np.zeros((total_chunks, 2), dtype=np.float32)
 
-    def chunkwise(patch_bbox):
+    def chunkwise(patch_bbox, cid):
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
-                                    (mip, self.process_high_mip), mip, start_z)
-      if (self.run_pairs):
+                                    (mip, self.process_high_mip), mip, start_z, cid, reg_field)
+      #if (self.run_pairs):
         # save the image in the previous slice so it's easier to compare pairs
-        self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
-      else:
-        self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
-    self.pool.map(chunkwise, chunks)
+      #  self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+      #else:
+      self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+    self.pool.map(chunkwise, chunks, chunk_id_list)
     end = time()
     print (": {} sec".format(end - start))
 
@@ -685,6 +703,14 @@ class Aligner:
 
       if m > self.process_low_mip:
           self.prepare_source(source_z, bbox, m - 1)
+    
+  def count_box(self, bbox, mip):    
+    chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
+                                      self.dst_voxel_offsets[m], mip=m, render=True)
+    total_chunks = len(chunks)
+    self.image_pixels_sum =np.zeros(total_chunks)
+    self.field_sf_sum =np.zeros((total_chunks, 2), dtype=np.float32)
+
 
   ## Whole stack operations
   def align_ng_stack(self, start_section, end_section, bbox, move_anchor=True):
@@ -699,6 +725,8 @@ class Aligner:
     if move_anchor:
       for m in range(self.render_low_mip, self.high_mip+1):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
+    if (self.run_pairs):
+        self.count_box(bbox, self.render_low_mip);
     self.zs = start_section
     for z in range(start_section, end_section):
       self.img_cache = {}
