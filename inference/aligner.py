@@ -50,9 +50,11 @@ class Aligner:
    
     if (self.run_pairs): 
         self.field_sf_ng_path = os.path.join(dst_ng_path, 'field_sf')
-        self.image_pixels_sum = np.empty()
-        self.field_sf_sum =np.empty()
+        self.image_pixels_sum = np.empty(1)
+        self.field_sf_sum = np.empty((1,1))
         self.reg_field = np.zeros(2, dtype=np.float32)
+        self.x_len = 0
+        self.y_len = 0
     else: 
         self.field_sf_ng_path = ""
 
@@ -396,12 +398,26 @@ class Aligner:
                   self.image_pixels_sum[cid] +=1
                   self.field_sf_sum[cid] += field[i,j]
 
+  def get_bbox_id(self, bbox, mip):
+    raw_x_range = bbox.x_range(mip=mip)
+    raw_y_range = bbox.y_range(mip=mip)
+
+    x_chunk = ng_chunk_size[0]
+    y_chunk = ng_chunk_size[1]
+
+    x_offset = offset[0]
+    y_offset = offset[1]
+
+    x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
+    y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
+
+
   ## Patch manipulation
-  def warp_patch(self, ng_path, z, bbox, res_mip_range, mip, start_z=-1, cid=0):
+  def warp_patch(self, ng_path, z, bbox, res_mip_range, mip, start_z=-1):
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
-
+    
     agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
     image = torch.from_numpy(self.get_image_data(ng_path, z, influence_bbox, mip))
     image = image.unsqueeze(0)
@@ -412,6 +428,11 @@ class Aligner:
     else:
       print ("not warping")
     if (self.run_pairs):
+      x_range = bbox.x_range(mip=mip) 
+      y_range = bbox.y_range(mip=mip)
+      x_seg = x_range[1] - x_range[0]
+      y_seg = y_range[1] - y_range[0]
+      cid =((y_range[0] + y_seg - 1) // y_seg) * 
       decay_factor = 0.8
       if z != start_z:
         field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
@@ -644,23 +665,21 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
-    total_chunks = len(chunks)
-    chunk_id_list = range(0,total_chunks)
-    
-    if (self.run_pairs & z!=start_z):
-        self.reg_field= np.sum(self.field_sf_sum, axis=0, keepdims=True) / np.sum(self.image_pixels_sum)
+    if (self.run_pairs and (z!=start_z)):
+        total_chunks = len(chunks) 
+        self.reg_field= np.sum(self.field_sf_sum, axis=0) / np.sum(self.image_pixels_sum)
         self.image_pixels_sum = np.zeros(total_chunks)
         self.field_sf_sum = np.zeros((total_chunks, 2), dtype=np.float32)
 
-    def chunkwise(patch_bbox, cid):
+    def chunkwise(patch_bbox):
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
-                                    (mip, self.process_high_mip), mip, start_z, cid, reg_field)
+                                    (mip, self.process_high_mip), mip, start_z)
       #if (self.run_pairs):
         # save the image in the previous slice so it's easier to compare pairs
       #  self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
       #else:
       self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
-    self.pool.map(chunkwise, chunks, chunk_id_list)
+    self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
 
@@ -705,8 +724,8 @@ class Aligner:
           self.prepare_source(source_z, bbox, m - 1)
     
   def count_box(self, bbox, mip):    
-    chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
-                                      self.dst_voxel_offsets[m], mip=m, render=True)
+    chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
+                                      self.dst_voxel_offsets[mip], mip=mip, render=True)
     total_chunks = len(chunks)
     self.image_pixels_sum =np.zeros(total_chunks)
     self.field_sf_sum =np.zeros((total_chunks, 2), dtype=np.float32)
