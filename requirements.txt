@@ -11,3 +11,4 @@ visdom
 pathos
 pyshorteners
 argcomplete
+pandas
