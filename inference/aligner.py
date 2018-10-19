@@ -5,6 +5,7 @@ import torch
 import numpy as np
 import os
 import json
+import math
 from time import time
 from copy import deepcopy, copy
 from helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
@@ -464,12 +465,12 @@ class Aligner:
     if (self.run_pairs):
       #cid = self.get_bbox_id(bbox, mip) 
       #print ("cid is ", cid)
-      decay_factor = 0.8
+      decay_factor = 0.4
       if z != start_z:
         field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
-        regular_part = self.gauss_filter(field_sf)
+        regular_part = self.gauss_filter(field_sf.permute(3,0,1,2))
         #regular_part = torch.from_numpy(self.reg_field) 
-        field_sf = decay_factor * field_sf + (1 - decay_factor) * regular_part 
+        field_sf = decay_factor * field_sf + (1 - decay_factor) * regular_part.permute(1,2,3,0) 
         image = gridsample_residual(image, field_sf, padding_mode='zeros')
         agg_flow = agg_flow.permute(0,3,1,2)
         field_sf = field_sf + gridsample_residual(
