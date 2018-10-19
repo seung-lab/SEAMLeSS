@@ -57,8 +57,8 @@ from pathlib import Path
 from arguments import parse_args  # TODO: move up for faster arg access
 from archive import ModelArchive, warn_change
 import stack_dataset as stack
-from helpers import (gridsample_residual, save_chunk, dv as save_vectors, 
-                     upsample, downsample)
+from helpers import (gridsample_residual, save_chunk, dv as save_vectors,
+                     upsample, downsample, AverageMeter)
 from loss import smoothness_penalty
 
 
@@ -94,40 +94,24 @@ def main():
         state_vars['vis_time'] = args.vis_time
         state_vars['lambda1'] = args.vis_time
         state_vars['penalty'] = args.penalty
+        log_titles = [
+            'Time Stamp',
+            'Epoch',
+            'Iteration',
+            'Training Loss',
+            'Validation Loss',
+        ]
+        archive.set_log_titles(log_titles)
+        archive.set_optimizer_params(learning_rate=args.lr, weight_decay=args.wd)
 
-        for param_group in archive.optimizer.param_groups:
-            param_group['lr'] = state_vars['lr']
-            param_group['weight_decay'] = state_vars['wd']
+        # save the initialized state to the archive
+        archive.save()
+        archive.create_checkpoint(epoch=None, iteration=None)
     else:  # args.command == 'resume'
         archive = ModelArchive(args.name, readonly=False)
         state_vars = archive.state_vars
 
-        for param_group in archive.optimizer.param_groups:
-            warned_lr = False
-            if param_group['lr'] != state_vars['lr']:
-                if not warned_lr:
-                    warn_change('learning rate', param_group['lr'], state_vars['lr'])
-                    warned_lr = True
-                param_group['lr'] = state_vars['lr']
-            warned_wd = False
-            if param_group['weight_decay'] != state_vars['wd']:
-                if not warned_wd:
-                    warn_change('weight decay', param_group['weight_decay'], state_vars['wd'])
-                    warned_wd = True
-                param_group['weight_decay'] = state_vars['wd']
-
-    # update the archive
-    archive.save()
-    log_titles = [
-        'Time Stamp',
-        'Epoch',
-        'Iteration',
-        'Training Loss',
-        'Validation Loss',
-    ]
-    archive.log(log_titles, printout=False)
-    archive.create_checkpoint(epoch=None, iteration=None)
-
+    # optimize cuda processes
     cudnn.benchmark = True
 
     # Data loading code
@@ -274,39 +258,6 @@ def validate(val_loader, archive, epoch):
                len(val_loader), batch_time=batch_time, loss=losses))
 
     return losses.avg
-
-
-class AverageMeter(object):
-    """
-    Computes and stores the average and current value
-    """
-
-    def __init__(self, store=False):
-        self.reset(store)
-
-    def reset(self, store=False):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-        self.history = None
-        if store:
-            self.history = []
-        self.warned = False
-
-    def update(self, val, n=1):
-        if isinstance(val, torch.Tensor):
-            if not self.warned:
-                warnings.warn('Accumulating a pytorch tensor can cause a gpu '
-                              'memory leak. Converting to a python scalar.')
-                self.warned = True
-            val = val.item()
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-        if self.history is not None:
-            self.history += [val]*n
 
 
 def select_submodule(model, epoch):

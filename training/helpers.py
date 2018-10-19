@@ -348,3 +348,36 @@ def identity_grid(size, cache=False, device=None):
         identity_grid._identities[size] = I
     return I.to(device)
 identity_grid._identities = {}
+
+
+class AverageMeter(object):
+    """
+    Computes and stores the average and current value
+    """
+
+    def __init__(self, store=False):
+        self.reset(store)
+
+    def reset(self, store=False):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+        self.history = None
+        if store:
+            self.history = []
+        self.warned = False
+
+    def update(self, val, n=1):
+        if isinstance(val, torch.Tensor):
+            if not self.warned:
+                warnings.warn('Accumulating a pytorch tensor can cause a gpu '
+                              'memory leak. Converting to a python scalar.')
+                self.warned = True
+            val = val.item()
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+        if self.history is not None:
+            self.history += [val]*n

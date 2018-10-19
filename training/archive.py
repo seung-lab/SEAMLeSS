@@ -411,10 +411,19 @@ class ModelArchive(object):
         if not isinstance(values, list):
             values = [values]
         line = ', '.join(str(v) for v in values)
-        with self.paths['loss.csv'].open(mode='a') as f:
+        with self.paths['loss'].open(mode='a') as f:
             f.writelines(line + '\n')
         if printout:
             print('log: {}'.format(line))
+
+    def set_optimizer_params(self, learning_rate, weight_decay):
+        if self.readonly:
+            raise ReadOnlyError(self.name)
+        self.state_vars['lr'] = learning_rate
+        self.state_vars['wd'] = weight_decay
+        for param_group in self._optimizer.param_groups:
+            param_group['lr'] = learning_rate
+            param_group['weight_decay'] = weight_decay
 
     def adjust_learning_rate(self):
         """
