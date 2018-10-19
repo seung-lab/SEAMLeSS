@@ -60,6 +60,14 @@ def parse_args(args=None):
         metavar='LR', help='initial learning rate',
     )
     param_group.add_argument(
+        '--deccay', '--deccay_rate', default=0.1, type=float,
+        metavar='DR', help='rate by which the learning rate deccays',
+    )
+    param_group.add_argument(
+        '--deccay_cycle', default=30, type=int, metavar='DC',
+        help='frequency with which the learning rate deccay occurs',
+    )
+    param_group.add_argument(
         '--num_epochs', default=None, type=int, metavar='N',
         help='number of total epochs to run',
     )
@@ -156,30 +164,33 @@ def parse_args(args=None):
         type=int, default=10, metavar='T',
     )
     checkpoint_group.add_argument(
-        '--cpoint', '--checkpoint_interval',
+        '--cpoint', '--checkpoint_interval', '--checkpoint_time',
         help='the number of samples in between each checkpoint. '
              'Use 0 to disable.',
+        dest='checkpoint_time',
         type=int, default=100, metavar='T',
     )
     checkpoint_group.add_argument(
-        '--vis', '--visualization_interval',
+        '--vis', '--visualization_interval', '--vis_time',
         help='the number of samples in between each visualization. '
              'Use 0 to disable.',
+        dest='vis_time',
         type=int, default=100, metavar='T',
     )
     checkpoint_group.add_argument(
         '-i', '--interval',
-        help='combines the log, checkpoint, and visualization intervals',
+        help='combines the log, checkpoint, and visualization intervals',.',
+        dest='interval',
         type=int, default=None, metavar='T',
     )
 
     argcomplete.autocomplete(parser)
     args = parser.parse_args(args)
-    if args.i is not None:
-        args.log_time = args.i
-        args.cpoint = args.i
-        args.vis = args.i
-    del args.i
+    if args.interval is not None:
+        args.log_time = args.interval
+        args.checkpoint_time = args.interval
+        args.vis_time = args.interval
+    del args.interval
     return args
 
 

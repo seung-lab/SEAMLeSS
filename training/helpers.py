@@ -204,16 +204,7 @@ def crop(data_2d, crop):
 
 def save_chunk(chunk, name, norm=True):
     if type(chunk) != np.ndarray:
-        try:
-            if chunk.is_cuda:
-                chunk = chunk.data.cpu().numpy()
-            else:
-                chunk = chunk.data.numpy()
-        except Exception as e:
-            if chunk.is_cuda:
-                chunk = chunk.cpu().numpy()
-            else:
-                chunk = chunk.numpy()
+        chunk = chunk.cpu().numpy()
     chunk = np.squeeze(chunk).astype(np.float64)
     if norm:
         chunk[:50,:50] = 0
@@ -259,17 +250,25 @@ def gif(filename, array, fps=2, scale=1.0):
     clip.write_gif(filename, fps=fps, verbose=False)
     return clip
 
-def downsample(x):
+
+def downsample(x=1, type='average'):
     if x > 0:
-        return nn.AvgPool2d(2**x, count_include_pad=False)
+        if type == 'average':
+            return nn.AvgPool2d(2**x, count_include_pad=False)
+        elif type == 'max':
+            return nn.MaxPool2d(2**x)
+        else:
+            raise ValueError('Unrecognized pooling type: {}'.format(type))
     else:
         return (lambda y: y)
 
-def upsample(x):
+
+def upsample(x=1):
     if x > 0:
         return nn.Upsample(scale_factor=2**x, mode='bilinear')
     else:
         return (lambda y: y)
+
 
 def gridsample(source, field, padding_mode):
     """

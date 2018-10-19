@@ -112,6 +112,7 @@ class ModelArchive(object):
             self.paths[key] = self.directory / filename
         self._model = None
         self._optimizer = None
+        self._state_vars = None
 
         if ModelArchive.model_exists(name):
             self._load(*args, **kwargs)
@@ -154,7 +155,8 @@ class ModelArchive(object):
         # load the model, optimizer, and pseudorandom number generator
         self._load_model(*args, **kwargs)
         self._load_optimizer(*args, **kwargs)
-        self._load_prand(self, *args, **kwargs)
+        self._load_prand(*args, **kwargs)
+        self._load_state_vars(*args, **kwargs)
 
     def _create(self, no_optimizer=False, *args, **kwargs):
         print('Creating a new model archive: {}'.format(self.name))
@@ -207,7 +209,8 @@ class ModelArchive(object):
         self._load_model(*args, **kwargs)
         if not no_optimizer:
             self._load_optimizer(*args, **kwargs)
-        self._load_prand(self, *args, **kwargs)
+        self._load_prand(*args, **kwargs)
+        self._load_state_vars(*args, **kwargs)
 
         self.update()
 
@@ -247,18 +250,6 @@ class ModelArchive(object):
         return saved_commit.strip()
 
     @property
-    def state_vars(self):
-        """
-        Returns a dict of the state variables stored in `state_vars.json`
-        """
-        dict = {}
-        if not self.paths['state_vars'].exists():
-            return dict
-        with self.paths['state_vars'].open(mode='r') as f:
-            dict = json.load(f)
-        return dict
-
-    @property
     def model(self):
         """
         A live version of the model's architecture.
@@ -271,6 +262,16 @@ class ModelArchive(object):
         The model's optimizer
         """
         return self._optimizer
+
+    @property
+    def state_vars(self):
+        """
+        A dict of various state variables
+
+        This dict should be used to store any additional training information
+        that is needed to restore the model when resuming training.
+        """
+        return self._state_vars
 
     def _load_model(self, *args, **kwargs):
         """
@@ -328,10 +329,19 @@ class ModelArchive(object):
                 f.write(str(seed))
             set_seed(seed)
 
-    def update(self, **kwargs):
+    def _load_state_vars(self, *args, **kwargs):
         """
-        Updates the saved training state.
-        Any optional arguments will be written out to the file `state_vars.json`
+        Loads the dict of state variables stored in `state_vars.json`
+        """
+        self._state_vars = {}
+        if self.paths['state_vars'].exists():
+            with self.paths['state_vars'].open(mode='r') as f:
+                self._state_vars = json.load(f)
+        return self._state_vars
+
+    def update(self):
+        """
+        Updates the saved archive to match the live training state of the model
         """
         if self.readonly:
             raise ReadOnlyError(self.name)
@@ -346,10 +356,11 @@ class ModelArchive(object):
             with self.paths['optimizer'].with_suffix('.json').open('w') as f:
                 f.write(json.dumps(self._optimizer.state_dict()))
         torch.save(get_random_generator_state(), self.paths['prand'])
-        with self.paths['state_vars'].open('w') as f:
-            f.write(json.dumps(kwargs))
+        if self._state_vars:
+            with self.paths['state_vars'].open('w') as f:
+                f.write(json.dumps(self._state_vars))
 
-    def create_checkpoint(self, epoch, time):
+    def create_checkpoint(self, epoch, iteration):
         """
         Save a checkpoint in the training.
         This saves an snapshot of the model's current weights.
@@ -359,8 +370,27 @@ class ModelArchive(object):
         """
         if self.readonly:
             raise ReadOnlyError(self.name)
-        checkpt_name = 'e{}_t{}.pt'.format(epoch, time)
+        if epoch is None:
+            checkpt_name = 'init.pt'
+        elif iteration is None:
+            checkpt_name = 'e{}.pt'.format(epoch)
+        else:
+            checkpt_name = 'e{}_t{}.pt'.format(epoch, iteration)
         copy(self.paths['weights'], self.intermediate_models / checkpt_name)
+
+    def new_debug_directory(self, epoch, iteration):
+        """
+        Creates a new subdirectory for debugging outputs.
+
+        The new subdirectory will be placed in the `debug_outputs` directory
+        of the archive.
+        """
+        if self.readonly:
+            raise ReadOnlyError(self.name)
+        dirname = 'e{}_t{}'.format(epoch, iteration)
+        debug_directory = self.debug_outputs / dirname
+        debug_directory.mkdir()
+        return debug_directory
 
     def log(self, values, printout=True):
         """
@@ -381,6 +411,24 @@ class ModelArchive(object):
             f.writelines(line + '\n')
         if printout:
             print('log: {}'.format(line))
+
+    def adjust_learning_rate(self):
+        """
+        Sets the learning rate to the initial learning rate decayed by
+        `deccay` every `deccay_cycle` epochs.
+
+        `deccay`, `deccay_cycle`, and the current epoch are pulled from the
+        archive's `state_vars` dictionary.
+        """
+        if self.readonly:
+            raise ReadOnlyError(self.name)
+        epoch = self._state_vars['epoch']
+        deccay = self._state_vars['deccay']
+        deccay_cycle = self._state_vars['deccay_cycle']
+        self._state_vars['lr'] = (self._state_vars['start_lr']
+                                  * (deccay ** (epoch // deccay_cycle)))
+        for param_group in self._optimizer.param_groups:
+            param_group['lr'] = self._state_vars['lr']
 
 
 def set_seed(seed):
@@ -436,6 +484,10 @@ class ReadOnlyError(AttributeError):
 
 
 def warn_change(param_name, before, now):
+    """
+    Warns the user of a discrepancy in the stored archive, and asks
+    for affirmation to continue.
+    """
     warnings.warn('The {} has been changed since '
                   'this model was last saved.\n'
                   'Before: {}\n'

@@ -1,10 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
 import numpy as np
-from helpers import save_chunk, gif, copy_state_to_model, gridsample_residual
-import random
+from helpers import save_chunk, gif, copy_state_to_model, gridsample_residual, upsample, downsample
 
 
 class G(nn.Module):
@@ -112,7 +109,6 @@ class EPyramid(nn.Module):
         print('Constructing EPyramid with size {} ({} downsamples, input size {})...'.format(size, size-1, dim))
         fm_0 = 12
         fm_coef = 6
-        self.identities = {}
         self.skip = skip
         self.topskips = topskips
         self.size = size
@@ -121,8 +117,8 @@ class EPyramid(nn.Module):
         enc_outfms = [fm_0 + fm_coef * idx for idx in range(size)]
         enc_infms = [1] + enc_outfms[:-1]
         self.mlist = nn.ModuleList([G(k=k, infm=enc_outfms[level]*2) for level in range(size)])
-        self.up = nn.Upsample(scale_factor=2, mode='bilinear')
-        self.down = nn.MaxPool2d(2)
+        self.up = upsample()
+        self.down = downsample(type='max')
         self.enclist = nn.ModuleList([Enc(infm=infm, outfm=outfm) for infm, outfm in zip(enc_infms, enc_outfms)])
         self.TRAIN_SIZE = train_size
         self.pe = PreEnc(fm_0)
@@ -242,6 +238,19 @@ class Model(nn.Module):
             params.extend(self.pyramid.enclist[index])
             return params
 
+    def get_submodule(self, index=None):
+        """
+        Select the submodule based on `index`.
+        In general, modules selected with lower indices are intended to
+        be trained earlier than those with higher indices.
+
+        If `index` is None, this selects the full network.
+        """
+        if index is None or index >= self.pyramid.size:
+            return self
+        else:
+            return SingleLevel(self, index)
+
     def copy_aligner(self, id_from, id_to):
         """
         Copy the kernel weights from one aligner module to another
@@ -265,3 +274,20 @@ class Model(nn.Module):
                              .format(id_from, id_to, self.pyramid.size - 1))
         state_dict = self.pyramid.enclist[id_from].state_dict()
         self.pyramid.enclist[id_to].load_state_dict(state_dict)
+
+
+class SingleLevel(nn.Module):
+    def __init__(self, model, level):
+        super(SingleLevel, self).__init__()
+        self.level = level
+        self.aligner = model.pyramid.mlist[level]
+        self.encoder = model.pyramid.enclist[level]
+        self.TRAIN_SIZE = model.pyramid.TRAIN_SIZE
+
+    def forward(self, input, vis=None):
+        if vis is not None:
+            gif(vis + 'input', gif_prep(input))
+        encodings = self.encoder(input)
+        factor = (self.TRAIN_SIZE / (2. ** self.level)) / encodings.size()[-1]
+        rfield = self.aligner(encodings) * factor
+        return rfield
