@@ -24,7 +24,7 @@ Usage:
     >>> mymodel = ModelArchive('mymodel_v01', readonly=False)
     (some training code ...)
     >>> mymodel.log(loss)
-    >>> mymodel.update()  # save the updated state to disk
+    >>> mymodel.save()  # save the updated state to disk
 
     Load an existing trained model and run it on data:
     >>> existing_archive = ModelArchive('existing_archive', readonly=True)
@@ -35,7 +35,7 @@ Usage:
     >>> old_model = ModelArchive('old_model')
     >>> new_model = old_model.start_new('new_model_v01')
     (some training code ...)
-    >>> new_model.update()  # save the updated state of the new model to disk
+    >>> new_model.save()  # save the updated state of the new model to disk
 """
 import sys
 import warnings
@@ -212,7 +212,7 @@ class ModelArchive(object):
         self._load_prand(*args, **kwargs)
         self._load_state_vars(*args, **kwargs)
 
-        self.update()
+        self.save()
 
     def start_new(self, name, *args, **kwargs):
         """
@@ -339,9 +339,11 @@ class ModelArchive(object):
                 self._state_vars = json.load(f)
         return self._state_vars
 
-    def update(self):
+    def save(self):
         """
-        Updates the saved archive to match the live training state of the model
+        Saves the live model archive to disk.
+        More specifically, this updates the saved archive to match the live
+        training state of the model
         """
         if self.readonly:
             raise ReadOnlyError(self.name)
@@ -360,16 +362,18 @@ class ModelArchive(object):
             with self.paths['state_vars'].open('w') as f:
                 f.write(json.dumps(self._state_vars))
 
-    def create_checkpoint(self, epoch, iteration):
+    def create_checkpoint(self, epoch, iteration, save=True):
         """
         Save a checkpoint in the training.
-        This saves an snapshot of the model's current weights.
+        This saves an snapshot of the model's current saved weights.
 
-        Note: This does not update the model, but merely creates a backup
-        copy. To update the weights, use `update()`.
+        Note: To just update the saved weights without creating a checkpoint,
+        use `save()`.
         """
         if self.readonly:
             raise ReadOnlyError(self.name)
+        if save:
+            self.save()  # ensure the saved weights are up to date
         if epoch is None:
             checkpt_name = 'init.pt'
         elif iteration is None:

@@ -117,7 +117,7 @@ def main():
                 param_group['weight_decay'] = state_vars['wd']
 
     # update the archive
-    archive.update()
+    archive.save()
     log_titles = [
         'Time Stamp',
         'Epoch',
@@ -164,7 +164,7 @@ def main():
         # evaluate on validation set
         val_loss = validate(val_loader, archive, epoch)
 
-        archive.update()
+        archive.save()
         log_vals = [
             datetime.datetime.now(),
             epoch,
@@ -206,7 +206,7 @@ def train(train_loader, archive, epoch):
         archive.optimizer.step()
         loss = loss.item()  # get python value without the computation graph
         losses.update(loss)
-        archive.update()
+        archive.save()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
