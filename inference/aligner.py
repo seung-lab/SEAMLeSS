@@ -47,14 +47,14 @@ class Aligner:
 
     self.dst_ng_path = os.path.join(dst_ng_path, 'image')
     self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
-   
     if (self.run_pairs): 
         self.field_sf_ng_path = os.path.join(dst_ng_path, 'field_sf')
-        self.image_pixels_sum = np.empty(1)
-        self.field_sf_sum = np.empty((1,1))
-        self.reg_field = np.zeros(2, dtype=np.float32)
-        self.x_len = 0
-        self.y_len = 0
+        self.gauss_filter = self.Gaussian_filter(17, 6) 
+        #self.image_pixels_sum = np.empty(1)
+        #self.field_sf_sum = np.empty((1,1))
+        #self.reg_field = np.zeros(2, dtype=np.float32)
+        #self.x_len = 0
+        #self.y_len = 0
     else: 
         self.field_sf_ng_path = ""
 
@@ -105,6 +105,25 @@ class Aligner:
 
 #if not chunk_size[0] :
     #  raise Exception("The chunk size has to be aligned with ng chunk size")
+
+  def Gaussian_filter(self, kernel_size, sigma):
+    x_cord = torch.arange(kernel_size)
+    x_grid = x_cord.repeat(kernel_size).view(kernel_size, kernel_size)
+    y_grid = x_grid.t()
+    xy_grid = torch.stack([x_grid, y_grid], dim=-1)
+    channels =1
+    mean = (kernel_size - 1)/2.
+    variance = sigma**2.
+    gaussian_kernel = (1./(2.*math.pi*variance)) *np.exp(
+        -torch.sum((xy_grid - mean)**2., dim=-1) /\
+        (2*variance))
+    gaussian_kernel = gaussian_kernel / torch.sum(gaussian_kernel)
+    gaussian_kernel = gaussian_kernel.view(1, 1, kernel_size, kernel_size)
+    gaussian_kernel = gaussian_kernel.repeat(channels, 1, 1, 1)
+    gaussian_filter = nn.Conv2d(in_channels=channels, out_channels=channels,kernel_size=kernel_size, padding = (kernel_size -1)//2, bias=False)
+    gaussian_filter.weight.data = gaussian_kernel.type(torch.float32)
+    gaussian_filter.weight.requires_grad = False
+    return gaussian_filter
 
   def set_chunk_size(self, chunk_size):
     self.high_mip_chunk = chunk_size
@@ -443,19 +462,21 @@ class Aligner:
     else:
       print ("not warping")
     if (self.run_pairs):
-      cid = self.get_bbox_id(bbox, mip) 
-      print ("cid is ", cid)
+      #cid = self.get_bbox_id(bbox, mip) 
+      #print ("cid is ", cid)
       decay_factor = 0.8
       if z != start_z:
         field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
-        field_sf = decay_factor * field_sf + (1 - decay_factor) * torch.from_numpy(self.reg_field)
+        regular_part = self.gauss_filter(field_sf)
+        #regular_part = torch.from_numpy(self.reg_field) 
+        field_sf = decay_factor * field_sf + (1 - decay_factor) * regular_part 
         image = gridsample_residual(image, field_sf, padding_mode='zeros')
         agg_flow = agg_flow.permute(0,3,1,2)
         field_sf = field_sf + gridsample_residual(
             agg_flow, field_sf, padding_mode='border').permute(0,2,3,1)
       else:
         field_sf = agg_flow
-      self.calc_image_mean_field(image.numpy()[0,0,mip_disp:-mip_disp,mip_disp:-mip_disp], field_sf[0, mip_disp:-mip_disp, mip_disp:-mip_disp, :], cid)
+      #self.calc_image_mean_field(image.numpy()[0,0,mip_disp:-mip_disp,mip_disp:-mip_disp], field_sf[0, mip_disp:-mip_disp, mip_disp:-mip_disp, :], cid)
       field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
       field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
       self.save_field_patch(field_sf, bbox, mip, z)
@@ -677,12 +698,12 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
-    print("\n total chunsk is ", len(chunks))
-    if (self.run_pairs and (z!=start_z)):
-        total_chunks = len(chunks) 
-        self.reg_field= np.sum(self.field_sf_sum, axis=0) / np.sum(self.image_pixels_sum)
-        self.image_pixels_sum = np.zeros(total_chunks)
-        self.field_sf_sum = np.zeros((total_chunks, 2), dtype=np.float32)
+    #print("\n total chunsk is ", len(chunks))
+    #if (self.run_pairs and (z!=start_z)):
+    #    total_chunks = len(chunks) 
+    #    self.reg_field= np.sum(self.field_sf_sum, axis=0) / np.sum(self.image_pixels_sum)
+    #    self.image_pixels_sum = np.zeros(total_chunks)
+    #    self.field_sf_sum = np.zeros((total_chunks, 2), dtype=np.float32)
 
     def chunkwise(patch_bbox):
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
