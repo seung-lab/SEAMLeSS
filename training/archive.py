@@ -87,9 +87,9 @@ class ModelArchive(object):
 
     def __init__(self, name, readonly=True, *args, **kwargs):
         self._check_name(name)  # check name formatting
-        self.name = name
+        self._name = name
         self.readonly = readonly
-        self.directory = models_location / self.name
+        self.directory = models_location / self._name
         self.intermediate_models = self.directory / 'intermediate_models/'
         self.debug_outputs = self.directory / 'debug_outputs/'
         self.paths = {
@@ -131,9 +131,9 @@ class ModelArchive(object):
 
     def _load(self, *args, **kwargs):
         if not self.readonly:
-            print('Writing to exisiting model archive: {}'.format(self.name))
+            print('Writing to exisiting model archive: {}'.format(self._name))
         else:
-            print('Reading from exisiting model archive: {}'.format(self.name))
+            print('Reading from exisiting model archive: {}'.format(self._name))
         assert self.directory.is_dir() and self.paths['commit'].exists()
 
         # check for matching commits
@@ -164,7 +164,7 @@ class ModelArchive(object):
         self._load_state_vars(*args, **kwargs)
 
     def _create(self, no_optimizer=False, *args, **kwargs):
-        print('Creating a new model archive: {}'.format(self.name))
+        print('Creating a new model archive: {}'.format(self._name))
 
         # create directories
         self.directory.mkdir()
@@ -204,7 +204,7 @@ class ModelArchive(object):
 
         # create a history entry
         with self.paths['history'].open(mode='w') as f:
-            f.writelines('Model: {}'.format(self.name))
+            f.writelines('Model: {}'.format(self._name))
             f.writelines('Time: {}'.format(datetime.datetime.now()))
             f.writelines('Commit: {}'.format(self.commit))
             f.writelines(' '.join(sys.argv))
@@ -241,6 +241,13 @@ class ModelArchive(object):
         tempfile.unlink()  # delete the temporary file
 
         return new_archive
+
+    @property
+    def name(self):
+        """
+        The name of the model
+        """
+        return self._name
 
     @property
     def commit(self):
@@ -351,7 +358,7 @@ class ModelArchive(object):
         training state of the model
         """
         if self.readonly:
-            raise ReadOnlyError(self.name)
+            raise ReadOnlyError(self._name)
         if self._model:
             torch.save(self._model.state_dict(), self.paths['weights'])
             # also write to a json for debugging
@@ -376,7 +383,7 @@ class ModelArchive(object):
         use `save()`.
         """
         if self.readonly:
-            raise ReadOnlyError(self.name)
+            raise ReadOnlyError(self._name)
         if save:
             self.save()  # ensure the saved weights are up to date
         if epoch is None:
@@ -395,7 +402,7 @@ class ModelArchive(object):
         of the archive.
         """
         if self.readonly:
-            raise ReadOnlyError(self.name)
+            raise ReadOnlyError(self._name)
         dirname = 'e{}_t{}'.format(epoch, iteration)
         debug_directory = self.debug_outputs / dirname
         debug_directory.mkdir()
@@ -412,7 +419,7 @@ class ModelArchive(object):
         this will separate that value over two columns.
         """
         if self.readonly:
-            raise ReadOnlyError(self.name)
+            raise ReadOnlyError(self._name)
         if not isinstance(values, list):
             values = [values]
         line = ', '.join(str(v) for v in values)
@@ -423,7 +430,7 @@ class ModelArchive(object):
 
     def set_optimizer_params(self, learning_rate, weight_decay):
         if self.readonly:
-            raise ReadOnlyError(self.name)
+            raise ReadOnlyError(self._name)
         self.state_vars['lr'] = learning_rate
         self.state_vars['wd'] = weight_decay
         for param_group in self._optimizer.param_groups:
@@ -439,7 +446,7 @@ class ModelArchive(object):
         archive's `state_vars` dictionary.
         """
         if self.readonly:
-            raise ReadOnlyError(self.name)
+            raise ReadOnlyError(self._name)
         epoch = self._state_vars['epoch']
         deccay = self._state_vars['deccay']
         deccay_cycle = self._state_vars['deccay_cycle']
@@ -461,7 +468,7 @@ class ModelArchive(object):
         if average_over < 1:
             average_over = 1
         data = data.interpolate().rolling(window=average_over).mean()
-        data.plot(title='Training loss for {}'.format(self.name))
+        data.plot(title='Training loss for {}'.format(self._name))
         plt.savefig(self.paths['plot'])
 
 
