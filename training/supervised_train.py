@@ -198,7 +198,8 @@ def train(train_loader, archive, epoch):
         if truth:
             loss = supervised_loss(prediction=prediction, truth=truth)
         else:
-            loss = unsupervised_loss(data=stack, prediction=prediction)
+            masks = {}  # TODO: generate masks
+            loss = unsupervised_loss(data=stack, prediction=prediction, **masks)
 
         # compute gradient and do optimizer step
         archive.optimizer.zero_grad()
@@ -247,7 +248,6 @@ def train(train_loader, archive, epoch):
 
 
 def validate(val_loader, archive, epoch):
-    batch_time = AverageMeter()
     losses = AverageMeter()
 
     # switch to evaluate mode
@@ -255,37 +255,23 @@ def validate(val_loader, archive, epoch):
     submodule = select_submodule(archive.model, epoch)
     submodule = torch.nn.DataParallel(submodule)
 
-    # with torch.no_grad():
-    #     end = time.time()
-    #     for i, (input, target) in enumerate(val_loader):
-    #         input = input.cuda(args.gpu, non_blocking=True)
-    #         target = target.cuda(args.gpu, non_blocking=True)
+    with torch.no_grad():
+        start_time = time.time()
+        for i, sample in enumerate(val_loader):
+            # compute output and loss
+            stack, truth = prepare_input(sample, supervised=False)
+            prediction = submodule(stack)
+            masks = {}  # TODO: generate masks
+            loss = unsupervised_loss(data=stack, prediction=prediction, **masks)
+            losses.update(loss.item(), input.size(0))
 
-    #         # compute output
-    #         output = archive.model(input)
-    #         loss = criterion(output, target)
+        # measure elapsed time
+        batch_time = (time.time() - start_time)
 
-    #         # measure accuracy and record loss
-    #         prec1, prec5 = accuracy(output, target, topk=(1, 5))
-    #         losses.update(loss.item(), input.size(0))
-    #         top1.update(prec1[0], input.size(0))
-    #         top5.update(prec5[0], input.size(0))
-
-    #         # measure elapsed time
-    #         batch_time.update(time.time() - end)
-    #         end = time.time()
-
-    #         if i % args.print_freq == 0:
-    #             print('Test: [{0}/{1}]\t'
-    #                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-    #                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-    #                   'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-    #                   'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-    #                    i, len(val_loader), batch_time=batch_time, loss=losses,
-    #                    top1=top1, top5=top5))
-
-    #     print(' * Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}'
-    #           .format(top1=top1, top5=top5))
+        print('Validation: [{0} samples]\t'
+              'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+              'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
+               len(val_loader), batch_time=batch_time, loss=losses))
 
     return losses.avg
 
@@ -295,20 +281,32 @@ class AverageMeter(object):
     Computes and stores the average and current value
     """
 
-    def __init__(self):
-        self.reset()
+    def __init__(self, store=False):
+        self.reset(store)
 
-    def reset(self):
+    def reset(self, store=False):
         self.val = 0
         self.avg = 0
         self.sum = 0
         self.count = 0
+        self.history = None
+        if store:
+            self.history = []
+        self.warned = False
 
     def update(self, val, n=1):
+        if isinstance(val, torch.Tensor):
+            if not self.warned:
+                warnings.warn('Accumulating a pytorch tensor can cause a gpu '
+                              'memory leak. Converting to a python scalar.')
+                self.warned = True
+            val = val.item()
         self.val = val
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+        if self.history is not None:
+            self.history += [val]*n
 
 
 def select_submodule(model, epoch):
@@ -324,8 +322,15 @@ def select_submodule(model, epoch):
     return submodule
 
 
-def prepare_input(sample, max_displacement=2):
-    if state_vars['supervised']:
+def prepare_input(sample, supervised=None, max_displacement=2):
+    """
+    Formats the input received from the data loader and produces a
+    ground truth vector field if supervised.
+    If `supervised` is None, it uses the value specified in state_vars
+    """
+    if supervised is None:
+        supervised = state_vars['supervised']
+    if supervised:
         src = sample['src']
         truth_field = random_field(src.shape, max_displacement=max_displacement)
         tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
