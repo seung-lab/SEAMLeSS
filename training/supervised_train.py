@@ -55,7 +55,7 @@ import torchvision.transforms as transforms
 from pathlib import Path
 
 from arguments import parse_args  # TODO: move up for faster arg access
-from archive import ModelArchive, warn_change
+from archive import ModelArchive
 import stack_dataset as stack
 from helpers import (gridsample_residual, save_chunk, dv as save_vectors,
                      upsample, downsample, AverageMeter)
@@ -204,6 +204,7 @@ def train(train_loader, archive, epoch):
                 save_chunk(stack[:, 1, :, :], str(debug_dir / 'tgt'))
                 save_vectors(truth, str(debug_dir / 'ground_truth'))
                 save_vectors(prediction, str(debug_dir / 'prediction'))
+                archive.visualize_loss(['Training Loss', 'Validation Loss'])
             except Exception as e:
                 # Don't raise the exception, since visualization issues
                 # should not stop training. Just warn the user and go on.

@@ -46,6 +46,10 @@ import numpy as np
 import json
 import datetime
 from pathlib import Path
+import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 from helpers import copy
 
@@ -107,6 +111,7 @@ class ModelArchive(object):
             'architecture.py',
             'commit.txt',
             'state_vars.json',
+            'plot.png',
         ]:
             key = filename.split('.')[0]
             self.paths[key] = self.directory / filename
@@ -442,6 +447,22 @@ class ModelArchive(object):
                                   * (deccay ** (epoch // deccay_cycle)))
         for param_group in self._optimizer.param_groups:
             param_group['lr'] = self._state_vars['lr']
+
+    def visualize_loss(self, columns, average_over=100):
+        """
+        Save a plot of the learning curves
+        """
+        if not isinstance(columns, list):
+            columns = [columns]
+        data = pd.read_csv(self.paths['loss'])[columns]
+        # ensure averaging window is reasonable
+        if average_over > len(data.index) // 10 + 1:
+            average_over = len(data.index) // 10 + 1
+        if average_over < 1:
+            average_over = 1
+        data = data.interpolate().rolling(window=average_over).mean()
+        data.plot(title='Training loss for {}'.format(self.name))
+        plt.savefig(self.paths['plot'])
 
 
 def set_seed(seed):
