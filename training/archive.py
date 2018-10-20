@@ -368,7 +368,7 @@ class ModelArchive(object):
             raise ReadOnlyError(self._name)
         if self._model:
             with self.paths['weights'].open('wb') as f:
-                torch.save(self._model.state_dict(), f)
+                torch.save(self._model.module.state_dict(), f)
             # also write to a json for debugging
             # with self.paths['weights'].with_suffix('.json').open('w') as f:
             #     state_dict = [(name, val.cpu().numpy().tolist())
