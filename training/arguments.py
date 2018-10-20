@@ -34,7 +34,7 @@ def parse_args(args=None):
     resume_parser = subparsers.add_parser('resume', help=resume_help,
                                           description=resume_help)
     resume_parser.add_argument(
-        'saved_model',
+        'name',
         help='the saved model to resume training',
         type=str,
         metavar='MODEL',
@@ -60,11 +60,11 @@ def parse_args(args=None):
         metavar='LR', help='initial learning rate',
     )
     param_group.add_argument(
-        '--deccay', '--deccay_rate', default=0.1, type=float,
+        '--gamma', '--learning_rate_deccay', default=0.1, type=float,
         metavar='DR', help='rate by which the learning rate deccays',
     )
     param_group.add_argument(
-        '--deccay_cycle', default=30, type=int, metavar='DC',
+        '--gamma_step', default=30, type=int, metavar='DC',
         help='frequency with which the learning rate deccay occurs',
     )
     param_group.add_argument(
@@ -179,18 +179,18 @@ def parse_args(args=None):
     )
     checkpoint_group.add_argument(
         '-i', '--interval',
-        help='combines the log, checkpoint, and visualization intervals',.',
+        help='combines the log, checkpoint, and visualization intervals',
         dest='interval',
         type=int, default=None, metavar='T',
     )
 
     argcomplete.autocomplete(parser)
     args = parser.parse_args(args)
-    if args.interval is not None:
+    if 'interval' in args and args.interval is not None:
         args.log_time = args.interval
         args.checkpoint_time = args.interval
         args.vis_time = args.interval
-    del args.interval
+        del args.interval
     return args
 
 

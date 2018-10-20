@@ -72,15 +72,24 @@ def main():
     # create or load the model, optimizer, and parameters
     if args.command == 'start':
         if ModelArchive.model_exists(args.name):
-            raise ValueError('The model "{}" already exists.'.format(args.name))
-        archive = ModelArchive(args.name, readonly=False, seed=args.seed)
+            raise ValueError('The model "{}" already exists.'
+                             .format(args.name))
+        if args.saved_model is not None:
+            # load a previous model and create a copy
+            if not ModelArchive.model_exists(args.saved_model):
+                raise ValueError('The model "{}" could not be found.'
+                                 .format(args.saved_model))
+            old = ModelArchive(args.saved_model, readonly=True)
+            archive = old.start_new(args.name, readonly=False, seed=args.seed)
+        else:
+            archive = ModelArchive(args.name, readonly=False, seed=args.seed)
         state_vars = archive.state_vars
         state_vars['name'] = args.name
         state_vars['start_lr'] = args.lr
         state_vars['lr'] = args.lr
         state_vars['wd'] = args.wd
-        state_vars['deccay'] = args.deccay
-        state_vars['deccay_cycle'] = args.deccay_cycle
+        state_vars['gamma'] = args.gamma
+        state_vars['gamma_step'] = args.gamma_step
         state_vars['epoch'] = 0
         state_vars['num_epochs'] = args.num_epochs
         state_vars['training_set_path'] = Path(args.training_set).expanduser()
@@ -102,12 +111,16 @@ def main():
             'Validation Loss',
         ]
         archive.set_log_titles(log_titles)
-        archive.set_optimizer_params(learning_rate=args.lr, weight_decay=args.wd)
+        archive.set_optimizer_params(learning_rate=args.lr,
+                                     weight_decay=args.wd)
 
-        # save the initialized state to the archive
+        # save initialized state to archive; create first checkpoint
         archive.save()
         archive.create_checkpoint(epoch=None, iteration=None)
     else:  # args.command == 'resume'
+        if not ModelArchive.model_exists(args.name):
+            raise ValueError('The model "{}" could not be found.'
+                             .format(args.name))
         archive = ModelArchive(args.name, readonly=False)
         state_vars = archive.state_vars
 

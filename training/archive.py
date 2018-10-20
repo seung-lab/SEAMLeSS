@@ -109,7 +109,7 @@ class ModelArchive(object):
             'progress.log',
             'seed.txt',
             'architecture.py',
-            'commit.txt',
+            'commit.diff',
             'state_vars.json',
             'plot.png',
         ]:
@@ -179,7 +179,7 @@ class ModelArchive(object):
             'history.log',  # nets it was fine_tuned from
             'progress.log',
             'seed.txt',
-            'commit.txt',
+            'commit.diff',
             'state_vars.json',
         ]:
             key = filename.split('.')[0]
@@ -195,7 +195,7 @@ class ModelArchive(object):
             branch = subprocess.check_output('git rev-parse --abbrev-ref HEAD'
                                              .split())
             f.write(branch)
-            diff = subprocess.check_output('git diff'.split())
+            diff = subprocess.check_output('git diff HEAD'.split())
             f.write(diff)
 
         # write out the command used
@@ -204,11 +204,15 @@ class ModelArchive(object):
 
         # create a history entry
         with self.paths['history'].open(mode='w') as f:
-            f.writelines('Model: {}'.format(self._name))
-            f.writelines('Time: {}'.format(datetime.datetime.now()))
-            f.writelines('Commit: {}'.format(self.commit))
-            f.writelines(' '.join(sys.argv))
-            f.writelines('')
+            f.writelines('Model: {}\n'.format(self._name))
+            f.writelines('Time: {}\n'.format(datetime.datetime.now()))
+            f.writelines('Commit: {}\n'.format(self.commit))
+            f.writelines(' '.join(sys.argv) + '\n')
+            f.writelines('\n')
+
+        # initialize state_vars.json
+        with self.paths['state_vars'].open(mode='w') as f:
+            f.writelines('{{"name": "{0}"}}'.format(self._name))
 
         # initialize the model, optimizer, and pseudorandom number generator
         self._load_model(*args, **kwargs)
@@ -295,9 +299,10 @@ class ModelArchive(object):
         sys.path.insert(0, str(self.directory))
         import architecture
         sys.path.remove(str(self.directory))
-        if self.paths['weights'].is_file:
-            weights = torch.load(self.paths['weights'])
-            self._model = architecture.Model.load(*args, weights=weights,
+        if self.paths['weights'].is_file():
+            with self.paths['weights'].open('rb') as f:
+                weights = torch.load(f)
+            self._model = architecture.load(*args, weights=weights,
                                                   **kwargs)
         else:
             self._model = architecture.Model(*args, **kwargs)
@@ -323,8 +328,9 @@ class ModelArchive(object):
         """
         assert self.model is not None, 'The model has not yet been loaded.'
         self._optimizer = torch.optim.Adam(self.model.parameters())
-        if self.paths['optimizer'].is_file:
-            opt_state_dict = torch.load(self.paths['optimizer'])
+        if self.paths['optimizer'].is_file():
+            with self.paths['optimizer'].open('rb') as f:
+                opt_state_dict = torch.load(f)
             self._optimizer.load_state_dict(opt_state_dict)
         return self._optimizer
 
@@ -333,8 +339,9 @@ class ModelArchive(object):
         Loads the saved state of the pseudorandom number generators.
         """
         assert self.optimizer is not None, 'Should not seed before init.'
-        if self.paths['prand'].is_file:
-            prand_state = torch.load(self.paths['prand'])
+        if self.paths['prand'].is_file():
+            with self.paths['prand'].open('rb') as f:
+                prand_state = torch.load(f)
             set_random_generator_state(prand_state)
         else:
             with self.paths['seed'].open('w') as f:
@@ -360,16 +367,22 @@ class ModelArchive(object):
         if self.readonly:
             raise ReadOnlyError(self._name)
         if self._model:
-            torch.save(self._model.state_dict(), self.paths['weights'])
+            with self.paths['weights'].open('wb') as f:
+                torch.save(self._model.state_dict(), f)
             # also write to a json for debugging
-            with self.paths['weights'].with_suffix('.json').open('w') as f:
-                f.write(json.dumps(self._model.state_dict()))
+            # with self.paths['weights'].with_suffix('.json').open('w') as f:
+            #     state_dict = [(name, val.cpu().numpy().tolist())
+            #                   for (name, val)
+            #                   in self._model.state_dict().items()]
+            #     f.write(json.dumps(state_dict))
         if self._optimizer:
-            torch.save(self._optimizer.state_dict(), self.paths['optimizer'])
+            with self.paths['optimizer'].open('wb') as f:
+                torch.save(self._optimizer.state_dict(), f)
             # also write to a json for debugging
             with self.paths['optimizer'].with_suffix('.json').open('w') as f:
                 f.write(json.dumps(self._optimizer.state_dict()))
-        torch.save(get_random_generator_state(), self.paths['prand'])
+        with self.paths['prand'].open('wb') as f:
+            torch.save(get_random_generator_state(), f)
         if self._state_vars:
             with self.paths['state_vars'].open('w') as f:
                 f.write(json.dumps(self._state_vars))
@@ -440,18 +453,18 @@ class ModelArchive(object):
     def adjust_learning_rate(self):
         """
         Sets the learning rate to the initial learning rate decayed by
-        `deccay` every `deccay_cycle` epochs.
+        `gamma` every `gamma_step` epochs.
 
-        `deccay`, `deccay_cycle`, and the current epoch are pulled from the
+        `gamma`, `gamma_step`, and the current epoch are pulled from the
         archive's `state_vars` dictionary.
-        """
+        """  # TODO: reformulate as params
         if self.readonly:
             raise ReadOnlyError(self._name)
         epoch = self._state_vars['epoch']
-        deccay = self._state_vars['deccay']
-        deccay_cycle = self._state_vars['deccay_cycle']
+        gamma = self._state_vars['gamma']
+        gamma_step = self._state_vars['gamma_step']
         self._state_vars['lr'] = (self._state_vars['start_lr']
-                                  * (deccay ** (epoch // deccay_cycle)))
+                                  * (gamma ** (epoch // gamma_step)))
         for param_group in self._optimizer.param_groups:
             param_group['lr'] = self._state_vars['lr']
 
@@ -477,10 +490,10 @@ def set_seed(seed):
     Seeds all the random number genertators used.
     If `seed` is not None, the seeding is deterministic and reproducible.
     """
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
     if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
         torch.backends.cudnn.deterministic = True
         warnings.warn('You have chosen to seed training. '
                       'This will turn on the CUDNN deterministic setting, '
