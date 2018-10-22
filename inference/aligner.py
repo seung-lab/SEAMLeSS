@@ -774,18 +774,19 @@ class Aligner:
     #  raise Exception("Have to align a chunkaligned size")
 
     self.total_bbox = bbox
-    
+    start_z = start_section 
     start = time()
     if move_anchor:
       for m in range(self.render_low_mip, self.high_mip+1):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
-    if (self.run_pairs):
-        self.count_box(bbox, self.render_low_mip);
+        start_z = start_section + 1 
+    #if (self.run_pairs):
+    #    self.count_box(bbox, self.render_low_mip);
     self.zs = start_section
     for z in range(start_section, end_section):
       self.img_cache = {}
       self.compute_section_pair_residuals(z + 1, z, bbox)
-      self.render_section_all_mips(z + 1, bbox, start_section + 1)
+      self.render_section_all_mips(z + 1, bbox, start_z)
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
                                                           end - start))
