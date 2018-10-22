@@ -38,6 +38,7 @@ Editor's note:
     in order to allow command line tab completion to work properly.
 
 """
+from arguments import parse_args  # keep first for fast args access
 
 import os
 import time
@@ -54,7 +55,6 @@ import torch.utils.data.distributed as datadist
 import torchvision.transforms as transforms
 from pathlib import Path
 
-from arguments import parse_args  # TODO: move up for faster arg access
 from archive import ModelArchive
 import stack_dataset as stack
 from helpers import (gridsample_residual, save_chunk, dv as save_vectors,

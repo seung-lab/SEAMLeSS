@@ -203,3 +203,5 @@ def _list_trained_nets(**kwargs):
 
 if __name__ == '__main__':
     print(parse_args())
+
+parse_args()
