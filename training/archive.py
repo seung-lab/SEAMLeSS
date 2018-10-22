@@ -421,6 +421,14 @@ class ModelArchive(object):
         debug_directory.mkdir()
         return debug_directory
 
+    def set_log_titles(self, log_titles):
+        """
+        Set the column titles for `loss.csv`.
+
+        If `log_titles` is a list, each element is written in its own column.
+        """
+        self.log(log_titles, printout=False)
+
     def log(self, values, printout=True):
         """
         Add a new log entry to `loss.csv`.
