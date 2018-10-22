@@ -388,7 +388,11 @@ class ModelArchive(object):
             torch.save(get_random_generator_state(), f)
         if self._state_vars:
             with self.paths['state_vars'].open('w') as f:
-                f.write(json.dumps(self._state_vars))
+                state_vars_serializable = {
+                    key: (str(value) if isinstance(value, Path) else value)
+                    for (key, value) in self._state_vars.items()
+                }
+                f.write(json.dumps(state_vars_serializable))
 
     def create_checkpoint(self, epoch, iteration, save=True):
         """
