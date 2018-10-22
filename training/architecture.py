@@ -181,8 +181,7 @@ class Model(nn.Module):
         return gridsample_residual(x[:,0:1,:,:], field, padding_mode='zeros'), field, residuals
 
     @classmethod
-    def load(cls, archive_path=None, weights=None, height=5, dim=1024, skips=0,
-             topskips=0, k=7, cuda=True, num_targets=1, *args, **kwargs):
+    def load(cls, archive_path=None, weights=None, *args, **kwargs):
         """
         Builds and load a model with the specified architecture from
         an archive.
@@ -196,7 +195,7 @@ class Model(nn.Module):
             cuda:   whether or not to move the model to the GPU
         """
 
-        model = type(cls)(size=height, dim=dim, k=k, skip=skips, topskips=topskips, num_targets=num_targets)
+        model = cls(*args, **kwargs)
         print('Loading model state from {}...'.format(archive_path))
         if archive_path is not None:
             weights = torch.load(archive_path)

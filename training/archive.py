@@ -302,7 +302,7 @@ class ModelArchive(object):
         if self.paths['weights'].is_file():
             with self.paths['weights'].open('rb') as f:
                 weights = torch.load(f)
-            self._model = architecture.load(*args, weights=weights,
+            self._model = architecture.Model.load(*args, weights=weights,
                                                   **kwargs)
         else:
             self._model = architecture.Model(*args, **kwargs)
