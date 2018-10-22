@@ -1,5 +1,6 @@
 import os
 import shutil
+import warnings
 from pathlib import Path
 from moviepy.editor import ImageSequenceClip
 import numpy as np
@@ -22,7 +23,7 @@ def compose_functions(fseq):
     return reduce(compose, fseq, lambda _: _)
 
 
-def copy(src, dst):
+def cp(src, dst):
     """
     A wrapper for the shutil copy function, but that accepts path objects.
     The shutil library will be updated to accept them directly in a later

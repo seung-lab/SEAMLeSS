@@ -45,13 +45,16 @@ import torch
 import numpy as np
 import json
 import datetime
+import copy
 from pathlib import Path
 import pandas as pd
+
+from helpers import cp
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from helpers import copy
 
 git_root = Path(subprocess.check_output('git rev-parse --show-toplevel'
                                         .split()).strip().decode("utf-8"))
@@ -186,7 +189,7 @@ class ModelArchive(object):
             self.paths[key].touch(exist_ok=False)
 
         # copy the architecture definition into the archive
-        copy(git_root/'training'/'architecture.py', self.paths['architecture'])
+        cp(git_root/'training'/'architecture.py', self.paths['architecture'])
 
         # record the status of the git repository
         with self.paths['commit'].open(mode='wb') as f:
@@ -234,12 +237,12 @@ class ModelArchive(object):
         if self.model_exists(name):
             raise ValueError('The model "{}" already exists.'.format(name))
         new_archive = type(self)(name, readonly=False, *args, **kwargs)
-        copy(self.paths['weights'], new_archive.paths['weights'])
+        cp(self.paths['weights'], new_archive.paths['weights'])
 
         # Copy the old history into the new archive
         tempfile = new_archive.directory / 'history.log.temp'
-        copy(new_archive.paths['history'], tempfile)
-        copy(self.paths['history'], new_archive.paths['history'])
+        cp(new_archive.paths['history'], tempfile)
+        cp(self.paths['history'], new_archive.paths['history'])
         with new_archive.paths['history'].open(mode='a') as f:
             f.writelines(tempfile.read_text())
         tempfile.unlink()  # delete the temporary file
@@ -405,7 +408,7 @@ class ModelArchive(object):
             checkpt_name = 'e{}.pt'.format(epoch)
         else:
             checkpt_name = 'e{}_t{}.pt'.format(epoch, iteration)
-        copy(self.paths['weights'], self.intermediate_models / checkpt_name)
+        cp(self.paths['weights'], self.intermediate_models / checkpt_name)
 
     def new_debug_directory(self, epoch, iteration):
         """
