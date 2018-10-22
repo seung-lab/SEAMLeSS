@@ -382,8 +382,8 @@ class ModelArchive(object):
             with self.paths['optimizer'].open('wb') as f:
                 torch.save(self._optimizer.state_dict(), f)
             # also write to a json for debugging
-            with self.paths['optimizer'].with_suffix('.json').open('w') as f:
-                f.write(json.dumps(self._optimizer.state_dict()))
+            # with self.paths['optimizer'].with_suffix('.json').open('w') as f:
+            #     f.write(json.dumps(self._optimizer.state_dict()))
         with self.paths['prand'].open('wb') as f:
             torch.save(get_random_generator_state(), f)
         if self._state_vars:
@@ -489,15 +489,20 @@ class ModelArchive(object):
         """
         if not isinstance(columns, list):
             columns = [columns]
-        data = pd.read_csv(self.paths['loss'])[columns]
+        data = pd.read_csv(self.paths['loss'], sep='\s*,\s*', 
+                           encoding='ascii', engine='python')[columns]
         # ensure averaging window is reasonable
         if average_over > len(data.index) // 10 + 1:
             average_over = len(data.index) // 10 + 1
         if average_over < 1:
             average_over = 1
-        data = data.interpolate().rolling(window=average_over).mean()
+        data = data.dropna(axis=1, how='all').interpolate()
+        if data.empty:
+            return
+        data = data.rolling(window=average_over).mean()
         data.plot(title='Training loss for {}'.format(self._name))
-        plt.savefig(self.paths['plot'])
+        with self.paths['plot'].open('wb') as f:
+            plt.savefig(f)
 
 
 def set_seed(seed):

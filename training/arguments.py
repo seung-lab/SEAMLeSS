@@ -56,7 +56,7 @@ def parse_args(args=None):
 
     param_group = start_parser.add_argument_group('training parameters')
     param_group.add_argument(
-        '--lr', '--learning_rate', default=0.1, type=float,
+        '--lr', '--learning_rate', default=0.0002, type=float,
         metavar='LR', help='initial learning rate',
     )
     param_group.add_argument(
@@ -68,7 +68,7 @@ def parse_args(args=None):
         help='frequency with which the learning rate deccay occurs',
     )
     param_group.add_argument(
-        '--num_epochs', default=None, type=int, metavar='N',
+        '--num_epochs', default=1000000, type=int, metavar='N',
         help='number of total epochs to run',
     )
     default_low, default_high = 2, 9
@@ -114,6 +114,7 @@ def parse_args(args=None):
         help='Train in a supervised fashion on randomly generated ground '
              'truth vector fields and false slice pairs. This is the default.',
         dest='supervised',
+        default=True,
         action='store_true',
     )
     loss_type.add_argument(
@@ -134,7 +135,7 @@ def parse_args(args=None):
         choices=('lap', 'jacob', 'cjacob', 'tv'),
         help='type of smoothness penalty. '
              'Only relevant for unsupervised trainng.',
-        type=str, default='jacob',
+        type=str, default='lap',
     )
     loss_group.add_argument(
         '--defect_net', metavar='NET',

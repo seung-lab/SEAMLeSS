@@ -56,7 +56,7 @@ from pathlib import Path
 
 from archive import ModelArchive
 import stack_dataset as stack
-from helpers import (gridsample_residual, save_chunk, dv as save_vectors,
+from helpers import (gridsample_residual, save_chunk, dvl as save_vectors,
                      upsample, downsample, AverageMeter)
 from loss import smoothness_penalty
 
@@ -102,7 +102,7 @@ def main():
         state_vars['log_time'] = args.log_time
         state_vars['checkpoint_time'] = args.checkpoint_time
         state_vars['vis_time'] = args.vis_time
-        state_vars['lambda1'] = args.vis_time
+        state_vars['lambda1'] = args.lambda1
         state_vars['penalty'] = args.penalty
         log_titles = [
             'Time Stamp',
@@ -142,7 +142,7 @@ def main():
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size,
-        shuffle=(train_sampler is None), num_workers=args.workers,
+        shuffle=(train_sampler is None), num_workers=args.num_workers,
         pin_memory=True, sampler=train_sampler)
 
     if state_vars['validation_set_path']:
@@ -150,7 +150,7 @@ def main():
             [state_vars['validation_set_path']], transform)
         val_loader = torch.utils.data.DataLoader(
             validation_dataset, batch_size=args.batch_size, shuffle=False,
-            num_workers=args.workers, pin_memory=True)
+            num_workers=args.num_workers, pin_memory=True)
     else:
         val_loader = None
 
@@ -200,7 +200,7 @@ def train(train_loader, archive, epoch):
         # compute output and loss
         stack, truth = prepare_input(sample)
         prediction = submodule(stack)
-        if truth:
+        if truth is not None:
             loss = supervised_loss(prediction=prediction, truth=truth)
         else:
             masks = {}  # TODO: generate masks
@@ -223,13 +223,19 @@ def train(train_loader, archive, epoch):
                 debug_dir = archive.new_debug_directory(epoch, i)
                 save_chunk(stack[:, 0, :, :], str(debug_dir / 'src'))
                 save_chunk(stack[:, 1, :, :], str(debug_dir / 'tgt'))
-                save_vectors(truth, str(debug_dir / 'ground_truth'))
-                save_vectors(prediction, str(debug_dir / 'prediction'))
+                warped_src = gridsample_residual(
+                    stack[:, 0:1, :, :], prediction.detach().cpu(),
+                    padding_mode='zeros')
+                save_chunk(warped_src, str(debug_dir / 'warped_src'))
                 archive.visualize_loss(['Training Loss', 'Validation Loss'])
+                save_vectors(truth.detach().cpu().numpy(),
+                             str(debug_dir / 'ground_truth'))
+                save_vectors(prediction.detach().cpu().numpy(),
+                             str(debug_dir / 'prediction'))
             except Exception as e:
                 # Don't raise the exception, since visualization issues
                 # should not stop training. Just warn the user and go on.
-                print('Visualization failed: {}'.format(e))
+                print('Visualization failed: {}: {}'.format(type(e), e))
         if i % state_vars['checkpoint_time'] == 0:
             archive.create_checkpoint(epoch=epoch, iteration=i)
         if i % state_vars['log_time'] == 0:
@@ -289,7 +295,7 @@ def select_submodule(model, epoch):
     """
     for p in model.parameters():
         p.requires_grad = False
-    submodule = model.get_submodule(epoch)
+    submodule = model.module.get_submodule(epoch)
     for p in submodule.parameters():
         p.requires_grad = True
     return submodule
@@ -304,14 +310,14 @@ def prepare_input(sample, supervised=None, max_displacement=2):
     if supervised is None:
         supervised = state_vars['supervised']
     if supervised:
-        src = sample['src']
+        src = sample['src'].unsqueeze(0)
         truth_field = random_field(src.shape, max_displacement=max_displacement)
         tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
     else:
-        src = sample['src']
-        tgt = sample['tgt']
+        src = sample['src'].unsqueeze(0)
+        tgt = sample['tgt'].unsqueeze(0)
         truth_field = None
-    stack = torch.cat([src.unsqueeze(0), tgt.unsqueeze(0)]).unsqueeze(0)
+    stack = torch.cat([src, tgt], 1)
     return stack, truth_field
 
 
@@ -323,10 +329,11 @@ def random_field(shape, max_displacement=2):
         std = max_displacement / shape[-2] * math.sqrt(2)
         smaller = torch.nn.init.normal_(smaller, mean=0, std=std)
         result = upsample(2)(smaller)
-    return result
+    return result.permute(0, 2, 3, 1)
 
 
 def supervised_loss(prediction, truth):
+    truth = truth.to(prediction.device)
     return ((prediction - truth) ** 2).mean()
 
 
