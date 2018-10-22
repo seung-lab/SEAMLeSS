@@ -152,7 +152,7 @@ def parse_args(args=None):
     data_group.add_argument(
         '--training_set', metavar='SET',
         help='Dataset to use for training (default: None)',
-        type=str, default=None,
+        type=str, required=True,
     )
 
     checkpoint_group = start_parser.add_argument_group('checkpointing')

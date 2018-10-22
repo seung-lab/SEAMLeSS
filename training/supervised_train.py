@@ -93,7 +93,9 @@ def main():
         state_vars['epoch'] = 0
         state_vars['num_epochs'] = args.num_epochs
         state_vars['training_set_path'] = Path(args.training_set).expanduser()
-        state_vars['validation_set_path'] = Path(args.validation_set).expanduser()
+        state_vars['validation_set_path'] = (
+            Path(args.validation_set).expanduser() if args.validation_set
+            else None)
         state_vars['lm'] = args.lm
         state_vars['hm'] = args.hm
         state_vars['supervised'] = args.supervised
@@ -136,18 +138,22 @@ def main():
         stack.RandomAugmentation(),
         stack.Normalize(2)
     ])
-    train_dataset = stack.compile_dataset([state_vars['training_set_path']], transform)
-    validation_dataset = stack.compile_dataset([state_vars['validation_set_path']], transform)
+    train_dataset = stack.compile_dataset(
+        [state_vars['training_set_path']], transform)
     train_sampler = datadist.DistributedSampler(train_dataset)
-
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size,
         shuffle=(train_sampler is None), num_workers=args.workers,
         pin_memory=True, sampler=train_sampler)
 
-    val_loader = torch.utils.data.DataLoader(
-        validation_dataset, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
+    if state_vars['validation_set_path']:
+        validation_dataset = stack.compile_dataset(
+            [state_vars['validation_set_path']], transform)
+        val_loader = torch.utils.data.DataLoader(
+            validation_dataset, batch_size=args.batch_size, shuffle=False,
+            num_workers=args.workers, pin_memory=True)
+    else:
+        val_loader = None
 
     print('=========== BEGIN TRAIN LOOP ============')
     start_epoch = state_vars['epoch']
@@ -159,17 +165,21 @@ def main():
         train_loss = train(train_loader, archive, epoch)
 
         # evaluate on validation set
-        val_loss = validate(val_loader, archive, epoch)
+        if val_loader:
+            val_loss = validate(val_loader, archive, epoch)
+        else:
+            val_loss = None
 
+        # log and save state
         archive.save()
-        log_vals = [
+        log_values = [
             datetime.datetime.now(),
             epoch,
             len(train_loader),
             train_loss,
             val_loss,
         ]
-        archive.log(log_vals, printout=True)
+        archive.log(log_values, printout=True)
         archive.create_checkpoint(epoch, iteration=None)
 
 
@@ -225,14 +235,14 @@ def train(train_loader, archive, epoch):
         if i % state_vars['checkpoint_time'] == 0:
             archive.create_checkpoint(epoch=epoch, iteration=i)
         if i % state_vars['log_time'] == 0:
-            log_vals = [
+            log_values = [
                datetime.datetime.now(),
                epoch,
                i,
                loss,
                '',
             ]
-            archive.log(log_vals, printout=True)
+            archive.log(log_values, printout=True)
             print('Epoch: {0} [{1}/{2}]\t'
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                   'BatchTime {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
