@@ -51,7 +51,6 @@ import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
-import torch.utils.data.distributed as datadist
 import torchvision.transforms as transforms
 from pathlib import Path
 
@@ -140,7 +139,7 @@ def main():
     ])
     train_dataset = stack.compile_dataset(
         [state_vars['training_set_path']], transform)
-    train_sampler = datadist.DistributedSampler(train_dataset)
+    train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size,
         shuffle=(train_sampler is None), num_workers=args.workers,
@@ -159,7 +158,6 @@ def main():
     start_epoch = state_vars['epoch']
     for epoch in range(start_epoch, state_vars['num_epochs']):
         state_vars['epoch'] = epoch
-        train_sampler.set_epoch(epoch)
 
         # train for one epoch
         train_loss = train(train_loader, archive, epoch)
