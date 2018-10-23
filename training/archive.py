@@ -119,13 +119,6 @@ class ModelArchive(object):
             key = filename.split('.')[0]
             self.paths[key] = self.directory / filename
 
-        if not self.readonly:
-            self.out = FileLog(sys.stdout, self.paths['progress'])
-            self.err = FileLog(sys.stderr, self.paths['progress'])
-        else:
-            self.out = sys.stdout
-            self.err = sys.stderr
-
         self._model = None
         self._optimizer = None
         self._state_vars = None
@@ -139,6 +132,14 @@ class ModelArchive(object):
                              'If the intention was to create one, use '
                              '`ModelArchive("{}", readonly=False)`.'
                              .format(name, name))
+
+        if not self.readonly:
+            self.out = FileLog(sys.stdout, self.paths['progress'])
+            self.err = FileLog(sys.stderr, self.paths['progress'])
+        else:
+            self.out = sys.stdout
+            self.err = sys.stderr
+
 
     def _load(self, *args, **kwargs):
         if not self.readonly:
@@ -497,7 +498,7 @@ class ModelArchive(object):
         """
         if not isinstance(columns, list):
             columns = [columns]
-        data = pd.read_csv(self.paths['loss'], sep='\s*,\s*', 
+        data = pd.read_csv(self.paths['loss'], sep='\\s*,\\s*',
                            encoding='ascii', engine='python')[columns]
         # ensure averaging window is reasonable
         if average_over > len(data.index) // 10 + 1:
@@ -572,9 +573,11 @@ class FileLog:
     def write(self, message):
         self.terminal_out.write(message)
         self.file.write(message)
+        self.file.flush()
 
     def flush(self):
         self.terminal_out.flush()
+        self.file.flush()
 
 
 class ReadOnlyError(AttributeError):
