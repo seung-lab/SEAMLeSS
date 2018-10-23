@@ -164,6 +164,7 @@ def main():
     start_epoch = state_vars['epoch']
     for epoch in range(start_epoch, state_vars['num_epochs']):
         state_vars['epoch'] = epoch
+        archive.save()
 
         # train for one epoch
         train_loss = train(train_loader, archive, epoch)
