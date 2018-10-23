@@ -218,7 +218,7 @@ def train(train_loader, archive, epoch):
         batch_time.update(time.time() - end)
 
         # logging and checkpointing
-        if i % state_vars['vis_time'] == 0:
+        if state_vars['vis_time'] and i % state_vars['vis_time'] == 0:
             try:
                 debug_dir = archive.new_debug_directory(epoch, i)
                 save_chunk(stack[:, 0, :, :], str(debug_dir / 'src'))
@@ -236,9 +236,10 @@ def train(train_loader, archive, epoch):
                 # Don't raise the exception, since visualization issues
                 # should not stop training. Just warn the user and go on.
                 print('Visualization failed: {}: {}'.format(type(e), e))
-        if i % state_vars['checkpoint_time'] == 0:
+        if (state_vars['checkpoint_time']
+                and i % state_vars['checkpoint_time'] == 0):
             archive.create_checkpoint(epoch=epoch, iteration=i)
-        if i % state_vars['log_time'] == 0:
+        if state_vars['log_time'] and i % state_vars['log_time'] == 0:
             log_values = [
                datetime.datetime.now(),
                epoch,

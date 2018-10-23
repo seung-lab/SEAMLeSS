@@ -176,11 +176,12 @@ def parse_args(args=None):
         help='the number of samples in between each visualization. '
              'Use 0 to disable.',
         dest='vis_time',
-        type=int, default=100, metavar='T',
+        type=int, default=10, metavar='T',
     )
     checkpoint_group.add_argument(
         '-i', '--interval',
-        help='combines the log, checkpoint, and visualization intervals',
+        help='combines the log, checkpoint, and visualization intervals, '
+             'if set',
         dest='interval',
         type=int, default=None, metavar='T',
     )
