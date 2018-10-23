@@ -41,6 +41,7 @@ Editor's note:
 from arguments import parse_args  # keep first for fast args access
 
 import os
+import sys
 import time
 import warnings
 import datetime
@@ -124,6 +125,10 @@ def main():
                              .format(args.name))
         archive = ModelArchive(args.name, readonly=False)
         state_vars = archive.state_vars
+
+    # redirect output to the archive
+    sys.stdout = archive.out
+    sys.stderr = archive.err
 
     # optimize cuda processes
     cudnn.benchmark = True

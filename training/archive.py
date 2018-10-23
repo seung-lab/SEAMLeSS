@@ -118,6 +118,14 @@ class ModelArchive(object):
         ]:
             key = filename.split('.')[0]
             self.paths[key] = self.directory / filename
+
+        if not self.readonly:
+            self.out = FileLog(sys.stdout, self.paths['progress'])
+            self.err = FileLog(sys.stderr, self.paths['progress'])
+        else:
+            self.out = sys.stdout
+            self.err = sys.stderr
+
         self._model = None
         self._optimizer = None
         self._state_vars = None
@@ -547,6 +555,26 @@ def set_random_generator_state(state):
     if not torch.backends.cudnn.deterministic:
         warnings.warn('Resetting random state might not seed GPU correctly.')
         torch.backends.cudnn.deterministic = True
+
+
+class FileLog:
+    """
+    A file-like object that writes both to the terminal and to
+    a specified file.
+
+    `terminal_out` should be either `sys.stdout` or `sys.stderr`
+    """
+
+    def __init__(self, terminal_out, file):
+        self.terminal_out = terminal_out
+        self.file = file.open('a')
+
+    def write(self, message):
+        self.terminal_out.write(message)
+        self.file.write(message)
+
+    def flush(self):
+        self.terminal_out.flush()
 
 
 class ReadOnlyError(AttributeError):
