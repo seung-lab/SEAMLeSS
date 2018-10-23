@@ -227,11 +227,12 @@ def train(train_loader, archive, epoch):
         if state_vars['vis_time'] and i % state_vars['vis_time'] == 0:
             try:
                 debug_dir = archive.new_debug_directory(epoch, i)
-                save_chunk(stack[:, 0, :, :], str(debug_dir / 'src'))
-                save_chunk(stack[:, 1, :, :], str(debug_dir / 'tgt'))
+                src, tgt = stack.split(1, dim=1)
+                save_chunk(src, str(debug_dir / 'src'))
+                save_chunk(src, str(debug_dir / 'z_src'))  # same, comp. w/ tgt
+                save_chunk(tgt, str(debug_dir / 'tgt'))
                 warped_src = gridsample_residual(
-                    stack[:, 0:1, :, :], prediction.detach().cpu(),
-                    padding_mode='zeros')
+                    src, prediction.detach().cpu(), padding_mode='zeros')
                 save_chunk(warped_src, str(debug_dir / 'warped_src'))
                 archive.visualize_loss(['Training Loss', 'Validation Loss'])
                 save_vectors(truth.detach().cpu().numpy(),
