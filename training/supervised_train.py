@@ -321,14 +321,14 @@ def prepare_input(sample, supervised=None, max_displacement=2):
     return stack, truth_field
 
 
-def random_field(shape, max_displacement=2):
+def random_field(shape, max_displacement=2, num_downsamples=7):
     with torch.no_grad():
         zero = torch.zeros(shape)
         zero = torch.cat([zero, zero.clone()], 1)
-        smaller = downsample(2)(zero)
+        smaller = downsample(num_downsamples)(zero)
         std = max_displacement / shape[-2] * math.sqrt(2)
         smaller = torch.nn.init.normal_(smaller, mean=0, std=std)
-        result = upsample(2)(smaller)
+        result = upsample(num_downsamples)(smaller)
     return result.permute(0, 2, 3, 1)
 
 
