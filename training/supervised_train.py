@@ -81,6 +81,7 @@ def main():
                                  .format(args.saved_model))
             old = ModelArchive(args.saved_model, readonly=True)
             archive = old.start_new(args.name, readonly=False, seed=args.seed)
+            # TODO: remove old model from memory
         else:
             archive = ModelArchive(args.name, readonly=False, seed=args.seed)
         state_vars = archive.state_vars
@@ -180,7 +181,7 @@ def main():
             epoch,
             len(train_loader),
             train_loss,
-            val_loss,
+            val_loss if val_loss is not None else '',
         ]
         archive.log(log_values, printout=True)
         archive.create_checkpoint(epoch, iteration=None)
@@ -191,7 +192,7 @@ def train(train_loader, archive, epoch):
     data_time = AverageMeter()
     losses = AverageMeter()
 
-    # switch to train mode
+    # switch to train mode and select the submodule to train
     archive.model.train()
     archive.adjust_learning_rate()
     submodule = select_submodule(archive.model, epoch)
@@ -252,9 +253,9 @@ def train(train_loader, archive, epoch):
                loss,
                '',
             ]
-            archive.log(log_values, printout=True)
+            archive.log(log_values, printout=False)
             print('Epoch: {0} [{1}/{2}]\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                  'Loss {loss.val:.10f} ({loss.avg:.10f})\t'
                   'BatchTime {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'DataTime {data_time.val:.3f} ({data_time.avg:.3f})\t'
                   .format(
@@ -288,7 +289,7 @@ def validate(val_loader, archive, epoch):
 
         print('Validation: [{0} samples]\t'
               'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-              'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(
+              'Loss {loss.val:.10f} ({loss.avg:.10f})\t'.format(
                len(val_loader), batch_time=batch_time, loss=losses))
 
     return losses.avg
@@ -317,7 +318,8 @@ def prepare_input(sample, supervised=None, max_displacement=2):
         supervised = state_vars['supervised']
     if supervised:
         src = sample['src'].unsqueeze(0)
-        truth_field = random_field(src.shape, max_displacement=max_displacement)
+        sigma = max_displacement / 2
+        truth_field = random_field(src.shape, sigma=sigma)
         tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
     else:
         src = sample['src'].unsqueeze(0)
@@ -327,25 +329,60 @@ def prepare_input(sample, supervised=None, max_displacement=2):
     return stack, truth_field
 
 
-def random_field(shape, max_displacement=2, num_downsamples=7):
+def random_field(shape, sigma=2, num_downsamples=7):
+    """
+    Genenerates a gaussian distributed random vector field smoothed by
+    bilinear interpolation.
+
+    `sigma` is the standard deviation of the gaussian.
+
+    `num_downsamples` dictates the block size for the random field.
+    Each block will have size `2**num_downsamples`.
+    """
     with torch.no_grad():
         zero = torch.zeros(shape)
         zero = torch.cat([zero, zero.clone()], 1)
         smaller = downsample(num_downsamples)(zero)
-        std = max_displacement / shape[-2] * math.sqrt(2)
+        std = sigma / shape[-2] * math.sqrt(2)
         smaller = torch.nn.init.normal_(smaller, mean=0, std=std)
         result = upsample(num_downsamples)(smaller)
     return result.permute(0, 2, 3, 1)
 
 
 def supervised_loss(prediction, truth):
+    """
+    Calculate a supervised loss based on the mean squared error with
+    the ground truth vector field.
+    """
     truth = truth.to(prediction.device)
     return ((prediction - truth) ** 2).mean()
 
 
-def unsupervised_loss(data, prediction, src_masks=[], tgt_masks=[], field_masks=[]):
-    src = data[:, 0, :, :].unsqueeze(1)
-    tgt = data[:, 0, :, :].unsqueeze(1)
+def unsupervised_loss(data, prediction,
+                      src_masks=None, tgt_masks=None, field_masks=None):
+    """
+    Calculate a self-supervised loss based on
+    (a) the mean squared error between the source and target images
+    (b) the smoothness of the vector field
+
+    The masks are used to ignore or reduce the loss values in certain regions
+    of the images and vector field.
+
+    If `MSE(a, b)` is the mean squared error of two images, and `Penalty(f)`
+    is the smoothness penalty of a vector field, the loss is calculated
+    roughly as
+        >>> loss = MSE(src, tgt) + lambda1 * Penalty(prediction)
+    where `lambda1` and the type of smoothness penalty are both
+    pulled from the `state_vars` dictionary.
+    """
+    if src_masks is None:
+        src_masks = []
+    if tgt_masks is None:
+        tgt_masks = []
+    if field_masks is None:
+        field_masks = []
+
+    src, tgt = data.split(1, dim=1)
     src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
 
     image_loss_map = (src_warped - tgt)**2
