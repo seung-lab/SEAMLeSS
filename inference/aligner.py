@@ -9,6 +9,8 @@ import math
 from time import time
 from copy import deepcopy, copy
 from helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
+import scipy
+import scipy.ndimage
 
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum
@@ -50,7 +52,7 @@ class Aligner:
     self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
     if (self.run_pairs): 
         self.field_sf_ng_path = os.path.join(dst_ng_path, 'field_sf')
-        self.gauss_filter = self.Gaussian_filter(17, 6) 
+        #self.gauss_filter = self.Gaussian_filter(1025, 256) 
         #self.image_pixels_sum = np.empty(1)
         #self.field_sf_sum = np.empty((1,1))
         #self.reg_field = np.zeros(2, dtype=np.float32)
@@ -468,9 +470,13 @@ class Aligner:
       decay_factor = 0.4
       if z != start_z:
         field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
-        regular_part = self.gauss_filter(field_sf.permute(3,0,1,2))
+        regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 256)).unsqueeze(-1)
+        regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 256)).unsqueeze(-1)
+        #regular_part = self.gauss_filter(field_sf.permute(3,0,1,2))
         #regular_part = torch.from_numpy(self.reg_field) 
-        field_sf = decay_factor * field_sf + (1 - decay_factor) * regular_part.permute(1,2,3,0) 
+        #field_sf = decay_factor * field_sf + (1 - decay_factor) * regular_part.permute(1,2,3,0) 
+        #field_sf = regular_part.permute(1,2,3,0) 
+        field_sf = torch.cat([regular_part_x,regular_part_y],-1)
         image = gridsample_residual(image, field_sf, padding_mode='zeros')
         agg_flow = agg_flow.permute(0,3,1,2)
         field_sf = field_sf + gridsample_residual(
