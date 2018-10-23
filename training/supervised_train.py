@@ -200,6 +200,8 @@ def train(train_loader, archive, epoch):
 
     end = time.time()
     for i, sample in enumerate(train_loader):
+        state_vars['iteration'] = i
+
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -264,6 +266,7 @@ def train(train_loader, archive, epoch):
                       data_time=data_time, loss=losses))
 
         end = time.time()
+    state_vars['iteration'] = None
     return losses.avg
 
 
