@@ -196,7 +196,7 @@ class Model(nn.Module):
         """
 
         model = cls(*args, **kwargs)
-        print('Loading model state from {}...'.format(archive_path))
+        print('Loading model state...')
         if archive_path is not None:
             weights = torch.load(archive_path)
         if weights is None:

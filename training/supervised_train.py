@@ -146,7 +146,7 @@ def main():
         [state_vars['training_set_path']], transform)
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size,
+        train_dataset, batch_size=state_vars['batch_size'],
         shuffle=(train_sampler is None), num_workers=args.num_workers,
         pin_memory=True, sampler=train_sampler)
 
@@ -154,8 +154,8 @@ def main():
         validation_dataset = stack.compile_dataset(
             [state_vars['validation_set_path']], transform)
         val_loader = torch.utils.data.DataLoader(
-            validation_dataset, batch_size=args.batch_size, shuffle=False,
-            num_workers=args.num_workers, pin_memory=True)
+            validation_dataset, batch_size=state_vars['batch_size'],
+            shuffle=False, num_workers=args.num_workers, pin_memory=True)
     else:
         val_loader = None
 
