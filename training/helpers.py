@@ -164,7 +164,7 @@ def dvl(V_pred, name, mag=10):
     factor = V_pred.shape[1] // 100
     if factor > 1:
         V_pred = V_pred[:,::factor,::factor,:]
-    V_pred *= 10
+    V_pred = V_pred * mag
     plt.figure(figsize=(6,6))
     X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
     U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
