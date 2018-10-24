@@ -401,7 +401,8 @@ class ModelArchive(object):
                     key: (str(value) if isinstance(value, Path) else value)
                     for (key, value) in self._state_vars.items()
                 }
-                f.write(json.dumps(state_vars_serializable))
+                f.write(json.dumps(state_vars_serializable,
+                                   indent=2, sort_keys=True))
 
     def create_checkpoint(self, epoch, iteration, save=True):
         """
