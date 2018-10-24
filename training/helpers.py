@@ -160,11 +160,15 @@ def display_v(vfield, name=None, center=False):
         assert (name is not None)
         dv(vfield, name)
 
-def dvl(V_pred, name, mag=10):
+def dvl(V_pred, name, mag=100):
     factor = V_pred.shape[1] // 100
     if factor > 1:
-        V_pred = V_pred[:,::factor,::factor,:]
+        # subsample the field
+        V_pred = V_pred.unfold(1, factor, factor)[..., 0]
+        V_pred = V_pred.unfold(2, factor, factor)[..., 0]
     V_pred = V_pred * mag
+    if isinstance(V_pred, torch.Tensor):
+        V_pred = V_pred.cpu().numpy()
     plt.figure(figsize=(6,6))
     X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
     U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
