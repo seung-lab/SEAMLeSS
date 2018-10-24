@@ -56,7 +56,7 @@ def parse_args(args=None):
 
     param_group = start_parser.add_argument_group('training parameters')
     param_group.add_argument(
-        '--lr', '--learning_rate', default=0.0002, type=float,
+        '--lr', '--learning_rate', default=0.000002, type=float,
         metavar='LR', help='initial learning rate',
     )
     param_group.add_argument(
@@ -162,7 +162,7 @@ def parse_args(args=None):
         help='the number of samples in between each log. '
              'Use 0 to disable.',
         dest='log_time',
-        type=int, default=10, metavar='T',
+        type=int, default=1, metavar='T',
     )
     checkpoint_group.add_argument(
         '--cpoint', '--checkpoint_interval', '--checkpoint_time',
@@ -176,7 +176,7 @@ def parse_args(args=None):
         help='the number of samples in between each visualization. '
              'Use 0 to disable.',
         dest='vis_time',
-        type=int, default=10, metavar='T',
+        type=int, default=50, metavar='T',
     )
     checkpoint_group.add_argument(
         '-i', '--interval',
