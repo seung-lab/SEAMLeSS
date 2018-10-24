@@ -20,13 +20,13 @@ def to_float(img):
 
 def to_tensor(img, device=torch.device('cpu')):
   img = torch.from_numpy(img)
-  return img.permute(3,2,1,0).to(device=device, non_blocking=True)
+  return img.permute(2,3,1,0).to(device=device, non_blocking=True)
 
 def to_numpy(ten):
   if ten.is_cuda:
-    img = ten.permute(3,2,1,0).cpu().numpy()
+    img = ten.permute(3,2,0,1).cpu().numpy()
   else:
-    img = ten.permute(3,2,1,0).numpy()
+    img = ten.permute(3,2,0,1).numpy()
   return img
   
 def diff_to_numpy(ten):
@@ -36,11 +36,11 @@ def diff_to_numpy(ten):
     img = ten.permute(2,3,1,0).numpy()
   return img
 
-def norm_to_int8(img):
-  return ((img + 1) / 2)*255
+def R_to_uint8(img):
+  return to_uint8(((img + 1) / 2)*255)
 
-def int8_to_norm(img):
-  return (img / 255) * 2 - 1
+def uint8_to_R(img):
+  return to_float((img / 255.) * 2 - 1)
 
 def to_uint8(img):
   return img.astype(np.uint8)
@@ -69,6 +69,10 @@ def get_composite_image(vol, bbox, reverse=True):
 def create_cloudvolume(dst_path, info, src_mip, dst_mip):
   dst_info = copy(info)
   dst_info['scales'] = dst_info['scales'][:1]
+  dst_info['scales'][0]['encoding'] = 'raw'
+  chunksize = dst_info['scales'][0]['chunk_sizes'][0]
+  chunksize[2] = 1
+  dst_info['scales'][0]['chunk_sizes'][0] = chunksize
   each_factor = Vec(2,2,1)
   factor = each_factor.clone()
   for m in range(1, dst_mip+1):
