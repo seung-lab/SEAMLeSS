@@ -45,10 +45,11 @@ class CPC():
     else:
       self.device = torch.device('cpu')
   
-    tgt_path = tgt_path if tgt_path else src_path
-    
     self.src = util.get_cloudvolume(src_path, mip=src_mip)
-    self.tgt = util.get_cloudvolume(tgt_path, mip=src_mip)
+    if tgt_path != src_path:
+      self.tgt = util.get_cloudvolume(tgt_path, mip=src_mip)
+    else:
+      self.tgt = self.src
     self.scale_factor = 2**(dst_mip - src_mip)
     dst_chunk = Vec(self.scale_factor, self.scale_factor, 1)
     src_bbox = self.src.bbox_to_mip(bbox, bbox_mip, src_mip)
@@ -74,15 +75,15 @@ class CPC():
       tgt_bbox = Bbox(self.src_bbox.minpt + min_adj, 
                       self.src_bbox.maxpt + max_adj)
       print('src_bbox {0}'.format(self.src_bbox))
-      print('tgt_bbox {0}'.format(tgt_bbox))
-      print('dst_bbox {0}'.format(dst_bbox))
       S = util.to_float(util.get_image(self.src, self.src_bbox))
+      print('tgt_bbox {0}'.format(tgt_bbox))
       T = util.to_float(util.get_composite_image(self.tgt, tgt_bbox, 
                                                  reverse=not self.forward_z))
       S = util.to_tensor(S, device=self.device)
       T = util.to_tensor(T, device=self.device)
       R = cpc(S, T, self.scale_factor, device=self.device)
-      img = util.to_uint8(util.norm_to_int8(util.to_numpy(R)))
+      img = util.R_to_uint8(util.to_numpy(R))
+      print('dst_bbox {0}'.format(dst_bbox))
       util.save_image(self.dst, dst_bbox, img)
     
 
@@ -114,6 +115,8 @@ if __name__ == '__main__':
     help='Create composite image from upcoming z indices')
   parser.add_argument('--disable_cuda', action='store_true', help='Disable CUDA')
   args = parser.parse_args()
+  args.tgt_path = args.tgt_path if args.tgt_path else args.src_path
+
 
   r = CPC(**vars(args))
   r.run()

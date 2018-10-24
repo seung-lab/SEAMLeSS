@@ -22,6 +22,42 @@ def blur(img, kernel_size, sigma):
   gk = gk.to(device=img.device, non_blocking=True)
   return conv2d(img, gk)
 
+class Blur():
+
+  def __init__(self, src_path, dst_path, src_mip, bbox_start, bbox_stop, 
+               bbox_mip, kernel_size, sigma, disable_cuda):
+    self.kernel_size = kernel_size
+    self.sigma = sigma
+    bbox = Bbox(bbox_start, bbox_stop)
+    self.device = None
+    if not disable_cuda and torch.cuda.is_available():
+      self.device = torch.device('cuda')
+    else:
+      self.device = torch.device('cpu')
+  
+    self.src = util.get_cloudvolume(src_path, mip=src_mip)
+    self.src_bbox = self.src.bbox_to_mip(bbox, bbox_mip, src_mip)
+    self.dst = util.create_cloudvolume(dst_path, self.src.info, 
+                                       src_mip, src_mip)
+   
+    self.pad = nn.ReplicationPad2d(self.kernel_size // 2)
+    self.pad.to(device=self.device)
+ 
+  def run(self):
+    z_range = range(self.src_bbox.minpt[2], self.src_bbox.maxpt[2])
+    for z in z_range:
+      print('Blurring z={0}'.format(z))
+      self.src_bbox.minpt[2] = z
+      self.src_bbox.maxpt[2] = z+1
+      dst_bbox = self.src_bbox
+      print('src_bbox {0}'.format(self.src_bbox))
+      # print('dst_bbox {0}'.format(dst_bbox))
+      src_img = util.get_image(self.src, self.src_bbox)
+      S = util.uint8_to_R(src_img)
+      S = util.to_tensor(S, device=self.device).float()
+      R = blur(self.pad(S), self.kernel_size, self.sigma)
+      img = util.R_to_uint8(util.to_numpy(R))
+      util.save_image(self.dst, dst_bbox, img)
 
 if __name__ == '__main__':
 
@@ -46,31 +82,4 @@ if __name__ == '__main__':
   parser.add_argument('--disable_cuda', action='store_true', help='Disable CUDA')
   args = parser.parse_args()
 
-  bbox = Bbox(args.bbox_start, args.bbox_stop)
-  args.device = None
-  if not args.disable_cuda and torch.cuda.is_available():
-    args.device = torch.device('cuda')
-  else:
-    args.device = torch.device('cpu')
-
-  src = util.get_cloudvolume(args.src_path, mip=args.src_mip)
-  src_bbox = src.bbox_to_mip(bbox, args.bbox_mip, args.src_mip)
-  dst = util.create_cloudvolume(args.dst_path, src.info, 
-                                     args.src_mip, args.src_mip)
- 
-  pad = nn.ReplicationPad2d(args.kernel_size // 2)
-  pad.to(device=args.device)
-
-  for z in range(src_bbox.minpt[2], src_bbox.maxpt[2]):
-    print('Blurring z={0}'.format(z))
-    src_bbox.minpt[2] = z
-    src_bbox.maxpt[2] = z+1
-    dst_bbox = src_bbox
-    print('src_bbox {0}'.format(src_bbox))
-    # print('dst_bbox {0}'.format(dst_bbox))
-    S = util.int8_to_norm(util.to_float(util.get_image(src, src_bbox)))
-    S = util.to_tensor(S, device=args.device).float()
-    R = blur(pad(S), args.kernel_size, args.sigma)
-    img = util.to_uint8(util.norm_to_int8(util.to_numpy(R)))
-    util.save_image(dst, dst_bbox, img)
 
