@@ -173,7 +173,7 @@ def dvl(V_pred, name, mag=100):
     X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
     U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
     colors = np.arctan2(U,V)   # true angle
-    plt.title('V_pred')
+    plt.title(Path(name).stem)
     plt.gca().invert_yaxis()
     Q = plt.quiver(X, Y, U, V, colors, scale=6, width=0.002, angles='uv', pivot='tail')
     qk = plt.quiverkey(Q, 10.0, 10.0, 2, r'$2 \frac{m}{s}$', labelpos='E', \

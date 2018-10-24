@@ -245,7 +245,8 @@ def train(train_loader, archive, epoch):
             except Exception as e:
                 # Don't raise the exception, since visualization issues
                 # should not stop training. Just warn the user and go on.
-                print('Visualization failed: {}: {}'.format(type(e), e))
+                print('Visualization failed: {}: {}'
+                      .format(e.__class__.__name__, e))
         if (state_vars['checkpoint_time']
                 and i % state_vars['checkpoint_time'] == 0):
             archive.create_checkpoint(epoch=epoch, iteration=i)
