@@ -108,7 +108,7 @@ class ModelArchive(object):
             'loss.csv',
             'command.txt',
             'plan.txt',
-            'history.log',  # nets it was fine_tuned from
+            'history.txt',  # nets it was fine_tuned from
             'progress.log',
             'seed.txt',
             'architecture.py',
@@ -188,7 +188,7 @@ class ModelArchive(object):
             'loss.csv',
             'command.txt',
             'plan.txt',
-            'history.log',  # nets it was fine_tuned from
+            'history.txt',  # nets it was fine_tuned from
             'progress.log',
             'seed.txt',
             'commit.diff',
@@ -249,7 +249,7 @@ class ModelArchive(object):
         cp(self.paths['weights'], new_archive.paths['weights'])
 
         # Copy the old history into the new archive
-        tempfile = new_archive.directory / 'history.log.temp'
+        tempfile = new_archive.directory / 'history.txt.temp'
         cp(new_archive.paths['history'], tempfile)
         cp(self.paths['history'], new_archive.paths['history'])
         with new_archive.paths['history'].open(mode='a') as f:
