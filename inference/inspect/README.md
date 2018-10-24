@@ -2,18 +2,9 @@
 Toolkit to assess alignment quality.
 
 ## Tools   
-**cpc** Create an image by scoring overlapping chunks in neighboring 
-sections with Pearson R (chunked pearson correlation).
-
 **inspect** Inspect the vector fields produced by SEAMLeSS.
 
 ## How to use  
-### cpc
-For more information, use argparse help, e.g.  
-```
-python cpc.py -h
-```
-
 ### inspect
 Inspect is based on the python state server interface to Neuroglancer.
 
