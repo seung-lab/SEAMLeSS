@@ -46,6 +46,7 @@ import time
 import warnings
 import datetime
 import math
+import random
 
 import torch
 import torch.nn.parallel
@@ -326,8 +327,7 @@ def prepare_input(sample, supervised=None, max_displacement=2):
         supervised = state_vars['supervised']
     if supervised:
         src = sample['src'].unsqueeze(0)
-        sigma = max_displacement / 2
-        truth_field = random_field(src.shape, sigma=sigma)
+        truth_field = random_field(src.shape, max_displacement=max_displacement)
         tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
     else:
         src = sample['src'].unsqueeze(0)
@@ -337,24 +337,26 @@ def prepare_input(sample, supervised=None, max_displacement=2):
     return stack, truth_field
 
 
-def random_field(shape, sigma=2, num_downsamples=7):
+def random_field(shape, max_displacement=2, num_downsamples=7):
     """
-    Genenerates a gaussian distributed random vector field smoothed by
-    bilinear interpolation.
+    Genenerates a random vector field smoothed by bilinear interpolation.
 
-    `sigma` is the standard deviation of the gaussian.
+    The vectors generated will have values representing displacements of
+    between (approximately) `-max_displacement` and `max_displacement` pixels
+    at the size dictated by `shape`.
+    The actual values, however, will be scaled to the spatial transformer
+    standard, where -1 and 1 represent the edges of the image.
 
     `num_downsamples` dictates the block size for the random field.
     Each block will have size `2**num_downsamples`.
     """
     with torch.no_grad():
-        zero = torch.zeros(shape)
-        zero = torch.cat([zero, zero.clone()], 1)
-        smaller = downsample(num_downsamples)(zero)
-        std = sigma / shape[-2] * math.sqrt(2)
-        smaller = torch.nn.init.normal_(smaller, mean=0, std=std)
-        result = upsample(num_downsamples)(smaller)
-    return result.permute(0, 2, 3, 1)
+        one = torch.ones(shape)
+        one = torch.cat([one, one.clone()], 1)
+        disp = max_displacement / shape[-2] * math.sqrt(2)
+        one = one * disp * random.choice([-1, 0, 1])
+        result = one.permute(0, 2, 3, 1)
+    return result
 
 
 def supervised_loss(prediction, truth):

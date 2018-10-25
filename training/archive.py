@@ -45,7 +45,6 @@ import torch
 import numpy as np
 import json
 import datetime
-import copy
 from pathlib import Path
 import pandas as pd
 
