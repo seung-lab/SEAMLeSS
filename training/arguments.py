@@ -61,12 +61,12 @@ def parse_args(args=None):
         metavar='LR', help='initial learning rate',
     )
     param_group.add_argument(
-        '--gamma', '--learning_rate_deccay', default=0.1, type=float,
-        metavar='DR', help='rate by which the learning rate deccays',
+        '--gamma', '--learning_rate_decay', default=0.1, type=float,
+        metavar='DR', help='rate by which the learning rate decays',
     )
     param_group.add_argument(
         '--gamma_step', default=30, type=int, metavar='DC',
-        help='frequency with which the learning rate deccay occurs',
+        help='frequency with which the learning rate decay occurs',
     )
     param_group.add_argument(
         '--num_epochs', default=1000000, type=int, metavar='N',
@@ -87,8 +87,8 @@ def parse_args(args=None):
     #     '--momentum', default=0.9, type=float, metavar='M',
     #     help='momentum')
     param_group.add_argument(
-        '--wd', '--weight_decay', default=1e-4, type=float,
-        metavar='W', help='weight decay (default: 1e-4)')
+        '--wd', '--weight_decay', default=0, type=float,
+        metavar='W', help='weight decay (default: 0)')
     # param_group.add_argument(
     #     '-A', '--skip_aug',
     #     help='skip data augmentation (no cutouts, etc)',
