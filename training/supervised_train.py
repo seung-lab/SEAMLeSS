@@ -351,11 +351,13 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
     Each block will have size `2**num_downsamples`.
     """
     with torch.no_grad():
-        one = torch.ones(shape)
-        one = torch.cat([one, one.clone()], 1)
-        disp = max_displacement / shape[-2] * math.sqrt(2)
-        one = one * disp * random.choice([-1, 0, 1])
-        result = one.permute(0, 2, 3, 1)
+        zero = torch.zeros(shape)
+        zero = torch.cat([zero, zero.clone()], 1)
+        smaller = downsample(num_downsamples)(zero)
+        std = max_displacement / shape[-2] / math.sqrt(2)
+        field = torch.nn.init.normal_(smaller, mean=0, std=std)
+        field = upsample(num_downsamples)(field)
+        result = field.permute(0, 2, 3, 1)
     return result
 
 
