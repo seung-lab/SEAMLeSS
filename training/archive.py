@@ -168,11 +168,12 @@ class ModelArchive(object):
                     sys.exit()
                 print('OK, proceeding...')
 
-        # load the model, optimizer, and pseudorandom number generator
+        # load the model, optimizer, and state variables
         self._load_model(*args, **kwargs)
         self._load_optimizer(*args, **kwargs)
-        self._load_prand(*args, **kwargs)
         self._load_state_vars(*args, **kwargs)
+        # load the pseudorandom number generator last
+        self._load_prand(*args, **kwargs)
 
     def _create(self, no_optimizer=False, *args, **kwargs):
         print('Creating a new model archive: {}'.format(self._name))
@@ -191,7 +192,6 @@ class ModelArchive(object):
             'progress.log',
             'seed.txt',
             'commit.diff',
-            'state_vars.json',
         ]:
             key = filename.split('.')[0]
             self.paths[key].touch(exist_ok=False)
@@ -221,15 +221,12 @@ class ModelArchive(object):
             f.writelines(' '.join(sys.argv) + '\n')
             f.writelines('\n')
 
-        # initialize state_vars.json
-        with self.paths['state_vars'].open(mode='w') as f:
-            f.writelines('{{"name": "{0}"}}'.format(self._name))
-
-        # initialize the model, optimizer, and pseudorandom number generator
+        # when creating an archive, init pseudorandom number generator first
+        self._load_prand(*args, **kwargs)
+        # initialize the model, optimizer, and state variables
         self._load_model(*args, **kwargs)
         if not no_optimizer:
             self._load_optimizer(*args, **kwargs)
-        self._load_prand(*args, **kwargs)
         self._load_state_vars(*args, **kwargs)
 
         self.save()
@@ -349,7 +346,8 @@ class ModelArchive(object):
         """
         Loads the saved state of the pseudorandom number generators.
         """
-        assert self.optimizer is not None, 'Should not seed before init.'
+        if self.readonly:
+            return  # do not seed for a readonly archive
         if self.paths['prand'].is_file():
             with self.paths['prand'].open('rb') as f:
                 prand_state = torch.load(f)
@@ -363,7 +361,7 @@ class ModelArchive(object):
         """
         Loads the dict of state variables stored in `state_vars.json`
         """
-        self._state_vars = {}
+        self._state_vars = {'name': self._name}  # default empty state_vars
         if self.paths['state_vars'].exists():
             with self.paths['state_vars'].open(mode='r') as f:
                 self._state_vars = json.load(f)
