@@ -2,18 +2,9 @@
 Toolkit to assess alignment quality.
 
 ## Tools   
-**chunked** Create an image by scoring overlapping chunks in neighboring 
-sections with a similarity metric. Currently, only pearson r is available. 
-
 **inspect** Inspect the vector fields produced by SEAMLeSS.
 
 ## How to use  
-### chunked
-For more information, use argparse help, e.g.  
-```
-python chunked.py -h
-```
-
 ### inspect
 Inspect is based on the python state server interface to Neuroglancer.
 

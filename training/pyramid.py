@@ -125,6 +125,7 @@ class EPyramid(nn.Module):
         self.pe = PreEnc(fm_0)
 
     def forward(self, stack, target_level, vis=None, use_preencoder=False):
+        # print('forward device {0}'.format(stack.device))
         if vis is not None:
             gif(vis + 'input', gif_prep(stack))
 

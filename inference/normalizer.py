@@ -66,7 +66,7 @@ class Normalizer(object):
         return stacked
 
     def apply(self, img):
-        assert type(img) == np.ndarray, 'Can only contrast numpy arrays; received type \'{}\''.format(type(img))
+        # assert type(img) == np.ndarray, 'Can only contrast numpy arrays; received type \'{}\''.format(type(img))
         assert img.ndim == 4 or img.ndim == 2, 'Must pass either 2D or 4D images; received shape {}'.format(img.shape)
         if img.ndim == 2:
             return self.apply_slice(img)

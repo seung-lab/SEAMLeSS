@@ -2,15 +2,20 @@ from process import Process
 from cloudvolume import CloudVolume as cv
 from cloudvolume.lib import Vec
 import torch
+from torch.nn.functional import interpolate
 import numpy as np
 import os
+from os.path import join
 import json
 import math
 from time import time
 from copy import deepcopy, copy
-from helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
 import scipy
 import scipy.ndimage
+from normalizer import Normalizer
+from vector_vote import vector_vote, get_diffs, weight_diffs, \
+                        compile_field_weights, weighted_sum_fields
+from helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
 
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum
@@ -24,12 +29,16 @@ import torch.nn as nn
 
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
-               mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
+               mip_range, high_mip_chunk, src_path, tgt_path, dst_path,
+               src_mask_path='', src_mask_mip=0, src_mask_val=1, 
+               tgt_mask_path='', tgt_mask_mip=0, tgt_mask_val=1,
+               disable_cuda=False, max_mip=12,
                render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=5,
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
-               skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
-               flip_average=True, run_pairs=False, write_intermediaries=False,
-               upsample_residuals=False, old_upsample=False, old_vectors=False):
+               skip=0, topskip=0, size=7, should_contrast=True, 
+               run_pairs=True, disable_flip_average=False, write_intermediaries=False,
+               upsample_residuals=False, old_upsample=False, old_vectors=False,
+               ignore_field_init=False, z_offset=0, **kwargs):
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip
@@ -38,59 +47,33 @@ class Aligner:
     self.high_mip_chunk   = high_mip_chunk
     self.max_chunk        = max_chunk
     self.max_render_chunk = max_render_chunk
-    self.num_targets      = num_targets
-    self.run_pairs = run_pairs
+    self.max_mip          = max_mip
     self.size = size
-    self.old_vectors=old_vectors
+    self.old_vectors = old_vectors
+    self.ignore_field_init = ignore_field_init
+    self.orig_z_offset = z_offset
+    self.z_offset = z_offset
 
     self.max_displacement = max_displacement
     self.crop_amount      = crop
-    self.org_ng_path      = src_ng_path
-    self.src_ng_path      = self.org_ng_path
+    self.disable_cuda = disable_cuda
+    self.device = torch.device('cpu') if disable_cuda else torch.device('cuda')
 
-    self.dst_ng_path = os.path.join(dst_ng_path, 'image')
-    self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
-    if (self.run_pairs): 
-        self.field_sf_ng_path = os.path.join(dst_ng_path, 'field_sf')
-        #self.gauss_filter = self.Gaussian_filter(1025, 256) 
-        #self.image_pixels_sum = np.empty(1)
-        #self.field_sf_sum = np.empty((1,1))
-        #self.reg_field = np.zeros(2, dtype=np.float32)
-        #self.x_len = 0
-        #self.y_len = 0
-    else: 
-        self.field_sf_ng_path = ""
+    self.orig_src_path = src_path
+    self.orig_tgt_path = tgt_path
+    self.orig_dst_path = dst_path
+    self.src_mask_path = src_mask_path
+    self.src_mask_mip  = src_mask_mip
+    self.src_mask_val  = src_mask_val
+    self.tgt_mask_path = tgt_mask_path
+    self.tgt_mask_mip  = tgt_mask_mip
+    self.tgt_mask_val  = tgt_mask_val
+    self.paths = self.get_paths(src_path, tgt_path, dst_path, 
+                                          src_mask_path, tgt_mask_path)
 
-    self.enc_ng_paths   = [os.path.join(dst_ng_path, 'enc/{}'.format(i))
-                                                     for i in range(self.process_high_mip + 10)] #TODO
+    self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip, size=size, flip_average=not disable_flip_average, old_upsample=old_upsample)
 
-    self.res_ng_paths   = [os.path.join(dst_ng_path, 'vec/{}'.format(i))
-                                                    for i in range(self.process_high_mip + 10)] #TODO
-    self.x_res_ng_paths = [os.path.join(r, 'x') for r in self.res_ng_paths]
-    self.y_res_ng_paths = [os.path.join(r, 'y') for r in self.res_ng_paths]
-
-    self.cumres_ng_paths   = [os.path.join(dst_ng_path, 'cumulative_vec/{}'.format(i))
-                                                    for i in range(self.process_high_mip + 10)] #TODO
-    self.x_cumres_ng_paths = [os.path.join(r, 'x') for r in self.cumres_ng_paths]
-    self.y_cumres_ng_paths = [os.path.join(r, 'y') for r in self.cumres_ng_paths]
-
-    self.resup_ng_paths   = [os.path.join(dst_ng_path, 'vec_up/{}'.format(i))
-                                                    for i in range(self.process_high_mip + 10)] #TODO
-    self.x_resup_ng_paths = [os.path.join(r, 'x') for r in self.resup_ng_paths]
-    self.y_resup_ng_paths = [os.path.join(r, 'y') for r in self.resup_ng_paths]
-
-    self.cumresup_ng_paths   = [os.path.join(dst_ng_path, 'cumulative_vec_up/{}'.format(i))
-                                                    for i in range(self.process_high_mip + 10)] #TODO
-    self.x_cumresup_ng_paths = [os.path.join(r, 'x') for r in self.cumresup_ng_paths]
-    self.y_cumresup_ng_paths = [os.path.join(r, 'y') for r in self.cumresup_ng_paths]
-
-    self.field_ng_paths   = [os.path.join(dst_ng_path, 'field/{}'.format(i))
-                                                    for i in range(self.process_high_mip + 10)] #TODO
-    self.x_field_ng_paths = [os.path.join(r, 'x') for r in self.field_ng_paths]
-    self.y_field_ng_paths = [os.path.join(r, 'y') for r in self.field_ng_paths]
-
-    self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip, size=size, flip_average=flip_average, old_upsample=old_upsample)
-    
+    self.normalizer = Normalizer(min(5, mip_range[0])) 
     self.write_intermediaries = write_intermediaries
     self.upsample_residuals = upsample_residuals
 
@@ -106,8 +89,54 @@ class Aligner:
 
     self.img_cache_lock = Lock()
 
-#if not chunk_size[0] :
-    #  raise Exception("The chunk size has to be aligned with ng chunk size")
+  def reset(self):
+    self.z_offset = self.orig_z_offset
+    self.paths = self.get_paths(self.orig_src_path, self.orig_tgt_path, 
+                                self.orig_dst_path, self.src_mask_path, 
+                                self.tgt_mask_path)
+
+  def get_paths(self, src_path, tgt_path, dst_path, 
+                                src_mask_path='', tgt_mask_path=''):
+    paths = {}
+    paths['dst_path'] = dst_path
+    paths['src_img'] = src_path
+    paths['src_mask'] = src_mask_path
+    paths['tgt_mask'] = tgt_mask_path
+    paths['tgt_img'] = tgt_path
+    paths['dst_img'] = join(dst_path, 'image')
+    paths['tmp_img'] = join(dst_path, 'intermediate')
+    mip_range = range(self.process_high_mip + 10) #TODO
+    paths['enc'] = [join(dst_path, 'enc/{}'.format(i)) for i in mip_range]
+
+    res   = [join(dst_path, 'vec/{}'.format(i)) for i in mip_range]
+    paths['x_res'] = [join(r, 'x') for r in res]
+    paths['y_res'] = [join(r, 'y') for r in res]
+
+    cumres   = [join(dst_path, 'cumulative_vec/{}'.format(i)) 
+                                                     for i in mip_range] 
+    paths['x_cumres'] = [join(r, 'x') for r in cumres]
+    paths['y_cumres'] = [join(r, 'y') for r in cumres]
+
+    resup   = [join(dst_path, 'vec_up/{}'.format(i)) for i in mip_range]
+    paths['x_resup'] = [join(r, 'x') for r in resup]
+    paths['y_resup'] = [join(r, 'y') for r in resup]
+
+    cumresup   = [join(dst_path, 'cumulative_vec_up/{}'.format(i)) 
+                                                     for i in mip_range]
+    paths['x_cumresup'] = [join(r, 'x') for r in cumresup]
+    paths['y_cumresup'] = [join(r, 'y') for r in cumresup]
+
+    field   = [join(dst_path, 'field/{}'.format(i)) for i in mip_range]
+    paths['x_field'] = [join(r, 'x') for r in field]
+    paths['y_field'] = [join(r, 'y') for r in field]
+
+    paths['field_sf'] = join(dst_path, 'field_sf')
+
+    paths['diffs']   = [join(dst_path, 'diffs'.format(i)) for i in mip_range]
+    paths['diff_weights']   = [join(dst_path, 'diff_weights'.format(i)) for i in mip_range]
+    paths['weights']   = [join(dst_path, 'weights'.format(i)) for i in mip_range]
+
+    return paths
 
   def Gaussian_filter(self, kernel_size, sigma):
     x_cord = torch.arange(kernel_size)
@@ -132,7 +161,7 @@ class Aligner:
     self.high_mip_chunk = chunk_size
 
   def _create_info_files(self, max_offset):
-    src_cv = cv(self.src_ng_path)
+    src_cv = cv(self.paths['src_img'], provenance={})
     src_info = src_cv.info
     m = len(src_info['scales'])
     each_factor = Vec(2,2,1)
@@ -183,8 +212,8 @@ class Aligner:
       self.dst_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.dst_voxel_offsets.append(scales[i]["voxel_offset"])
 
-    cv(self.dst_ng_path, info=dst_info).commit_info()
-    cv(self.tmp_ng_path, info=dst_info).commit_info()
+    cv(self.paths['dst_img'], info=dst_info, provenance={}).commit_info()
+    cv(self.paths['tmp_img'], info=dst_info, provenance={}).commit_info()
 
     ##########################################################
     #### Create vec info file
@@ -199,35 +228,42 @@ class Aligner:
 
     scales = deepcopy(vec_info["scales"])
     # print('src_info scales: {0}'.format(len(scales)))
-    if (self.run_pairs):
-        field_sf_info = deepcopy(dst_info)
-        field_sf_info["data_type"] = "float32"
-        for i in range(len(field_sf_info["scales"])):
-            field_sf_info["scales"][i]["chunk_sizes"][0][2] = 1
-        field_sf_info['num_channels'] = 2
-        cv(self.field_sf_ng_path, info=field_sf_info).commit_info() 
+    field_info = deepcopy(dst_info)
+    field_info["data_type"] = "float32"
+    for i in range(len(scales)):
+      field_info["scales"][i]["chunk_sizes"][0][2] = 1
+    field_info['num_channels'] = 2
 
     for i in range(len(scales)):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
-
-      cv(self.x_field_ng_paths[i], info=vec_info).commit_info()
-      cv(self.y_field_ng_paths[i], info=vec_info).commit_info()
-      cv(self.x_res_ng_paths[i], info=vec_info).commit_info()
-      cv(self.y_res_ng_paths[i], info=vec_info).commit_info()
-      cv(self.x_cumres_ng_paths[i], info=vec_info).commit_info()
-      cv(self.y_cumres_ng_paths[i], info=vec_info).commit_info()
-      cv(self.x_resup_ng_paths[i], info=vec_info).commit_info()
-      cv(self.y_resup_ng_paths[i], info=vec_info).commit_info()
-      cv(self.x_cumresup_ng_paths[i], info=vec_info).commit_info()
-      cv(self.y_cumresup_ng_paths[i], info=vec_info).commit_info()
+      if not self.ignore_field_init:
+        cv(self.paths['x_field'][i], info=vec_info, provenance={}).commit_info()
+        cv(self.paths['y_field'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['field_sf'], info=field_info).commit_info() 
+      cv(self.paths['x_res'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['y_res'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['x_cumres'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['y_cumres'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['x_resup'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['y_resup'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['x_cumresup'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['y_cumresup'][i], info=vec_info, provenance={}).commit_info()
 
       if i in enc_dict.keys():
         enc_info = deepcopy(vec_info)
         enc_info['num_channels'] = enc_dict[i]
         # enc_info['data_type'] = 'uint8'
-        cv(self.enc_ng_paths[i], info=enc_info).commit_info()
+        cv(self.paths['enc'][i], info=enc_info, provenance={}).commit_info()
+
+      wts_info = deepcopy(vec_info)
+      wts_info['num_channels'] = 3
+      # enc_info['data_type'] = 'uint8'
+      cv(self.paths['diffs'][i], info=wts_info, provenance={}).commit_info()
+      cv(self.paths['diff_weights'][i], info=wts_info, provenance={}).commit_info()
+      cv(self.paths['weights'][i], info=wts_info, provenance={}).commit_info()
+    
 
   def check_all_params(self):
     return True
@@ -263,13 +299,13 @@ class Aligner:
 
     result = BoundingBox(x_start_m0, x_start_m0 + bbox.x_size(mip=0),
                          y_start_m0, y_start_m0 + bbox.y_size(mip=0),
-                         mip=0, max_mip=self.process_high_mip)
+                         mip=0, max_mip=self.max_mip) #self.process_high_mip)
     return result
 
   def get_field_sf_residual(self, z, bbox, mip):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-    field_sf = cv(self.field_sf_ng_path, mip=mip, bounded=False, 
+    field_sf = cv(self.paths['field_sf'], mip=mip, bounded=False, 
                   fill_missing=True, progress=False)[x_range[0]:x_range[1], 
                                                      y_range[0]:y_range[1], z]
     abs_res = np.expand_dims(np.squeeze(field_sf), axis=0)
@@ -280,7 +316,7 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     new_field = np.squeeze(field_sf)[:, :, np.newaxis, :]
-    cv(self.field_sf_ng_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
+    cv(self.paths['field_sf'], mip=mip, bounded=False, fill_missing=True, autocrop=True,
        progress=False)[x_range[0]:x_range[1], y_range[0]:y_range[1], z] = new_field
 
 
@@ -330,9 +366,28 @@ class Aligner:
       for ys in range(calign_y_range[0], calign_y_range[1], processing_chunk[1]):
         chunks.append(BoundingBox(xs, xs + processing_chunk[0],
                                  ys, ys + processing_chunk[0],
-                                 mip=mip, max_mip=self.high_mip))
+                                 mip=mip, max_mip=self.max_mip)) #self.high_mip))
 
     return chunks
+
+  def weight_fields(self, field_paths, z, bbox, mip, T=1, write_intermediaries=False):
+    fields = [self.get_field(path, z, bbox, mip) for path in field_paths]
+    # field = vector_vote(fields, T=T)
+    diffs = get_diffs(fields)
+    diff_weights = weight_diffs(diffs, T=T)
+    field_weights = compile_field_weights(diff_weights)
+    field = weighted_sum_fields(field_weights, fields)
+    self.save_vector_patch(field, self.paths['x_field'][mip], 
+                                  self.paths['y_field'][mip], z, 
+                                  bbox, mip)
+
+    if write_intermediaries:
+      self.save_image_patch(self.paths['diffs'][mip], 
+                            diffs.cpu().numpy(), z, bbox, mip, to_uint8=False)
+      self.save_image_patch(self.paths['diff_weights'][mip], 
+                            diff_weights.cpu().numpy(), z, bbox, mip, to_uint8=False)
+      self.save_image_patch(self.paths['weights'][mip], 
+                            field_weights.cpu().numpy(), z, bbox, mip, to_uint8=False)
 
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
     print ("Computing residual for region {}.".format(out_patch_bbox.__str__(mip=0)), flush=True)
@@ -340,44 +395,64 @@ class Aligner:
     precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
 
     if mip == self.process_high_mip:
-      src_patch = self.get_image_data(self.src_ng_path, source_z, precrop_patch_bbox, mip)
+      src_patch = self.get_image(self.paths['src_img'], source_z, 
+                                  precrop_patch_bbox, mip,
+                                  adjust_contrast=True, to_tensor=True)
     else:
-      src_patch = self.get_image_data(self.tmp_ng_path, source_z, precrop_patch_bbox, mip)
+      src_patch = self.get_image(self.paths['tmp_img'], source_z, 
+                                  precrop_patch_bbox, mip,
+                                  adjust_contrast=True, to_tensor=True)
 
-    if (self.run_pairs):
-         # only align consecutive pairs of source slices TODO: write function to compse resulting vector fields
-        tgt_patch = self.get_image_data(self.src_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
-    else:
-        # align to the newly aligned previous slice
-        tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
-    field, residuals, encodings, cum_residuals = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount, old_vectors=self.old_vectors)
-    #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
-    #                        crop_amount=self.crop_amount)
+    tgt_patch = self.get_image(self.paths['tgt_img'], target_z, 
+                                precrop_patch_bbox, mip,
+                                adjust_contrast=True, to_tensor=True) 
+
+    if self.paths['src_mask']:
+      src_mask = self.get_mask(self.paths['src_mask'], source_z, 
+                                precrop_patch_bbox, src_mip=self.src_mask_mip,
+                                dst_mip=mip, valid_val=self.src_mask_val)
+      src_patch = src_patch.masked_fill_(src_mask, 0)
+    if self.paths['tgt_mask']:
+      tgt_mask = self.get_mask(self.paths['tgt_mask'], target_z, 
+                                precrop_patch_bbox, src_mip=self.tgt_mask_mip,
+                                dst_mip=mip, valid_val=self.tgt_mask_val)
+      tgt_patch = tgt_patch.masked_fill_(tgt_mask, 0)
+
+    X = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount, 
+                                                 old_vectors=self.old_vectors)
+    field, residuals, encodings, cum_residuals = X
 
     # save the final vector field for warping
-    self.save_vector_patch(field, self.x_field_ng_paths[mip], self.y_field_ng_paths[mip], source_z, out_patch_bbox, mip)
+    self.save_vector_patch(field, self.paths['x_field'][mip], 
+                                  self.paths['y_field'][mip], source_z, 
+                                  out_patch_bbox, mip)
 
     if self.write_intermediaries:
-  
       mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
       for res_mip, res, cumres in zip(mip_range, residuals[1:], cum_residuals[1:]):
           crop = self.crop_amount // 2**(res_mip - self.process_low_mip)   
-          self.save_residual_patch(res, crop, self.x_res_ng_paths[res_mip], 
-                                   self.y_res_ng_paths[res_mip], source_z, 
-                                   out_patch_bbox, res_mip)
-          self.save_residual_patch(cumres, crop, self.x_cumres_ng_paths[res_mip], 
-                                   self.y_cumres_ng_paths[res_mip], source_z, 
-                                   out_patch_bbox, res_mip)
+          self.save_residual_patch(res, crop, 
+                                   self.paths['x_res'][res_mip], 
+                                   self.paths['y_res'][res_mip],
+                                   source_z, out_patch_bbox, res_mip)
+          self.save_residual_patch(cumres, crop, 
+                                   self.paths['x_cumres'][res_mip], 
+                                   self.paths['y_cumres'][res_mip], 
+                                   source_z, out_patch_bbox, res_mip)
           if self.upsample_residuals:
             crop = self.crop_amount   
             res = self.scale_residuals(res, res_mip, self.process_low_mip)
-            self.save_residual_patch(res, crop, self.x_resup_ng_paths[res_mip], 
-                                     self.y_resup_ng_paths[res_mip], source_z, 
-                                     out_patch_bbox, self.process_low_mip)
+            self.save_residual_patch(res, crop, 
+                                     self.paths['x_resup'][res_mip], 
+                                     self.paths['y_resup'][res_mip], 
+                                     source_z, out_patch_bbox, 
+                                     self.process_low_mip)
             cumres = self.scale_residuals(cumres, res_mip, self.process_low_mip)
-            self.save_residual_patch(cumres, crop, self.x_cumresup_ng_paths[res_mip], 
-                                     self.y_cumresup_ng_paths[res_mip], source_z, 
-                                     out_patch_bbox, self.process_low_mip)
+            self.save_residual_patch(cumres, crop, 
+                                     self.paths['x_cumresup'][res_mip], 
+                                     self.paths['y_cumresup'][res_mip], 
+                                     source_z, out_patch_bbox, 
+                                     self.process_low_mip)
 
 
  
@@ -394,15 +469,16 @@ class Aligner:
             y_range = out_patch_bbox.y_range(mip=mip)
             patch = enc[:, :, :, j_slice]
             # uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
-            cv(self.enc_ng_paths[mip], mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                                    progress=False)[x_range[0]:x_range[1],
-                                                    y_range[0]:y_range[1], z, j_slice] = patch # uint_patch
+            cv(self.paths['enc'][mip], 
+                mip=mip, bounded=False, 
+                fill_missing=True, autocrop=True, 
+                progress=False, provenance={})[x_range[0]:x_range[1],
+                                y_range[0]:y_range[1], z, j_slice] = patch 
   
           # src_image encodings
           write_encodings(slice(0, enc.shape[-1] // 2), source_z)
           # dst_image_encodings
           write_encodings(slice(enc.shape[-1] // 2, enc.shape[-1]), target_z)
-        
     
   def abs_to_rel_residual(self, abs_residual, patch, mip):
     x_fraction = patch.x_size(mip=0) * 0.5
@@ -456,10 +532,18 @@ class Aligner:
     start = time()
     
     agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
-    image = torch.from_numpy(self.get_image_data(ng_path, z, influence_bbox, mip))
-    image = image.unsqueeze(0)
-    mip_disp = int(self.max_displacement / 2**mip)
-    #no need to warp if flow is identity since warp introduces noise
+    # image = torch.from_numpy(self.get_image(path, z, influence_bbox, mip))
+    # image = image.unsqueeze(0)
+    image = self.get_image(path, z, influence_bbox, mip, 
+                                 adjust_contrast=False, to_tensor=True)
+    if self.paths['src_mask']:
+      mask = self.get_mask(self.paths['src_mask'], z, 
+                                  influence_bbox, src_mip=self.src_mask_mip,
+                                  dst_mip=mip, valid_val=self.src_mask_val)
+      image = image.masked_fill_(mask, 0)
+
+    # print('warp_patch shape {0}'.format(image.shape))
+    # no need to warp if flow is identity since warp introduces noise
     if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
       image = gridsample_residual(image, agg_flow, padding_mode='zeros')
     else:
@@ -488,22 +572,28 @@ class Aligner:
       field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
       self.save_field_patch(field_sf, bbox, mip, z)
 
-    return image.numpy()[0,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+    mip_disp = int(self.max_displacement / 2**mip)
+    if self.disable_cuda:
+      return image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+    else:
+      return image.cpu().numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
 
-  def downsample_patch(self, ng_path, z, bbox, mip):
-    in_data = self.get_image_data(ng_path, z, bbox, mip - 1)
-    result = np_downsample(in_data, 2)
-    return result
+  def downsample_patch(self, path, z, bbox, mip):
+    data = self.get_image(path, z, bbox, mip - 1, 
+                              adjust_contrast=False, to_tensor=True)
+    data = interpolate(data, scale_factor=0.5, mode='bilinear')
+    return data.cpu().numpy()
 
   ## Data saving
-  def save_image_patch(self, ng_path, float_patch, z, bbox, mip):
+  def save_image_patch(self, path, float_patch, z, bbox, mip, to_uint8=True):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-    patch = float_patch[0, :, :, np.newaxis]
-    uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
-    cv(ng_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                                  progress=False)[x_range[0]:x_range[1],
-                                                  y_range[0]:y_range[1], z] = uint_patch
+    patch = np.transpose(float_patch, (3,2,1,0))
+    if to_uint8:
+      patch = (np.multiply(patch, 255)).astype(np.uint8)
+    cv(path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
+                        cdn_cache=False, progress=False, provenance={})[x_range[0]:x_range[1],
+                                                  y_range[0]:y_range[1], z] = patch
 
   def scale_residuals(self, res, src_mip, dst_mip):
     print('Upsampling residuals from MIP {0} to {1}'.format(src_mip, dst_mip))
@@ -520,6 +610,7 @@ class Aligner:
     self.save_vector_patch(v, x_path, y_path, z, bbox, mip)
 
   def save_vector_patch(self, flow, x_path, y_path, z, bbox, mip):
+    flow = flow.cpu().numpy()
     x_res = flow[0, :, :, 0, np.newaxis]
     y_res = flow[0, :, :, 1, np.newaxis]
 
@@ -527,17 +618,14 @@ class Aligner:
     y_range = bbox.y_range(mip=mip)
 
     cv(x_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                       non_aligned_writes=False, progress=False)[x_range[0]:x_range[1],
+                       non_aligned_writes=False, progress=False, provenance={})[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = x_res
     cv(y_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                       non_aligned_writes=False, progress=False)[x_range[0]:x_range[1],
+                       non_aligned_writes=False, progress=False, provenance={})[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = y_res
 
   ## Data loading
-  def preprocess_data(self, data):
-    sd = np.squeeze(data)
-    ed = np.expand_dims(sd, 0)
-    nd = np.divide(ed, float(255.0), dtype=np.float32)
+  def preprocess_data(self, data, to_float=True, adjust_contrast=False, to_tensor=True):
     return nd
 
   def dilate_mask(self, mask, radius=5):
@@ -588,42 +676,54 @@ class Aligner:
     with self.img_cache_lock:
       self.img_cache[(path, bbox, mip)] = data
 
-  def get_image_data(self, path, z, bbox, mip, should_backtrack=False):
-    #data = self.check_image_cache(path, bbox, mip)
-    #if data is not None:
-    #  return data
-    data = None
-    x_range = bbox.x_range(mip=mip)
-    y_range = bbox.y_range(mip=mip)
-    while data is None:
-      try:
-        data_ = cv(path, mip=mip, progress=False,
-                   bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
-        data = data_
-      except AttributeError as e:
-        pass
-    
-    if self.num_targets > 1 and should_backtrack:
-      for backtrack in range(1, self.num_targets):
-        if z-backtrack < self.zs:
-          break
-        still_missing_mask = self.missing_data_mask(data, bbox, mip)
-        if not np.any(still_missing_mask):
-          break # we've got a full slice
-        backup = None
-        while backup is None:
-          try:
-            backup_ = cv(path, mip=mip, progress=False,
-                         bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z-backtrack]
-            backup = backup_
-          except AttributeError as e:
-            pass
-          
-        self.supplement_target_with_backup(data, still_missing_mask, backup, bbox, mip)
-        
-    data = self.preprocess_data(data)
-    #self.add_to_image_cache(path, bbox, mip, data)
+  def get_mask(self, path, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True):
+    data = self.get_data(path, z, bbox, src_mip=src_mip, dst_mip=dst_mip, 
+                             to_float=False, adjust_contrast=False, 
+                             to_tensor=to_tensor)
+    return data == valid_val
 
+  def get_image(self, path, z, bbox, mip, adjust_contrast=False, to_tensor=True):
+    return self.get_data(path, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
+                             adjust_contrast=adjust_contrast, to_tensor=to_tensor)
+
+  def get_data(self, path, z, bbox, src_mip, dst_mip, 
+                     to_float=True, adjust_contrast=False, to_tensor=True):
+    """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
+    
+    Args:
+       path: CloudVolume path
+       z: z index
+       bbox: BoundingBox defining data range
+       src_mip: mip of the CloudVolume data
+       dst_mip: mip of the output mask (dictates whether to up/downsample)
+       to_float: output should be float32
+       adjust_contrast: output will be normalized
+       to_tensor: output will be torch.tensor
+    """
+    x_range = bbox.x_range(mip=src_mip)
+    y_range = bbox.y_range(mip=src_mip)
+    data = cv(path, mip=src_mip, progress=False, bounded=False, 
+             fill_missing=True, provenance={})[x_range[0]:x_range[1], y_range[0]:y_range[1], z] 
+    data = np.transpose(data, (3,2,1,0))
+    if to_float:
+      data = np.divide(data, float(255.0), dtype=np.float32)
+    if adjust_contrast:
+      data = self.normalizer.apply(data).reshape(data.shape)
+    # convert to tensor if requested, or if up/downsampling required
+    if to_tensor | (src_mip != dst_mip):
+      data = torch.from_numpy(data).to(device=self.device)
+      if src_mip != dst_mip:
+        # k = 2**(src_mip - dst_mip)
+        size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
+        if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
+          data = interpolate(data, size=size, mode='bilinear')
+        else:
+          data = data.type('torch.cuda.DoubleTensor')
+          data = interpolate(data, size=size, mode='nearest')
+          data = data.type('torch.cuda.ByteTensor')
+      if not to_tensor:
+        data = data.cpu().numpy()
+    
     return data
 
   def get_vector_data(self, path, z, bbox, mip):
@@ -634,49 +734,74 @@ class Aligner:
     while data is None:
       try:
         data_ = cv(path, mip=mip, progress=False,
-                   bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
+                   bounded=False, fill_missing=True, provenance={})[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
         data = data_
       except AttributeError as e:
         pass
     return data
 
   def get_abs_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.x_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.y_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
+    x = self.get_vector_data(self.paths['x_field'][mip], z, bbox, mip)[..., 0, 0]
+    y = self.get_vector_data(self.paths['y_field'][mip], z, bbox, mip)[..., 0, 0]
     result = np.stack((x, y), axis=2)
     return np.expand_dims(result, axis=0)
 
+  def get_field(self, path, z, bbox, mip):
+    x_path = join(path, 'field', str(mip), 'x')
+    y_path = join(path, 'field', str(mip), 'y')
+    x = self.get_vector_data(x_path, z, bbox, mip)[..., 0, 0]
+    y = self.get_vector_data(y_path, z, bbox, mip)[..., 0, 0]
+    res = np.stack((x, y), axis=2)
+    res = np.expand_dims(res, axis=0)
+    # res = self.abs_to_rel_residual(res, bbox, mip)
+    res = torch.from_numpy(res)
+    return res.to(device=self.device)
+
   def get_rel_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.x_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.y_field_ng_paths[mip], z, bbox, mip)[..., 0, 0]
+    x = self.get_vector_data(self.paths['x_field'][mip], z, bbox, mip)[..., 0, 0]
+    y = self.get_vector_data(self.paths['y_field'][mip], z, bbox, mip)[..., 0, 0]
     abs_res = np.stack((x, y), axis=2)
     abs_res = np.expand_dims(abs_res, axis=0)
     rel_res = self.abs_to_rel_residual(abs_res, bbox, mip)
     return rel_res
 
-
   def get_aggregate_rel_flow(self, z, bbox, res_mip_range, mip):
-    result = torch.zeros((1, bbox.x_size(mip), bbox.y_size(mip), 2), dtype=torch.float)
+    result = torch.zeros((1, bbox.x_size(mip), bbox.y_size(mip), 2), 
+                                 dtype=torch.float, device=self.device)
     start_mip = max(res_mip_range[0], self.process_low_mip)
     end_mip   = min(res_mip_range[1], self.process_high_mip)
 
     for res_mip in range(start_mip, end_mip + 1):
       rel_res = torch.from_numpy(self.get_rel_residual(z, bbox, res_mip))
+      rel_res = rel_res.to(device=self.device)
       up_rel_res = upsample(res_mip - mip)(rel_res.permute(0,3,1,2)).permute(0,2,3,1)
       result += up_rel_res
 
     return result
 
   ## High level services
-  def copy_section(self, source, dest, z, bbox, mip):
+  def copy_section(self, src_path, dst_path, z, bbox, mip):
     print ("moving section {} mip {} to dest".format(z, mip), end='', flush=True)
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
     #for patch_bbox in chunks:
     def chunkwise(patch_bbox):
-      raw_patch = self.get_image_data(source, z, patch_bbox, mip)
-      self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
+
+      if self.paths['src_mask']:
+        raw_patch = self.get_image(src_path, z, 
+                                    patch_bbox, mip,
+                                    adjust_contrast=False, to_tensor=True)
+        raw_mask = self.get_mask(self.paths['src_mask'], z, 
+                                 precrop_patch_bbox, src_mip=self.src_mask_mip,
+                                 dst_mip=mip, valid_val=self.src_mask_val)
+        raw_patch = raw_patch.masked_fill_(raw_mask, 0)
+        raw_patch = raw_patch.cpu().numpy()
+      else: 
+        raw_patch = self.get_image(src_path, z, 
+                                    patch_bbox, mip,
+                                    adjust_contrast=False, to_tensor=False)
+      self.save_image_patch(dst_path, raw_patch, z, patch_bbox, mip)
 
     self.pool.map(chunkwise, chunks)
 
@@ -692,16 +817,17 @@ class Aligner:
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
 
     def chunkwise(patch_bbox):
-      warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
+      warped_patch = self.warp_patch(self.paths['src_img'], z, patch_bbox,
                                      (mip + 1, self.process_high_mip), mip)
-      self.save_image_patch(self.tmp_ng_path, warped_patch, z, patch_bbox, mip)
+      self.save_image_patch(self.paths['tmp_img'], warped_patch, z, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
 
   def render(self, z, bbox, mip, start_z):
-    print ("Rendering mip {}".format(mip),
-              end='', flush=True)
+    print('Rendering z={0} with z_offset={1} @ MIP{2}'.format(z, mip, self.z_offset), flush=True)
+    print('src_path {0}'.format(self.paths['src_img']))
+    print('dst_path {0}'.format(self.paths['dst_img']))
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
@@ -713,13 +839,9 @@ class Aligner:
     #    self.field_sf_sum = np.zeros((total_chunks, 2), dtype=np.float32)
 
     def chunkwise(patch_bbox):
-      warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
+      warped_patch = self.warp_patch(self.paths['src_img'], z, patch_bbox,
                                     (mip, self.process_high_mip), mip, start_z)
-      #if (self.run_pairs):
-        # save the image in the previous slice so it's easier to compare pairs
-      #  self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
-      #else:
-      self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+      self.save_image_patch(self.paths['dst_img'], warped_patch, z+self.z_offset, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
@@ -736,12 +858,8 @@ class Aligner:
 
       def chunkwise(patch_bbox):
         print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
-        if (self.run_pairs):
-          downsampled_patch = self.downsample_patch(self.dst_ng_path, z-1, patch_bbox, m)
-          self.save_image_patch(self.dst_ng_path, downsampled_patch, z-1, patch_bbox, m)
-        else:
-          downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
-          self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
+        downsampled_patch = self.downsample_patch(self.paths['dst_img'], z+self.z_offset, patch_bbox, m)
+        self.save_image_patch(self.paths['dst_img'], downsampled_patch, z+self.z_offset, patch_bbox, m)
       self.pool.map(chunkwise, chunks)
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
@@ -772,11 +890,34 @@ class Aligner:
     self.field_sf_sum =np.zeros((total_chunks, 2), dtype=np.float32)
 
 
+  def compute_weighted_field(self, field_paths, z, bbox, mip, T=-1):
+    """Chunked-processing of field weighting
+    
+    Args:
+       field_paths: list of paths with field CloudVolumes
+       z: section of fields to weight
+       bbox: boundingbox of region to process
+       mip: field MIP level
+       T: softmin temperature (default will be 2**mip)
+    """
+    start = time()
+    chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[mip],
+                                    self.vec_voxel_offsets[mip], mip=mip)
+    print("Computing weighted field for slice {0} @ MIP{1} ({2} chunks)".
+           format(z, mip, len(chunks)), flush=True)
+    print('Writing vectors to {0}'.format(self.paths['x_field'][mip]))
+
+    #for patch_bbox in chunks:
+    def chunkwise(patch_bbox):
+      self.weight_fields(field_paths, z, patch_bbox, mip, T=T)
+    self.pool.map(chunkwise, chunks)
+    end = time()
+    print (": {} sec".format(end - start))
+
   ## Whole stack operations
   def align_ng_stack(self, start_section, end_section, bbox, move_anchor=True):
     if not self.check_all_params():
       raise Exception("Not all parameters are set")
-    #if not bbox.is_chunk_aligned(self.dst_ng_path):
     #  raise Exception("Have to align a chunkaligned size")
 
     self.total_bbox = bbox
@@ -784,10 +925,8 @@ class Aligner:
     start = time()
     if move_anchor:
       for m in range(self.render_low_mip, self.high_mip+1):
-        self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
+        self.copy_section(self.paths['src_img'], self.paths['dst_img'], start_section, bbox, mip=m)
         start_z = start_section + 1 
-    #if (self.run_pairs):
-    #    self.count_box(bbox, self.render_low_mip);
     self.zs = start_section
     for z in range(start_section, end_section):
       self.img_cache = {}
@@ -796,3 +935,42 @@ class Aligner:
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
                                                           end - start))
+
+  def multi_match(self, z, z_list, inverse=False, render=True):
+    """Match single section z to series of sections in z_list.
+    If inverse=True, then match series of sections in z_list to section z.
+    Use to compare alignments of multiple sections to use consensus in 
+    generating final alignment or masks for the section z.
+
+    Args:
+       z: z index of single section
+       z_list: list of z indices to match
+       inverse: bool indicating whether to align z_list to z, 
+         instead of z_list to z
+       render: bool indicating whether to render section
+
+    Returns list of paths where fields were written
+    """
+    orig_src_path = self.orig_src_path
+    orig_tgt_path = self.orig_tgt_path
+    orig_dst_path = self.orig_dst_path 
+    bbox = self.total_bbox
+    field_paths = []
+    for tgt_z in z_list:
+      src_z = z
+      if inverse:
+        src_z, tgt_z = tgt_z, src_z
+      print('Aligning {0} to {1}'.format(src_z, tgt_z))
+      self.zs = src_z
+      z_offset = tgt_z - src_z
+      self.z_offset = z_offset
+      dst_path = '{0}/z{1}'.format(orig_dst_path, z_offset)
+      field_paths.append(dst_path)
+      self.paths = self.get_paths(orig_src_path, orig_tgt_path, dst_path)
+      self._create_info_files(self.max_displacement)
+      self.compute_section_pair_residuals(src_z, tgt_z, bbox)
+      if render:
+        print('Rendering to {0}'.format(self.paths['dst_img'])) 
+        self.render_section_all_mips(src_z, bbox)
+    return field_paths
+

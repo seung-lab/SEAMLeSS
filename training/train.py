@@ -23,25 +23,335 @@ Todo:
 """
 
 import os
+from os.path import expanduser
 import time
 import torch
+from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.utils.data import DataLoader, ConcatDataset
+from torch.nn.parallel import data_parallel
+from torchvision import transforms
 import argparse
-import random
 
 import masks
-from stack_dataset import StackDataset
+from stack_dataset import * 
 from pyramid import PyramidTransformer
-from defect_net import *
-from defect_detector import DefectDetector
 from helpers import reverse_dim, downsample, gridsample_residual
-from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
 from vis import visualize_outputs
 from loss import similarity_score, smoothness_penalty
-from normalizer import Normalizer
 
+class ModelWrapper(nn.Module):
+    """Abstraction to allow for multi-GPU training
+    """
+    def __init__(self, args, model):
+        super(ModelWrapper, self).__init__()
+        self.args = args
+        self.model = model
+        self.trunclayer = 0 
+        self.smooth_factor = 1
+        self.set_trunclayer(self.trunclayer)
+        self.update_smooth_factor()
+        self.padding = args.padding
+        self.dim = args.dim + self.padding
+        self.similarity = similarity_score(should_reduce=False)
+        self.smoothness = smoothness_penalty(args.penalty)
+        # self.norm = Normalizer(5 if args.hm else 2)
+
+    def set_trunclayer(self, trunc):
+        self.trunclayer = trunc
+
+    def update_smooth_factor(self):
+        self.smooth_factor = 1 if self.trunclayer == 0 and self.args.fine_tuning else 0.05
+
+    def save(self, name):
+        torch.save(self.model.state_dict(), 'pt/' + name + '.pt')
+
+    def run_pair(self, src, tgt, aug_src, aug_tgt,
+                                 aug_src_masks=[], aug_tgt_masks=[], 
+                                 src_mask=None, tgt_mask=None, 
+                                 train=True):
+        """Compute forward/backward passes with src & tgt
+        
+        Args:
+        * src: image without contrast & cutout augmentation
+        * tgt: image without contrast & cutout augmentation
+        * aug_srg: image with contrast & cutout augmentation
+        * aug_tgt: image with contrast & cutout augmentation
+        * aug_src_masks: masks that produced contrast & cutout augmentation
+        * aug_tgt_masks: masks that produced contrast & cutout augmentation
+        * src_mask: defect mask based on src
+        * tgt_mask: defect mask based on tgt
+        * train: bool
+        """
+        rf = self.run_sample(
+            src, tgt, aug_src, aug_tgt, src_mask, tgt_mask,
+            aug_src_masks, aug_tgt_masks, train)
+        if rf is not None:
+            if not self.args.pe_only:
+                cost = (rf['similarity_error']
+                        + self.args.lambda1
+                        * self.smooth_factor * rf['smoothness_error'])
+                (cost/2).backward(retain_graph=self.args.lambda6 > 0)
+            else:
+                (rf['contrast_error']/2).backward()
+
+        src = reverse_dim(reverse_dim(src, 0), 1)
+        tgt = reverse_dim(reverse_dim(tgt, 0), 1)
+        aug_src = reverse_dim(reverse_dim(aug_src, 0), 1)
+        aug_tgt = reverse_dim(reverse_dim(aug_tgt, 0), 1)
+        if src_mask is not None:
+            src_mask = reverse_dim(reverse_dim(src_mask, 0), 1)
+        if tgt_mask is not None:
+            tgt_mask = reverse_dim(reverse_dim(tgt_mask, 0), 1)
+        aug_src_masks = [reverse_dim(reverse_dim(m, -2), -1)
+                            for m in aug_src_masks]
+        aug_tgt_masks = [reverse_dim(reverse_dim(m, -2), -1)
+                               for m in aug_tgt_masks]
+
+        rb = self.run_sample(
+            src, tgt, aug_src, aug_tgt, src_mask, tgt_mask,
+            aug_src_masks, aug_tgt_masks, train)
+        if rb is not None:
+            if not self.args.pe_only:
+                cost = (rb['similarity_error']
+                        + self.args.lambda1
+                        * self.smooth_factor * rb['smoothness_error'])
+                (cost/2).backward(retain_graph=self.args.lambda6 > 0)
+            else:
+                (rb['contrast_error']/2).backward()
+
+        ##################################
+        # CONSENSUS PENALTY COMPUTATION ##
+        ##################################
+        if (not self.args.pe_only and self.args.lambda6 > 0 and rf is not None
+                and rb is not None):
+            smaller_dim = self.dim // (2**self.trunclayer)
+            zmf = (rf['pred'] != 0).float() * (rf['aug_tgt'] != 0).float()
+            zmf = (zmf.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
+                   .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
+            zmb = (rb['pred'] != 0).float() * (rb['aug_tgt'] != 0).float()
+            zmb = (zmb.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
+                   .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
+            rffield, rbfield = rf['field'] * zmf, rb['field'] * zmb
+            rbfield_reversed = -reverse_dim(reverse_dim(rbfield, 1), 2)
+            consensus_diff = rffield - rbfield_reversed
+            consensus_error_field = (consensus_diff[:, :, :, 0] ** 2
+                                     + consensus_diff[:, :, :, 1] ** 2)
+            mean_consensus = torch.mean(consensus_error_field)
+            rf['consensus_field'] = rffield
+            rb['consensus_field'] = rbfield_reversed
+            rf['consensus_error_field'] = consensus_error_field
+            rb['consensus_error_field'] = consensus_error_field
+            rf['consensus'] = mean_consensus
+            rb['consensus'] = mean_consensus
+            consensus = self.args.lambda6 * mean_consensus
+            consensus.backward()
+
+        # print('type(rf), type(rb): {0} {1}'.format(type(rf), type(rb)))
+        return rf, rb
+
+    def run_sample(self, src, tgt, aug_src, aug_tgt, mask=None,
+                   tgt_mask=None, aug_src_masks=[],
+                   aug_tgt_masks=[], train=True):
+        self.model.train(train)
+        if self.args.dry_run:
+            print('Bailing for dry run [not an error].')
+            return None
+
+        # if we're just training the pre-encoder, no need to do everything
+        if self.args.pe_only:
+            contrasted_stack = self.model.apply(aug_src, aug_tgt, 
+                                           use_preencoder=self.args.pe)
+            pred = contrasted_stack.squeeze()
+            y = torch.cat((src.unsqueeze(0), tgt.squeeze().unsqueeze(0)), 0)
+            contrast_err = self.similarity(pred, y)
+            contrast_err_src = contrast_err[0:1]
+            contrast_err_tgt = contrast_err[1:2]
+            for m in aug_src_masks:
+                contrast_err_src = (contrast_err_src
+                                    * m.view(contrast_err_src.size()).float())
+            for m in aug_tgt_masks:
+                contrast_err_tgt = (contrast_err_tgt
+                                       * m.view(contrast_err_tgt.size())
+                                       .float())
+            contrast_err = torch.mean(torch.cat((contrast_err_src,
+                                                 contrast_err_tgt), 0))
+            return {'contrast_error': contrast_err}
+
+        # print('aug_src/tgt device: {0} {1}'.format(aug_src.device, aug_tgt.device))
+        pred, field, residuals = self.model.apply(aug_src, aug_tgt,
+                                             self.trunclayer, use_preencoder=self.args.pe)
+        # resample tensors that are in our source coordinate space with our
+        # new field prediction to move them into tgt coordinate space so
+        # we can compare things fairly
+        src = downsample(self.trunclayer)(src.unsqueeze(0).unsqueeze(0))
+        tgt = downsample(self.trunclayer)(tgt.unsqueeze(0).unsqueeze(0))
+        pred = gridsample_residual(src, field, padding_mode='zeros')
+        raw_mask = None
+        if mask is not None:
+            mask = downsample(self.trunclayer)(mask.unsqueeze(0).unsqueeze(0))
+            raw_mask = mask
+            mask = torch.ceil(gridsample_residual(mask, field, padding_mode='border'))
+        if tgt_mask is not None:
+            tgt_mask = downsample(self.trunclayer)(tgt_mask.unsqueeze(0).unsqueeze(0))
+            tgt_mask = masks.dilate(tgt_mask, 1, binary=False)
+        if len(aug_src_masks) > 0:
+            aug_src_masks = [
+                torch.ceil(gridsample_residual(m.float(), field, padding_mode='border')).byte()
+                for m in aug_src_masks]
+
+        if len(aug_tgt_masks) > 0:
+             aug_tgt_masks = [torch.ceil(downsample(self.trunclayer)(m.float())).byte() for m in aug_tgt_masks]
+
+        # first we'll build a binary mask to completely ignore
+        # 'irrelevant' pixels
+        similarity_binary_masks = []
+
+        # mask away similarity error from pixels outside the boundary of
+        # either prediction or tgt
+        # in other words, we need valid data in both the tgt and prediction
+        # to count the error from that pixel
+        border_mask = masks.low_pass(masks.intersect([pred != 0, tgt != 0]))
+        border_mask, no_valid_pixels = masks.contract(border_mask, 5,
+                                                      return_sum=True)
+        if no_valid_pixels:
+            print('Skipping empty border mask.')
+#             visualize_outputs(prefix('empty_border_mask') + '{}',
+#                               {'src': aug_src, 'tgt': aug_tgt}
+            return None
+        similarity_binary_masks.append(border_mask)
+
+        # mask away similarity error from pixels within cutouts in either the
+        # source or tgt
+        cutout_similarity_masks = aug_src_masks + aug_tgt_masks
+        if len(cutout_similarity_masks) > 0:
+            cutout_similarity_mask = masks.union(cutout_similarity_masks)
+            cutout_similarity_mask = masks.invert(cutout_similarity_mask)
+            similarity_binary_masks.append(cutout_similarity_mask)
+
+        # mask away similarity error for pixels within a defect in the
+        # tgt image
+        if tgt_mask is not None:
+            tgt_defect_similarity_mask = masks.contract(
+                tgt_mask < 2, 2).detach()
+            similarity_binary_masks.append(tgt_defect_similarity_mask)
+
+        similarity_binary_mask = masks.intersect(similarity_binary_masks)
+
+        # reweight remaining pixels for focus areas
+        similarity_weights = Variable(torch.ones(border_mask.size())).cuda()
+        if mask is not None:
+            similarity_weights.data[
+                masks.intersect([mask > 0, mask <= 1]).data
+            ] = self.args.lambda4
+            similarity_weights.data[
+                masks.dilate(mask > 1, 2).data
+            ] = self.args.lambda5
+
+        similarity_weights *= similarity_binary_mask.float()
+
+        # if torch.sum(similarity_weights[border_mask.data]).data[0] < self.args.eps:
+        #     print('Skipping all zero similarity weights (factor == 0).')
+#       #       visualize_outputs(prefix('zero_similarity_weights') + '{}',
+#       #                         {'src': aug_src, 'tgt': aug_tgt})
+        #     return None
+
+        # similarity_mask_factor = (
+        #     torch.sum(border_mask.float())
+        #     / torch.sum(similarity_weights[border_mask.data])).data[0]
+        similarity_mask_factor = 1
+
+        # compute raw similarity error and masked/weighted similarity error
+        similarity_error_field = self.similarity(pred, tgt)
+        weighted_similarity_error_field = (similarity_error_field
+                                           * similarity_weights
+                                           * similarity_mask_factor)
+
+        # perform masking/weighting for smoothness penalty
+        smoothness_binary_mask = (masks.intersect([src != 0, tgt != 0])
+                                  .view(similarity_binary_mask.size()))
+        smoothness_weights = Variable(
+            torch.ones(smoothness_binary_mask.size())).cuda()
+        if raw_mask is not None:
+            # everywhere we have non-standard smoothness, slightly reduce
+            # the smoothness penalty
+            smoothness_weights[raw_mask > 0] = self.args.lambda2
+            # on top of cracks and folds only, significantly reduce
+            # the smoothness penalty
+            smoothness_weights[raw_mask > 1] = self.args.lambda3
+        smoothness_weights = masks.contract(
+            smoothness_weights, self.args.mask_smooth_radius,
+            ceil=False, binary=False)
+        smoothness_weights *= smoothness_binary_mask.float().detach()
+        smoothness_weights = F.avg_pool2d(
+            smoothness_weights, 2*self.args.mask_smooth_radius+1, stride=1,
+            padding=self.args.mask_smooth_radius
+        )**.5
+        if raw_mask is not None:
+            # reset the most significant smoothness penalty relaxation
+            smoothness_weights[raw_mask > 1] = self.args.lambda3
+        smoothness_weights = F.avg_pool2d(smoothness_weights, 5,
+                                          stride=1, padding=2)
+        if (torch.sum(smoothness_weights[smoothness_binary_mask.byte().data])
+                .data[0] < self.args.eps):
+             print('Skipping all zero smoothness weights (factor == 0).')
+#             visualize_outputs(prefix('zero_smoothness_weights') + '{}',
+#                               {'src': aug_src, 'tgt': aug_tgt})
+             return None
+
+        # smoothness_mask_factor = (dim**2. / torch.sum(
+        #     smoothness_weights[smoothness_binary_mask.byte().data]).data[0])
+        smoothness_mask_factor = 1
+
+        smoothness_weights /= smoothness_mask_factor
+        smoothness_weights = gridsample_residual(smoothness_weights.detach(), field, padding_mode='border')
+        if self.args.hm:
+            smoothness_weights = smoothness_weights.detach()
+        smoothness_weights = smoothness_weights * border_mask.float().detach()
+
+        weighted_smoothness_error_field = self.smoothness(
+            [field], weights=smoothness_weights)
+
+        if mask is not None:
+            hpred = pred.clone().detach()
+            hpred[(mask > 1).detach()] = torch.min(pred).data[0]
+        else:
+            hpred = pred
+
+        return {
+            'src': src,
+            'tgt': tgt,
+            'aug_src': downsample(self.trunclayer)(aug_src.unsqueeze(0).unsqueeze(0)),
+            'aug_tgt': downsample(self.trunclayer)(aug_tgt.unsqueeze(0).unsqueeze(0)),
+            'field': field,
+            'residuals': residuals,
+            'pred': pred,
+            'hpred': hpred,
+            'src_mask': mask,
+            'raw_src_mask': raw_mask,
+            'tgt_mask': tgt_mask,
+            'similarity_error':
+                torch.mean(weighted_similarity_error_field[border_mask]),
+            'smoothness_error':
+                torch.sum(weighted_smoothness_error_field),
+            'smoothness_weights': smoothness_weights,
+            'similarity_weights': similarity_weights,
+            'similarity_error_field': weighted_similarity_error_field,
+            'smoothness_error_field': weighted_smoothness_error_field
+        }
+
+    def forward(self, X):
+        """Run single pair of slices
+        """
+        # src = Variable(X['src'], requires_grad=False).cuda() 
+        # tgt = Variable(X['tgt'], requires_grad=False).cuda() 
+        # src, tgt = X['src'], X['tgt']
+        src, tgt = X['src'].squeeze(), X['tgt'].squeeze()
+        aug_src, aug_tgt = X['aug_src'].squeeze(), X['aug_tgt'].squeeze()
+        aug_src_masks, aug_tgt_masks = X['aug_src_masks'], X['aug_tgt_masks']
+        # print('src/tgt device: {0} {1}'.format(src.device, tgt.device))
+        return self.run_pair(src, tgt, aug_src, aug_tgt, aug_src_masks, aug_tgt_masks)
 
 def main():
     """Start training a net."""
@@ -57,49 +367,32 @@ def main():
     log_path = 'out/' + name + '/'
     log_file = log_path + name + '.log'
     lr = args.lr
-    # batch_size = args.batch_size
     fine_tuning = args.fine_tuning
     epoch = args.epoch
     start_time = time.time()
-    similarity = similarity_score(should_reduce=False)
-    smoothness = smoothness_penalty(args.penalty)
     history = []
-    if args.pe_only:
-        args.pe = "only"
 
-    # setup the defect detector
-    if args.mm or args.hm:
-        hm_defect_detector = DefectDetector(
-            torch.load(args.hm_defect_net).cpu().cuda(),
-            major_dilation_radius=args.mask_neighborhood_radius,
-            sigmoid_threshold = 0.5 if args.hm else 0.4)
-    if args.mm or (not args.hm):
-        lm_defect_detector = DefectDetector(
-            torch.load(args.lm_defect_net).cpu().cuda(),
-            major_dilation_radius=args.mask_neighborhood_radius,
-            sigmoid_threshold = 0.5 if args.hm else 0.4)
-    normalizer = Normalizer(5 if args.hm else 2)
+    # GPUs
+    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(args.gpu_ids)
 
     if args.mm:
-        train_dataset1 = StackDataset(os.path.expanduser(args.hm_src), mip=5)
-        train_dataset2 = StackDataset(os.path.expanduser(args.lm_src), mip=2)
-        train_dataset3 = StackDataset(os.path.expanduser(args.vhm_src), mip=8)
-        train_dataset = ConcatDataset(
-            [train_dataset1, train_dataset2, train_dataset3])
+        paths = [args.hm_src, args.lm_src, args.vhm_src]
     else:
         if args.hm:
-            train_dataset1 = StackDataset(
-                os.path.expanduser(args.hm_src), mip=5)
-            train_dataset2 = StackDataset(
-                os.path.expanduser(args.vhm_src), mip=8)
-            train_dataset = ConcatDataset([train_dataset1, train_dataset2])
+            paths = [args.hm_src, args.vhm_src]
         else:
-            train_dataset2 = StackDataset(  # dataset focused on extreme folds
-                os.path.expanduser(args.lm_src), mip=2)
-            train_dataset = ConcatDataset([train_dataset2])
+            paths = [args.lm_src]
+    h5_paths = [expanduser(x) for x in paths]
+    transform = transforms.Compose([ToFloatTensor(),
+                                    RandomTranslation(2**(size-1)), 
+                                    RandomRotateAndScale(), 
+                                    RandomFlip(), 
+                                    RandomAugmentation(),
+                                    Normalize(2)])
+    train_dataset = compile_dataset(h5_paths, transform)
     train_loader = DataLoader(
-        train_dataset, batch_size=1, shuffle=True, num_workers=5,
-        pin_memory=True)
+        train_dataset, batch_size=args.batch_size, shuffle=True, 
+        num_workers=args.num_workers, pin_memory=True)
 
     if not os.path.isdir(log_path):
         os.makedirs(log_path)
@@ -118,7 +411,9 @@ def main():
             k=kernel_size)
         for p in model.parameters():
             p.requires_grad = True
-        model.train(True)
+        model.train().cuda()
+
+    model_wrapper = ModelWrapper(args, model)
 
     def opt(layer):
         params = []
@@ -133,8 +428,7 @@ def main():
             if fine_tuning or epoch < fall_time - 1:
                 print('Training all encoder parameters.')
                 params.extend(model.pyramid.enclist.parameters())
-                if args.pe:
-                    params.extend(model.pyramid.pe.parameters())
+                params.extend(model.pyramid.pe.parameters())
             else:
                 print('Freezing encoder parameters.')
         elif args.pe_only:
@@ -158,424 +452,95 @@ def main():
         else:
             return '{}{}_e{}_t{}_{}_'.format(log_path, name, epoch, t, tag)
 
-    def run_pair(src, target, src_mask=None, target_mask=None, train=True):
-        if train and not args.skip_sample_aug:
-            # random rotation
-            should_rotate = random.randint(0, 1) == 0
-            if should_rotate:
-                src, grid = rotate_and_scale(
-                    src.unsqueeze(0).unsqueeze(0), None)
-                target = rotate_and_scale(
-                    target.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
-                if src_mask is not None:
-                    src_mask = torch.ceil(
-                        rotate_and_scale(
-                            src_mask.unsqueeze(0).unsqueeze(0), grid=grid
-                        )[0].squeeze())
-                    target_mask = torch.ceil(
-                        rotate_and_scale(
-                            target_mask.unsqueeze(0).unsqueeze(0), grid=grid
-                        )[0].squeeze())
-
-                src = src.squeeze()
-
-        input_src = src.clone()
-        input_target = target.clone()
-
-        src_cutout_masks = []
-        target_cutout_masks = []
-
-        if train and not args.skip_sample_aug:
-            input_src, src_cutout_masks = aug_input(input_src)
-            input_target, target_cutout_masks = aug_input(input_target)
-        elif train:
-            print('Skipping sample-wise augmentation.')
-
-        src = Variable(torch.FloatTensor(normalizer.apply(
-            src.data.cpu().numpy()))).cuda()
-        target = Variable(torch.FloatTensor(normalizer.apply(
-            target.data.cpu().numpy()))).cuda()
-        input_src = Variable(torch.FloatTensor(normalizer.apply(
-            input_src.data.cpu().numpy()))).cuda()
-        input_target = Variable(torch.FloatTensor(normalizer.apply(
-            input_target.data.cpu().numpy()))).cuda()
-
-        rf = run_sample(
-            src, target, input_src, input_target, src_mask, target_mask,
-            src_cutout_masks, target_cutout_masks, train)
-        if rf is not None:
-            if not args.pe_only:
-                cost = (rf['similarity_error']
-                        + args.lambda1
-                        * smooth_factor * rf['smoothness_error'])
-                (cost/2).backward(retain_graph=args.lambda6 > 0)
-            else:
-                (rf['contrast_error']/2).backward()
-
-        src = reverse_dim(reverse_dim(src, 0), 1)
-        target = reverse_dim(reverse_dim(target, 0), 1)
-        input_src = reverse_dim(reverse_dim(input_src, 0), 1)
-        input_target = reverse_dim(reverse_dim(input_target, 0), 1)
-        if src_mask is not None:
-            src_mask = reverse_dim(reverse_dim(src_mask, 0), 1)
-        if target_mask is not None:
-            target_mask = reverse_dim(reverse_dim(target_mask, 0), 1)
-        src_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
-                            for m in src_cutout_masks]
-        target_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
-                               for m in target_cutout_masks]
-
-        rb = run_sample(
-            src, target, input_src, input_target, src_mask, target_mask,
-            src_cutout_masks, target_cutout_masks, train)
-        if rb is not None:
-            if not args.pe_only:
-                cost = (rb['similarity_error']
-                        + args.lambda1
-                        * smooth_factor * rb['smoothness_error'])
-                (cost/2).backward(retain_graph=args.lambda6 > 0)
-            else:
-                (rb['contrast_error']/2).backward()
-
-        ##################################
-        # CONSENSUS PENALTY COMPUTATION ##
-        ##################################
-        if (not args.pe_only and args.lambda6 > 0 and rf is not None
-                and rb is not None):
-            smaller_dim = dim // (2**trunclayer)
-            zmf = (rf['pred'] != 0).float() * (rf['input_target'] != 0).float()
-            zmf = (zmf.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
-                   .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
-            zmb = (rb['pred'] != 0).float() * (rb['input_target'] != 0).float()
-            zmb = (zmb.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
-                   .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
-            rffield, rbfield = rf['field'] * zmf, rb['field'] * zmb
-            rbfield_reversed = -reverse_dim(reverse_dim(rbfield, 1), 2)
-            consensus_diff = rffield - rbfield_reversed
-            consensus_error_field = (consensus_diff[:, :, :, 0] ** 2
-                                     + consensus_diff[:, :, :, 1] ** 2)
-            mean_consensus = torch.mean(consensus_error_field)
-            rf['consensus_field'] = rffield
-            rb['consensus_field'] = rbfield_reversed
-            rf['consensus_error_field'] = consensus_error_field
-            rb['consensus_error_field'] = consensus_error_field
-            rf['consensus'] = mean_consensus
-            rb['consensus'] = mean_consensus
-            consensus = args.lambda6 * mean_consensus
-            consensus.backward()
-
-        return rf, rb
-
-    def run_sample(src, target, input_src, input_target, mask=None,
-                   target_mask=None, src_cutout_masks=[],
-                   target_cutout_masks=[], train=True):
-        model.train(train)
-        if args.dry_run:
-            print('Bailing for dry run [not an error].')
-            return None
-
-        # if we're just training the pre-encoder, no need to do everything
-        if args.pe_only:
-            contrasted_stack = model.apply(input_src, input_target, 
-                                           use_preencoder=args.pe)
-            pred = contrasted_stack.squeeze()
-            y = torch.cat((src.unsqueeze(0), target.squeeze().unsqueeze(0)), 0)
-            contrast_err = similarity(pred, y)
-            contrast_err_src = contrast_err[0:1]
-            contrast_err_target = contrast_err[1:2]
-            for m in src_cutout_masks:
-                contrast_err_src = (contrast_err_src
-                                    * m.view(contrast_err_src.size()).float())
-            for m in target_cutout_masks:
-                contrast_err_target = (contrast_err_target
-                                       * m.view(contrast_err_target.size())
-                                       .float())
-            contrast_err = torch.mean(torch.cat((contrast_err_src,
-                                                 contrast_err_target), 0))
-            return {'contrast_error': contrast_err}
-
-        pred, field, residuals = model.apply(input_src, input_target,
-                                             trunclayer, use_preencoder=args.pe)
-        # resample tensors that are in our source coordinate space with our
-        # new field prediction to move them into target coordinate space so
-        # we can compare things fairly
-        src = downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0))
-        target = downsample(trunclayer)(target.unsqueeze(0).unsqueeze(0))
-        pred = gridsample_residual(src, field, padding_mode='zeros')
-        raw_mask = None
-        if mask is not None:
-            mask = downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0))
-            raw_mask = mask
-            mask = torch.ceil(gridsample_residual(mask, field, padding_mode='border'))
-        if target_mask is not None:
-            target_mask = downsample(trunclayer)(target_mask.unsqueeze(0).unsqueeze(0))
-            target_mask = masks.dilate(target_mask, 1, binary=False)
-        if len(src_cutout_masks) > 0:
-            src_cutout_masks = [
-                torch.ceil(gridsample_residual(m.float(), field, padding_mode='border')).byte()
-                for m in src_cutout_masks]
-
-        if len(target_cutout_masks) > 0:
-             target_cutout_masks = [torch.ceil(downsample(trunclayer)(m.float())).byte() for m in target_cutout_masks]
-
-        # first we'll build a binary mask to completely ignore
-        # 'irrelevant' pixels
-        similarity_binary_masks = []
-
-        # mask away similarity error from pixels outside the boundary of
-        # either prediction or target
-        # in other words, we need valid data in both the target and prediction
-        # to count the error from that pixel
-        border_mask = masks.low_pass(masks.intersect([pred != 0, target != 0]))
-        border_mask, no_valid_pixels = masks.contract(border_mask, 5,
-                                                      return_sum=True)
-        if no_valid_pixels:
-            print('Skipping empty border mask.')
-            visualize_outputs(prefix('empty_border_mask') + '{}',
-                              {'src': input_src, 'target': input_target})
-            return None
-        similarity_binary_masks.append(border_mask)
-
-        # mask away similarity error from pixels within cutouts in either the
-        # source or target
-        cutout_similarity_masks = src_cutout_masks + target_cutout_masks
-        if len(cutout_similarity_masks) > 0:
-            cutout_similarity_mask = masks.union(cutout_similarity_masks)
-            cutout_similarity_mask = masks.invert(cutout_similarity_mask)
-            similarity_binary_masks.append(cutout_similarity_mask)
-
-        # mask away similarity error for pixels within a defect in the
-        # target image
-        if target_mask is not None:
-            target_defect_similarity_mask = masks.contract(
-                target_mask < 2, 2).detach()
-            similarity_binary_masks.append(target_defect_similarity_mask)
-
-        similarity_binary_mask = masks.intersect(similarity_binary_masks)
-
-        # reweight remaining pixels for focus areas
-        similarity_weights = Variable(torch.ones(border_mask.size())).cuda()
-        if mask is not None:
-            similarity_weights.data[
-                masks.intersect([mask > 0, mask <= 1]).data
-            ] = args.lambda4
-            similarity_weights.data[
-                masks.dilate(mask > 1, 2).data
-            ] = args.lambda5
-
-        similarity_weights *= similarity_binary_mask.float()
-
-        if torch.sum(similarity_weights[border_mask.data]).data[0] < args.eps:
-            print('Skipping all zero similarity weights (factor == 0).')
-            visualize_outputs(prefix('zero_similarity_weights') + '{}',
-                              {'src': input_src, 'target': input_target})
-            return None
-
-        # similarity_mask_factor = (
-        #     torch.sum(border_mask.float())
-        #     / torch.sum(similarity_weights[border_mask.data])).data[0]
-        similarity_mask_factor = 1
-
-        # compute raw similarity error and masked/weighted similarity error
-        similarity_error_field = similarity(pred, target)
-        weighted_similarity_error_field = (similarity_error_field
-                                           * similarity_weights
-                                           * similarity_mask_factor)
-
-        # perform masking/weighting for smoothness penalty
-        smoothness_binary_mask = (masks.intersect([src != 0, target != 0])
-                                  .view(similarity_binary_mask.size()))
-        smoothness_weights = Variable(
-            torch.ones(smoothness_binary_mask.size())).cuda()
-        if raw_mask is not None:
-            # everywhere we have non-standard smoothness, slightly reduce
-            # the smoothness penalty
-            smoothness_weights[raw_mask > 0] = args.lambda2
-            # on top of cracks and folds only, significantly reduce
-            # the smoothness penalty
-            smoothness_weights[raw_mask > 1] = args.lambda3
-        smoothness_weights = masks.contract(
-            smoothness_weights, args.mask_smooth_radius,
-            ceil=False, binary=False)
-        smoothness_weights *= smoothness_binary_mask.float().detach()
-        smoothness_weights = F.avg_pool2d(
-            smoothness_weights, 2*args.mask_smooth_radius+1, stride=1,
-            padding=args.mask_smooth_radius
-        )**.5
-        if raw_mask is not None:
-            # reset the most significant smoothness penalty relaxation
-            smoothness_weights[raw_mask > 1] = args.lambda3
-        smoothness_weights = F.avg_pool2d(smoothness_weights, 5,
-                                          stride=1, padding=2)
-        if (torch.sum(smoothness_weights[smoothness_binary_mask.byte().data])
-                .data[0] < args.eps):
-            print('Skipping all zero smoothness weights (factor == 0).')
-            visualize_outputs(prefix('zero_smoothness_weights') + '{}',
-                              {'src': input_src, 'target': input_target})
-            return None
-
-        # smoothness_mask_factor = (dim**2. / torch.sum(
-        #     smoothness_weights[smoothness_binary_mask.byte().data]).data[0])
-        smoothness_mask_factor = 1
-
-        smoothness_weights /= smoothness_mask_factor
-        smoothness_weights = gridsample_residual(smoothness_weights.detach(), field, padding_mode='border')
-        if args.hm:
-            smoothness_weights = smoothness_weights.detach()
-        smoothness_weights = smoothness_weights * border_mask.float().detach()
-
-        weighted_smoothness_error_field = smoothness(
-            [field], weights=smoothness_weights)
-
-        if mask is not None:
-            hpred = pred.clone().detach()
-            hpred[(mask > 1).detach()] = torch.min(pred).data[0]
-        else:
-            hpred = pred
-
-        return {
-            'src': src,
-            'target': target,
-            'input_src': downsample(trunclayer)(input_src.unsqueeze(0).unsqueeze(0)),
-            'input_target': downsample(trunclayer)(input_target.unsqueeze(0).unsqueeze(0)),
-            'field': field,
-            'residuals': residuals,
-            'pred': pred,
-            'hpred': hpred,
-            'src_mask': mask,
-            'raw_src_mask': raw_mask,
-            'target_mask': target_mask,
-            'similarity_error':
-                torch.mean(weighted_similarity_error_field[border_mask]),
-            'smoothness_error':
-                torch.sum(weighted_smoothness_error_field),
-            'smoothness_weights': smoothness_weights,
-            'similarity_weights': similarity_weights,
-            'similarity_error_field': weighted_similarity_error_field,
-            'smoothness_error_field': weighted_smoothness_error_field
-        }
-
     print('=========== BEGIN TRAIN LOOP ============')
     for epoch in range(args.epoch, args.num_epochs):
         print('Beginning training epoch: {}'.format(epoch))
-        for t, tensor_dict in enumerate(train_loader):
-            if t == 0:
-                if epoch % fall_time == 0 and (trunclayer > 0
-                                               or args.trunc == 0):
-                    # only fine tune if running a tuning session
-                    fine_tuning = False or args.fine_tuning
-                    if epoch > 0 and trunclayer > 0:
-                        trunclayer -= 1
-                    optimizer = opt(trunclayer)
-                elif (epoch >= fall_time * size - 1
-                      or epoch % fall_time == fall_time - 1):
-                    if not fine_tuning:
-                        fine_tuning = True
-                        optimizer = opt(trunclayer)
+        errs = []
+        penalties = []
+        consensus_list = []
+        contrast_errors = []
+        smooth_factor = model_wrapper.smooth_factor
 
-            # Get inputs
-            X = Variable(tensor_dict['X'], requires_grad=False).cuda()
-            this_mip = tensor_dict['mip'][0]
-            if trunclayer == 0:
-                mask_stack = (
-                    lm_defect_detector.masks_from_stack(X) if this_mip == 2
-                    else hm_defect_detector.masks_from_stack(X))
+        if epoch % fall_time == 0 and (trunclayer > 0
+                                       or args.trunc == 0):
+            # only fine tune if running a tuning session
+            fine_tuning = False or args.fine_tuning
+            if epoch > 0 and trunclayer > 0:
+                trunclayer -= 1
+                model_wrapper.set_trunclayer(trunclayer)
+            optimizer = opt(trunclayer)
+        elif (epoch >= fall_time * size - 1
+              or epoch % fall_time == fall_time - 1):
+            if not fine_tuning:
+                fine_tuning = True
+                optimizer = opt(trunclayer)
+
+        for t, sample in enumerate(train_loader):
+            if len(args.gpu_ids) > 0:
+                # print('using multiple gpus')
+                rf, rb = data_parallel(model_wrapper, sample)
             else:
-                mask_stack = None
-            stacks, top, left = aug_stacks(
-                [X, mask_stack] if trunclayer == 0 else [X], 
-                padding=padding, jitter=not args.no_jitter,
-                jitter_displacement=2**(args.size-1))
-            X, mask_stack = stacks[0], stacks[1] if trunclayer == 0 else None
+                # print('not using multiple gpus')
+                rf, rb = model_wrapper(sample)
 
-            errs = []
-            penalties = []
-            consensus_list = []
-            contrast_errors = []
-            smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
-            for sample_idx, i in enumerate(range(1, X.size(1)-1)):
-                ##################################
-                # RUN SINGLE PAIR OF SLICES ######
-                ##################################
-                src, target = X[0, i], X[0, i+1]
-                src_mask, target_mask = (
-                    (mask_stack[0, i], mask_stack[0, i+1]) if trunclayer == 0
-                    else (None, None))
+            if rf is not None:
+                if not args.pe_only:
+                    errs.append(rf['similarity_error'].data[0])
+                    penalties.append(rf['smoothness_error'].data[0])
+                    if args.lambda6 > 0 and 'consensus' in rf:
+                        consensus_list.append(rf['consensus'].data[0])
+                else:
+                    contrast_errors.append(rf['contrast_error'].data[0])
 
-                if (min(torch.var(src).data[0], torch.var(target).data[0])
-                        < args.blank_var_threshold):
-                    print("Skipping blank sections: ({}, {})."
-                          .format(torch.var(src).data[0],
-                                  torch.var(target).data[0]))
-                    visualize_outputs(prefix('blank_sections') + '{}',
-                                      {'src': src, 'target': target})
-                    continue
+            if rb is not None:
+                if not args.pe_only:
+                    errs.append(rb['similarity_error'].data[0])
+                    penalties.append(rb['smoothness_error'].data[0])
+                    if args.lambda6 > 0 and 'consensus' in rb:
+                        consensus_list.append(rb['consensus'].data[0])
+                else:
+                    contrast_errors.append(rb['contrast_error'].data[0])
 
-                rf, rb = run_pair(src, target, src_mask, target_mask)
-                if rf is not None:
-                    if not args.pe_only:
-                        errs.append(rf['similarity_error'].data[0])
-                        penalties.append(rf['smoothness_error'].data[0])
-                        if args.lambda6 > 0 and 'consensus' in rf:
-                            consensus_list.append(rf['consensus'].data[0])
-                    else:
-                        contrast_errors.append(rf['contrast_error'].data[0])
+            if t % args.vis_interval == 0 and not args.pe_only and t > 0:
+                visualize_outputs(prefix('forward') + '{}', rf)
+                visualize_outputs(prefix('backward') + '{}', rb)
+            ##################################
+            # print('optimizer.step()')
+            optimizer.step()
+            # model_wrapper.model.zero_grad()
+            optimizer.zero_grad()
 
-                if rb is not None:
-                    if not args.pe_only:
-                        errs.append(rb['similarity_error'].data[0])
-                        penalties.append(rb['smoothness_error'].data[0])
-                        if args.lambda6 > 0 and 'consensus' in rb:
-                            consensus_list.append(rb['consensus'].data[0])
-                    else:
-                        contrast_errors.append(rb['contrast_error'].data[0])
-
-                if (sample_idx == 0 and t % args.vis_interval == 0
-                        and not args.pe_only):
-                    visualize_outputs(prefix('forward') + '{}', rf)
-                    visualize_outputs(prefix('backward') + '{}', rb)
-                ##################################
-
-                optimizer.step()
-                model.zero_grad()
-
-            if args.pe_only:
-                mean_contrast = (
-                    (sum(contrast_errors) / len(contrast_errors))
-                    if len(contrast_errors) > 0 else 0)
-                print('Mean contraster error: {}'.format(mean_contrast))
-                torch.save(model.state_dict(), 'pt/' + name + '.pt')
-            # Save some info
-            if len(errs) > 0:
-                mean_err_train = sum(errs) / len(errs)
-                mean_penalty_train = sum(penalties) / len(penalties)
-                mean_consensus = (
-                    (sum(consensus_list) / len(consensus_list))
-                    if len(consensus_list) > 0 else torch.tensor(0.))
-                print(t, smooth_factor, trunclayer,
-                      (mean_err_train + args.lambda1
-                      * mean_penalty_train * smooth_factor).item(),
-                      mean_err_train.item(), mean_penalty_train.item(),
-                      mean_consensus.item())
-                history.append((
-                    time.time() - start_time,
-                    (mean_err_train + mean_penalty_train * smooth_factor).item(),
-                    mean_err_train.item(), mean_penalty_train.item(),
-                    mean_consensus.item()))
-                torch.save(model.state_dict(), 'pt/' + name + '.pt')
-                if t % 100 == 0:
-                    torch.save(model.state_dict(), prefix() + '.pt')
-
-                print('Writing status to: {}'.format(log_file))
-                with open(log_file, 'a') as log:
-                    for tr in history:
-                        for val in tr:
-                            log.write(str(val) + ', ')
-                        log.write('\n')
-                    history = []
-            else:
-                print(
-                    "Skipping writing status for stack with no valid slices.")
+            if t % args.log_interval == 0 and t > 0:
+                if args.pe_only:
+                    mean_contrast = (
+                        (sum(contrast_errors) / len(contrast_errors))
+                        if len(contrast_errors) > 0 else 0)
+                    print('Mean contraster error: {}'.format(mean_contrast))
+                    model_wrapper.save(name)
+                # Save some info
+                if len(errs) > 0:
+                    mean_err_train = sum(errs) / len(errs)
+                    mean_penalty_train = sum(penalties) / len(penalties)
+                    mean_consensus = (
+                        (sum(consensus_list) / len(consensus_list))
+                        if len(consensus_list) > 0 else 0)
+                    print(epoch, smooth_factor, trunclayer,
+                          mean_err_train + args.lambda1
+                          * mean_penalty_train * smooth_factor,
+                          mean_err_train, mean_penalty_train, mean_consensus)
+                    history.append((
+                        time.time() - start_time,
+                        mean_err_train + mean_penalty_train * smooth_factor,
+                        mean_err_train, mean_penalty_train, mean_consensus))
+                    model_wrapper.save(name)
+          
+                    print('Writing status to: {}'.format(log_file))
+                    with open(log_file, 'a') as log:
+                        for tr in history:
+                            for val in tr:
+                                log.write(str(val) + ', ')
+                            log.write('\n')
+                        history = []
 
 
 def parse_args():
@@ -587,7 +552,11 @@ def parse_args():
         action='store_true')
     parser.add_argument(
         '--vis_interval',
-        help='the number of stacks in between each visualization',
+        help='the number of samples in between each visualization',
+        type=int, default=10)
+    parser.add_argument(
+        '--log_interval',
+        help='the number of samples in between each log',
         type=int, default=10)
     parser.add_argument(
         '--mask_smooth_radius',
@@ -717,7 +686,13 @@ def parse_args():
         help='high mip source (mip 5)', type=str, default='~/mip5_mixed.h5')
     parser.add_argument(
         '--lm_src',
-        help='low mip source (mip 2)', type=str, default='~/mip2_mixed.h5')
+        help='low mip source (mip 2)', type=str, default='~/test_mip2_drosophila_cleaned.h5')
+    parser.add_argument('--batch_size', type=int, default=1, 
+        help='Number of samples to be evaluated before each gradient update')
+    parser.add_argument('--num_workers', type=int, default=1,
+        help='Number of workers for the DataLoader')
+    parser.add_argument('--gpu_ids', type=str, default=['0'], nargs='+',
+        help='Specific GPUs to use during training')
     return parser.parse_args()
 
 

@@ -27,7 +27,7 @@ def graph(series, fname):
     plt.clf()
 
 def show_weights(weights, path):
-    weights = np.squeeze(weights.data.cpu().numpy())
+    weights = np.squeeze(weights.data.cpu().numpy()[:1,...])
     x_slice = weights[weights.shape[0]//2]
     y_slice = weights[:,weights.shape[1]//2]
 
@@ -53,50 +53,50 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
 
     v = lambda k: outputs[k] if k in outputs and k not in skip else None
 
-    if v('input_src') is not None and v('input_target') is not None:
+    if v('aug_src') is not None and v('aug_tgt') is not None:
         if v('pred') is not None:
-            stack = np.squeeze(torch.cat((reverse_dim(v('input_target'),1),v('pred'),v('input_src')), 1).data.cpu().numpy())
+            stack = np.squeeze(torch.cat((reverse_dim(v('aug_tgt'),1),v('pred'),v('aug_src')), 1).data.cpu().numpy()[:1,...])
         else:
-            stack = np.squeeze(torch.cat((reverse_dim(v('input_target'),1),v('input_src')), 1).data.cpu().numpy())
+            stack = np.squeeze(torch.cat((reverse_dim(v('aug_tgt'),1),v('aug_src')), 1).data.cpu().numpy()[:1,...])
         stack = norm(stack, 255)
         gif(path.format('stack'), stack)
 
         if v('hpred') is not None:
-            hstack = np.squeeze(torch.cat((reverse_dim(v('input_target'),1),v('hpred'),v('input_src')), 1).data.cpu().numpy())
+            hstack = np.squeeze(torch.cat((reverse_dim(v('aug_tgt'),1),v('hpred'),v('aug_src')), 1).data.cpu().numpy()[:1,...])
             hstack = norm(hstack, 255)
             gif(path.format('hstack'), hstack)
 
     if v('field') is not None:
-        grid, distorted_grid = distortion_lines(v('field'))
+        grid, distorted_grid = distortion_lines(v('field')[:1,...])
         save_chunk(grid, path.format('grid'))
         save_chunk(distorted_grid, path.format('dgrid'))
 
-        field = v('field').data.cpu().numpy()
-        display_v(field, path.format('field'))
-        display_v(field, path.format('cfield'), center=True)
+        rfield = v('field').data.cpu().numpy()[:1,...]
+        display_v(rfield, path.format('field'))
+        display_v(rfield, path.format('cfield'), center=True)
 
     if v('consensus_error_field') is not None:
-        cfield = v('consensus_error_field').data.cpu().numpy()
+        cfield = v('consensus_error_field').data.cpu().numpy()[:1,...]
         save_chunk(cfield, path.format('consensus_error_field'), norm=False)
 
     if v('consensus_field') is not None:
-        cfield = v('consensus_field').data.cpu().numpy()
+        cfield = v('consensus_field').data.cpu().numpy()[:1,...]
         dvl(cfield, path.format('consensus_field'))
 
     if v('consensus_field_neg') is not None:
-        cfield = v('consensus_field_neg').data.cpu().numpy()
+        cfield = v('consensus_field_neg').data.cpu().numpy()[:1,...]
         dvl(cfield, path.format('consensus_field_neg'))
 
     if v('residuals') is not None and len(v('residuals')) > 1:
-        residuals = [r.data.cpu().numpy() for r in v('residuals')[1:]]
-        display_v(residuals, path.format('field'))
+        residuals = [r.data.cpu().numpy()[:1,...] for r in v('residuals')[1:]]
+        display_v(residuals, path.format('rfield'))
         display_v(residuals, path.format('crfield'), center=True)
 
     if v('similarity_error_field') is not None:
-        save_chunk(norm(v('similarity_error_field').data.cpu().numpy()), path.format('similarity_error_field'), norm=False)
+        save_chunk(norm(v('similarity_error_field').data.cpu().numpy()[:1,...]), path.format('similarity_error_field'), norm=False)
 
     if v('smoothness_error_field') is not None:
-        save_chunk(norm(v('smoothness_error_field').data.cpu().numpy()), path.format('smoothness_error_field'), norm=False)
+        save_chunk(norm(v('smoothness_error_field').data.cpu().numpy()[:1,...]), path.format('smoothness_error_field'), norm=False)
 
     if v('similarity_weights') is not None:
         show_weights(v('similarity_weights'), path.format('similarity_{}'))
@@ -105,10 +105,10 @@ def visualize_outputs(path, outputs, skip=['residuals', 'hpred'], verbose=False)
         show_weights(v('smoothness_weights'), path.format('smoothness_{}'))
 
     if v('src_mask') is not None:
-        save_chunk(np.squeeze(v('src_mask').data.cpu().numpy()), path.format('src_mask'), norm=False)
+        save_chunk(np.squeeze(v('src_mask').data.cpu().numpy()[:1,...]), path.format('src_mask'), norm=False)
 
     if v('raw_src_mask') is not None:
-        save_chunk(np.squeeze(v('raw_src_mask').data.cpu().numpy()), path.format('raw_src_mask'), norm=False)
+        save_chunk(np.squeeze(v('raw_src_mask').data.cpu().numpy()[:1,...]), path.format('raw_src_mask'), norm=False)
 
-    if v('target_mask') is not None:
-        save_chunk(np.squeeze(v('target_mask').data.cpu().numpy()), path.format('target_mask'), norm=False)
+    if v('tgt_mask') is not None:
+        save_chunk(np.squeeze(v('tgt_mask').data.cpu().numpy()[:1,...]), path.format('tgt_mask'), norm=False)

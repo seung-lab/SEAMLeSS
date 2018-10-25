@@ -1,5 +1,7 @@
 import numpy as np
+from math import floor, ceil
 from helpers import crop
+
 
 class BoundingBox:
   def __init__(self, xs, xe, ys, ye, mip, max_mip=12):
@@ -16,6 +18,9 @@ class BoundingBox:
     dye = self.m0_y[1] >= other.m0_y[1]
 
     return dxs and dys and dxe and dye
+
+  def get_bounding_pts(self):
+    return (self.m0_x[0], self.m0_y[0]), (self.m0_x[1], self.m0_y[1])
 
   def intersects(self, other):
     assert type(other) == type(self)
@@ -54,26 +59,26 @@ class BoundingBox:
   def x_range(self, mip):
     assert(mip <= self.max_mip)
     scale_factor = 2**mip
-    xs = int(self.m0_x[0] / scale_factor)
-    xe = int(self.m0_x[1] / scale_factor)
+    xs = floor(self.m0_x[0] / scale_factor)
+    xe = ceil(self.m0_x[1] / scale_factor)
     return (xs, xe)
 
   def y_range(self, mip):
     assert(mip <= self.max_mip)
     scale_factor = 2**mip
-    ys = int(self.m0_y[0] / scale_factor)
-    ye = int(self.m0_y[1] / scale_factor)
+    ys = floor(self.m0_y[0] / scale_factor)
+    ye = ceil(self.m0_y[1] / scale_factor)
     return (ys, ye)
 
   def x_size(self, mip):
     assert(mip <= self.max_mip)
-    scale_factor = 2**mip
-    return int(self.m0_x_size / scale_factor)
+    x_range = self.x_range(mip)
+    return int(x_range[1] - x_range[0])
 
   def y_size(self, mip):
     assert(mip <= self.max_mip)
-    scale_factor = 2**mip
-    return int(self.m0_y_size / scale_factor)
+    y_range = self.y_range(mip)
+    return int(y_range[1] - y_range[0])
 
   def check_mips(self):
     for m in range(1, self.max_mip + 1):
