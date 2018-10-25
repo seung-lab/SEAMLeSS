@@ -108,30 +108,14 @@ class Aligner:
     mip_range = range(self.process_high_mip + 10) #TODO
     paths['enc'] = [join(dst_path, 'enc/{}'.format(i)) for i in mip_range]
 
-    res   = [join(dst_path, 'vec/{}'.format(i)) for i in mip_range]
-    paths['x_res'] = [join(r, 'x') for r in res]
-    paths['y_res'] = [join(r, 'y') for r in res]
-
-    cumres   = [join(dst_path, 'cumulative_vec/{}'.format(i)) 
+    paths['res'] = [join(dst_path, 'vec/{}'.format(i)) for i in mip_range]
+    paths['cumres'] = [join(dst_path, 'cumulative_vec/{}'.format(i)) 
                                                      for i in mip_range] 
-    paths['x_cumres'] = [join(r, 'x') for r in cumres]
-    paths['y_cumres'] = [join(r, 'y') for r in cumres]
-
-    resup   = [join(dst_path, 'vec_up/{}'.format(i)) for i in mip_range]
-    paths['x_resup'] = [join(r, 'x') for r in resup]
-    paths['y_resup'] = [join(r, 'y') for r in resup]
-
-    cumresup   = [join(dst_path, 'cumulative_vec_up/{}'.format(i)) 
+    paths['resup'] = [join(dst_path, 'vec_up/{}'.format(i)) for i in mip_range]
+    paths['cumresup'] = [join(dst_path, 'cumulative_vec_up/{}'.format(i)) 
                                                      for i in mip_range]
-    paths['x_cumresup'] = [join(r, 'x') for r in cumresup]
-    paths['y_cumresup'] = [join(r, 'y') for r in cumresup]
-
-    field   = [join(dst_path, 'field/{}'.format(i)) for i in mip_range]
-    paths['x_field'] = [join(r, 'x') for r in field]
-    paths['y_field'] = [join(r, 'y') for r in field]
-
-    paths['field_sf'] = join(dst_path, 'field_sf')
-
+    paths['field']   = [join(dst_path, 'field/{}'.format(i)) for i in mip_range]
+    paths['field_sf'] = [join(dst_path, 'field_sf'.format(i)) for i in mip_range]
     paths['diffs']   = [join(dst_path, 'diffs'.format(i)) for i in mip_range]
     paths['diff_weights']   = [join(dst_path, 'diff_weights'.format(i)) for i in mip_range]
     paths['weights']   = [join(dst_path, 'weights'.format(i)) for i in mip_range]
@@ -218,38 +202,28 @@ class Aligner:
     ##########################################################
     #### Create vec info file
     ##########################################################
-    vec_info = deepcopy(src_info)
+    vec_info = deepcopy(dst_info)
     vec_info["data_type"] = "float32"
     for i in range(len(vec_info["scales"])):
       vec_info["scales"][i]["chunk_sizes"][0][2] = 1
+    vec_info['num_channels'] = 2
 
     enc_dict = {x: 6*(x-self.process_low_mip)+12 for x in 
                     range(self.process_low_mip, self.process_high_mip+1)} 
 
     scales = deepcopy(vec_info["scales"])
-    # print('src_info scales: {0}'.format(len(scales)))
-    field_info = deepcopy(dst_info)
-    field_info["data_type"] = "float32"
-    for i in range(len(scales)):
-      field_info["scales"][i]["chunk_sizes"][0][2] = 1
-    field_info['num_channels'] = 2
 
     for i in range(len(scales)):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
       if not self.ignore_field_init:
-        cv(self.paths['x_field'][i], info=vec_info, provenance={}).commit_info()
-        cv(self.paths['y_field'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['field_sf'], info=field_info).commit_info() 
-      cv(self.paths['x_res'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['y_res'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['x_cumres'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['y_cumres'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['x_resup'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['y_resup'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['x_cumresup'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['y_cumresup'][i], info=vec_info, provenance={}).commit_info()
+        cv(self.paths['field'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['field_sf'][i], info=vec_info, provenance={}).commit_info() 
+      cv(self.paths['res'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['cumres'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['resup'][i], info=vec_info, provenance={}).commit_info()
+      cv(self.paths['cumresup'][i], info=vec_info, provenance={}).commit_info()
 
       if i in enc_dict.keys():
         enc_info = deepcopy(vec_info)
@@ -302,24 +276,34 @@ class Aligner:
                          mip=0, max_mip=self.max_mip) #self.process_high_mip)
     return result
 
-  def get_field_sf_residual(self, z, bbox, mip):
+  def get_field(self, path, z, bbox, mip, relative=False, to_tensor=True):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-    field_sf = cv(self.paths['field_sf'], mip=mip, bounded=False, 
+    field = cv(path[mip], mip=mip, bounded=False, 
                   fill_missing=True, progress=False)[x_range[0]:x_range[1], 
                                                      y_range[0]:y_range[1], z]
-    abs_res = np.expand_dims(np.squeeze(field_sf), axis=0)
-    rel_res = self.abs_to_rel_residual(abs_res, bbox, mip)
-    return rel_res
-  
-  def save_field_patch(self, field_sf, bbox, mip, z):
+    res = np.expand_dims(np.squeeze(field), axis=0)
+    if relative:
+      res = self.abs_to_rel_residual(res, bbox, mip)
+    if to_tensor:
+      res = torch.from_numpy(res)
+      return res.to(device=self.device)
+    else:
+      return res
+
+  def save_vector_patch(self, path, field, z, bbox, mip):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-    new_field = np.squeeze(field_sf)[:, :, np.newaxis, :]
-    cv(self.paths['field_sf'], mip=mip, bounded=False, fill_missing=True, autocrop=True,
-       progress=False)[x_range[0]:x_range[1], y_range[0]:y_range[1], z] = new_field
+    field = np.squeeze(field)[:, :, np.newaxis, :]
+    cv(path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
+       progress=False)[x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
 
-
+  def save_residual_patch(self, path, res, crop, z, bbox, mip):
+    print ("Saving residual patch {} at MIP {}".format(bbox.__str__(mip=0), mip))
+    v = res * (res.shape[-2] / 2) * (2**mip)
+    v = v[:,crop:-crop, crop:-crop,:]
+    v = v.data.cpu().numpy() 
+    self.save_field_patch(path, v, z, bbox, mip)
 
   def break_into_chunks(self, bbox, ng_chunk_size, offset, mip, render=False):
     chunks = []
@@ -371,15 +355,13 @@ class Aligner:
     return chunks
 
   def weight_fields(self, field_paths, z, bbox, mip, T=1, write_intermediaries=False):
-    fields = [self.get_field(path, z, bbox, mip) for path in field_paths]
+    fields = [self.get_field(path, z, bbox, mip, relative=False) for path in field_paths]
     # field = vector_vote(fields, T=T)
     diffs = get_diffs(fields)
     diff_weights = weight_diffs(diffs, T=T)
     field_weights = compile_field_weights(diff_weights)
     field = weighted_sum_fields(field_weights, fields)
-    self.save_vector_patch(field, self.paths['x_field'][mip], 
-                                  self.paths['y_field'][mip], z, 
-                                  bbox, mip)
+    self.save_vector_patch(self.paths['field'][mip], field, z, bbox, mip)
 
     if write_intermediaries:
       self.save_image_patch(self.paths['diffs'][mip], 
@@ -423,34 +405,25 @@ class Aligner:
     field, residuals, encodings, cum_residuals = X
 
     # save the final vector field for warping
-    self.save_vector_patch(field, self.paths['x_field'][mip], 
-                                  self.paths['y_field'][mip], source_z, 
-                                  out_patch_bbox, mip)
+    self.save_vector_patch(self.paths['field'][mip], field, source_z  out_patch_bbox, mip)
 
     if self.write_intermediaries:
       mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
       for res_mip, res, cumres in zip(mip_range, residuals[1:], cum_residuals[1:]):
           crop = self.crop_amount // 2**(res_mip - self.process_low_mip)   
-          self.save_residual_patch(res, crop, 
-                                   self.paths['x_res'][res_mip], 
-                                   self.paths['y_res'][res_mip],
+          self.save_residual_patch(self.paths['res'][res_mip], res, crop, 
                                    source_z, out_patch_bbox, res_mip)
-          self.save_residual_patch(cumres, crop, 
-                                   self.paths['x_cumres'][res_mip], 
-                                   self.paths['y_cumres'][res_mip], 
+          self.save_residual_patch(self.paths['cumres'][res_mip], cumres, crop, 
                                    source_z, out_patch_bbox, res_mip)
           if self.upsample_residuals:
             crop = self.crop_amount   
             res = self.scale_residuals(res, res_mip, self.process_low_mip)
-            self.save_residual_patch(res, crop, 
-                                     self.paths['x_resup'][res_mip], 
-                                     self.paths['y_resup'][res_mip], 
+            self.save_residual_patch(self.paths['resup'][self.process_low_mip], res, crop, 
                                      source_z, out_patch_bbox, 
                                      self.process_low_mip)
             cumres = self.scale_residuals(cumres, res_mip, self.process_low_mip)
-            self.save_residual_patch(cumres, crop, 
-                                     self.paths['x_cumresup'][res_mip], 
-                                     self.paths['y_cumresup'][res_mip], 
+            self.save_residual_patch(self.paths['cumresup'][self.process_low_mip],
+                                     cumres, crop, 
                                      source_z, out_patch_bbox, 
                                      self.process_low_mip)
 
@@ -532,6 +505,7 @@ class Aligner:
     start = time()
     
     agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
+    mip_disp = int(self.max_displacement / 2**mip)
     # image = torch.from_numpy(self.get_image(path, z, influence_bbox, mip))
     # image = image.unsqueeze(0)
     image = self.get_image(path, z, influence_bbox, mip, 
@@ -553,7 +527,7 @@ class Aligner:
       #print ("cid is ", cid)
       decay_factor = 0.4
       if z != start_z:
-        field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
+        field_sf = self.get_field(self.paths['field_sf'], z-1, influence_bbox, mip, relative=True, to_tensor=True)
         regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 256)).unsqueeze(-1)
         regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 256)).unsqueeze(-1)
         #regular_part = self.gauss_filter(field_sf.permute(3,0,1,2))
@@ -569,10 +543,9 @@ class Aligner:
         field_sf = agg_flow
       #self.calc_image_mean_field(image.numpy()[0,0,mip_disp:-mip_disp,mip_disp:-mip_disp], field_sf[0, mip_disp:-mip_disp, mip_disp:-mip_disp, :], cid)
       field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
-      field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
-      self.save_field_patch(field_sf, bbox, mip, z)
+      # field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
+      self.save_residual_patch(self.paths['field_sf'][mip], field_sf, mip_disp, z, bbox, mip):
 
-    mip_disp = int(self.max_displacement / 2**mip)
     if self.disable_cuda:
       return image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
     else:
@@ -601,28 +574,6 @@ class Aligner:
     for m in range(src_mip, dst_mip, -1):
       res = up(res.permute(0,3,1,2)).permute(0,2,3,1)
     return res
-
-  def save_residual_patch(self, res, crop, x_path, y_path, z, bbox, mip):
-    print ("Saving residual patch {} at MIP {}".format(bbox.__str__(mip=0), mip))
-    v = res * (res.shape[-2] / 2) * (2**mip)
-    v = v[:,crop:-crop, crop:-crop,:]
-    v = v.data.cpu().numpy() 
-    self.save_vector_patch(v, x_path, y_path, z, bbox, mip)
-
-  def save_vector_patch(self, flow, x_path, y_path, z, bbox, mip):
-    flow = flow.cpu().numpy()
-    x_res = flow[0, :, :, 0, np.newaxis]
-    y_res = flow[0, :, :, 1, np.newaxis]
-
-    x_range = bbox.x_range(mip=mip)
-    y_range = bbox.y_range(mip=mip)
-
-    cv(x_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                       non_aligned_writes=False, progress=False, provenance={})[x_range[0]:x_range[1],
-                                                   y_range[0]:y_range[1], z] = x_res
-    cv(y_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                       non_aligned_writes=False, progress=False, provenance={})[x_range[0]:x_range[1],
-                                                   y_range[0]:y_range[1], z] = y_res
 
   ## Data loading
   def preprocess_data(self, data, to_float=True, adjust_contrast=False, to_tensor=True):
@@ -739,31 +690,6 @@ class Aligner:
       except AttributeError as e:
         pass
     return data
-
-  def get_abs_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.paths['x_field'][mip], z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.paths['y_field'][mip], z, bbox, mip)[..., 0, 0]
-    result = np.stack((x, y), axis=2)
-    return np.expand_dims(result, axis=0)
-
-  def get_field(self, path, z, bbox, mip):
-    x_path = join(path, 'field', str(mip), 'x')
-    y_path = join(path, 'field', str(mip), 'y')
-    x = self.get_vector_data(x_path, z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(y_path, z, bbox, mip)[..., 0, 0]
-    res = np.stack((x, y), axis=2)
-    res = np.expand_dims(res, axis=0)
-    # res = self.abs_to_rel_residual(res, bbox, mip)
-    res = torch.from_numpy(res)
-    return res.to(device=self.device)
-
-  def get_rel_residual(self, z, bbox, mip):
-    x = self.get_vector_data(self.paths['x_field'][mip], z, bbox, mip)[..., 0, 0]
-    y = self.get_vector_data(self.paths['y_field'][mip], z, bbox, mip)[..., 0, 0]
-    abs_res = np.stack((x, y), axis=2)
-    abs_res = np.expand_dims(abs_res, axis=0)
-    rel_res = self.abs_to_rel_residual(abs_res, bbox, mip)
-    return rel_res
 
   def get_aggregate_rel_flow(self, z, bbox, res_mip_range, mip):
     result = torch.zeros((1, bbox.x_size(mip), bbox.y_size(mip), 2), 
