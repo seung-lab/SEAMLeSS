@@ -11,10 +11,10 @@ class G(nn.Module):
     def __init__(self, k=7, f=nn.LeakyReLU(inplace=True), infm=2):
         super(G, self).__init__()
         p = (k-1)//2
-        self.conv1 = nn.Conv2d(infm, 32, k, padding=p)
-        self.conv2 = nn.Conv2d(32, 64, k, padding=p)
-        self.conv3 = nn.Conv2d(64, 32, k, padding=p)
-        self.conv4 = nn.Conv2d(32, 16, k, padding=p)
+        self.conv1 = nn.Conv2d(infm, 16, k, padding=p)
+        self.conv2 = nn.Conv2d(16, 16, k, padding=p)
+        self.conv3 = nn.Conv2d(16, 16, k, padding=p)
+        self.conv4 = nn.Conv2d(16, 16, k, padding=p)
         self.conv5 = nn.Conv2d(16, 2, k, padding=p)
         self.seq = nn.Sequential(self.conv1, f,
                                  self.conv2, f,
@@ -28,7 +28,7 @@ class G(nn.Module):
         self.initc(self.conv5)
 
     def forward(self, x):
-        return self.seq(x).permute(0,2,3,1) / 10
+        return self.seq(x).permute(0, 2, 3, 1)
 
 
 def gif_prep(s):
@@ -107,7 +107,7 @@ class EPyramid(nn.Module):
     def __init__(self, size, dim, skip, topskips, k, num_targets=1, train_size=1280):
         super(EPyramid, self).__init__()
         print('Constructing EPyramid with size {} ({} downsamples, input size {})...'.format(size, size-1, dim))
-        fm_0 = 12
+        fm_0 = 1
         fm_coef = 6
         self.skip = skip
         self.topskips = topskips
@@ -121,7 +121,7 @@ class EPyramid(nn.Module):
         self.down = downsample(type='max')
         self.enclist = nn.ModuleList([Enc(infm=infm, outfm=outfm) for infm, outfm in zip(enc_infms, enc_outfms)])
         self.TRAIN_SIZE = train_size
-        self.pe = PreEnc(fm_0)
+        # self.pe = PreEnc(fm_0)
 
     def forward(self, stack, target_level, vis=None, use_preencoder=False):
         if vis is not None:
@@ -245,6 +245,7 @@ class Model(nn.Module):
 
         If `index` is None, this selects the full network.
         """
+        return SingleLevel(self, 0)  # TODO: remove debugging bypass
         if index is None or index >= self.pyramid.size:
             return self
         else:
@@ -287,6 +288,6 @@ class SingleLevel(nn.Module):
         if vis is not None:
             gif(vis + 'input', gif_prep(input))
         encodings = self.encoder(input)
-        factor = (self.TRAIN_SIZE / (2. ** self.level)) / encodings.size()[-1]
+        factor = 2 / encodings.shape[-1]
         rfield = self.aligner(encodings) * factor
         return rfield
