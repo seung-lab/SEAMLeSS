@@ -25,8 +25,9 @@ def parse_args(args=None):
         help='Number of workers for the DataLoader',
     )
     parallel_group.add_argument(
-        '--gpu_ids', type=str, default=['0'], nargs='+', metavar='X',
-        help='Specific GPUs to use during training',
+        '--gpu_ids', type=str, default=None, metavar='X',
+        help='GPUs to use during training, separated by commas. '
+             'If not specified, the first unused GPU will be used.',
     )
 
     resume_help = ('Resume training a paused model '
@@ -193,6 +194,8 @@ def parse_args(args=None):
         args.checkpoint_time = args.interval
         args.vis_time = args.interval
         del args.interval
+    if args.gpu_ids is None:
+        args.gpu_ids = first_unused_gpu()
     return args
 
 
@@ -201,6 +204,37 @@ def _list_trained_nets(**kwargs):
     Returns a list of available trained nets.
     """
     return next(os.walk('../models/'))[1]
+
+
+def first_unused_gpu(threshold=0.05):
+    """
+    Returns the first unused GPU, where usage is thresholded by `threshold`.
+    If none are available, returns the one with the least usage.
+
+    Adapted from
+    https://github.com/awni/cuthon
+    """
+    import subprocess
+    try:
+        nv_stats = subprocess.check_output('nvidia-smi -x -q'.split())
+    except OSError:
+        print('No GPUs found. Falling back to CPU.')
+        return ''
+    import xml.etree.ElementTree as ElementTree
+    gpus = ElementTree.fromstring(nv_stats).findall('gpu')
+    least = -1, 1.0
+    for i, gpu in enumerate(gpus):
+        mem = gpu.find('fb_memory_usage')
+        tot = int(mem.find('total').text.split()[0])
+        used = int(mem.find('used').text.split()[0])
+        usage = used / tot
+        if usage < threshold:  # this gpu is unused, so return it
+            return str(i)
+        if usage < least[1]:
+            least = i, usage
+    # no available GPUs, so return the one with the least usage
+    if least[0] >= 0:
+        return str(least[0])
 
 
 if __name__ == '__main__':

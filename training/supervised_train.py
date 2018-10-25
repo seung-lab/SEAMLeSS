@@ -67,7 +67,7 @@ def main():
     args = parse_args()
 
     # set available GPUs
-    os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(args.gpu_ids)
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_ids
 
     # create or load the model, optimizer, and parameters
     if args.command == 'start':
@@ -106,6 +106,7 @@ def main():
         state_vars['vis_time'] = args.vis_time
         state_vars['lambda1'] = args.lambda1
         state_vars['penalty'] = args.penalty
+        state_vars['gpus'] = args.gpu_ids
         log_titles = [
             'Time Stamp',
             'Epoch',
@@ -126,6 +127,7 @@ def main():
                              .format(args.name))
         archive = ModelArchive(args.name, readonly=False)
         state_vars = archive.state_vars
+        state_vars['gpus'] = args.gpu_ids
 
     # redirect output to the archive
     sys.stdout = archive.out
