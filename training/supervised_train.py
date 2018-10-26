@@ -262,11 +262,13 @@ def train(train_loader, archive, epoch):
                '',
             ]
             archive.log(log_values, printout=False)
-            print('Epoch: {0} [{1}/{2}]\t'
+            print('{0}\t'
+                  'Epoch: {1} [{2}/{3}]\t'
                   'Loss {loss.val:.10f} ({loss.avg:.10f})\t'
                   'BatchTime {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'DataTime {data_time.val:.3f} ({data_time.avg:.3f})\t'
                   .format(
+                      state_vars['name'],
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses))
 
