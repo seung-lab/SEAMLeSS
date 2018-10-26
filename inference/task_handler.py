@@ -12,12 +12,13 @@ def make_residual_task_message(source_z, target_z, patch_bbox, mip):
   }
   return json.dumps(content)
 
-def make_render_task_message(z, patches, mip):
+def make_render_task_message(z, patches, mip, start_z):
   content = {
       "type": "render_task",
       "z": z,
       "patches": [p.serialize() for p in patches],
       "mip": mip,
+      "start_z": start_z,
   }
   return json.dumps(content)
 

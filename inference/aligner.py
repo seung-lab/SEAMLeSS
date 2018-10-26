@@ -647,22 +647,20 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
-    #print("\n total chunsk is ", len(chunks))
-    #if (self.run_pairs and (z!=start_z)):
-    #    total_chunks = len(chunks) 
-    #    self.reg_field= np.sum(self.field_sf_sum, axis=0) / np.sum(self.image_pixels_sum)
-    #    self.image_pixels_sum = np.zeros(total_chunks)
-    #    self.field_sf_sum = np.zeros((total_chunks, 2), dtype=np.float32)
-
-    def chunkwise(patch_bbox):
-      warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
+    if self.distributed:
+      for i in range(0, len(chunks), self.threads):
+        task_patches = []
+        for j in range(i, min(len(chunks), i + self.threads)):
+          task_patches.append(chunks[j])
+        render_task = make_render_task_message(z, task_patches, mip, start_z)
+        self.task_handler.send_message(render_task)
+      self.task_handler.wait_until_ready()
+    else:
+      def chunkwise(patch_bbox):
+        warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                     (mip, self.process_high_mip), mip, start_z)
-      #if (self.run_pairs):
-        # save the image in the previous slice so it's easier to compare pairs
-      #  self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
-      #else:
-      self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
-    self.pool.map(chunkwise, chunks)
+        self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+      self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
 
@@ -675,12 +673,20 @@ class Aligner:
     for m in range(source_mip+1, target_mip + 1):
       chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
                                       self.dst_voxel_offsets[m], mip=m, render=True)
-
-      def chunkwise(patch_bbox):
-        print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
-        downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
-        self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
-      self.pool.map(chunkwise, chunks)
+      if self.distributed and len(chunks) > self.threads * 4:
+        for i in range(0, len(chunks), self.threads * 4):
+          task_patches = []
+          for j in range(i, min(len(chunks), i + self.threads * 4)):
+            task_patches.append(chunks[j])
+          downsample_task = make_downsample_task_message(z, task_patches, mip=m)
+          self.task_handler.send_message(downsample_task)
+        self.task_handler.wait_until_ready()
+      else:
+        def chunkwise(patch_bbox):
+          print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
+          downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
+          self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
+        self.pool.map(chunkwise, chunks)
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
     for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
@@ -690,12 +696,18 @@ class Aligner:
       print ("Aligning slice {} to slice {} at mip {} ({} chunks)".
              format(source_z, target_z, m, len(chunks)), flush=True)
 
+      if self.distributed:
+        for patch_bbox in chunks:
+          residual_task = make_residual_task_message(source_z, target_z, patch_bbox, mip=m)
+          self.task_handler.send_message(residual_task)
+        self.task_handler.wait_until_ready()
+      else:
       #for patch_bbox in chunks:
-      def chunkwise(patch_bbox):
-      #FIXME Torch runs out of memory
-      #FIXME batchify download and upload
-        self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
-      self.pool.map(chunkwise, chunks)
+        def chunkwise(patch_bbox):
+        #FIXME Torch runs out of memory
+        #FIXME batchify download and upload
+          self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
+        self.pool.map(chunkwise, chunks)
       end = time()
       print (": {} sec".format(end - start))
 
@@ -724,9 +736,7 @@ class Aligner:
       for m in range(self.render_low_mip, self.high_mip+1):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
         start_z = start_section + 1 
-    #if (self.run_pairs):
-    #    self.count_box(bbox, self.render_low_mip);
-    self.zs = start_section
+        self.zs = start_section
     for z in range(start_section, end_section):
       self.img_cache = {}
       self.compute_section_pair_residuals(z + 1, z, bbox)
@@ -745,16 +755,13 @@ class Aligner:
     z = message['z']
     patches  = [deserialize_bbox(p) for p in message['patches']]
     mip = message['mip']
+    start_z = message['start_z']
     def chunkwise(patch_bbox):
       print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
               end='', flush=True)
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
-                                      (mip, self.process_high_mip), mip)
-      if (self.run_pairs):
-        # save the image in the previous slice so it's easier to compare pairs
-        self.save_image_patch(self.dst_ng_path, warped_patch, z-1, patch_bbox, mip)
-      else:
-        self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+                                      (mip, self.process_high_mip), mip, start_z)
+      self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
 
     self.pool.map(chunkwise, patches)
 
