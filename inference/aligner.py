@@ -730,12 +730,8 @@ class Aligner:
 
       def chunkwise(patch_bbox):
         print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
-        if (self.run_pairs):
-          downsampled_patch = self.downsample_patch(self.dst_ng_path, z-1, patch_bbox, m)
-          self.save_image_patch(self.dst_ng_path, downsampled_patch, z-1, patch_bbox, m)
-        else:
-          downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
-          self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
+        downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, m)
+        self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
       self.pool.map(chunkwise, chunks)
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
