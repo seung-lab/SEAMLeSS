@@ -233,7 +233,7 @@ def train(train_loader, archive, epoch):
         if state_vars['vis_time'] and i % state_vars['vis_time'] == 0:
             try:
                 debug_dir = archive.new_debug_directory(epoch, i)
-                src, tgt = stack.split(1, dim=1)
+                src, tgt = stack.chunk(2, dim=1)
                 save_chunk(src, str(debug_dir / 'src'))
                 save_chunk(src, str(debug_dir / 'z_src'))  # same, comp. w/ tgt
                 save_chunk(tgt, str(debug_dir / 'tgt'))
@@ -396,7 +396,7 @@ def unsupervised_loss(data, prediction,
     if field_masks is None:
         field_masks = []
 
-    src, tgt = data.split(1, dim=1)
+    src, tgt = data.chunk(2, dim=1)
     src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
 
     image_loss_map = (src_warped - tgt)**2
