@@ -21,6 +21,8 @@ from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
 
 import torch.nn as nn
+from task_handler import TaskHandler, make_residual_task_message, \
+        make_render_task_message, make_copy_task_message, make_downsample_task_message
 
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
@@ -52,12 +54,6 @@ class Aligner:
     self.tmp_ng_path = os.path.join(dst_ng_path, 'intermediate')
     if (self.run_pairs): 
         self.field_sf_ng_path = os.path.join(dst_ng_path, 'field_sf')
-        #self.gauss_filter = self.Gaussian_filter(1025, 256) 
-        #self.image_pixels_sum = np.empty(1)
-        #self.field_sf_sum = np.empty((1,1))
-        #self.reg_field = np.zeros(2, dtype=np.float32)
-        #self.x_len = 0
-        #self.y_len = 0
     else: 
         self.field_sf_ng_path = ""
 
@@ -108,28 +104,6 @@ class Aligner:
 
 #if not chunk_size[0] :
     #  raise Exception("The chunk size has to be aligned with ng chunk size")
-
-  def Gaussian_filter(self, kernel_size, sigma):
-    x_cord = torch.arange(kernel_size)
-    x_grid = x_cord.repeat(kernel_size).view(kernel_size, kernel_size)
-    y_grid = x_grid.t()
-    xy_grid = torch.stack([x_grid, y_grid], dim=-1)
-    channels =1
-    mean = (kernel_size - 1)/2.
-    variance = sigma**2.
-    gaussian_kernel = (1./(2.*math.pi*variance)) *np.exp(
-        -torch.sum((xy_grid - mean)**2., dim=-1) /\
-        (2*variance))
-    gaussian_kernel = gaussian_kernel / torch.sum(gaussian_kernel)
-    gaussian_kernel = gaussian_kernel.view(1, 1, kernel_size, kernel_size)
-    gaussian_kernel = gaussian_kernel.repeat(channels, 1, 1, 1)
-    gaussian_filter = nn.Conv2d(in_channels=channels, out_channels=channels,kernel_size=kernel_size, padding = (kernel_size -1)//2, bias=False)
-    gaussian_filter.weight.data = gaussian_kernel.type(torch.float32)
-    gaussian_filter.weight.requires_grad = False
-    return gaussian_filter
-
-  def set_chunk_size(self, chunk_size):
-    self.high_mip_chunk = chunk_size
 
   def _create_info_files(self, max_offset):
     src_cv = cv(self.src_ng_path)
@@ -412,43 +386,7 @@ class Aligner:
     rel_residual[0, :, :, 0] /= x_fraction
     rel_residual[0, :, :, 1] /= y_fraction
     return rel_residual
-
-  def calc_image_mean_field(self, image, field, cid):
-      for i in range(0,image.shape[0]):
-          for j in range(0,image.shape[1]):
-              if(image[i,j]!=0):
-                  self.image_pixels_sum[cid] +=1
-                  self.field_sf_sum[cid] += field[i,j]
-
-  def get_bbox_id(self, in_bbox, mip):
-    raw_x_range = self.total_bbox.x_range(mip=mip)
-    raw_y_range = self.total_bbox.y_range(mip=mip)
-
-    x_chunk = self.dst_chunk_sizes[mip][0]
-    y_chunk = self.dst_chunk_sizes[mip][1]
-
-    x_offset = self.dst_voxel_offsets[mip][0]
-    y_offset = self.dst_voxel_offsets[mip][1]
-
-    x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
-    y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
-     
-    calign_x_range = [raw_x_range[0] - x_remainder, raw_x_range[1]]
-    calign_y_range = [raw_y_range[0] - y_remainder, raw_y_range[1]]
-
-    calign_x_len = raw_x_range[1] - raw_x_range[0] + x_remainder
-    #calign_y_len = raw_y_range[1] - raw_y_range[0] + y_remainder
-
-    in_x_range = in_bbox.x_range(mip=mip)
-    in_y_range = in_bbox.y_range(mip=mip)
-    in_x_len = in_x_range[1] - in_x_range[0]
-    in_y_len = in_y_range[1] - in_y_range[0]
-    line_bbox_num = (calign_x_len + in_x_len -1)// in_x_len
-    cid = ((in_y_range[0] - calign_y_range[0]) // in_y_len) * line_bbox_num + (in_x_range[0] - calign_x_range[0]) // in_x_len
-    return cid
-
-    
-
+   
   ## Patch manipulation
   def warp_patch(self, ng_path, z, bbox, res_mip_range, mip, start_z=-1):
     influence_bbox = deepcopy(bbox)
@@ -465,9 +403,6 @@ class Aligner:
     else:
       print ("not warping")
     if (self.run_pairs):
-      #cid = self.get_bbox_id(bbox, mip) 
-      #print ("cid is ", cid)
-      decay_factor = 0.4
       if z != start_z:
         field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
         regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 256)).unsqueeze(-1)
@@ -483,7 +418,6 @@ class Aligner:
             agg_flow, field_sf, padding_mode='border').permute(0,2,3,1)
       else:
         field_sf = agg_flow
-      #self.calc_image_mean_field(image.numpy()[0,0,mip_disp:-mip_disp,mip_disp:-mip_disp], field_sf[0, mip_disp:-mip_disp, mip_disp:-mip_disp, :], cid)
       field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
       field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
       self.save_field_patch(field_sf, bbox, mip, z)
@@ -674,11 +608,19 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
     #for patch_bbox in chunks:
-    def chunkwise(patch_bbox):
-      raw_patch = self.get_image_data(source, z, patch_bbox, mip)
-      self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
-
-    self.pool.map(chunkwise, chunks)
+    if self.distributed and len(chunks) > self.threads * 4:
+      for i in range(0, len(chunks), self.threads * 4):
+        task_patches = []
+        for j in range(i, min(len(chunks), i + self.threads * 4)):
+          task_patches.append(chunks[j])
+        copy_task = make_copy_task_message(z, source, dest, task_patches, mip=mip)
+        self.task_handler.send_message(copy_task)
+      self.task_handler.wait_until_ready()
+    else:
+      def chunkwise(patch_bbox):
+        raw_patch = self.get_image_data(source, z, patch_bbox, mip)
+        self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
+      self.pool.map(chunkwise, chunks)
 
     end = time()
     print (": {} sec".format(end - start))
@@ -792,3 +734,85 @@ class Aligner:
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
                                                           end - start))
+  def handle_residual_task(self, message):
+    source_z = message['source_z']
+    target_z = message['target_z']
+    patch_bbox = deserialize_bbox(message['patch_bbox'])
+    mip = message['mip']
+    self.compute_residual_patch(source_z, target_z, patch_bbox, mip)
+
+  def handle_render_task(self, message):
+    z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    mip = message['mip']
+    def chunkwise(patch_bbox):
+      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+              end='', flush=True)
+      warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
+                                      (mip, self.process_high_mip), mip)
+      if (self.run_pairs):
+        # save the image in the previous slice so it's easier to compare pairs
+        self.save_image_patch(self.dst_ng_path, warped_patch, z-1, patch_bbox, mip)
+      else:
+        self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+
+    self.pool.map(chunkwise, patches)
+
+  def handle_copy_task(self, message):
+    z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    mip = message['mip']
+    source = message['source']
+    dest = message['dest']
+
+    def chunkwise(patch_bbox):
+      raw_patch = self.get_image_data(source, z, patch_bbox, mip)
+      self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
+    self.pool.map(chunkwise, patches)
+
+  def handle_downsample_task(self, message):
+    z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    mip = message['mip']
+    def chunkwise(patch_bbox):
+      downsampled_patch = self.downsample_patch(self.dst_ng_path, z, patch_bbox, mip)
+      self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, mip)
+
+    self.pool.map(chunkwise, patches)
+
+  def handle_task_message(self, message):
+    #message types:
+    # -compute residual
+    # -prerender future target
+    # -render final result
+    # -downsample
+    # -copy
+
+    #import pdb; pdb.set_trace()
+    body = json.loads(message['Body'])
+    task_type = body['type']
+    if task_type == 'residual_task':
+      self.handle_residual_task(body)
+    elif task_type == 'render_task':
+      self.handle_render_task(body)
+    elif task_type == 'copy_task':
+      self.handle_copy_task(body)
+    elif task_type == 'downsample_task':
+      self.handle_downsample_task(body)
+    else:
+      raise Exception("Unsupported task type '{}' received from queue '{}'".format(task_type,
+                                                                 self.task_handler.queue_name))
+
+  def listen_for_tasks(self):
+    while (True):
+      message = self.task_handler.get_message()
+      if message != None:
+        print ("Got a job")
+        s = time()
+        self.handle_task_message(message)
+        self.task_handler.delete_message(message)
+        e = time()
+        print ("Done: {} sec".format(e - s))
+      else:
+        sleep(3)
+        print ("Waiting for jobs...")
