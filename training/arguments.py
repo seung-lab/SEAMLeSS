@@ -72,6 +72,10 @@ def parse_args(args=None):
         '--num_epochs', default=1000000, type=int, metavar='N',
         help='number of total epochs to run',
     )
+    param_group.add_argument(
+        '--epochs_per_mip', default=4, type=int, metavar='N',
+        help='number of epochs to run before switching mip levels',
+    )
     default_low, default_high = 2, 9
     param_group.add_argument(
         '--lm', '--low_mip', metavar='L',

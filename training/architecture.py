@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import copy
 from helpers import save_chunk, gif, copy_state_to_model, gridsample_residual, upsample, downsample
 
 
@@ -233,8 +234,8 @@ class Model(nn.Module):
             return self.parameters()
         else:
             params = []
-            params.extend(self.pyramid.mlist[index])
-            params.extend(self.pyramid.enclist[index])
+            params.extend(self.pyramid.mlist[index].parameters())
+            # params.extend(self.pyramid.enclist[index].parameters())
             return params
 
     def get_submodule(self, index=None):
@@ -245,11 +246,15 @@ class Model(nn.Module):
 
         If `index` is None, this selects the full network.
         """
-        return SingleLevel(self, 0)  # TODO: remove debugging bypass
         if index is None or index >= self.pyramid.size:
+            for p in self.parameters():
+                p.requires_grad = True
             return self
-        else:
-            return SingleLevel(self, index)
+        for p in self.parameters():
+            p.requires_grad = False
+        for p in self.get_params(index):
+            p.requires_grad = True
+        return AlignerStack(self, index)
 
     def copy_aligner(self, id_from, id_to):
         """
@@ -260,8 +265,9 @@ class Model(nn.Module):
             raise ValueError('Values "from": {} and/or "to": {} are not in '
                              'the expected range of 0 up to {}.'
                              .format(id_from, id_to, self.pyramid.size - 1))
-        state_dict = self.pyramid.mlist[id_from].state_dict()
-        self.pyramid.mlist[id_to].load_state_dict(state_dict)
+        # state_dict = self.pyramid.mlist[id_from].state_dict()
+        # self.pyramid.mlist[id_to].load_state_dict(state_dict)
+        self.pyramid.mlist[id_to] = copy.deepcopy(self.pyramid.mlist[id_from])
 
     def copy_encoder(self, id_from, id_to):
         """
@@ -276,18 +282,53 @@ class Model(nn.Module):
         self.pyramid.enclist[id_to].load_state_dict(state_dict)
 
 
-class SingleLevel(nn.Module):
+class SingleAligner(nn.Module):
+    """
+    Returns a view into a single aligner of a model.
+    `level` is the index of the aligner to pull out.
+    """
+
     def __init__(self, model, level):
-        super(SingleLevel, self).__init__()
+        super(SingleAligner, self).__init__()
         self.level = level
         self.aligner = model.pyramid.mlist[level]
-        self.encoder = model.pyramid.enclist[level]
-        self.TRAIN_SIZE = model.pyramid.TRAIN_SIZE
 
-    def forward(self, input, vis=None):
-        if vis is not None:
-            gif(vis + 'input', gif_prep(input))
-        encodings = self.encoder(input)
-        factor = 2 / encodings.shape[-1]
-        rfield = self.aligner(encodings) * factor
+    def forward(self, input):
+        factor = 2 / input.shape[-1]
+        rfield = self.aligner(input) * factor
         return rfield
+
+
+class AlignerStack(nn.Module):
+    """
+    Returns a view into a sequence of aligners of a model.
+    Uses aligners indexed from 0 to `level`.
+    """
+
+    def __init__(self, model, level):
+        super(AlignerStack, self).__init__()
+        self.level = level
+        self.aligners = torch.nn.ModuleList([])
+        for i in range(self.level + 1):
+            self.aligners.append(model.pyramid.mlist[i])
+
+    def forward(self, input, accum_field=None):
+        for i in reversed(range(self.level + 1)):
+            stack = downsample(i)(input)
+            if accum_field is not None:
+                src, tgt = stack.chunk(2, dim=1)
+                accum_field = (upsample()(accum_field.permute(0, 3, 1, 2))
+                               .permute(0, 2, 3, 1))
+                src = gridsample_residual(src, accum_field,
+                                          padding_mode='border')
+                stack = torch.cat((src, tgt), dim=1)
+            factor = 2 / stack.shape[-1]  # scale to [-1,1]
+            res_field = self.aligners[i](stack) * factor
+            if accum_field is not None:
+                resampled = gridsample_residual(
+                    accum_field.permute(0, 3, 1, 2), res_field,
+                    padding_mode='border').permute(0, 2, 3, 1)
+                accum_field = res_field + resampled
+            else:
+                accum_field = res_field
+        return accum_field

@@ -94,6 +94,7 @@ def main():
         state_vars['gamma_step'] = args.gamma_step
         state_vars['epoch'] = 0
         state_vars['num_epochs'] = args.num_epochs
+        state_vars['epochs_per_mip'] = args.epochs_per_mip
         state_vars['training_set_path'] = Path(args.training_set).expanduser()
         state_vars['validation_set_path'] = (
             Path(args.validation_set).expanduser() if args.validation_set
@@ -200,7 +201,6 @@ def train(train_loader, archive, epoch):
     archive.model.train()
     archive.adjust_learning_rate()
     submodule = select_submodule(archive.model, epoch)
-    submodule = torch.nn.DataParallel(submodule)
 
     end = time.time()
     for i, sample in enumerate(train_loader):
@@ -210,7 +210,8 @@ def train(train_loader, archive, epoch):
         data_time.update(time.time() - end)
 
         # compute output and loss
-        stack, truth = prepare_input(sample)
+        max_displacement = 2**min(epoch // state_vars['epochs_per_mip'] + 1, 4)  # TODO: don't hardcode 4
+        stack, truth = prepare_input(sample, max_displacement=max_displacement)
         prediction = submodule(stack)
         if truth is not None:
             loss = supervised_loss(prediction=prediction, truth=truth)
@@ -309,14 +310,14 @@ def validate(val_loader, archive, epoch):
 def select_submodule(model, epoch):
     """
     Selects the submodule to be trained based on the current epoch.
-    Freezes all other submodules of `model`.
     """
-    for p in model.parameters():
-        p.requires_grad = False
-    submodule = model.module.get_submodule(epoch)
-    for p in submodule.parameters():
-        p.requires_grad = True
-    return submodule
+    if epoch is None:
+        return model
+    index = epoch // state_vars['epochs_per_mip']
+    if index > 0 and epoch % state_vars['epochs_per_mip'] == 0:
+        model.module.copy_aligner(index-1, index)
+    submodule = model.module.get_submodule(index)
+    return torch.nn.DataParallel(submodule)
 
 
 def prepare_input(sample, supervised=None, max_displacement=2):
