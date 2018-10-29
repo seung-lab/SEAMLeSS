@@ -37,49 +37,50 @@ def cp(src, dst):
     shutil.copy(src, dst)
 
 
-def copy_state_to_model(archive_params, model):
-    size_map = [
-        'number of out channels',
-        'number of in channels',
-        'kernel x dimension',
-        'kernel y dimension'
-    ]
-
+def load_model_from_dict(model, archive_params):
     model_params = dict(model.named_parameters())
     model_keys = sorted(model_params.keys())
-    archive_keys = sorted([k for k in archive_params.keys() if 'seq' not in k and 'pelist' not in k])
-    assert len(archive_keys) <= len(model_keys), 'Cannot load archive with more parameters than model ({}, {}).'.format(len(archive_keys), len(model_keys))
+    archive_keys = sorted(archive_params.keys())
 
+    dropped = 0
     approx = 0
-    skipped = 0
-    new = len(set(model_keys)) - len(set(archive_keys))
     for key in archive_keys:
         if key not in model_keys:
-            print('[WARNING]   Key ' + key + ' present in archive but not in model; skipping.')
-            skipped += 1
+            print('[WARNING]   Key {} present in archive but not in model; '
+                  .format(key))
+            dropped += 1
             continue
-
-        min_size = [min(mdim,adim) for mdim, adim in zip(list(model_params[key].size()), list(archive_params[key].size()))]
-        msize, asize = model_params[key].size(), archive_params[key].size()
-        if msize != asize:
+        if model_params[key].shape != archive_params[key].shape:
+            print('[WARNING]   {} has different shape in model and archive: '
+                  '{}, {}'.format(key, model_params[key].shape,
+                                  archive_params[key].shape))
+            min_slices = tuple(slice(min(mdim, adim)) for mdim, adim
+                               in zip(model_params[key].shape,
+                                      archive_params[key].shape))
+            with torch.no_grad():
+                model_params[key].data[min_slices] = (
+                    archive_params[key][min_slices])
+                model_params[key].data = (
+                    (model_params[key] - model_params[key].mean())
+                    / model_params[key].std())
+                model_params[key].data = (
+                    (model_params[key] * archive_params[key].std())
+                    + archive_params[key].mean())
             approx += 1
-            wrong_dim = -1
-            for dim in range(len(msize)):
-                if msize[dim] != asize[dim]:
-                    wrong_dim = dim
-                    break
-            print('[WARNING]   ' + key + ' has different ' + size_map[wrong_dim] + ' in model and archive: ' + str(model_params[key].size()) + ', ' + str(archive_params[key].size()))
-            varchive = torch.std(archive_params[key])
-            vmodel = torch.std(model_params[key])
-            model_params[key].data -= torch.mean(model_params[key].data)
-            model_params[key].data *= ((varchive / 5) / vmodel).data[0]
-            model_params[key].data += torch.mean(archive_params[key])
+            continue
+        with torch.no_grad():
+            model_params[key].data = archive_params[key]
+    new = 0
+    for key in model_keys:
+        if key not in archive_keys:
+            print('[WARNING]   Key {} present in model but not in archive; '
+                  .format(key))
+            new += 1
+    print('Copied {} parameters exactly, {} parameters partially.'
+          .format(len(archive_keys) - dropped - approx, approx))
+    print('Skipped {} parameters in archive, found {} new parameters in model.'
+          .format(dropped, new))
 
-        min_size_slices = tuple([slice(*(s,)) for s in min_size])
-        model_params[key].data[min_size_slices] = archive_params[key][min_size_slices]
-
-    print('Copied {} parameters exactly, {} parameters partially.'.format(len(model_keys) - approx - new, approx))
-    print('Skipped {} parameters in archive, found {} new parameters in model.'.format(skipped, new))
 
 def get_colors(angles, f, c):
     colors = f(angles)
