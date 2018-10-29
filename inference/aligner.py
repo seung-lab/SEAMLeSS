@@ -31,7 +31,13 @@ class Aligner:
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
                flip_average=True, run_pairs=False, write_intermediaries=False,
-               upsample_residuals=False, old_upsample=False, old_vectors=False):
+               upsample_residuals=False, old_upsample=False, old_vectors=False, queue_name=None):
+    if queue_name != None:
+        self.task_handler = TaskHandler(queue_name)
+        self.distributed  = True
+    else:
+        self.task_handler = None
+        self.distributed  = False
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip

@@ -10,6 +10,7 @@ parser.add_argument('--size', type=int, default=8)
 parser.add_argument('--skip', type=int, default=0)
 parser.add_argument('--model_path', type=str)
 parser.add_argument('--out_name', type=str)
+parser.add_argument('--queue_name', type=str, default=None)
 parser.add_argument('--mip', type=int)
 parser.add_argument('--render_mip', type=int)
 parser.add_argument('--should_contrast', type=int)
@@ -90,7 +91,7 @@ a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
             num_targets=num_targets, flip_average=not args.no_flip_average,
             run_pairs=args.run_pairs,
             write_intermediaries=args.write_intermediaries, 
-            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample, old_vectors=args.old_vectors)
+            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample, old_vectors=args.old_vectors, queue_name=arg.queue_name)
 
 bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=max_mip)
 
