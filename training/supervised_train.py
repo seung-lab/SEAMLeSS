@@ -56,8 +56,8 @@ import torch.utils.data
 import torchvision.transforms as transforms
 from pathlib import Path
 
+import stack_dataset
 from archive import ModelArchive
-import stack_dataset as stack
 from helpers import (gridsample_residual, save_chunk, dvl as save_vectors,
                      upsample, downsample, AverageMeter)
 from loss import smoothness_penalty
@@ -81,12 +81,13 @@ def main():
                 raise ValueError('The model "{}" could not be found.'
                                  .format(args.saved_model))
             old = ModelArchive(args.saved_model, readonly=True)
-            archive = old.start_new(args.name, readonly=False, seed=args.seed)
+            archive = old.start_new(readonly=False, **vars(args))
             # TODO: remove old model from memory
         else:
-            archive = ModelArchive(args.name, readonly=False, seed=args.seed)
+            archive = ModelArchive(readonly=False, **vars(args))
         state_vars = archive.state_vars
         state_vars['name'] = args.name
+        state_vars['height'] = args.height
         state_vars['start_lr'] = args.lr
         state_vars['lr'] = args.lr
         state_vars['wd'] = args.wd
@@ -140,14 +141,14 @@ def main():
 
     # Data loading code
     transform = transforms.Compose([
-        stack.ToFloatTensor(),
-        # stack.RandomTranslation(2**(size-1)),
-        stack.RandomRotateAndScale(),
-        stack.RandomFlip(),
-        stack.RandomAugmentation(),
-        stack.Normalize(2)
+        stack_dataset.ToFloatTensor(),
+        # stack_dataset.RandomTranslation(2**(size-1)),
+        stack_dataset.RandomRotateAndScale(),
+        stack_dataset.RandomFlip(),
+        stack_dataset.RandomAugmentation(),
+        stack_dataset.Normalize(2)
     ])
-    train_dataset = stack.compile_dataset(
+    train_dataset = stack_dataset.compile_dataset(
         [state_vars['training_set_path']], transform)
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
@@ -156,7 +157,7 @@ def main():
         pin_memory=True, sampler=train_sampler)
 
     if state_vars['validation_set_path']:
-        validation_dataset = stack.compile_dataset(
+        validation_dataset = stack_dataset.compile_dataset(
             [state_vars['validation_set_path']], transform)
         val_loader = torch.utils.data.DataLoader(
             validation_dataset, batch_size=state_vars['batch_size'],
@@ -164,18 +165,26 @@ def main():
     else:
         val_loader = None
 
+    # Averaging
+    train_losses = AverageMeter()
+    val_losses = AverageMeter()
+    epoch_time = AverageMeter()
+
     print('=========== BEGIN TRAIN LOOP ============')
     start_epoch = state_vars['epoch']
     for epoch in range(start_epoch, state_vars['num_epochs']):
+        start_time = time.time()
         state_vars['epoch'] = epoch
         archive.save()
 
         # train for one epoch
         train_loss = train(train_loader, archive, epoch)
+        train_losses.update(train_loss)
 
         # evaluate on validation set
         if val_loader:
             val_loss = validate(val_loader, archive, epoch)
+            val_losses.update(val_loss)
         else:
             val_loss = None
 
@@ -190,6 +199,14 @@ def main():
         ]
         archive.log(log_values, printout=True)
         archive.create_checkpoint(epoch, iteration=None)
+        epoch_time.update(time.time() - start_time)
+        print('{0}\t'
+              'Epoch: {1} Complete\t'
+              'TrainLoss {train_losses.val:.10f} ({train_losses.avg:.10f})\t'
+              'ValLoss {val_losses.val:.10f} ({val_losses.avg:.10f})\t'
+              'EpochTime {epoch_time.val:.3f} ({epoch_time.avg:.3f})\t'
+              .format(state_vars['name'], epoch, train_losses=train_losses,
+                      val_losses=val_losses, epoch_time=epoch_time))
 
 
 def train(train_loader, archive, epoch):
@@ -200,24 +217,24 @@ def train(train_loader, archive, epoch):
     # switch to train mode and select the submodule to train
     archive.model.train()
     archive.adjust_learning_rate()
-    submodule = select_submodule(archive.model, epoch)
+    submodule = select_submodule(archive.model, epoch, init=True)
+    max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
-    end = time.time()
+    start_time = time.time()
     for i, sample in enumerate(train_loader):
         state_vars['iteration'] = i
 
         # measure data loading time
-        data_time.update(time.time() - end)
+        data_time.update(time.time() - start_time)
 
         # compute output and loss
-        max_displacement = 2**min(epoch // state_vars['epochs_per_mip'] + 1, 4)  # TODO: don't hardcode 4
-        stack, truth = prepare_input(sample, max_displacement=max_displacement)
-        prediction = submodule(stack)
+        src, tgt, truth = prepare_input(sample, max_displacement=max_disp)
+        prediction = submodule(src, tgt)
         if truth is not None:
             loss = supervised_loss(prediction=prediction, truth=truth)
         else:
             masks = {}  # TODO: generate masks
-            loss = unsupervised_loss(data=stack, prediction=prediction, **masks)
+            loss = unsupervised_loss(src, tgt, prediction=prediction, **masks)
 
         # compute gradient and do optimizer step
         archive.optimizer.zero_grad()
@@ -228,13 +245,12 @@ def train(train_loader, archive, epoch):
         archive.save()
 
         # measure elapsed time
-        batch_time.update(time.time() - end)
+        batch_time.update(time.time() - start_time)
 
         # logging and checkpointing
         if state_vars['vis_time'] and i % state_vars['vis_time'] == 0:
             try:
                 debug_dir = archive.new_debug_directory(epoch, i)
-                src, tgt = stack.chunk(2, dim=1)
                 save_chunk(src, str(debug_dir / 'src'))
                 save_chunk(src, str(debug_dir / 'z_src'))  # same, comp. w/ tgt
                 save_chunk(tgt, str(debug_dir / 'tgt'))
@@ -273,50 +289,52 @@ def train(train_loader, archive, epoch):
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses))
 
-        end = time.time()
+        start_time = time.time()
     state_vars['iteration'] = None
     return losses.avg
 
 
+@torch.no_grad()
 def validate(val_loader, archive, epoch):
     losses = AverageMeter()
 
     # switch to evaluate mode
     archive.model.eval()
     submodule = select_submodule(archive.model, epoch)
-    submodule = torch.nn.DataParallel(submodule)
 
-    with torch.no_grad():
-        start_time = time.time()
-        for i, sample in enumerate(val_loader):
-            # compute output and loss
-            stack, truth = prepare_input(sample, supervised=False)
-            prediction = submodule(stack)
-            masks = {}  # TODO: generate masks
-            loss = unsupervised_loss(data=stack, prediction=prediction, **masks)
-            losses.update(loss.item(), input.size(0))
+    start_time = time.time()
+    for i, sample in enumerate(val_loader):
+        # compute output and loss
+        src, tgt, truth = prepare_input(sample, supervised=False)
+        prediction = submodule(src, tgt)
+        masks = {}  # TODO: generate masks
+        loss = unsupervised_loss(src, tgt, prediction=prediction, **masks)
+        losses.update(loss.item())
 
-        # measure elapsed time
-        batch_time = (time.time() - start_time)
+    # measure elapsed time
+    batch_time = (time.time() - start_time)
 
-        print('Validation: [{0} samples]\t'
-              'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-              'Loss {loss.val:.10f} ({loss.avg:.10f})\t'.format(
-               len(val_loader), batch_time=batch_time, loss=losses))
+    print('{0}\t'
+          'Validation: [{1} samples]\t'
+          'Time {batch_time:.3f}\t'
+          'Loss {loss.avg:.10f}\t'
+          .format(state_vars['name'], len(val_loader),
+                  batch_time=batch_time, loss=losses))
 
     return losses.avg
 
 
-def select_submodule(model, epoch):
+def select_submodule(model, epoch, init=False):
     """
     Selects the submodule to be trained based on the current epoch.
+    At epoch `epoch`, train level `epoch/epochs_per_mip` of the model.
     """
     if epoch is None:
         return model
     index = epoch // state_vars['epochs_per_mip']
-    if index > 0 and epoch % state_vars['epochs_per_mip'] == 0:
-        model.module.copy_aligner(index-1, index)
-    submodule = model.module.get_submodule(index)
+    submodule = model.module[:index+1].train_last()
+    if init and epoch % state_vars['epochs_per_mip'] == 0:
+        submodule.init_last()
     return torch.nn.DataParallel(submodule)
 
 
@@ -336,8 +354,7 @@ def prepare_input(sample, supervised=None, max_displacement=2):
         src = sample['src'].unsqueeze(0)
         tgt = sample['tgt'].unsqueeze(0)
         truth_field = None
-    stack = torch.cat([src, tgt], 1)
-    return stack, truth_field
+    return src, tgt, truth_field
 
 
 def random_field(shape, max_displacement=2, num_downsamples=7):
@@ -373,7 +390,7 @@ def supervised_loss(prediction, truth):
     return ((prediction - truth) ** 2).mean()
 
 
-def unsupervised_loss(data, prediction,
+def unsupervised_loss(src, tgt, prediction,
                       src_masks=None, tgt_masks=None, field_masks=None):
     """
     Calculate a self-supervised loss based on
@@ -396,8 +413,8 @@ def unsupervised_loss(data, prediction,
         tgt_masks = []
     if field_masks is None:
         field_masks = []
+    src, tgt = src.to(prediction.device), tgt.to(prediction.device)
 
-    src, tgt = data.chunk(2, dim=1)
     src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
 
     image_loss_map = (src_warped - tgt)**2
@@ -418,7 +435,8 @@ def unsupervised_loss(data, prediction,
         field_loss_map = field_loss_map * mask
         field_weights = field_weights * mask
     field_loss = field_loss_map.sum() / field_weights.sum()
-    return mse_loss + state_vars['lambda1'] * field_loss
+    loss = (mse_loss + state_vars['lambda1'] * field_loss) / 25000
+    return loss
 
 
 if __name__ == '__main__':

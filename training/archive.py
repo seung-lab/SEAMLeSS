@@ -118,6 +118,7 @@ class ModelArchive(object):
             key = filename.split('.')[0]
             self.paths[key] = self.directory / filename
 
+        self._architecture = None
         self._model = None
         self._optimizer = None
         self._state_vars = None
@@ -169,13 +170,14 @@ class ModelArchive(object):
                 print('OK, proceeding...')
 
         # load the model, optimizer, and state variables
+        self._load_state_vars(*args, **kwargs)
+        kwargs.update(self._state_vars)
         self._load_model(*args, **kwargs)
         self._load_optimizer(*args, **kwargs)
-        self._load_state_vars(*args, **kwargs)
         # load the pseudorandom number generator last
         self._load_prand(*args, **kwargs)
 
-    def _create(self, no_optimizer=False, *args, **kwargs):
+    def _create(self, *args, **kwargs):
         print('Creating a new model archive: {}'.format(self._name))
 
         # create directories
@@ -224,10 +226,9 @@ class ModelArchive(object):
         # when creating an archive, init pseudorandom number generator first
         self._load_prand(*args, **kwargs)
         # initialize the model, optimizer, and state variables
-        self._load_model(*args, **kwargs)
-        if not no_optimizer:
-            self._load_optimizer(*args, **kwargs)
         self._load_state_vars(*args, **kwargs)
+        self._load_model(*args, **kwargs)
+        self._load_optimizer(*args, **kwargs)
 
         self.save()
 
@@ -241,7 +242,9 @@ class ModelArchive(object):
         """
         if self.model_exists(name):
             raise ValueError('The model "{}" already exists.'.format(name))
-        new_archive = type(self)(name, readonly=False, *args, **kwargs)
+        new_archive = type(self)(name, readonly=False,
+                                 weights_file=self.paths['weights'],
+                                 *args, **kwargs)
         cp(self.paths['weights'], new_archive.paths['weights'])
 
         # Copy the old history into the new archive
@@ -274,6 +277,14 @@ class ModelArchive(object):
         return saved_commit.strip()
 
     @property
+    def architecture(self):
+        """
+        The python module code used to build the model.
+        Useful for calling any non-class functions defined there.
+        """
+        return self._architecture
+
+    @property
     def model(self):
         """
         A live version of the model's architecture.
@@ -297,7 +308,7 @@ class ModelArchive(object):
         """
         return self._state_vars
 
-    def _load_model(self, *args, **kwargs):
+    def _load_model(self, weights_file=None, *args, **kwargs):
         """
         Loads a working version of the model's architecture,
         initialized with its pretrained weights.
@@ -307,13 +318,16 @@ class ModelArchive(object):
         sys.path.insert(0, str(self.directory))
         import architecture
         sys.path.remove(str(self.directory))
+        self._architecture = architecture
+        self._model = architecture.Model(*args, **kwargs)
         if self.paths['weights'].is_file():
             with self.paths['weights'].open('rb') as f:
                 weights = torch.load(f)
-            self._model = architecture.Model.load(*args, weights=weights,
-                                                  **kwargs)
-        else:
-            self._model = architecture.Model(*args, **kwargs)
+            self._model.load(weights=weights)
+        elif weights_file is not None:
+            with weights_file.open('rb') as f:
+                weights = torch.load(f)
+            self._model.load(weights=weights)
 
         # set model to eval or train mode
         if self.readonly:
@@ -355,6 +369,7 @@ class ModelArchive(object):
         else:
             with self.paths['seed'].open('w') as f:
                 f.write(str(seed))
+            print('Initializing seed to {}'.format(seed))
             set_seed(seed)
 
     def _load_state_vars(self, *args, **kwargs):

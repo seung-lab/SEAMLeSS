@@ -54,6 +54,11 @@ def parse_args(args=None):
         help='saved model to initialize with',
         type=str, default=None, metavar='MODEL',
     ).completer = _list_trained_nets
+    start_parser.add_argument(
+        '--height',
+        help='the number of mip levels to train',
+        type=int, default=7, metavar='H',
+    )
 
     param_group = start_parser.add_argument_group('training parameters')
     param_group.add_argument(
