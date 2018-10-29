@@ -1,11 +1,27 @@
 import numpy as np
 from helpers import crop
+import json
+
+def deserialize_bbox(s):
+  contents = json.loads(s)
+  return BoundingBox(contents['m0_x'][0], contents['m0_x'][1],
+                     contents['m0_y'][0], contents['m0_y'][1], mip=0, max_mip=contents['max_mip'])
 
 class BoundingBox:
   def __init__(self, xs, xe, ys, ye, mip, max_mip=12):
     self.max_mip = max_mip
     scale_factor = 2**mip
     self.set_m0(xs*scale_factor, xe*scale_factor, ys*scale_factor, ye*scale_factor)
+
+  def serialize(self):
+    contents = {
+      "max_mip": self.max_mip,
+      "m0_x": self.m0_x,
+      "m0_y": self.m0_y,
+      "max_mip": self.max_mip
+    }
+    s = json.dumps(contents)
+    return s
 
   def contains(self, other):
     assert type(other) == type(self)

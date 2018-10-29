@@ -6,7 +6,7 @@ import numpy as np
 import os
 import json
 import math
-from time import time
+from time import time, sleep
 from copy import deepcopy, copy
 from helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
 import scipy
@@ -15,7 +15,7 @@ import scipy.ndimage
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum
 
-from boundingbox import BoundingBox
+from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
@@ -38,6 +38,7 @@ class Aligner:
     else:
         self.task_handler = None
         self.distributed  = False
+    self.threads = threads 
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip
@@ -543,24 +544,24 @@ class Aligner:
       except AttributeError as e:
         pass
     
-    if self.num_targets > 1 and should_backtrack:
-      for backtrack in range(1, self.num_targets):
-        if z-backtrack < self.zs:
-          break
-        still_missing_mask = self.missing_data_mask(data, bbox, mip)
-        if not np.any(still_missing_mask):
-          break # we've got a full slice
-        backup = None
-        while backup is None:
-          try:
-            backup_ = cv(path, mip=mip, progress=False,
-                         bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z-backtrack]
-            backup = backup_
-          except AttributeError as e:
-            pass
-          
-        self.supplement_target_with_backup(data, still_missing_mask, backup, bbox, mip)
-        
+    #if self.num_targets > 1 and should_backtrack:
+    #  for backtrack in range(1, self.num_targets):
+    #    if z-backtrack < self.zs:
+    #      break
+    #    still_missing_mask = self.missing_data_mask(data, bbox, mip)
+    #    if not np.any(still_missing_mask):
+    #      break # we've got a full slice
+    #    backup = None
+    #    while backup is None:
+    #      try:
+    #        backup_ = cv(path, mip=mip, progress=False,
+    #                     bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z-backtrack]
+    #        backup = backup_
+    #      except AttributeError as e:
+    #        pass
+    #      
+    #    self.supplement_target_with_backup(data, still_missing_mask, backup, bbox, mip)
+    #    
     data = self.preprocess_data(data)
     #self.add_to_image_cache(path, bbox, mip, data)
 

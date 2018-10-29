@@ -91,7 +91,7 @@ a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
             num_targets=num_targets, flip_average=not args.no_flip_average,
             run_pairs=args.run_pairs,
             write_intermediaries=args.write_intermediaries, 
-            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample, old_vectors=args.old_vectors, queue_name=arg.queue_name)
+            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample, old_vectors=args.old_vectors, queue_name=args.queue_name)
 
 bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=max_mip)
 
