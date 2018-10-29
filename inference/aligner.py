@@ -743,7 +743,7 @@ class Aligner:
       for m in range(self.render_low_mip, self.high_mip+1):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
         start_z = start_section + 1 
-        self.zs = start_section
+    self.zs = start_section
     for z in range(start_section, end_section):
       self.img_cache = {}
       self.compute_section_pair_residuals(z + 1, z, bbox)
