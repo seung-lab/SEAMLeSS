@@ -258,10 +258,11 @@ def train(train_loader, archive, epoch):
                     src, prediction.detach().cpu(), padding_mode='zeros')
                 save_chunk(warped_src, str(debug_dir / 'warped_src'))
                 archive.visualize_loss(['Training Loss', 'Validation Loss'])
-                save_vectors(truth.detach(),
-                             str(debug_dir / 'ground_truth'))
                 save_vectors(prediction.detach(),
                              str(debug_dir / 'prediction'))
+                if truth is not None:
+                    save_vectors(truth.detach(),
+                                 str(debug_dir / 'ground_truth'))
             except Exception as e:
                 # Don't raise the exception, since visualization issues
                 # should not stop training. Just warn the user and go on.
