@@ -544,24 +544,24 @@ class Aligner:
       except AttributeError as e:
         pass
     
-    #if self.num_targets > 1 and should_backtrack:
-    #  for backtrack in range(1, self.num_targets):
-    #    if z-backtrack < self.zs:
-    #      break
-    #    still_missing_mask = self.missing_data_mask(data, bbox, mip)
-    #    if not np.any(still_missing_mask):
-    #      break # we've got a full slice
-    #    backup = None
-    #    while backup is None:
-    #      try:
-    #        backup_ = cv(path, mip=mip, progress=False,
-    #                     bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z-backtrack]
-    #        backup = backup_
-    #      except AttributeError as e:
-    #        pass
-    #      
-    #    self.supplement_target_with_backup(data, still_missing_mask, backup, bbox, mip)
-    #    
+    if self.num_targets > 1 and should_backtrack:
+      for backtrack in range(1, self.num_targets):
+        if z-backtrack < self.zs:
+          break
+        still_missing_mask = self.missing_data_mask(data, bbox, mip)
+        if not np.any(still_missing_mask):
+          break # we've got a full slice
+        backup = None
+        while backup is None:
+          try:
+            backup_ = cv(path, mip=mip, progress=False,
+                         bounded=False, fill_missing=True)[x_range[0]:x_range[1], y_range[0]:y_range[1], z-backtrack]
+            backup = backup_
+          except AttributeError as e:
+            pass
+          
+        self.supplement_target_with_backup(data, still_missing_mask, backup, bbox, mip)
+        
     data = self.preprocess_data(data)
     #self.add_to_image_cache(path, bbox, mip, data)
 
@@ -817,7 +817,9 @@ class Aligner:
       raise Exception("Unsupported task type '{}' received from queue '{}'".format(task_type,
                                                                  self.task_handler.queue_name))
 
-  def listen_for_tasks(self):
+  def listen_for_tasks(self, stack_start, bbox):
+    self.total_bbox = bbox
+    self.zs = stack_start
     while (True):
       message = self.task_handler.get_message()
       if message != None:
