@@ -411,23 +411,19 @@ class Aligner:
       print ("not warping")
     if (self.run_pairs):
       if z != start_z:
-        field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
-        regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 256)).unsqueeze(-1)
-        regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 256)).unsqueeze(-1)
-        #regular_part = self.gauss_filter(field_sf.permute(3,0,1,2))
-        #regular_part = torch.from_numpy(self.reg_field) 
-        #field_sf = decay_factor * field_sf + (1 - decay_factor) * regular_part.permute(1,2,3,0) 
-        #field_sf = regular_part.permute(1,2,3,0) 
-        field_sf = torch.cat([regular_part_x,regular_part_y],-1)
+        #field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
+        #regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
+        #regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
+        #field_sf = torch.cat([regular_part_x,regular_part_y],-1)
         image = gridsample_residual(image, field_sf, padding_mode='zeros')
-        agg_flow = agg_flow.permute(0,3,1,2)
-        field_sf = field_sf + gridsample_residual(
-            agg_flow, field_sf, padding_mode='border').permute(0,2,3,1)
-      else:
-        field_sf = agg_flow
-      field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
-      field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
-      self.save_field_patch(field_sf, bbox, mip, z)
+        #agg_flow = agg_flow.permute(0,3,1,2)
+        #field_sf = field_sf + gridsample_residual(
+        #    agg_flow, field_sf, padding_mode='border').permute(0,2,3,1)
+      #else:
+      #  field_sf = agg_flow
+      #field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
+      #field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
+      #self.save_field_patch(field_sf, bbox, mip, z)
 
     return image.numpy()[0,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
 
@@ -648,6 +644,23 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
+  def render_parallel(self, bbox, mip, start_section, end_section, start_z):
+    print ("Rendering mip {}".format(mip),
+              end='', flush=True)
+    start = time()
+    chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
+                                    self.dst_voxel_offsets[mip], mip=mip, render=True)
+    for z in range(start_section, end_section):
+      for i in range(0, len(chunks), self.threads):
+        task_patches = []
+        for j in range(i, min(len(chunks), i + self.threads)):
+          task_patches.append(chunks[j])
+        render_task = make_render_task_message(z + 1, task_patches, mip, start_z)
+        self.task_handler.send_message(render_task)
+    self.task_handler.wait_until_ready() 
+    end = time()
+    print (": {} sec".format(end - start))
+
   def render(self, z, bbox, mip, start_z):
     print ("Rendering mip {}".format(mip),
               end='', flush=True)
@@ -674,6 +687,21 @@ class Aligner:
   def render_section_all_mips(self, z, bbox, start_z):
     self.render(z, bbox, self.render_low_mip, start_z)
     self.downsample(z, bbox, self.render_low_mip, self.render_high_mip)
+
+  def downsample_parallel(self, bbox, source_mip, target_mip, start_section, end_section):
+    print ("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
+    for m in range(source_mip+1, target_mip + 1):
+      chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
+                                      self.dst_voxel_offsets[m], mip=m, render=True)
+      for z in range(start_section, end_section) :
+        for i in range(0, len(chunks), self.threads * 4):
+          task_patches = []
+          for j in range(i, min(len(chunks), i + self.threads * 4)):
+            task_patches.append(chunks[j])
+          downsample_task = make_downsample_task_message(z + 1, task_patches, mip=m)
+          self.task_handler.send_message(downsample_task)
+      self.task_handler.wait_until_ready()
+      
 
   def downsample(self, z, bbox, source_mip, target_mip):
     print ("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
@@ -720,15 +748,51 @@ class Aligner:
 
       if m > self.process_low_mip:
           self.prepare_source(source_z, bbox, m - 1)
-    
-  def count_box(self, bbox, mip):    
-    chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
-                                      self.dst_voxel_offsets[mip], mip=mip, render=True)
-    total_chunks = len(chunks)
-    self.image_pixels_sum =np.zeros(total_chunks)
-    self.field_sf_sum =np.zeros((total_chunks, 2), dtype=np.float32)
+
+  def compose_field_task:(self, z, bbox, res_mip_range, mip, start_z):
+      influence_bbox = deepcopy(bbox)
+      influence_bbox.uncrop(self.max_displacement, mip=0)
+      agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
+      if z != start_z:
+          field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
+          regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
+          regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
+          field_sf = torch.cat([regular_part_x,regular_part_y],-1)
+          agg_flow = agg_flow.permute(0,3,1,2)
+          field_sf = field_sf + gridsample_residual(agg_flow, field_sf, 
+                                                    padding_mode='border').permute(0,2,3,1)
+      else:
+          field_sf = agg_flow
+      field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
+      field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
+      self.save_field_patch(field_sf, bbox, mip, z)
 
 
+  def compose_field_sf(self, z, bbox, mip, start_z):
+      chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
+                                    self.dst_voxel_offsets[mip], mip=mip, render=True)
+      if self.distributed:
+          for i in range(0, len(chunks), self.threads):
+              task_patches = []
+              for j in range(i, min(len(chunks), i + self.threads)):
+                  task_patches.append(chunks[j])
+              compose_task = make_compose_task_message(z, task_patches, mip, start_z)
+              self.task_handler.send_message(compose_task)
+          self.task_handler.wait_until_ready()
+      else:
+          def chunkwise(patch_bbox):
+              self.compose_field_task(z ,patch_bbox, (mip, self.process_high_mip), mip, start_z)
+          self.pool.map(chunkwise, chunks)
+  
+  def render_section_parallel(self, start_section, end_section, bbox, start_z):
+      if self.distributed:
+          self.render_parallel(bbox, self.render_low_mip, start_section, end_section, start_z)
+          self.downsample_parallel(bbox, self.render_low_mip, self.render_high_mip, 
+                                   start_section, end_section)
+      else:
+          for z in range(start_section, end_section):  
+              self.render_section_all_mips(z + 1, bbox, start_z)
+  
   ## Whole stack operations
   def align_ng_stack(self, start_section, end_section, bbox, move_anchor=True):
     if not self.check_all_params():
@@ -742,12 +806,19 @@ class Aligner:
     if move_anchor:
       for m in range(self.render_low_mip, self.high_mip+1):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
-        start_z = start_section + 1 
+      start_z = start_section + 1 
     self.zs = start_section
-    for z in range(start_section, end_section):
-      self.img_cache = {}
-      self.compute_section_pair_residuals(z + 1, z, bbox)
-      self.render_section_all_mips(z + 1, bbox, start_z)
+    if (self.run_pairs):
+        for z in range(start_section, end_section):
+            self.img_cache = {}
+            self.compute_section_pair_residuals(z + 1, z, bbox)
+            self.compose_field_sf(z + 1, bbox, mip, start_z)
+        self.render_section_parallel(start_section, end_section, bbox, start_z)
+    else:
+        for z in range(start_section, end_section):
+            self.img_cache = {}
+            self.compute_section_pair_residuals(z + 1, z, bbox)
+            self.render_section_all_mips(z + 1, bbox, start_z)
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
                                                           end - start))
@@ -771,6 +842,18 @@ class Aligner:
       self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
 
     self.pool.map(chunkwise, patches)
+
+  def handle_compose_task(self, message):
+    z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    mip = message['mip']
+    start_z = message['start_z']
+    def chunkwise(patch_bbox):
+      print ("composing {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+              end='', flush=True) 
+      self.compose_field_task(z ,patch_bbox, (mip, self.process_high_mip), mip, start_z)
+    self.pool.map(chunkwise, patches)
+
 
   def handle_copy_task(self, message):
     z = message['z']
@@ -809,6 +892,8 @@ class Aligner:
       self.handle_residual_task(body)
     elif task_type == 'render_task':
       self.handle_render_task(body)
+    elif task_type == 'compose_task':
+      self.handle_compose_task(body)
     elif task_type == 'copy_task':
       self.handle_copy_task(body)
     elif task_type == 'downsample_task':

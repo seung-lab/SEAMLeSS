@@ -22,6 +22,17 @@ def make_render_task_message(z, patches, mip, start_z):
   }
   return json.dumps(content)
 
+def make_compose_task_message(z, patches, mip, start_z):
+  content = {
+      "type": "compose_task",
+      "z": z,
+      "patches": [p.serialize() for p in patches],
+      "mip": mip,
+      "start_z": start_z,
+  }
+  return json.dumps(content)
+
+
 def make_downsample_task_message(z, patches, mip):
   content = {
       "type": "downsample_task",
