@@ -781,7 +781,7 @@ class Aligner:
     if move_anchor:
       for m in range(self.render_low_mip, self.high_mip+1):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
-        start_z = start_section + 1 
+      start_z = start_section + 1 
     #if (self.run_pairs):
     #    self.count_box(bbox, self.render_low_mip);
     self.zs = start_section
