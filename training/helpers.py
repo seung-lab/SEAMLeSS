@@ -37,6 +37,7 @@ def cp(src, dst):
     shutil.copy(src, dst)
 
 
+@torch.no_grad()
 def load_model_from_dict(model, archive_params):
     model_params = dict(model.named_parameters())
     model_keys = sorted(model_params.keys())
@@ -57,19 +58,17 @@ def load_model_from_dict(model, archive_params):
             min_slices = tuple(slice(min(mdim, adim)) for mdim, adim
                                in zip(model_params[key].shape,
                                       archive_params[key].shape))
-            with torch.no_grad():
-                model_params[key].data[min_slices] = (
-                    archive_params[key][min_slices])
-                model_params[key].data = (
-                    (model_params[key] - model_params[key].mean())
-                    / model_params[key].std())
-                model_params[key].data = (
-                    (model_params[key] * archive_params[key].std())
-                    + archive_params[key].mean())
+            model_params[key].data[min_slices] = (
+                archive_params[key][min_slices])
+            model_params[key].data = (
+                (model_params[key] - model_params[key].mean())
+                / model_params[key].std())
+            model_params[key].data = (
+                (model_params[key] * archive_params[key].std())
+                + archive_params[key].mean())
             approx += 1
             continue
-        with torch.no_grad():
-            model_params[key].data = archive_params[key]
+        model_params[key].data = archive_params[key]
     new = 0
     for key in model_keys:
         if key not in archive_keys:
@@ -319,12 +318,13 @@ def gridsample_residual(source, residual, padding_mode):
     field = residual + identity_grid(residual.shape, device=residual.device)
     return gridsample(source, field, padding_mode)
 
+
+@torch.no_grad()
 def _create_identity_grid(size):
-    with torch.no_grad():
-        id_theta = torch.Tensor([[[1,0,0],[0,1,0]]]) # identity affine transform
-        I = F.affine_grid(id_theta,torch.Size((1,1,size,size)))
-        I *= (size - 1) / size # rescale the identity provided by PyTorch
-        return I
+    id_theta = torch.Tensor([[[1,0,0],[0,1,0]]]) # identity affine transform
+    I = F.affine_grid(id_theta,torch.Size((1,1,size,size)))
+    I *= (size - 1) / size # rescale the identity provided by PyTorch
+    return I
 
 def identity_grid(size, cache=False, device=None):
     """
