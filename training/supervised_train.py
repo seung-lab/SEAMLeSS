@@ -221,7 +221,13 @@ def train(train_loader, archive, epoch):
     max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
+    start_iteration = state_vars['iteration']
     for i, sample in enumerate(train_loader):
+        if start_iteration is not None and i < start_iteration:
+            print('Skipping to iteration {}'.format(i), end='\r')  # TODO: slow
+            start_time = time.time()
+            continue
+        start_iteration = None
         state_vars['iteration'] = i
 
         # measure data loading time
@@ -242,6 +248,7 @@ def train(train_loader, archive, epoch):
         archive.optimizer.step()
         loss = loss.item()  # get python value without the computation graph
         losses.update(loss)
+        state_vars['iteration'] = i + 1  # advance iteration to resume right
         archive.save()
 
         # measure elapsed time
