@@ -31,13 +31,15 @@ class Aligner:
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
                flip_average=True, run_pairs=False, write_intermediaries=False,
-               upsample_residuals=False, old_upsample=False, old_vectors=False, queue_name=None):
+               upsample_residuals=False, old_upsample=False, old_vectors=False, 
+               queue_name=None, p_render=False):
     if queue_name != None:
         self.task_handler = TaskHandler(queue_name)
         self.distributed  = True
     else:
         self.task_handler = None
         self.distributed  = False
+    self.p_render = p_render
     self.threads = threads 
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
@@ -728,7 +730,7 @@ class Aligner:
       start = time()
       chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[m],
                                       self.vec_voxel_offsets[m], mip=m)
-      print ("Aligning slice {} to slice {} at mip {} ({} chunks)".
+      print ("computing residuals of slice {} to slice {} at mip {} ({} chunks)".
              format(source_z, target_z, m, len(chunks)), flush=True)
 
       if self.distributed:
@@ -805,20 +807,22 @@ class Aligner:
     start_z = start_section 
     start = time()
     if move_anchor:
-      #for m in range(self.render_low_mip, self.high_mip+1):
-      #  self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
+      for m in range(self.render_low_mip, self.high_mip+1):
+        self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
       start_z = start_section + 1 
     self.zs = start_section
-    if (self.run_pairs):
-       # for z in range(start_section, end_section):
-       #     self.img_cache = {}
-       #     self.compute_section_pair_residuals(z + 1, z, bbox)
-       #     self.compose_field_sf(z + 1, bbox, self.render_low_mip, start_z)
+    if self.run_pairs and self.p_render:
+        for z in range(start_section, end_section):
+            self.img_cache = {}
+            self.compute_section_pair_residuals(z + 1, z, bbox)
+            self.compose_field_sf(z + 1, bbox, self.render_low_mip, start_z)
         self.render_section_parallel(start_section, end_section, bbox, start_z)
     else:
         for z in range(start_section, end_section):
             self.img_cache = {}
             self.compute_section_pair_residuals(z + 1, z, bbox)
+            if self.run_pairs:
+                self.compose_field_sf(z + 1, bbox, self.render_low_mip, start_z)
             self.render_section_all_mips(z + 1, bbox, start_z)
     end = time()
     print ("Total time for aligning {} slices: {}".format(end_section - start_section,
