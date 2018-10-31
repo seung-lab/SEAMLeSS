@@ -22,7 +22,7 @@ from threading import Lock
 
 import torch.nn as nn
 from task_handler import TaskHandler, make_residual_task_message, \
-        make_render_task_message, make_copy_task_message, make_downsample_task_message
+        make_render_task_message, make_copy_task_message, make_downsample_task_message, make_compose_task_message
 
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
@@ -411,7 +411,7 @@ class Aligner:
       print ("not warping")
     if (self.run_pairs):
       if z != start_z:
-        #field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
+        field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
         #regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
         #regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
         #field_sf = torch.cat([regular_part_x,regular_part_y],-1)
@@ -749,10 +749,11 @@ class Aligner:
       if m > self.process_low_mip:
           self.prepare_source(source_z, bbox, m - 1)
 
-  def compose_field_task:(self, z, bbox, res_mip_range, mip, start_z):
+  def compose_field_task(self, z, bbox, res_mip_range, mip, start_z):
       influence_bbox = deepcopy(bbox)
       influence_bbox.uncrop(self.max_displacement, mip=0)
-      agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
+      agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)  
+      mip_disp = int(self.max_displacement / 2**mip)
       if z != start_z:
           field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
           regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
@@ -804,15 +805,15 @@ class Aligner:
     start_z = start_section 
     start = time()
     if move_anchor:
-      for m in range(self.render_low_mip, self.high_mip+1):
-        self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
+      #for m in range(self.render_low_mip, self.high_mip+1):
+      #  self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
       start_z = start_section + 1 
     self.zs = start_section
     if (self.run_pairs):
-        for z in range(start_section, end_section):
-            self.img_cache = {}
-            self.compute_section_pair_residuals(z + 1, z, bbox)
-            self.compose_field_sf(z + 1, bbox, mip, start_z)
+       # for z in range(start_section, end_section):
+       #     self.img_cache = {}
+       #     self.compute_section_pair_residuals(z + 1, z, bbox)
+       #     self.compose_field_sf(z + 1, bbox, self.render_low_mip, start_z)
         self.render_section_parallel(start_section, end_section, bbox, start_z)
     else:
         for z in range(start_section, end_section):
