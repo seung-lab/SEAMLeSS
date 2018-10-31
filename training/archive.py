@@ -140,7 +140,6 @@ class ModelArchive(object):
             self.out = sys.stdout
             self.err = sys.stderr
 
-
     def _load(self, *args, **kwargs):
         if not self.readonly:
             print('Writing to exisiting model archive: {}'.format(self._name))
@@ -246,6 +245,8 @@ class ModelArchive(object):
                                  weights_file=self.paths['weights'],
                                  *args, **kwargs)
         cp(self.paths['weights'], new_archive.paths['weights'])
+        cp(self.paths['loss'], new_archive.paths['loss'])
+        cp(self.paths['progress'], new_archive.paths['progress'])
 
         # Copy the old history into the new archive
         tempfile = new_archive.directory / 'history.txt.temp'
