@@ -221,7 +221,8 @@ def train(train_loader, archive, epoch):
     max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
-    start_iteration = state_vars['iteration']
+    start_iteration = (state_vars['iteration']
+                       if 'iteration' in state_vars else None)
     for i, sample in enumerate(train_loader):
         if start_iteration is not None and i < start_iteration:
             print('Skipping to iteration {}'.format(i), end='\r')  # TODO: slow
