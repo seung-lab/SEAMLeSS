@@ -189,22 +189,25 @@ def main():
             val_loss = None
 
         # log and save state
+        state_vars['epoch'] = epoch + 1
+        state_vars['iteration'] = None
         archive.save()
         log_values = [
             datetime.datetime.now(),
             epoch,
             len(train_loader),
-            train_loss,
+            '',  # train_loss
             val_loss if val_loss is not None else '',
         ]
         archive.log(log_values, printout=False)
         archive.create_checkpoint(epoch, iteration=None)
         epoch_time.update(time.time() - start_time)
         print('{0}\t'
-              'Epoch: {1} Complete\t'
+              'Completed Epoch {1}\t'
               'TrainLoss {train_losses.val:.10f} ({train_losses.avg:.10f})\t'
               'ValLoss {val_losses.val:.10f} ({val_losses.avg:.10f})\t'
               'EpochTime {epoch_time.val:.3f} ({epoch_time.avg:.3f})\t'
+              '\n'
               .format(state_vars['name'], epoch, train_losses=train_losses,
                       val_losses=val_losses, epoch_time=epoch_time))
 
@@ -221,14 +224,14 @@ def train(train_loader, archive, epoch):
     max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
-    start_iteration = (state_vars['iteration']
-                       if 'iteration' in state_vars else None)
-    for i, sample in enumerate(train_loader):
-        if start_iteration is not None and i < start_iteration:
-            print('Skipping iteration {}'.format(i), end='\r')  # TODO: slow
-            start_time = time.time()
-            continue
-        start_iteration = None
+    if 'iteration' not in state_vars or state_vars['iteration'] is None:
+        start_iter = 0
+    else:
+        start_iter = state_vars['iteration']
+
+    for i, sample in enumerate(train_loader, start_iter):
+        if i >= len(train_loader):
+            break
         state_vars['iteration'] = i
 
         # measure data loading time
@@ -299,7 +302,6 @@ def train(train_loader, archive, epoch):
                       data_time=data_time, loss=losses))
 
         start_time = time.time()
-    state_vars['iteration'] = None
     return losses.avg
 
 
