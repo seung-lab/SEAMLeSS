@@ -14,7 +14,7 @@ net_name_prefixes = [
 ]
 
 
-def parse_args(args=None):
+def _parse_args(args=None):
     parser = argparse.ArgumentParser(prog='train',
                                      description='SEAMLeSS training')
     subparsers = parser.add_subparsers(title='subcommands', dest='command')
@@ -238,15 +238,30 @@ def first_unused_gpu(threshold=0.05):
         used = int(mem.find('used').text.split()[0])
         usage = used / tot
         if usage < threshold:  # this gpu is unused, so return it
+            print('Using GPU {}'.format(i))
             return str(i)
         if usage < least[1]:
             least = i, usage
     # no available GPUs, so return the one with the least usage
     if least[0] >= 0:
+        print('Using GPU {}'.format(least[0]))
         return str(least[0])
 
 
-if __name__ == '__main__':
-    print(parse_args())
+# parse the arguments during import to eliminate delay
+_args = None
+try:
+    _args = _parse_args()
+except Exception:
+    _args = None
 
-parse_args()
+
+def parse_args(args=None):
+    global _args
+    if args is not None:
+        _args = _parse_args(args)
+    return _args
+
+
+if __name__ == '__main__':
+    print(_args)
