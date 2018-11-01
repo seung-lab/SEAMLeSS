@@ -417,34 +417,38 @@ def unsupervised_loss(src, tgt, prediction,
     where `lambda1` and the type of smoothness penalty are both
     pulled from the `state_vars` dictionary.
     """
-    if src_masks is None:
-        src_masks = []
-    if tgt_masks is None:
-        tgt_masks = []
-    if field_masks is None:
-        field_masks = []
     src, tgt = src.to(prediction.device), tgt.to(prediction.device)
 
     src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
 
     image_loss_map = (src_warped - tgt)**2
-    image_weights = torch.ones_like(image_loss_map)
-    for mask in src_masks:
-        mask = gridsample_residual(mask, prediction, padding_mode='border')
-        image_loss_map = image_loss_map * mask
-        image_weights = image_weights * mask
-    for mask in tgt_masks:
-        image_loss_map = image_loss_map * mask
-        image_weights = image_weights * mask
-    mse_loss = image_loss_map.sum() / image_weights.sum()
+    if src_masks or tgt_masks:
+        image_weights = torch.ones_like(image_loss_map)
+        if src_masks is not None:
+            for mask in src_masks:
+                mask = gridsample_residual(mask, prediction,
+                                           padding_mode='border')
+                image_loss_map = image_loss_map * mask
+                image_weights = image_weights * mask
+        if tgt_masks is not None:
+            for mask in tgt_masks:
+                image_loss_map = image_loss_map * mask
+                image_weights = image_weights * mask
+        mse_loss = image_loss_map.sum() / image_weights.sum()
+    else:
+        mse_loss = image_loss_map.mean()
 
     field_penalty = smoothness_penalty(state_vars['penalty'])
     field_loss_map = field_penalty([prediction])
-    field_weights = torch.ones_like(prediction)
-    for mask in field_masks:
-        field_loss_map = field_loss_map * mask
-        field_weights = field_weights * mask
-    field_loss = field_loss_map.sum() / field_weights.sum()
+    if field_masks:
+        field_weights = torch.ones_like(prediction)
+        for mask in field_masks:
+            field_loss_map = field_loss_map * mask
+            field_weights = field_weights * mask
+        field_loss = field_loss_map.sum() / field_weights.sum()
+    else:
+        field_loss = field_loss_map.mean()
+
     loss = (mse_loss + state_vars['lambda1'] * field_loss) / 25000
     return loss
 
