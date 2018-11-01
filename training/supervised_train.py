@@ -347,6 +347,7 @@ def select_submodule(model, epoch, init=False):
     return torch.nn.DataParallel(submodule)
 
 
+@torch.no_grad()
 def prepare_input(sample, supervised=None, max_displacement=2):
     """
     Formats the input received from the data loader and produces a
@@ -366,6 +367,7 @@ def prepare_input(sample, supervised=None, max_displacement=2):
     return src, tgt, truth_field
 
 
+@torch.no_grad()
 def random_field(shape, max_displacement=2, num_downsamples=7):
     """
     Genenerates a random vector field smoothed by bilinear interpolation.
@@ -379,14 +381,13 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
     `num_downsamples` dictates the block size for the random field.
     Each block will have size `2**num_downsamples`.
     """
-    with torch.no_grad():
-        zero = torch.zeros(shape)
-        zero = torch.cat([zero, zero.clone()], 1)
-        smaller = downsample(num_downsamples)(zero)
-        std = max_displacement / shape[-2] / math.sqrt(2)
-        field = torch.nn.init.normal_(smaller, mean=0, std=std)
-        field = upsample(num_downsamples)(field)
-        result = field.permute(0, 2, 3, 1)
+    zero = torch.zeros(shape)
+    zero = torch.cat([zero, zero.clone()], 1)
+    smaller = downsample(num_downsamples)(zero)
+    std = max_displacement / shape[-2] / math.sqrt(2)
+    field = torch.nn.init.normal_(smaller, mean=0, std=std)
+    field = upsample(num_downsamples)(field)
+    result = field.permute(0, 2, 3, 1)
     return result
 
 
