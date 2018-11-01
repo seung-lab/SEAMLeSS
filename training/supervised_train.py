@@ -316,21 +316,22 @@ def validate(val_loader, archive, epoch):
     start_time = time.time()
     # compute output and loss
     for i, sample in enumerate(val_loader):
-        print('Validation: {}/{}'.format(i, len(val_loader)), end='\r')
+        print('{0}\t'
+              'Validation: [{1}/{2}]\t'
+              .format(state_vars['name'], i, len(val_loader)), end='\r')
         src, tgt, truth = prepare_input(sample, supervised=False)
         prediction = submodule(src, tgt)
         masks = {}  # TODO: generate masks
         loss = unsupervised_loss(src, tgt, prediction=prediction, **masks)
         losses.update(loss.item())
-    print('Validation: {}/{}'.format(len(val_loader), len(val_loader)))
 
     # measure elapsed time
     batch_time = (time.time() - start_time)
 
     print('{0}\t'
-          'Validation: [{1} samples]\t'
+          'Validation: [{1}/{1}]\t'
+          'Loss {loss.avg:.10f}\t\t\t'
           'Time {batch_time:.3f}\t'
-          'Loss {loss.avg:.10f}\t'
           .format(state_vars['name'], len(val_loader),
                   batch_time=batch_time, loss=losses))
 
