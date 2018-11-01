@@ -506,12 +506,10 @@ class ModelArchive(object):
         for param_group in self._optimizer.param_groups:
             param_group['lr'] = self._state_vars['lr']
 
-    def visualize_loss(self, columns, average_over=100):
+    def visualize_loss(self, *columns, average_over=100):
         """
         Save a plot of the learning curves
         """
-        if not isinstance(columns, list):
-            columns = [columns]
         data = pd.read_csv(self.paths['loss'], sep='\\s*,\\s*',
                            encoding='ascii', engine='python')[columns]
         # ensure averaging window is reasonable

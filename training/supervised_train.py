@@ -264,7 +264,7 @@ def train(train_loader, archive, epoch):
                 warped_src = gridsample_residual(
                     src, prediction.detach().cpu(), padding_mode='zeros')
                 save_chunk(warped_src, str(debug_dir / 'warped_src'))
-                archive.visualize_loss(['Training Loss', 'Validation Loss'])
+                archive.visualize_loss('Training Loss', 'Validation Loss')
                 save_vectors(prediction.detach(),
                              str(debug_dir / 'prediction'))
                 if truth is not None:
