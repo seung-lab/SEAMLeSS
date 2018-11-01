@@ -40,6 +40,9 @@ parser.add_argument('--upsample_residuals',
   help='upsample residuals & cumulative residuals when writing intermediaries; requires --write_intermediaries flag',
   action='store_true')
 parser.add_argument('--old_upsample', help='revert to the old pytorch upsampling (using align_corners=True)', action='store_true')
+parser.add_argument('--old_vectors', help='expect the net to return vectors in the old vector field convention, '
+  'where -1 and 1 refer to the centers of the border pixels rather than the image edges.',
+  action='store_true')
 
 args = parser.parse_args()
 
