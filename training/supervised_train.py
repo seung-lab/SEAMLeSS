@@ -197,7 +197,7 @@ def main():
             train_loss,
             val_loss if val_loss is not None else '',
         ]
-        archive.log(log_values, printout=True)
+        archive.log(log_values, printout=False)
         archive.create_checkpoint(epoch, iteration=None)
         epoch_time.update(time.time() - start_time)
         print('{0}\t'
@@ -225,7 +225,7 @@ def train(train_loader, archive, epoch):
                        if 'iteration' in state_vars else None)
     for i, sample in enumerate(train_loader):
         if start_iteration is not None and i < start_iteration:
-            print('Skipping to iteration {}'.format(i), end='\r')  # TODO: slow
+            print('Skipping iteration {}'.format(i), end='\r')  # TODO: slow
             start_time = time.time()
             continue
         start_iteration = None
@@ -312,13 +312,15 @@ def validate(val_loader, archive, epoch):
     submodule = select_submodule(archive.model, epoch)
 
     start_time = time.time()
+    # compute output and loss
     for i, sample in enumerate(val_loader):
-        # compute output and loss
+        print('Validation: {}/{}'.format(i, len(val_loader)), end='\r')
         src, tgt, truth = prepare_input(sample, supervised=False)
         prediction = submodule(src, tgt)
         masks = {}  # TODO: generate masks
         loss = unsupervised_loss(src, tgt, prediction=prediction, **masks)
         losses.update(loss.item())
+    print('Validation: {}/{}'.format(len(val_loader), len(val_loader)))
 
     # measure elapsed time
     batch_time = (time.time() - start_time)
