@@ -754,18 +754,18 @@ class Aligner:
   def compose_field_task(self, z, bbox, res_mip_range, mip, start_z):
       influence_bbox = deepcopy(bbox)
       influence_bbox.uncrop(self.max_displacement, mip=0)
-      agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)  
       mip_disp = int(self.max_displacement / 2**mip)
       if z != start_z:
+          agg_flow = self.get_aggregate_rel_flow(z-1, influence_bbox, res_mip_range, mip)  
           field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
-          regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
-          regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
-          field_sf = torch.cat([regular_part_x,regular_part_y],-1)
           agg_flow = agg_flow.permute(0,3,1,2)
           field_sf = field_sf + gridsample_residual(agg_flow, field_sf, 
                                                     padding_mode='border').permute(0,2,3,1)
       else:
-          field_sf = agg_flow
+          field_sf = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip) 
+      regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
+      regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
+      field_sf = torch.cat([regular_part_x,regular_part_y],-1)
       field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
       field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
       self.save_field_patch(field_sf, bbox, mip, z)
