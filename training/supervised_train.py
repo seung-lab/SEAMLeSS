@@ -142,11 +142,11 @@ def main():
     # Data loading code
     transform = transforms.Compose([
         stack_dataset.ToFloatTensor(),
-        # stack_dataset.RandomTranslation(2**(size-1)),
+        stack_dataset.Normalize(),
+        stack_dataset.Contrast(),
         stack_dataset.RandomRotateAndScale(),
         stack_dataset.RandomFlip(),
-        stack_dataset.RandomAugmentation(),
-        stack_dataset.Normalize(2)
+        stack_dataset.Split(),
     ])
     train_dataset = stack_dataset.compile_dataset(
         state_vars['training_set_path'], transform=transform)
@@ -160,7 +160,7 @@ def main():
         validation_dataset = stack_dataset.compile_dataset(
             state_vars['validation_set_path'], transform=transform)
         val_loader = torch.utils.data.DataLoader(
-            validation_dataset, batch_size=state_vars['batch_size'],
+            validation_dataset, batch_size=1,
             shuffle=False, num_workers=args.num_workers, pin_memory=True)
     else:
         val_loader = None
@@ -363,12 +363,12 @@ def prepare_input(sample, supervised=None, max_displacement=2):
     if supervised is None:
         supervised = state_vars['supervised']
     if supervised:
-        src = sample['src'].unsqueeze(0)
+        src = sample['src']
         truth_field = random_field(src.shape, max_displacement=max_displacement)
         tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
     else:
-        src = sample['src'].unsqueeze(0)
-        tgt = sample['tgt'].unsqueeze(0)
+        src = sample['src']
+        tgt = sample['tgt']
         truth_field = None
     return src, tgt, truth_field
 

@@ -1,11 +1,10 @@
 import random
 import h5py
+import cv2
 import torch
 from torch.utils.data import Dataset, ConcatDataset
 
-from normalizer import Normalizer
 from aug import aug_input, rotate_and_scale, random_translation
-from helpers import reverse_dim
 
 
 def compile_dataset(*h5_paths, transform=None):
@@ -40,14 +39,11 @@ class RandomFlip(object):
     """
 
     def __call__(self, X):
-        src, tgt = X['src'], X['tgt']
-        if random.randint(0, 1) == 0:
-            src = reverse_dim(src, 0)
-            tgt = reverse_dim(tgt, 0)
-        if random.randint(0, 1) == 0:
-            src = reverse_dim(src, 1)
-            tgt = reverse_dim(tgt, 1)
-        return {'src': src, 'tgt': tgt}
+        if random.choice([True, False]):
+            X = X.flip(1)
+        if random.choice([True, False]):
+            X = X.flip(2)
+        return X
 
 
 class RandomTranslation(object):
@@ -71,36 +67,26 @@ class RandomRotateAndScale(object):
     """
 
     def __call__(self, X):
-        src, tgt = X['src'], X['tgt']
-        if random.randint(0, 1) == 0:
-            src, grid = rotate_and_scale(src, None)
-            tgt = rotate_and_scale(tgt, grid=grid)[0].squeeze()
-            # if src_mask is not None:
-            #     src_mask = torch.ceil(
-            #         rotate_and_scale(
-            #             src_mask.unsqueeze(0).unsqueeze(0), grid=grid
-            #         )[0].squeeze())
-            #     tgt_mask = torch.ceil(
-            #         rotate_and_scale(
-            #             tgt_mask.unsqueeze(0).unsqueeze(0), grid=grid
-            #         )[0].squeeze())
-
-        src = src.squeeze()
-        tgt = tgt.squeeze()
-        return {'src': src, 'tgt': tgt}
+        if random.choice([True, False]):
+            X, _ = rotate_and_scale(X, None)
+        return X.squeeze()
 
 
-class Normalize(object):
-    """Normalize range of all tensors
+class Contrast(object):
+    """Contrast Limited Adaptive Histogram Equalization
     """
 
-    def __init__(self, mip=2):
-        self.normalize = Normalizer(mip)
+    def __init__(self, clipLimit=40, tileGridSize=(8, 8)):
+        self.clahe = cv2.createCLAHE(clipLimit=clipLimit,
+                                     tileGridSize=tileGridSize)
 
     def __call__(self, X):
-        for k, v in X.items():
-            if isinstance(v, torch.Tensor):
-                X[k] = torch.FloatTensor(self.normalize.apply(v.numpy()))
+        Xb = (X * 255).to(torch.uint8)
+        for i in range(Xb.shape[-3]):
+            eq = self.clahe.apply(Xb[..., i, :, :].squeeze().numpy())
+            X[..., i, :, :] = torch.from_numpy(eq).unsqueeze(0)
+        X = X.to(torch.float) / 255
+        X[Xb == 0] = 0
         return X
 
 
@@ -109,10 +95,25 @@ class ToFloatTensor(object):
     """
 
     def __call__(self, X):
-        src, tgt = X['src'], X['tgt']
-        src = torch.FloatTensor(src) / 255.
-        tgt = torch.FloatTensor(tgt) / 255.
-        return {'src': src, 'tgt': tgt}
+        return torch.from_numpy(X).to(torch.float)
+
+
+class Normalize(object):
+    """Rescale values from 0 to 1
+    """
+
+    def __call__(self, X):
+        X = X - X.min()
+        X = X / X.max()
+        return X
+
+
+class Split(object):
+    """Split sample into a (src, tgt) pair
+    """
+
+    def __call__(self, X):
+        return {'src': X[0:1, ...], 'tgt': X[1:2, ...]}
 
 
 class StackDataset(Dataset):
@@ -135,9 +136,8 @@ class StackDataset(Dataset):
         # match i -> i+1 if k < stack.shape[1], else match i -> i-1
         i = self.N - abs(k - self.N)
         j = self.N - abs(k+1 - self.N)
-        src = self.stack[0, i, :, :]
-        tgt = self.stack[0, j, :, :]
-        X = {'src': src, 'tgt': tgt}
+        i, j = sorted((i, j))
+        X = self.stack[0, i:j+1, :, :]
         if self.transform:
             X = self.transform(X)
         return X

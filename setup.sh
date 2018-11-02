@@ -21,3 +21,6 @@ activate-global-python-argcomplete --user
 # if the above doesn't work for tab completion, run the following line
 # for each python script instead
 # eval "$(register-python-argcomplete ./<script_name>.py)"
+
+# speed up startup time
+sudo nvidia-persistenced --persistence-mode

@@ -12,3 +12,4 @@ pathos
 pyshorteners
 argcomplete
 pandas
+opencv-python
