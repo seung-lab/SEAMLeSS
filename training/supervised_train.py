@@ -262,17 +262,18 @@ def train(train_loader, archive, epoch):
         if state_vars['vis_time'] and i % state_vars['vis_time'] == 0:
             try:
                 debug_dir = archive.new_debug_directory(epoch, i)
-                save_chunk(src, str(debug_dir / 'src'))
-                save_chunk(src, str(debug_dir / 'z_src'))  # same, comp. w/ tgt
-                save_chunk(tgt, str(debug_dir / 'tgt'))
+                save_chunk(src[0:1, ...], str(debug_dir / 'src'))
+                save_chunk(src[0:1, ...], str(debug_dir / 'xsrc'))  # xtra copy
+                save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt'))
                 warped_src = gridsample_residual(
-                    src, prediction.detach().cpu(), padding_mode='zeros')
-                save_chunk(warped_src, str(debug_dir / 'warped_src'))
+                    src[0:1, ...], prediction[0:1, ...].detach().cpu(),
+                    padding_mode='zeros')
+                save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
                 archive.visualize_loss('Training Loss', 'Validation Loss')
-                save_vectors(prediction.detach(),
+                save_vectors(prediction[0:1, ...].detach(),
                              str(debug_dir / 'prediction'))
                 if truth is not None:
-                    save_vectors(truth.detach(),
+                    save_vectors(truth[0:1, ...].detach(),
                                  str(debug_dir / 'ground_truth'))
             except Exception as e:
                 # Don't raise the exception, since visualization issues
