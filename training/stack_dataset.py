@@ -1,30 +1,20 @@
-import torch
-from torch.utils.data import Dataset, ConcatDataset
 import random
 import h5py
+import torch
+from torch.utils.data import Dataset, ConcatDataset
 
 from normalizer import Normalizer
 from aug import aug_input, rotate_and_scale, random_translation
 from helpers import reverse_dim
 
 
-def compile_dataset(h5_paths, transform=None):
+def compile_dataset(*h5_paths, transform=None):
     datasets = []
     for h5_path in h5_paths:
-        datasets.extend(h5_to_dataset_list(h5_path, transform=transform))
+        h5f = h5py.File(h5_path, 'r')
+        ds = [StackDataset(v, transform=transform) for v in h5f.values()]
+        datasets.extend(ds)
     return ConcatDataset(datasets)
-
-
-def h5_to_dataset_list(h5_path, transform=None):
-    """Create a list of StackDatasets from H5 file created by gen_stack.py
-    """
-    stacks = []
-    h5f = h5py.File(h5_path, 'r')
-    for k in h5f.keys():
-        d = h5f[k]
-        for i in range(d.shape[0]):
-            stacks.append(StackDataset(d[i:i+1], transform=transform))
-    return stacks
 
 
 class RandomAugmentation(object):
