@@ -348,7 +348,7 @@ def select_submodule(model, epoch, init=False):
     index = epoch // state_vars['epochs_per_mip']
     submodule = model.module[:index+1].train_last()
     if (init and epoch % state_vars['epochs_per_mip'] == 0
-            and index < state_vars['height'] == 0):
+            and index < state_vars['height']):
         submodule.init_last()
     return torch.nn.DataParallel(submodule)
 
