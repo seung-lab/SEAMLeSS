@@ -205,6 +205,10 @@ def _parse_args(args=None):
         del args.interval
     if args.gpu_ids is None:
         args.gpu_ids = first_unused_gpu()
+    if 'test_' in args.name:  # random names for rapid testing
+        while '*' in args.name:
+            args.name = args.name.replace(
+                '*', hex(random.getrandbits(4))[2:], 1)
     return args
 
 

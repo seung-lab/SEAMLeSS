@@ -49,7 +49,6 @@ import math
 import random
 
 import torch
-import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torch.utils.data
 import torchvision.transforms as transforms
