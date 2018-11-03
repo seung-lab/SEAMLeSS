@@ -387,3 +387,29 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
         if self.history is not None:
             self.history += [val]*n
+
+
+def time_function(f, name=None, on=False):
+    """
+    Simple decorator used for timing functions.
+    More capable timing suites exist, but this suffices for many purposes.
+
+    Can be disabled by setting `on` to False.
+
+    Usage:
+        >>> @time_function
+        >>> def func(x):
+        >>>     pass
+    """
+    if not on:
+        return f
+    import time
+    if name is None:
+        name = f.__qualname__
+
+    def f_timed(*args, **kwargs):
+        start = time.time()
+        result = f(*args, **kwargs)
+        print('{}: {} sec'.format(name, time.time() - start))
+        return result
+    return f_timed
