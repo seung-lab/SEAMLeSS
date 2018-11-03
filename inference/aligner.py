@@ -29,10 +29,10 @@ import torch.nn as nn
 
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
-               mip_range, high_mip_chunk, src_path, tgt_path, dst_path,
+               mip_range, high_mip_chunk, src_path, tgt_path, 
                src_mask_path='', src_mask_mip=0, src_mask_val=1, 
                tgt_mask_path='', tgt_mask_mip=0, tgt_mask_val=1,
-               disable_cuda=False, max_mip=12,
+               dst_paths, disable_cuda=False, max_mip=12,
                render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=5,
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, 
@@ -53,6 +53,7 @@ class Aligner:
     self.ignore_field_init = ignore_field_init
     self.orig_z_offset = z_offset
     self.z_offset = z_offset
+    self.run_pairs = run_pairs
 
     self.max_displacement = max_displacement
     self.crop_amount      = crop
@@ -68,8 +69,7 @@ class Aligner:
     self.tgt_mask_path = tgt_mask_path
     self.tgt_mask_mip  = tgt_mask_mip
     self.tgt_mask_val  = tgt_mask_val
-    self.paths = self.get_paths(src_path, tgt_path, dst_path, 
-                                          src_mask_path, tgt_mask_path)
+    self.set_paths(src_path, tgt_path, dst_path, src_mask_path, tgt_mask_path)
 
     self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip, size=size, flip_average=not disable_flip_average, old_upsample=old_upsample)
 
@@ -91,11 +91,16 @@ class Aligner:
 
   def reset(self):
     self.z_offset = self.orig_z_offset
-    self.paths = self.get_paths(self.orig_src_path, self.orig_tgt_path, 
+    self.set_paths(self.orig_src_path, self.orig_tgt_path, 
                                 self.orig_dst_path, self.src_mask_path, 
                                 self.tgt_mask_path)
 
-  def get_paths(self, src_path, tgt_path, dst_path, 
+  def set_paths(self, src_path, tgt_path, dst_path, 
+                                src_mask_path='', tgt_mask_path=''):
+    self.paths = self.create_paths(src_path, tgt_path, dst_path,
+                                src_mask_path, tgt_mask_path)
+
+  def create_paths(self, src_path, tgt_path, dst_path, 
                                 src_mask_path='', tgt_mask_path=''):
     paths = {}
     paths['dst_path'] = dst_path
@@ -115,10 +120,9 @@ class Aligner:
     paths['cumresup'] = [join(dst_path, 'cumulative_vec_up/{}'.format(i)) 
                                                      for i in mip_range]
     paths['field']   = [join(dst_path, 'field/{}'.format(i)) for i in mip_range]
-    paths['field_sf'] = [join(dst_path, 'field_sf'.format(i)) for i in mip_range]
-    paths['diffs']   = [join(dst_path, 'diffs'.format(i)) for i in mip_range]
-    paths['diff_weights']   = [join(dst_path, 'diff_weights'.format(i)) for i in mip_range]
-    paths['weights']   = [join(dst_path, 'weights'.format(i)) for i in mip_range]
+    paths['diffs']   = [join(dst_path, 'diffs/{}'.format(i)) for i in mip_range]
+    paths['diff_weights']   = [join(dst_path, 'diff_weights/{}'.format(i)) for i in mip_range]
+    paths['weights']   = [join(dst_path, 'weights/{}'.format(i)) for i in mip_range]
 
     return paths
 
@@ -219,24 +223,24 @@ class Aligner:
       self.vec_total_sizes.append(scales[i]["size"])
       if not self.ignore_field_init:
         cv(self.paths['field'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['field_sf'][i], info=vec_info, provenance={}).commit_info() 
-      cv(self.paths['res'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['cumres'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['resup'][i], info=vec_info, provenance={}).commit_info()
-      cv(self.paths['cumresup'][i], info=vec_info, provenance={}).commit_info()
+      if self.write_intermediaries:
+        cv(self.paths['res'][i], info=vec_info, provenance={}).commit_info()
+        cv(self.paths['cumres'][i], info=vec_info, provenance={}).commit_info()
+        cv(self.paths['resup'][i], info=vec_info, provenance={}).commit_info()
+        cv(self.paths['cumresup'][i], info=vec_info, provenance={}).commit_info()
 
-      if i in enc_dict.keys():
-        enc_info = deepcopy(vec_info)
-        enc_info['num_channels'] = enc_dict[i]
+        if i in enc_dict.keys():
+          enc_info = deepcopy(vec_info)
+          enc_info['num_channels'] = enc_dict[i]
+          # enc_info['data_type'] = 'uint8'
+          cv(self.paths['enc'][i], info=enc_info, provenance={}).commit_info()
+
+        wts_info = deepcopy(vec_info)
+        wts_info['num_channels'] = 3
         # enc_info['data_type'] = 'uint8'
-        cv(self.paths['enc'][i], info=enc_info, provenance={}).commit_info()
-
-      wts_info = deepcopy(vec_info)
-      wts_info['num_channels'] = 3
-      # enc_info['data_type'] = 'uint8'
-      cv(self.paths['diffs'][i], info=wts_info, provenance={}).commit_info()
-      cv(self.paths['diff_weights'][i], info=wts_info, provenance={}).commit_info()
-      cv(self.paths['weights'][i], info=wts_info, provenance={}).commit_info()
+        cv(self.paths['diffs'][i], info=wts_info, provenance={}).commit_info()
+        cv(self.paths['diff_weights'][i], info=wts_info, provenance={}).commit_info()
+        cv(self.paths['weights'][i], info=wts_info, provenance={}).commit_info()
     
 
   def check_all_params(self):
@@ -276,10 +280,36 @@ class Aligner:
                          mip=0, max_mip=self.max_mip) #self.process_high_mip)
     return result
 
+  def get_composed_field(self, field_path, field_sf_path, field_z, field_sf_z,
+                               bbox, mip, relative=False, to_tensor=True):
+    field = get_field(field_path, field_z, bbox, mip, 
+                                  relative=True, to_tensor=to_tensor)
+    field_sf = get_field(field_sf_path, field_sf_z, bbox, mip, 
+                                  relative=True, to_tensor=to_tensor)
+    field_sf = self.blur_field(field_sf)
+    field = field.permute(0,3,1,2)
+    composed_field = field_sf + gridsample_residual(
+        field, field_sf, padding_mode='border').permute(0,2,3,1)
+    if not relative:
+      composed_field = self.rel_to_abs_residual(composed_field, mip)
+    return composed_field
+
+  def blur_field(self, field, std=128:
+    """Apply Gaussian with std to a vector field
+    """
+    regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field[...,0]), std)).unsqueeze(-1)
+    regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field[...,1]), std)).unsqueeze(-1)
+    #regular_part = self.gauss_filter(field.permute(3,0,1,2))
+    #regular_part = torch.from_numpy(self.reg_field) 
+    #field = decay_factor * field + (1 - decay_factor) * regular_part.permute(1,2,3,0) 
+    #field = regular_part.permute(1,2,3,0) 
+    field = torch.cat([regular_part_x,regular_part_y],-1)
+    return field.to(device=self.device)
+
   def get_field(self, path, z, bbox, mip, relative=False, to_tensor=True):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-    field = cv(path[mip], mip=mip, bounded=False, 
+    field = cv(path, mip=mip, bounded=False, 
                   fill_missing=True, progress=False)[x_range[0]:x_range[1], 
                                                      y_range[0]:y_range[1], z]
     res = np.expand_dims(np.squeeze(field), axis=0)
@@ -292,6 +322,7 @@ class Aligner:
       return res
 
   def save_vector_patch(self, path, field, z, bbox, mip):
+    field = field.data.cpu().numpy() 
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     field = np.squeeze(field)[:, :, np.newaxis, :]
@@ -302,8 +333,7 @@ class Aligner:
     print ("Saving residual patch {} at MIP {}".format(bbox.__str__(mip=0), mip))
     v = res * (res.shape[-2] / 2) * (2**mip)
     v = v[:,crop:-crop, crop:-crop,:]
-    v = v.data.cpu().numpy() 
-    self.save_field_patch(path, v, z, bbox, mip)
+    self.save_vector_patch(path, v, z, bbox, mip)
 
   def break_into_chunks(self, bbox, ng_chunk_size, offset, mip, render=False):
     chunks = []
@@ -354,13 +384,16 @@ class Aligner:
 
     return chunks
 
-  def weight_fields(self, field_paths, z, bbox, mip, T=1, write_intermediaries=False):
-    fields = [self.get_field(path, z, bbox, mip, relative=False) for path in field_paths]
-    # field = vector_vote(fields, T=T)
-    diffs = get_diffs(fields)
-    diff_weights = weight_diffs(diffs, T=T)
-    field_weights = compile_field_weights(diff_weights)
-    field = weighted_sum_fields(field_weights, fields)
+  def weight_fields(self, field_paths, z, bbox, mip, T=1):
+    """Calculate voting weights for a set of vector fields
+    """
+    if self.run_pairs:
+      fields = [self.get_composed_field(path['field'][mip], z, bbox, mip, 
+                                   relative=False) for path in field_paths]
+    else:
+      fields = [self.get_field(path['field'][mip], z, bbox, mip, 
+                                   relative=False) for path in field_paths]
+    field = vector_vote(fields, T=T)
     self.save_vector_patch(self.paths['field'][mip], field, z, bbox, mip)
 
     if write_intermediaries:
@@ -405,7 +438,7 @@ class Aligner:
     field, residuals, encodings, cum_residuals = X
 
     # save the final vector field for warping
-    self.save_vector_patch(self.paths['field'][mip], field, source_z  out_patch_bbox, mip)
+    self.save_vector_patch(self.paths['field'][mip], field, source_z, out_patch_bbox, mip)
 
     if self.write_intermediaries:
       mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
@@ -452,7 +485,10 @@ class Aligner:
           write_encodings(slice(0, enc.shape[-1] // 2), source_z)
           # dst_image_encodings
           write_encodings(slice(enc.shape[-1] // 2, enc.shape[-1]), target_z)
-    
+
+  def rel_to_abs_residual(self, field, mip):    
+      return field * (field.shape[-2] / 2) * (2**mip)
+
   def abs_to_rel_residual(self, abs_residual, patch, mip):
     x_fraction = patch.x_size(mip=0) * 0.5
     y_fraction = patch.y_size(mip=0) * 0.5
@@ -499,17 +535,21 @@ class Aligner:
     
 
   ## Patch manipulation
-  def warp_patch(self, ng_path, z, bbox, res_mip_range, mip, start_z=-1):
+  def warp_patch(self, z, bbox, mip, start_z=-1):
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
     
-    agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
+    field = self.get_field(self.paths['field'][mip], z, influence_bbox, mip, 
+                                   relative=True, to_tensor=True)
+    # print('field0.shape: {0}'.format(field.shape))
+    field = self.scale_residuals(field, mip+1, mip)
+    # print('field1.shape: {0}'.format(field.shape))
     mip_disp = int(self.max_displacement / 2**mip)
-    # image = torch.from_numpy(self.get_image(path, z, influence_bbox, mip))
-    # image = image.unsqueeze(0)
-    image = self.get_image(path, z, influence_bbox, mip, 
+    # print('mip_disp: {0}'.format(mip_disp))
+    image = self.get_image(self.paths['src_img'], z, influence_bbox, mip, 
                                  adjust_contrast=False, to_tensor=True)
+    # print('warp_image image0.shape: {0}'.format(image.shape))
     if self.paths['src_mask']:
       mask = self.get_mask(self.paths['src_mask'], z, 
                                   influence_bbox, src_mip=self.src_mask_mip,
@@ -518,38 +558,17 @@ class Aligner:
 
     # print('warp_patch shape {0}'.format(image.shape))
     # no need to warp if flow is identity since warp introduces noise
-    if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
-      image = gridsample_residual(image, agg_flow, padding_mode='zeros')
+    if torch.min(field) != 0 or torch.max(field) != 0:
+      image = gridsample_residual(image, field, padding_mode='zeros')
     else:
       print ("not warping")
-    if (self.run_pairs):
-      #cid = self.get_bbox_id(bbox, mip) 
-      #print ("cid is ", cid)
-      decay_factor = 0.4
-      if z != start_z:
-        field_sf = self.get_field(self.paths['field_sf'], z-1, influence_bbox, mip, relative=True, to_tensor=True)
-        regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 256)).unsqueeze(-1)
-        regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 256)).unsqueeze(-1)
-        #regular_part = self.gauss_filter(field_sf.permute(3,0,1,2))
-        #regular_part = torch.from_numpy(self.reg_field) 
-        #field_sf = decay_factor * field_sf + (1 - decay_factor) * regular_part.permute(1,2,3,0) 
-        #field_sf = regular_part.permute(1,2,3,0) 
-        field_sf = torch.cat([regular_part_x,regular_part_y],-1)
-        image = gridsample_residual(image, field_sf, padding_mode='zeros')
-        agg_flow = agg_flow.permute(0,3,1,2)
-        field_sf = field_sf + gridsample_residual(
-            agg_flow, field_sf, padding_mode='border').permute(0,2,3,1)
-      else:
-        field_sf = agg_flow
-      #self.calc_image_mean_field(image.numpy()[0,0,mip_disp:-mip_disp,mip_disp:-mip_disp], field_sf[0, mip_disp:-mip_disp, mip_disp:-mip_disp, :], cid)
-      field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
-      # field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
-      self.save_residual_patch(self.paths['field_sf'][mip], field_sf, mip_disp, z, bbox, mip):
-
+    # print('warp_image image1.shape: {0}'.format(image.shape))
     if self.disable_cuda:
-      return image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+      image = image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
     else:
-      return image.cpu().numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+      image = image.cpu().numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+    # print('warp_image image3.shape: {0}'.format(image.shape))
+    return image
 
   def downsample_patch(self, path, z, bbox, mip):
     data = self.get_image(path, z, bbox, mip - 1, 
@@ -698,8 +717,7 @@ class Aligner:
     end_mip   = min(res_mip_range[1], self.process_high_mip)
 
     for res_mip in range(start_mip, end_mip + 1):
-      rel_res = torch.from_numpy(self.get_rel_residual(z, bbox, res_mip))
-      rel_res = rel_res.to(device=self.device)
+      rel_res = self.get_field(path, z, bbox, res_mip, relative=True, to_tensor=True)
       up_rel_res = upsample(res_mip - mip)(rel_res.permute(0,3,1,2)).permute(0,2,3,1)
       result += up_rel_res
 
@@ -743,15 +761,14 @@ class Aligner:
                                     self.dst_voxel_offsets[mip], mip=mip, render=True)
 
     def chunkwise(patch_bbox):
-      warped_patch = self.warp_patch(self.paths['src_img'], z, patch_bbox,
-                                     (mip + 1, self.process_high_mip), mip)
+      warped_patch = self.warp_patch(z, patch_bbox, mip)
       self.save_image_patch(self.paths['tmp_img'], warped_patch, z, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
 
   def render(self, z, bbox, mip, start_z):
-    print('Rendering z={0} with z_offset={1} @ MIP{2}'.format(z, mip, self.z_offset), flush=True)
+    print('Rendering z={0} with z_offset={1} @ MIP{2}'.format(z, self.z_offset, mip), flush=True)
     print('src_path {0}'.format(self.paths['src_img']))
     print('dst_path {0}'.format(self.paths['dst_img']))
     start = time()
@@ -765,8 +782,8 @@ class Aligner:
     #    self.field_sf_sum = np.zeros((total_chunks, 2), dtype=np.float32)
 
     def chunkwise(patch_bbox):
-      warped_patch = self.warp_patch(self.paths['src_img'], z, patch_bbox,
-                                    (mip, self.process_high_mip), mip, start_z)
+      warped_patch = self.warp_patch(z, patch_bbox, mip)
+      print('warp_image render.shape: {0}'.format(warped_patch.shape))
       self.save_image_patch(self.paths['dst_img'], warped_patch, z+self.z_offset, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
     end = time()
@@ -831,7 +848,7 @@ class Aligner:
                                     self.vec_voxel_offsets[mip], mip=mip)
     print("Computing weighted field for slice {0} @ MIP{1} ({2} chunks)".
            format(z, mip, len(chunks)), flush=True)
-    print('Writing vectors to {0}'.format(self.paths['x_field'][mip]))
+    print('Writing vectors to {0}'.format(self.paths['field'][mip]))
 
     #for patch_bbox in chunks:
     def chunkwise(patch_bbox):
@@ -891,8 +908,8 @@ class Aligner:
       z_offset = tgt_z - src_z
       self.z_offset = z_offset
       dst_path = '{0}/z{1}'.format(orig_dst_path, z_offset)
-      field_paths.append(dst_path)
-      self.paths = self.get_paths(orig_src_path, orig_tgt_path, dst_path)
+      self.set_paths(orig_src_path, orig_tgt_path, dst_path)
+      field_paths.append(deepcopy(self.paths))
       self._create_info_files(self.max_displacement)
       self.compute_section_pair_residuals(src_z, tgt_z, bbox)
       if render:
