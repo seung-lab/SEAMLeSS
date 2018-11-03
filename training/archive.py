@@ -377,10 +377,10 @@ class ModelArchive(object):
         """
         Loads the dict of state variables stored in `state_vars.json`
         """
-        self._state_vars = {'name': self._name}  # default empty state_vars
+        self._state_vars = dotdict({'name': self._name})  # default state_vars
         if self.paths['state_vars'].exists():
             with self.paths['state_vars'].open(mode='r') as f:
-                self._state_vars = json.load(f)
+                self._state_vars = dotdict(json.load(f))
         return self._state_vars
 
     def save(self):
@@ -498,13 +498,13 @@ class ModelArchive(object):
         """  # TODO: reformulate as params
         if self.readonly:
             raise ReadOnlyError(self._name)
-        epoch = self._state_vars['epoch']
-        gamma = self._state_vars['gamma']
-        gamma_step = self._state_vars['gamma_step']
-        self._state_vars['lr'] = (self._state_vars['start_lr']
-                                  * (gamma ** (epoch // gamma_step)))
+        epoch = self._state_vars.epoch
+        gamma = self._state_vars.gamma
+        gamma_step = self._state_vars.gamma_step
+        self._state_vars.lr = (self._state_vars.start_lr
+                               * (gamma ** (epoch // gamma_step)))
         for param_group in self._optimizer.param_groups:
-            param_group['lr'] = self._state_vars['lr']
+            param_group['lr'] = self._state_vars.lr
 
     def visualize_loss(self, *columns, average_over=100):
         """
@@ -590,6 +590,13 @@ class FileLog:
     def flush(self):
         self.terminal_out.flush()
         self.file.flush()
+
+
+class dotdict(dict):
+    """Allow accessing dict elements with dot notation"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
 
 
 class ReadOnlyError(AttributeError):

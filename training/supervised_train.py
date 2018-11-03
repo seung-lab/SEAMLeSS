@@ -141,7 +141,7 @@ def main():
     cudnn.benchmark = True
 
     # Data loading code
-    transform = transforms.Compose([
+    train_transform = transforms.Compose([
         stack_dataset.ToFloatTensor(),
         stack_dataset.Normalize(),
         stack_dataset.Contrast(),
@@ -150,16 +150,24 @@ def main():
         stack_dataset.Split(),
     ])
     train_dataset = stack_dataset.compile_dataset(
-        state_vars['training_set_path'], transform=transform)
+        state_vars.training_set_path, transform=train_transform)
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=state_vars['batch_size'],
+        train_dataset, batch_size=state_vars.batch_size,
         shuffle=(train_sampler is None), num_workers=args.num_workers,
         pin_memory=True, sampler=train_sampler)
 
-    if state_vars['validation_set_path']:
+    if state_vars.validation_set_path:
+        val_transform = transforms.Compose([
+            stack_dataset.ToFloatTensor(),
+            stack_dataset.Normalize(),
+            stack_dataset.Contrast(),
+            stack_dataset.RandomRotateAndScale(),
+            stack_dataset.RandomFlip(),
+            stack_dataset.Split(),
+        ])
         validation_dataset = stack_dataset.compile_dataset(
-            state_vars['validation_set_path'], transform=transform)
+            state_vars.validation_set_path, transform=val_transform)
         val_loader = torch.utils.data.DataLoader(
             validation_dataset, batch_size=1,
             shuffle=False, num_workers=args.num_workers, pin_memory=True)
@@ -172,10 +180,10 @@ def main():
     epoch_time = AverageMeter()
 
     print('=========== BEGIN TRAIN LOOP ============')
-    start_epoch = state_vars['epoch']
-    for epoch in range(start_epoch, state_vars['num_epochs']):
+    start_epoch = state_vars.epoch
+    for epoch in range(start_epoch, state_vars.num_epochs):
         start_time = time.time()
-        state_vars['epoch'] = epoch
+        state_vars.epoch = epoch
         archive.save()
 
         # train for one epoch
@@ -190,8 +198,8 @@ def main():
             val_loss = None
 
         # log and save state
-        state_vars['epoch'] = epoch + 1
-        state_vars['iteration'] = None
+        state_vars.epoch = epoch + 1
+        state_vars.iteration = None
         archive.save()
         log_values = [
             datetime.datetime.now(),
@@ -209,7 +217,7 @@ def main():
               'ValLoss {val_losses.val:.10f} ({val_losses.avg:.10f})\t'
               'EpochTime {epoch_time.val:.3f} ({epoch_time.avg:.3f})\t'
               '\n'
-              .format(state_vars['name'], epoch, train_losses=train_losses,
+              .format(state_vars.name, epoch, train_losses=train_losses,
                       val_losses=val_losses, epoch_time=epoch_time))
 
 
@@ -225,15 +233,15 @@ def train(train_loader, archive, epoch):
     max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
-    if state_vars['iteration'] is None:
+    if state_vars.iteration is None:
         start_iter = 0
     else:
-        start_iter = state_vars['iteration']
+        start_iter = state_vars.iteration
 
     for i, sample in enumerate(train_loader, start_iter):
         if i >= len(train_loader):
             break
-        state_vars['iteration'] = i
+        state_vars.iteration = i
 
         # measure data loading time
         data_time.update(time.time() - start_time)
@@ -253,14 +261,14 @@ def train(train_loader, archive, epoch):
         archive.optimizer.step()
         loss = loss.item()  # get python value without the computation graph
         losses.update(loss)
-        state_vars['iteration'] = i + 1  # advance iteration to resume right
+        state_vars.iteration = i + 1  # advance iteration to resume right
         archive.save()
 
         # measure elapsed time
         batch_time.update(time.time() - start_time)
 
         # logging and checkpointing
-        if state_vars['vis_time'] and i % state_vars['vis_time'] == 0:
+        if state_vars.vis_time and i % state_vars.vis_time == 0:
             try:
                 debug_dir = archive.new_debug_directory(epoch, i)
                 save_chunk(src[0:1, ...], str(debug_dir / 'src'))
@@ -285,10 +293,10 @@ def train(train_loader, archive, epoch):
                 # should not stop training. Just warn the user and go on.
                 print('Visualization failed: {}: {}'
                       .format(e.__class__.__name__, e))
-        if (state_vars['checkpoint_time']
-                and i % state_vars['checkpoint_time'] == 0):
+        if (state_vars.checkpoint_time
+                and i % state_vars.checkpoint_time == 0):
             archive.create_checkpoint(epoch=epoch, iteration=i)
-        if state_vars['log_time'] and i % state_vars['log_time'] == 0:
+        if state_vars.log_time and i % state_vars.log_time == 0:
             log_values = [
                datetime.datetime.now(),
                epoch,
@@ -303,7 +311,7 @@ def train(train_loader, archive, epoch):
                   'BatchTime {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'DataTime {data_time.val:.3f} ({data_time.avg:.3f})\t'
                   .format(
-                      state_vars['name'],
+                      state_vars.name,
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses))
 
@@ -324,7 +332,7 @@ def validate(val_loader, archive, epoch):
     for i, sample in enumerate(val_loader):
         print('{0}\t'
               'Validation: [{1}/{2}]\t'
-              .format(state_vars['name'], i, len(val_loader)), end='\r')
+              .format(state_vars.name, i, len(val_loader)), end='\r')
         src, tgt, truth = prepare_input(sample, supervised=False)
         prediction = submodule(src, tgt)
         masks = gen_masks(src, tgt, prediction)
@@ -338,7 +346,7 @@ def validate(val_loader, archive, epoch):
           'Validation: [{1}/{1}]\t'
           'Loss {loss.avg:.10f}\t\t\t'
           'Time {batch_time:.3f}\t'
-          .format(state_vars['name'], len(val_loader),
+          .format(state_vars.name, len(val_loader),
                   batch_time=batch_time, loss=losses))
 
     return losses.avg
@@ -351,11 +359,11 @@ def select_submodule(model, epoch, init=False):
     """
     if epoch is None:
         return model
-    index = epoch // state_vars['epochs_per_mip']
+    index = epoch // state_vars.epochs_per_mip
     submodule = model.module[:index+1].train_last()
-    if (init and epoch % state_vars['epochs_per_mip'] == 0
-            and index < state_vars['height']
-            and state_vars['iteration'] is None):
+    if (init and epoch % state_vars.epochs_per_mip == 0
+            and index < state_vars.height
+            and state_vars.iteration is None):
         submodule.init_last()
     return torch.nn.DataParallel(submodule)
 
@@ -368,7 +376,7 @@ def prepare_input(sample, supervised=None, max_displacement=2):
     If `supervised` is None, it uses the value specified in state_vars
     """
     if supervised is None:
-        supervised = state_vars['supervised']
+        supervised = state_vars.supervised
     if supervised:
         src = sample['src']
         truth_field = random_field(src.shape, max_displacement=max_displacement)
@@ -451,7 +459,7 @@ def unsupervised_loss(src, tgt, prediction,
     else:
         mse_loss = image_loss_map.mean()
 
-    field_penalty = smoothness_penalty(state_vars['penalty'])
+    field_penalty = smoothness_penalty(state_vars.penalty)
     field_loss_map = field_penalty([prediction])
     if src_field_masks or tgt_field_masks:
         field_weights = torch.ones_like(field_loss_map)
@@ -469,7 +477,7 @@ def unsupervised_loss(src, tgt, prediction,
     else:
         field_loss = field_loss_map.mean()
 
-    loss = (mse_loss + state_vars['lambda1'] * field_loss) / 25000
+    loss = (mse_loss + state_vars.lambda1 * field_loss) / 25000
     return loss
 
 
