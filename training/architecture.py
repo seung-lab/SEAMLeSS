@@ -223,6 +223,9 @@ class _SubmoduleView(nn.Module):
             else:
                 accum_field = res_field
             prev_level = i
+        accum_field = (upsample(prev_level)
+                       (accum_field.permute(0, 3, 1, 2))
+                       .permute(0, 2, 3, 1))
         return accum_field
 
     def train_all(self):
