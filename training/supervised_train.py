@@ -49,13 +49,13 @@ import math
 import random
 
 import torch
-import torch.nn.parallel
+import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
-import torch.optim
 import torch.utils.data
 import torchvision.transforms as transforms
 from pathlib import Path
 
+import masks as masklib
 import stack_dataset
 from archive import ModelArchive
 from helpers import (gridsample_residual, save_chunk, dvl as save_vectors,
@@ -94,6 +94,7 @@ def main():
         state_vars['gamma'] = args.gamma
         state_vars['gamma_step'] = args.gamma_step
         state_vars['epoch'] = 0
+        state_vars['iteration'] = None
         state_vars['num_epochs'] = args.num_epochs
         state_vars['epochs_per_mip'] = args.epochs_per_mip
         state_vars['training_set_path'] = Path(args.training_set).expanduser()
@@ -224,7 +225,7 @@ def train(train_loader, archive, epoch):
     max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
-    if 'iteration' not in state_vars or state_vars['iteration'] is None:
+    if state_vars['iteration'] is None:
         start_iter = 0
     else:
         start_iter = state_vars['iteration']
@@ -243,7 +244,7 @@ def train(train_loader, archive, epoch):
         if truth is not None:
             loss = supervised_loss(prediction=prediction, truth=truth)
         else:
-            masks = {}  # TODO: generate masks
+            masks = gen_masks(src, tgt, prediction)
             loss = unsupervised_loss(src, tgt, prediction=prediction, **masks)
 
         # compute gradient and do optimizer step
@@ -275,6 +276,10 @@ def train(train_loader, archive, epoch):
                 if truth is not None:
                     save_vectors(truth[0:1, ...].detach(),
                                  str(debug_dir / 'ground_truth'))
+                masks = gen_masks(src, tgt, prediction)
+                for k, v in masks.items():
+                    if v is not None and len(v) > 0:
+                        save_chunk(v[0][0:1, ...], str(debug_dir / k))
             except Exception as e:
                 # Don't raise the exception, since visualization issues
                 # should not stop training. Just warn the user and go on.
@@ -322,7 +327,7 @@ def validate(val_loader, archive, epoch):
               .format(state_vars['name'], i, len(val_loader)), end='\r')
         src, tgt, truth = prepare_input(sample, supervised=False)
         prediction = submodule(src, tgt)
-        masks = {}  # TODO: generate masks
+        masks = gen_masks(src, tgt, prediction)
         loss = unsupervised_loss(src, tgt, prediction=prediction, **masks)
         losses.update(loss.item())
 
@@ -349,7 +354,8 @@ def select_submodule(model, epoch, init=False):
     index = epoch // state_vars['epochs_per_mip']
     submodule = model.module[:index+1].train_last()
     if (init and epoch % state_vars['epochs_per_mip'] == 0
-            and index < state_vars['height']):
+            and index < state_vars['height']
+            and state_vars['iteration'] is None):
         submodule.init_last()
     return torch.nn.DataParallel(submodule)
 
@@ -408,7 +414,8 @@ def supervised_loss(prediction, truth):
 
 
 def unsupervised_loss(src, tgt, prediction,
-                      src_masks=None, tgt_masks=None, field_masks=None):
+                      src_masks=None, tgt_masks=None,
+                      src_field_masks=None, tgt_field_masks=None):
     """
     Calculate a self-supervised loss based on
     (a) the mean squared error between the source and target images
@@ -427,7 +434,6 @@ def unsupervised_loss(src, tgt, prediction,
     src, tgt = src.to(prediction.device), tgt.to(prediction.device)
 
     src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
-
     image_loss_map = (src_warped - tgt)**2
     if src_masks or tgt_masks:
         image_weights = torch.ones_like(image_loss_map)
@@ -447,17 +453,49 @@ def unsupervised_loss(src, tgt, prediction,
 
     field_penalty = smoothness_penalty(state_vars['penalty'])
     field_loss_map = field_penalty([prediction])
-    if field_masks:
-        field_weights = torch.ones_like(prediction)
-        for mask in field_masks:
-            field_loss_map = field_loss_map * mask
-            field_weights = field_weights * mask
+    if src_field_masks or tgt_field_masks:
+        field_weights = torch.ones_like(field_loss_map)
+        if src_field_masks is not None:
+            for mask in src_field_masks:
+                mask = gridsample_residual(mask, prediction,
+                                           padding_mode='border')
+                field_loss_map = field_loss_map * mask
+                field_weights = field_weights * mask
+        if tgt_field_masks is not None:
+            for mask in tgt_field_masks:
+                field_loss_map = field_loss_map * mask
+                field_weights = field_weights * mask
         field_loss = field_loss_map.sum() / field_weights.sum()
     else:
         field_loss = field_loss_map.mean()
 
     loss = (mse_loss + state_vars['lambda1'] * field_loss) / 25000
     return loss
+
+
+@torch.no_grad()
+def gen_masks(src, tgt, prediction, threshold=10):
+    """
+    Returns masks with which to weight the loss function
+    """
+    src, tgt = src.to(prediction.device), tgt.to(prediction.device)
+    src, tgt = (src * 255).to(torch.uint8), (tgt * 255).to(torch.uint8)
+
+    src_mask, tgt_mask = torch.ones_like(src), torch.ones_like(tgt)
+
+    src_mask_zero, tgt_mask_zero = (src < threshold), (tgt < threshold)
+    src_mask_five = masklib.dilate(src_mask_zero, radius=3)
+    tgt_mask_five = masklib.dilate(tgt_mask_zero, radius=3)
+    src_mask[src_mask_five], tgt_mask[tgt_mask_five] = 5, 5
+    src_mask[src_mask_zero], tgt_mask[tgt_mask_zero] = 0, 0
+
+    src_field_mask, tgt_field_mask = torch.ones_like(src), torch.ones_like(tgt)
+    src_field_mask[src_mask_zero], tgt_field_mask[tgt_mask_zero] = 0, 0
+
+    return {'src_masks': [src_mask.float()],
+            'tgt_masks': [tgt_mask.float()],
+            'src_field_masks': [src_field_mask.float()],
+            'tgt_field_masks': [tgt_field_mask.float()]}
 
 
 if __name__ == '__main__':

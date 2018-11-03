@@ -6,8 +6,8 @@ from torch.autograd import Variable
 def check_mask(mask, binary):
     # assert type(mask) == Variable
     if binary:
-        assert torch.max(mask).data[0] <= 1
-    assert torch.min(mask).data[0] >= 0
+        assert torch.max(mask).item() <= 1
+    assert torch.min(mask).item() >= 0
 
 def prep_mask(mask):
     mask = mask.detach()
