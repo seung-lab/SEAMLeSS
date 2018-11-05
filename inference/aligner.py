@@ -756,7 +756,7 @@ class Aligner:
       influence_bbox.uncrop(self.max_displacement, mip=0)
       mip_disp = int(self.max_displacement / 2**mip)
       if z != start_z:
-          agg_flow = self.get_aggregate_rel_flow(z-1, influence_bbox, res_mip_range, mip)  
+          agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)  
           field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
           agg_flow = agg_flow.permute(0,3,1,2)
           field_sf = field_sf + gridsample_residual(agg_flow, field_sf, 
