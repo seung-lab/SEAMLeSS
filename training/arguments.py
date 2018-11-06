@@ -120,7 +120,7 @@ def _parse_args(args=None):
     loss_group = start_parser.add_argument_group('training loss')
     loss_type = loss_group.add_mutually_exclusive_group()
     loss_type.add_argument(
-        '-s', '--supervisied',
+        '-s', '--supervised',
         help='Train in a supervised fashion on randomly generated ground '
              'truth vector fields and false slice pairs. This is the default.',
         dest='supervised',
