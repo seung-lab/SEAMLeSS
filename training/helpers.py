@@ -320,8 +320,8 @@ def gridsample_residual(source, residual, padding_mode):
 
 
 @torch.no_grad()
-def _create_identity_grid(size):
-    id_theta = torch.Tensor([[[1,0,0],[0,1,0]]]) # identity affine transform
+def _create_identity_grid(size, device):
+    id_theta = torch.cuda.FloatTensor([[[1,0,0],[0,1,0]]], device=device) # identity affine transform
     I = F.affine_grid(id_theta,torch.Size((1,1,size,size)))
     I *= (size - 1) / size # rescale the identity provided by PyTorch
     return I
@@ -349,7 +349,7 @@ def identity_grid(size, cache=False, device=None):
         device = torch.cuda.current_device()
     if size in identity_grid._identities:
         return identity_grid._identities[size].to(device)
-    I = _create_identity_grid(size)
+    I = _create_identity_grid(size, device)
     if cache:
         identity_grid._identities[size] = I
     return I.to(device)

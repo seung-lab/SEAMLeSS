@@ -248,10 +248,10 @@ def train(train_loader, archive, epoch):
         # compute output and loss
         src, tgt, truth = prepare_input(sample, max_displacement=max_disp)
         prediction = submodule(src, tgt)
+        masks = gen_masks(src, tgt, prediction)
         if truth is not None:
-            loss = supervised_loss(prediction=prediction, truth=truth)
+            loss = supervised_loss(prediction=prediction, truth=truth, **masks)
         else:
-            masks = gen_masks(src, tgt, prediction)
             loss = unsupervised_loss(src, tgt, prediction=prediction, **masks)
 
         # compute gradient and do optimizer step
@@ -274,7 +274,8 @@ def train(train_loader, archive, epoch):
                 save_chunk(src[0:1, ...], str(debug_dir / 'xsrc'))  # xtra copy
                 save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt'))
                 warped_src = gridsample_residual(
-                    src[0:1, ...], prediction[0:1, ...].detach().cpu(),
+                    src[0:1, ...],
+                    prediction[0:1, ...].detach().to(src.device),
                     padding_mode='zeros')
                 save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
                 archive.visualize_loss('Training Loss', 'Validation Loss')
@@ -283,7 +284,6 @@ def train(train_loader, archive, epoch):
                 if truth is not None:
                     save_vectors(truth[0:1, ...].detach(),
                                  str(debug_dir / 'ground_truth'))
-                masks = gen_masks(src, tgt, prediction)
                 for k, v in masks.items():
                     if v is not None and len(v) > 0:
                         save_chunk(v[0][0:1, ...], str(debug_dir / k))
@@ -377,12 +377,12 @@ def prepare_input(sample, supervised=None, max_displacement=2):
     if supervised is None:
         supervised = state_vars.supervised
     if supervised:
-        src = sample['src']
+        src = sample['src'].cuda()
         truth_field = random_field(src.shape, max_displacement=max_displacement)
         tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
     else:
-        src = sample['src']
-        tgt = sample['tgt']
+        src = sample['src'].cuda()
+        tgt = sample['tgt'].cuda()
         truth_field = None
     return src, tgt, truth_field
 
@@ -401,7 +401,7 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
     `num_downsamples` dictates the block size for the random field.
     Each block will have size `2**num_downsamples`.
     """
-    zero = torch.zeros(shape)
+    zero = torch.zeros(shape, device='cuda')
     zero = torch.cat([zero, zero.clone()], 1)
     smaller = downsample(num_downsamples)(zero)
     std = max_displacement / shape[-2] / math.sqrt(2)
@@ -411,7 +411,7 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
     return result
 
 
-def supervised_loss(prediction, truth):
+def supervised_loss(prediction, truth, **masks):
     """
     Calculate a supervised loss based on the mean squared error with
     the ground truth vector field.
