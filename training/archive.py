@@ -305,11 +305,18 @@ class ModelArchive(object):
         A dict of various state variables
 
         This dict should be used to store any additional training information
-        that is needed to restore the model when resuming training.
+        that is needed to restore the model's training state when resuming
+        training.
+
+        For convenience, elements of this dict can be accessed using
+        either notation:
+            >>> state_vars['item']
+            or
+            >>> state_vars.item
         """
         return self._state_vars
 
-    def _load_model(self, weights_file=None, *args, **kwargs):
+    def _load_model(self, *args, **kwargs):
         """
         Loads a working version of the model's architecture,
         initialized with its pretrained weights.
@@ -322,13 +329,7 @@ class ModelArchive(object):
         self._architecture = architecture
         self._model = architecture.Model(*args, **kwargs)
         if self.paths['weights'].is_file():
-            with self.paths['weights'].open('rb') as f:
-                weights = torch.load(f)
-            self._model.load(weights=weights)
-        elif weights_file is not None:
-            with weights_file.open('rb') as f:
-                weights = torch.load(f)
-            self._model.load(weights=weights)
+            self._model.load(self.paths['weights'])
 
         # set model to eval or train mode
         if self.readonly:
@@ -392,8 +393,7 @@ class ModelArchive(object):
         if self.readonly:
             raise ReadOnlyError(self._name)
         if self._model:
-            with self.paths['weights'].open('wb') as f:
-                torch.save(self._model.module.state_dict(), f)
+            self._model.module.save(self.paths['weights'])
             # also write to a json for debugging
             # with self.paths['weights'].with_suffix('.json').open('w') as f:
             #     state_dict = [(name, val.cpu().numpy().tolist())

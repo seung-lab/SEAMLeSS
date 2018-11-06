@@ -27,12 +27,21 @@ class Model(nn.Module):
         field = self.align(src, tgt, in_field)
         return field
 
-    def load(self, weights=None, *args, **kwargs):
+    def load(self, path):
         """
         Loads saved weights into the model
         """
+        with path.open('rb') as f:
+            weights = torch.load(f)
         load_model_from_dict(self, weights)
         return self
+
+    def save(self, path):
+        """
+        Saves the model weights to a file
+        """
+        with path.open('wb') as f:
+            torch.save(self.state_dict(), f)
 
     def submodule(self, index):
         """
@@ -189,6 +198,7 @@ class AligningPyramid(nn.Module):
 class _SubmoduleView(nn.Module):
     """
     Returns a view into a sequence of aligners of a model.
+    This is useful for training and testing.
 
     This can be modified later to also include encodings.
     """
