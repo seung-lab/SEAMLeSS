@@ -40,9 +40,8 @@ def get_argparser():
     help='bbox origin+shape, 3-element int list')
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
-  parser.add_argument('--run_pairs', 
-    help='Compute warp between src pairs & compose', 
-    action='store_true')
+  parser.add_argument('--tgt_radius', type=int, default=1,
+    help='Radius of z sections to include in multi-match')
   parser.add_argument('--disable_flip_average', 
     help='disable flip averaging', 
     action='store_true')
@@ -61,8 +60,6 @@ def get_argparser():
   parser.add_argument('--upsample_residuals', 
     help='upsample residuals & cum_residuals when writing intermediaries; requires --write_intermediaries flag', 
     action='store_true')
-  parser.add_argument('--z_offset', type=int, default=1,
-    help='Offset in z for target slice')
   return parser
 
 def parse_args(parser, arg_string=''):
