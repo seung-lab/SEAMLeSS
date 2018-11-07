@@ -22,7 +22,9 @@ from threading import Lock
 
 import torch.nn as nn
 from task_handler import TaskHandler, make_residual_task_message, \
-        make_render_task_message, make_copy_task_message, make_downsample_task_message, make_compose_task_message
+        make_render_task_message, make_copy_task_message, \
+        make_downsample_task_message, make_compose_task_message, \
+        make_prepare_task_message
 
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
@@ -630,6 +632,24 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
+  def prepare_source_parallel(self, zs, ze, bbox, mip, start_z):
+    print ("Prerendering mip {}".format(mip),
+           end='', flush=True)
+    start = time()
+    chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
+                                    self.dst_voxel_offsets[mip], mip=mip, render=True)
+    for z in range(zs, ze):
+        for i in range(0, len(chunks), self.threads):
+            task_patches = []
+            for j in range(i, min(len(chunks), i + self.threads)):
+                task_patches.append(chunks[j])
+            prepare_task = make_prepare_task_message(z + 1, task_patches, mip, start_z)
+            self.task_handler.send_message(prepare_task)
+    self.task_handler.wait_until_ready() 
+    end = time()
+    print (": {} sec".format(end - start))
+ 
+
   def prepare_source(self, z, bbox, mip):
     print ("Prerendering mip {}".format(mip),
            end='', flush=True)
@@ -725,28 +745,33 @@ class Aligner:
           self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
         self.pool.map(chunkwise, chunks)
 
-  def compute_section_pair_residuals_paralell(self, start_section, end_section, bbox):
+  def compute_residuals_paralell(self, start_section, end_section, bbox, m, start_z):
       start = time()
-      for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
-          chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[m],
-                                      self.vec_voxel_offsets[m], mip=m)
-          print ("computing residuals of slice {} to slice {} at mip {} ({} chunks)".
-                 format(source_z, target_z, m, len(chunks)), flush=True)
-          if self.distributed:
-              for z in range(start_section, end_section):
-                  for patch_bbox in chunks:
-                      residual_task = make_residual_task_message(z + 1, z, patch_bbox, mip=m)
-                      self.task_handler.send_message(residual_task)
-              self.task_handler.wait_until_ready()
-          else:
-              for z in range(start_section, end_section):
-                  def chunkwise(patch_bbox):
-                      self.compute_residual_patch(z + 1, z, patch_bbox, mip=m)
-                  self.pool.map(chunkwise, chunks)
+      chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[m],
+                                  self.vec_voxel_offsets[m], mip=m)
+      print ("computing residuals at mip {} ({} chunks)".format(m, len(chunks)), flush=True)
+      if self.distributed:
+          for z in range(start_section, end_section):
+              for patch_bbox in chunks:
+                  residual_task = make_residual_task_message(z + 1, z, patch_bbox, mip=m)
+                  self.task_handler.send_message(residual_task)
+          self.task_handler.wait_until_ready()
+      else:
+          for z in range(start_section, end_section):
+              def chunkwise(patch_bbox):
+                  self.compute_residual_patch(z + 1, z, patch_bbox, mip=m)
+              self.pool.map(chunkwise, chunks)
       end = time()
       print (": {} sec".format(end - start))
 
- 
+      if m > self.process_low_mip:
+          self.prepare_source_parallel(start_section, end_section, bbox, m - 1, start_z)
+
+  def section_pair_residual_pairwise(self, start_section, end_section, bbox, start_z):
+      for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
+          self.compute_residuals_paralell(start_section, end_section, bbox, m, start_z)  
+          for z in range(start_section, end_section):
+              self.compose_field_sf(z + 1, bbox, m, start_z)
 
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
@@ -837,10 +862,10 @@ class Aligner:
     self.zs = start_section
     if self.run_pairs and self.p_render:
         self.img_cache = {}
-        self.compute_section_pair_residuals_paralell(start_section, end_section, bbox)
-        for z in range(start_section, end_section):
-            #self.compute_section_pair_residuals(z + 1, z, bbox)
-            self.compose_field_sf(z + 1, bbox, self.render_low_mip, start_z)
+        #self.compute_section_pair_residuals_paralell(start_section, end_section, bbox)
+        self.section_pair_residual_pairwise(start_section, end_section, bbox, start_z)
+        #for z in range(start_section, end_section):
+        #    self.compose_field_sf(z + 1, bbox, self.render_low_mip, start_z)
         self.render_section_parallel(start_section, end_section, bbox, start_z)
     else:
         for z in range(start_section, end_section):
@@ -870,6 +895,20 @@ class Aligner:
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                       (mip, self.process_high_mip), mip, start_z)
       self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
+
+    self.pool.map(chunkwise, patches)
+
+  def handle_prepare_task(self, message):
+    z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    mip = message['mip']
+    start_z = message['start_z']
+    def chunkwise(patch_bbox):
+      print ("Preparing source {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+              end='', flush=True)
+      warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
+                                      (mip, self.process_high_mip), mip, start_z)
+      self.save_image_patch(self.tmp_ng_path, warped_patch, z, patch_bbox, mip)
 
     self.pool.map(chunkwise, patches)
 
@@ -928,6 +967,8 @@ class Aligner:
       self.handle_copy_task(body)
     elif task_type == 'downsample_task':
       self.handle_downsample_task(body)
+    elif task_type == 'prepare_task':
+      self.handle_prepare_task(body)
     else:
       raise Exception("Unsupported task type '{}' received from queue '{}'".format(task_type,
                                                                  self.task_handler.queue_name))
