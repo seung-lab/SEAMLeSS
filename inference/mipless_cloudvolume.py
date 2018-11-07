@@ -10,6 +10,7 @@ class MiplessCloudVolume():
     self.cvs = {}
 
   def create(self, mip):
+    print('Creating CloudVolume for {0} at MIP{1}'.format(self.path, mip))
     self.cvs[mip] = CloudVolume(self.path, mip=mip, **self.kwargs)
     if self.mkdir:
       self.cvs[mip].commit_info()

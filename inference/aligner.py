@@ -32,7 +32,8 @@ class AlignerDir():
   """
   def __init__(self, src_path, tgt_path, 
                      src_mask_path, tgt_mask_path, 
-                     dst_path, mip_range):
+                     dst_path, src_mask_mip, tgt_mask_mip,
+                     src_mask_val, tgt_mask_val, mip_range):
     self.mip_range = mip_range
     self.paths = self.get_paths(dst_path)
     self.dst_chunk_sizes   = []
@@ -45,19 +46,32 @@ class AlignerDir():
     self.out_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False, 
                   'autocrop': True, 'non_aligned_writes': False}
     self.vols['src_img'] = CV(src_path, **self.in_kwargs) 
-    self.vols['src_mask'] = CV(src_mask_path, **self.in_kwargs) 
     self.vols['tgt_img'] = CV(tgt_path, **self.in_kwargs) 
-    self.vols['tgt_mask'] = CV(tgt_mask_path, **self.in_kwargs) 
-    self.src_mask_val = src_mask_val
-    self.tgt_mask_val = tgt_mask_val
+    if src_mask_path:
+      self.vols['src_mask'] = CV(src_mask_path, **self.in_kwargs) 
+    if tgt_mask_path:
+      self.vols['tgt_mask'] = CV(tgt_mask_path, **self.in_kwargs) 
     self.src_mask_mip = src_mask_mip
     self.tgt_mask_mip = tgt_mask_mip
+    self.src_mask_val = src_mask_val
+    self.tgt_mask_val = tgt_mask_val
+    self.provenance = {}
+    self.provenance['project'] = 'seamless'
+    self.provenance['src_path'] = src_path
+    self.provenance['tgt_path'] = tgt_path
+    self.ignore_field_init = False
+    
   
   def __getitem__(self, k):
     return self.vols[k]
 
+  def __contains__(self, k):
+    return k in self.vols
+
   def create(self, max_offset, write_intermediaries):
-    src_info = self.vols['src_img'][0].info
+    provenance = self.provenance
+    src_cv = self.vols['src_img'][0]
+    src_info = src_cv.info
     m = len(src_info['scales'])
     each_factor = Vec(2,2,1)
     factor = Vec(2**m,2**m,1)
@@ -108,7 +122,7 @@ class AlignerDir():
       self.dst_voxel_offsets.append(scales[i]["voxel_offset"])
 
     for k in ['dst_img', 'tmp_img']:
-      self.cvs[k] = CV(self.paths[k], info=img_info, provenance=provenance, 
+      self.vols[k] = CV(self.paths[k], info=img_info, provenance=provenance, 
                                          mkdir=True, **self.out_kwargs)
 
     ##########################################################
@@ -130,28 +144,28 @@ class AlignerDir():
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
 
-    self.cvs['field'] = CV(self.paths['field'], info=vec_info, 
+    self.vols['field'] = CV(self.paths['field'], info=vec_info, 
                               provenance=provenance, mkdir=not self.ignore_field_init,
                               **self.out_kwargs)
     if write_intermediaries:
       for k in ['res', 'cumres', 'resup', 'cumresup']:
-        self.cvs[k] = CV(self.paths[k], info=vec_info, provenance=provenance,
+        self.vols[k] = CV(self.paths[k], info=vec_info, provenance=provenance,
                               mkdir=True, **self.out_kwargs)
 
       # if i in enc_dict.keys():
       #   enc_info = deepcopy(vec_info)
       #   enc_info['num_channels'] = enc_dict[i]
       #   # enc_info['data_type'] = 'uint8'
-      #   self.cvs['enc'] = CV(self.paths['enc'], info=enc_info, provenance=provenance, mkdir=True)
+      #   self.vols['enc'] = CV(self.paths['enc'], info=enc_info, provenance=provenance, mkdir=True)
 
       wts_info = deepcopy(vec_info)
       wts_info['num_channels'] = 3
       # enc_info['data_type'] = 'uint8'
       for k in ['diffs', 'diff_weights', 'weights']:
-        self.cvs[k] = CV(self.paths[k], info=vec_info, provenance=provenance, 
+        self.vols[k] = CV(self.paths[k], info=vec_info, provenance=provenance, 
                          mkdir=True, **self.out_kwargs)
 
-  def get_paths(self, dst_root):
+  def get_paths(self, root):
     paths = {}
     paths['dst_root'] = root 
     paths['dst_img'] = join(root, 'image')
@@ -192,6 +206,7 @@ class Aligner:
     self.size = size
     self.old_vectors = old_vectors
     self.ignore_field_init = ignore_field_init
+    self.write_intermediaries = write_intermediaries
 
     self.max_displacement = max_displacement
     self.crop_amount      = crop
@@ -199,15 +214,18 @@ class Aligner:
     self.device = torch.device('cpu') if disable_cuda else torch.device('cuda')
 
     self.offset_vols = {}
-    self.tgt_range = range(1, tgt_radius)
-    for i in range(tgt_radius): 
+    self.tgt_radius = tgt_radius+1
+    self.tgt_range = range(1, self.tgt_radius)
+    for i in range(self.tgt_radius): 
       path = '{0}/z_{1}'.format(dst_path, abs(i))
       if i == 0:
         path = dst_path
       self.offset_vols[i] = AlignerDir(src_path, tgt_path, 
                                        src_mask_path, tgt_mask_path, 
-                                       dst_path, mip_range)
-      self.offset_vols[i].create(mask_displacement, self.write_intermediaries)
+                                       path, src_mask_mip, 
+                                       tgt_mask_mip, src_mask_val,
+                                       tgt_mask_val, mip_range)
+      self.offset_vols[i].create(max_displacement, self.write_intermediaries)
     # set z_offset to 0 and self.vols to root
     self.z = 0
     self.set_z_offset(0)
@@ -218,7 +236,6 @@ class Aligner:
                        flip_average=not disable_flip_average, old_upsample=old_upsample)
 
     self.normalizer = Normalizer(min(5, mip_range[0])) 
-    self.write_intermediaries = write_intermediaries
     self.upsample_residuals = upsample_residuals
 
     self.pool = ThreadPool(threads)
@@ -230,8 +247,9 @@ class Aligner:
     self.z = z
 
   def set_z_offset(self, z_offset):
+    print('Set z_offset to {0}'.format(z_offset))
     self.z_offset = z_offset
-    self.vols = self.offset_dsts[z_offset]
+    self.vols = self.offset_vols[z_offset]
 
   def Gaussian_filter(self, kernel_size, sigma):
     x_cord = torch.arange(kernel_size)
@@ -294,9 +312,9 @@ class Aligner:
 
   def get_composed_field(self, bbox, mip, relative=False, to_tensor=True):
     orig_z_offset = self.z_offset
-    field = get_field('field', bbox, mip, relative=True, to_tensor=to_tensor)
+    field = self.get_field('field', bbox, mip, relative=True, to_tensor=to_tensor)
     self.set_z_offset(0)
-    field_sf = get_field('field', bbox, mip, relative=True, to_tensor=to_tensor)
+    field_sf = self.get_field('field', bbox, mip, relative=True, to_tensor=to_tensor)
     self.set_z_offset(orig_z_offset)
     field_sf = self.blur_field(field_sf)
     field = field.permute(0,3,1,2)
@@ -406,9 +424,9 @@ class Aligner:
       fields.append(self.get_composed_field(bbox, mip, relative=False))
     field = vector_vote(fields, T=T)
     self.set_z_offset(0)
-    self.save_vector_patch('field', field, z, bbox, mip)
+    self.save_vector_patch('field', field, bbox, mip)
 
-    if write_intermediaries:
+    if self.write_intermediaries:
       self.save_image_patch('diffs', diffs.cpu().numpy(), bbox, mip, to_uint8=False)
       self.save_image_patch('diff_weights', diffs.cpu().numpy(), bbox, mip, to_uint8=False)
       self.save_image_patch('weights', diffs.cpu().numpy(), bbox, mip, to_uint8=False)
@@ -448,7 +466,7 @@ class Aligner:
     field, residuals, encodings, cum_residuals = X
 
     # save the final vector field for warping
-    self.save_vector_patch(field, source_z, out_patch_bbox, mip)
+    self.save_vector_patch('field', field, out_patch_bbox, mip)
 
     if self.write_intermediaries:
       mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
@@ -545,7 +563,7 @@ class Aligner:
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
     
-    field = self.get_field(influence_bbox, mip, relative=True, to_tensor=True)
+    field = self.get_field('field', influence_bbox, mip, relative=True, to_tensor=True)
     # print('field0.shape: {0}'.format(field.shape))
     field = self.scale_residuals(field, mip+1, mip)
     # print('field1.shape: {0}'.format(field.shape))
@@ -780,7 +798,7 @@ class Aligner:
 
   def compute_section_pair_residuals(self, bbox, inverse=False):
     source_z = self.z
-    target_z = self.z - self.offset_z
+    target_z = self.z - self.z_offset
     if inverse:
       source_z, target_z = target_z, source_z
     for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
@@ -825,7 +843,6 @@ class Aligner:
                                     self.vols.vec_voxel_offsets[mip], mip=mip)
     print("Computing weighted field for slice {0} @ MIP{1} ({2} chunks)".
            format(z, mip, len(chunks)), flush=True)
-    print('Writing vectors to {0}'.format(self.paths['field'][mip]))
 
     #for patch_bbox in chunks:
     def chunkwise(patch_bbox):
@@ -883,17 +900,18 @@ class Aligner:
             each aligned section before compiling vector fields with voting
             (useful for debugging)
     """
-    aligner.total_bbox = bbox
+    self.total_bbox = bbox
     # start_z = z_range[0]
     # if start_without:
     #   aligner.align_stack(z_range, bbox, move_anchor=False) 
     #   z_range = z_range[3:]
     for z in z_range:
-      aligner.multi_match(inverse=False, render=render_multi_match)
+      self.set_z(z)
+      self.multi_match(inverse=False, render=render_multi_match)
       # print('align_vector_vote field_paths: {0}'.format(field_paths))
-      mip = aligner.process_low_mip
+      mip = self.process_low_mip
       T = 2**mip
       print('softmin temp: {0}'.format(T))
-      aligner.compute_weighted_field(z, bbox, mip, T)
-      aligner.render_section_all_mips(z, bbox, start_z)
+      self.compute_weighted_field(bbox, mip, T)
+      self.render_section_all_mips(bbox)
   
