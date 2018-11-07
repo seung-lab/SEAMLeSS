@@ -725,6 +725,30 @@ class Aligner:
           self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, m)
         self.pool.map(chunkwise, chunks)
 
+  def compute_section_pair_residuals_paralell(self, start_section, end_section, bbox):
+      start = time()
+      for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
+          chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[m],
+                                      self.vec_voxel_offsets[m], mip=m)
+          print ("computing residuals of slice {} to slice {} at mip {} ({} chunks)".
+                 format(source_z, target_z, m, len(chunks)), flush=True)
+          if self.distributed:
+              for z in range(start_section, end_section):
+                  for patch_bbox in chunks:
+                      residual_task = make_residual_task_message(z + 1, z, patch_bbox, mip=m)
+                      self.task_handler.send_message(residual_task)
+              self.task_handler.wait_until_ready()
+          else:
+              for z in range(start_section, end_section):
+                  def chunkwise(patch_bbox):
+                      self.compute_residual_patch(z + 1, z, patch_bbox, mip=m)
+                  self.pool.map(chunkwise, chunks)
+      end = time()
+      print (": {} sec".format(end - start))
+
+ 
+
+
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
     for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
       start = time()
