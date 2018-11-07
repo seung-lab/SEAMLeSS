@@ -836,9 +836,10 @@ class Aligner:
       start_z = start_section + 1 
     self.zs = start_section
     if self.run_pairs and self.p_render:
+        self.img_cache = {}
+        self.compute_section_pair_residuals_paralell(start_section, end_section, bbox)
         for z in range(start_section, end_section):
-            self.img_cache = {}
-            self.compute_section_pair_residuals(z + 1, z, bbox)
+            #self.compute_section_pair_residuals(z + 1, z, bbox)
             self.compose_field_sf(z + 1, bbox, self.render_low_mip, start_z)
         self.render_section_parallel(start_section, end_section, bbox, start_z)
     else:
