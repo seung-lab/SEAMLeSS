@@ -1,5 +1,8 @@
 import cloudvolume as cv
 import numpy as np
+import argparse
+import sys
+import h5py
 
 class Sampler(object):
     def __init__(self, source='gs://neuroglancer/pinky40_v11/image', mip=5, dim=1152, height=10, zs=1, ze=1000, test_fraction=0.2):
@@ -18,15 +21,13 @@ class Sampler(object):
         self.test_fraction = test_fraction
 
     def chunk_at_global_coords(self, xyz, xyz_):
-        assert xyz[2] >= self.zs
-        assert xyz_[2] <= self.ze
         factor = 2 ** self.vol.mip
         x, x_ = xyz[0]//factor, xyz_[0]//factor
         y, y_ = xyz[1]//factor, xyz_[1]//factor
         z, z_ = xyz[2], xyz_[2]
         squeezed = None
         try:
-            squeezed = np.squeeze(self.vol[x:x_, y:y_, z:z_])
+            squeezed = np.squeeze(self.vol[x:x_, y:y_, z:z_], axis=-1)
         except Exception as e:
             print('Exception {}'.format(e))
         if squeezed is not None:
@@ -49,3 +50,33 @@ class Sampler(object):
         this_chunk = self.chunk_at_global_coords((x,y,z), (x+self.adj_dim,y+self.adj_dim,z+self.stack_height))
         print(train, x, y, z, zs, ze)
         return this_chunk, (x,y,z,self.adj_dim,self.stack_height)
+
+if __name__ == "__main__":
+    name = sys.argv[1]
+    parser = argparse.ArgumentParser()
+    parser.add_argument('name')
+    parser.add_argument('--mip', type=int, default=5)
+    parser.add_argument('--stack_height', type=int, default=10)
+    parser.add_argument('--xy_dim', type=int, default=1152)
+    parser.add_argument('--source', type=str, default='neuroglancer/basil_v0/raw_image_cropped')
+    parser.add_argument('--start_point', type=str, default='0,0,0')
+    args = parser.parse_args()
+    print(args)
+
+    xs, ys, zs = [int(s) for s in args.start_point.split(',')]
+    xe = xs + args.xy_dim * 2**args.mip
+    ye = ys + args.xy_dim * 2**args.mip
+    ze = zs + args.stack_height
+    print (xs, ys, zs)
+    print (xe, ye, ze)
+    dataset = np.empty((1, args.stack_height, args.xy_dim, args.xy_dim))
+
+    sampler = Sampler(source=('gs://' + args.source), dim=args.xy_dim,
+                      mip=args.mip, height=args.stack_height, zs=zs,
+                      ze=ze)
+    chunk = sampler.chunk_at_global_coords((xs, ys, zs), (xe, ye, ze))
+    print (chunk.shape)
+    dataset[0,:,:,:] = np.transpose(chunk, (2,0,1))
+    h5f = h5py.File(args.name + '.h5', 'w')
+    h5f.create_dataset('main', data=dataset)
+
