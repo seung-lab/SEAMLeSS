@@ -93,4 +93,4 @@ a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
             old_vectors=args.old_vectors, queue_name=args.queue_name, p_render=args.p_render)
 bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=max_mip)
 
-a.listen_for_tasks(v_off[2], bbox)
+a.listen_for_tasks(v_off[2], stack_size, bbox)

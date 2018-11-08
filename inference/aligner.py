@@ -416,9 +416,12 @@ class Aligner:
     if (self.run_pairs):
       if z != start_z:
         field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
+        field_sf_last = torch.from_numpy(self.get_field_sf_residual(self.end_section - 1, 
+                                                                    influence_bbox, mip))
         #regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
         #regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
         #field_sf = torch.cat([regular_part_x,regular_part_y],-1)
+        field_sf = field_sf -((z - self.zs) / self.num_section) * field_sf_last
         image = gridsample_residual(image, field_sf, padding_mode='zeros')
         #agg_flow = agg_flow.permute(0,3,1,2)
         #field_sf = field_sf + gridsample_residual(
@@ -812,9 +815,9 @@ class Aligner:
                                                     padding_mode='border').permute(0,2,3,1)
       else:
           field_sf = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip) 
-      regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
-      regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
-      field_sf = torch.cat([regular_part_x,regular_part_y],-1)
+      #regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
+      #regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
+      #field_sf = torch.cat([regular_part_x,regular_part_y],-1)
       field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
       field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
       self.save_field_patch(field_sf, bbox, mip, z)
@@ -851,7 +854,8 @@ class Aligner:
       raise Exception("Not all parameters are set")
     #if not bbox.is_chunk_aligned(self.dst_ng_path):
     #  raise Exception("Have to align a chunkaligned size")
-
+    self.end_section = end_section
+    self.num_section = end_section - start_section
     self.total_bbox = bbox
     start_z = start_section 
     start = time()
@@ -973,9 +977,11 @@ class Aligner:
       raise Exception("Unsupported task type '{}' received from queue '{}'".format(task_type,
                                                                  self.task_handler.queue_name))
 
-  def listen_for_tasks(self, stack_start, bbox):
+  def listen_for_tasks(self, stack_start, stack_size ,bbox):
     self.total_bbox = bbox
     self.zs = stack_start
+    self.end_section = stack_start + stack_size
+    self.num_section = stack_size
     while (True):
       message = self.task_handler.get_message()
       if message != None:
