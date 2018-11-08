@@ -511,7 +511,8 @@ class ModelArchive(object):
         Save a plot of the learning curves
         """
         data = pd.read_csv(self.paths['loss'], sep='\\s*,\\s*',
-                           encoding='ascii', engine='python')[list(columns)]
+                           encoding='ascii', engine='python',
+                           comment='#')[list(columns)]
         # ensure averaging window is reasonable
         if average_over > len(data.index) // 10 + 1:
             average_over = len(data.index) // 10 + 1
