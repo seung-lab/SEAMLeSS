@@ -25,6 +25,7 @@ parser.add_argument('--ys', type=int)
 parser.add_argument('--ye', type=int)
 parser.add_argument('--stack_size', type=int, default=100)
 parser.add_argument('--zs', type=int)
+parser.add_argument('--thread', type=int, default=1)
 parser.add_argument('--no_anchor', action='store_true')
 parser.add_argument('--p_render', help='parallel rendering among all slices', action='store_true')
 parser.add_argument('--no_flip_average',
@@ -69,7 +70,7 @@ x_size = xe - xs
 y_size = ye - ys
 stack_size = args.stack_size
 out_cv = 'gs://neuroglancer/seamless/{}_{}'.format(model_name, out_name)
-
+thread = args.thread
 if num_targets < 1:
     print('num_targets must be > 0')
     sys.exit(1)
@@ -84,7 +85,7 @@ print('Max mip:', max_mip)
 print('NG link:', ng_link(out_name, 'precomputed://' + 'gs://neuroglancer/seamless/' + model_name+'_'+out_name+'/image', source[source.rindex('/')+1:], 'precomputed://' + source, (xs+xe)//2, (ys+ye)//2, zs))
 
 a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
-            source, out_cv, render_low_mip=render_mip, render_high_mip=max_mip,
+            source, out_cv, render_low_mip=render_mip, render_high_mip=max_mip, threads=thread
             skip=args.skip, topskip=0, size=args.size, should_contrast=should_contrast,
             num_targets=num_targets, flip_average=not args.no_flip_average,
             run_pairs=args.run_pairs,
