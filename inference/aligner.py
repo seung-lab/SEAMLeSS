@@ -421,7 +421,9 @@ class Aligner:
         #regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
         #regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
         #field_sf = torch.cat([regular_part_x,regular_part_y],-1)
-        field_sf = field_sf -((z - self.zs) / self.num_section) * field_sf_last
+        regular_factor = (z - self.zs) / self.num_section   
+        field_sf[...,0] = field_sf[...,0] - regular_factor * field_sf_last[...,0]
+        field_sf[...,1] = field_sf[...,1] - regular_factor * field_sf_last[...,1]
         image = gridsample_residual(image, field_sf, padding_mode='zeros')
         #agg_flow = agg_flow.permute(0,3,1,2)
         #field_sf = field_sf + gridsample_residual(
