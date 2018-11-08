@@ -6,7 +6,7 @@ metadata:
     run: seamless
   name: seamless
 spec:
-  replicas: 3
+  replicas: 12
   selector:
     matchLabels:
       run: seamless
@@ -18,7 +18,7 @@ spec:
         run: seamless
     spec:
       containers:
-      - image: seunglab/nflow_inference:gpu-test
+      - image: seunglab/pairwise_inference:gpu_test
         name: seamless
         env:
           - name: AWS_ACCESS_KEY_ID
@@ -37,7 +37,7 @@ spec:
                 name: awssecret
                 key: region
         command: ["/bin/sh"]
-        args: ["-c", "python3 SEAMLeSS/inference/worker.py --model_path SEAMLeSS/inference/model_repository/vector_fixer30_fine_tuning_low_mip_e9_t200_.pt --mip 2 --max_mip 6 --render_mip 2 --num_targets 2 --xs 0 --xe 20000 --ys 0 --ye 20000 --zs 357 --stack_size 20 --source gs://neuroglancer/pinky40_alignment/prealigned_rechunked --edge_pad 256 --should_contrast 1 --max_displacement 2048 --size 8 --out_name pinky40_zhen_test --queue_name deepalign"]
+        args: ["-c", "python3 SEAMLeSS/inference/worker.py --model_path SEAMLeSS/inference/model_repository/vector_fixer30_fine_tuning_low_mip_e176_t200_.pt --mip 2 --max_mip 6 --render_mip 2 --num_targets 2 --xs 90000 --xe 185000 --ys 15000 --ye 100000 --zs 1100 --stack_size 350 --source --source gs://neuroglancer/drosophila_v0/image_v14_single_slices --edge_pad 256 --should_contrast 1 --max_displacement 2048 --size 8 --out_name zhen_test_distributed_Nov08 --queue_name deepalign --run_pairs --p_render"]
         resources: 
           limits:
             nvidia.com/gpu: 1
