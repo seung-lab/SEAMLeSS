@@ -268,30 +268,7 @@ def train(train_loader, archive, epoch):
 
         # logging and checkpointing
         if state_vars.vis_time and i % state_vars.vis_time == 0:
-            try:
-                debug_dir = archive.new_debug_directory(epoch, i)
-                save_chunk(src[0:1, ...], str(debug_dir / 'src'))
-                save_chunk(src[0:1, ...], str(debug_dir / 'xsrc'))  # xtra copy
-                save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt'))
-                warped_src = gridsample_residual(
-                    src[0:1, ...],
-                    prediction[0:1, ...].detach().to(src.device),
-                    padding_mode='zeros')
-                save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
-                archive.visualize_loss('Training Loss', 'Validation Loss')
-                save_vectors(prediction[0:1, ...].detach(),
-                             str(debug_dir / 'prediction'))
-                if truth is not None:
-                    save_vectors(truth[0:1, ...].detach(),
-                                 str(debug_dir / 'ground_truth'))
-                for k, v in masks.items():
-                    if v is not None and len(v) > 0:
-                        save_chunk(v[0][0:1, ...], str(debug_dir / k))
-            except Exception as e:
-                # Don't raise the exception, since visualization issues
-                # should not stop training. Just warn the user and go on.
-                print('Visualization failed: {}: {}'
-                      .format(e.__class__.__name__, e))
+            create_debug_outputs(archive, src, tgt, prediction, truth, masks)
         if (state_vars.checkpoint_time
                 and i % state_vars.checkpoint_time == 0):
             archive.create_checkpoint(epoch=epoch, iteration=i)
@@ -434,6 +411,37 @@ def gen_masks(src, tgt, prediction, threshold=10):
             'tgt_masks': [tgt_mask.float()],
             'src_field_masks': [src_field_mask.float()],
             'tgt_field_masks': [tgt_field_mask.float()]}
+
+
+@torch.no_grad()
+def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
+    """
+    Creates a subdirectory exports any debugging outputs to that directory.
+    """
+    try:
+        debug_dir = archive.new_debug_directory()
+        save_chunk(src[0:1, ...], str(debug_dir / 'src'))
+        save_chunk(src[0:1, ...], str(debug_dir / 'xsrc'))  # xtra copy
+        save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt'))
+        warped_src = gridsample_residual(
+            src[0:1, ...],
+            prediction[0:1, ...].detach().to(src.device),
+            padding_mode='zeros')
+        save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
+        archive.visualize_loss('Training Loss', 'Validation Loss')
+        save_vectors(prediction[0:1, ...].detach(),
+                     str(debug_dir / 'prediction'))
+        if truth is not None:
+            save_vectors(truth[0:1, ...].detach(),
+                         str(debug_dir / 'ground_truth'))
+        for k, v in masks.items():
+            if v is not None and len(v) > 0:
+                save_chunk(v[0][0:1, ...], str(debug_dir / k))
+    except Exception as e:
+        # Don't raise the exception, since visualization issues
+        # should not stop training. Just warn the user and go on.
+        print('Visualization failed: {}: {}'
+              .format(e.__class__.__name__, e))
 
 
 if __name__ == '__main__':

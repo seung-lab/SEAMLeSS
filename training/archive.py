@@ -456,7 +456,7 @@ class ModelArchive(object):
             checkpt_name = 'e{}_t{}.pt'.format(epoch, iteration)
         cp(self.paths['weights'], self.intermediate_models / checkpt_name)
 
-    def new_debug_directory(self, epoch, iteration):
+    def new_debug_directory(self):
         """
         Creates a new subdirectory for debugging outputs.
 
@@ -465,8 +465,12 @@ class ModelArchive(object):
         """
         if self.readonly:
             raise ReadOnlyError(self._name)
-        dirname = 'e{}_t{}'.format(epoch, iteration)
+        dirname = 'e{}_t{}'.format(self._state_vars.epoch,
+                                   self._state_vars.iteration)
         debug_directory = self.debug_outputs / dirname
+        if debug_directory.is_dir():
+            raise FileExistsError('The debug directory {} already exists.'
+                                  .format(debug_directory))
         debug_directory.mkdir()
         return debug_directory
 
