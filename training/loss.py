@@ -6,16 +6,16 @@ import numpy as np
 
 def lap(fields):
     def dx(f):
-        p = Variable(torch.zeros((1,1,f.size(1),2), device='cuda'))
+        p = Variable(torch.zeros((f.size(0),1,f.size(1),2), device='cuda'))
         return torch.cat((p, f[:,1:-1,:,:] - f[:,:-2,:,:], p), 1)
     def dy(f):
-        p = Variable(torch.zeros((1,f.size(1),1,2), device='cuda'))
+        p = Variable(torch.zeros((f.size(0),f.size(1),1,2), device='cuda'))
         return torch.cat((p, f[:,:,1:-1,:] - f[:,:,:-2,:], p), 2)
     def dxf(f):
-        p = Variable(torch.zeros((1,1,f.size(1),2), device='cuda'))
+        p = Variable(torch.zeros((f.size(0),1,f.size(1),2), device='cuda'))
         return torch.cat((p, f[:,1:-1,:,:] - f[:,2:,:,:], p), 1)
     def dyf(f):
-        p = Variable(torch.zeros((1,f.size(1),1,2), device='cuda'))
+        p = Variable(torch.zeros((f.size(0),f.size(1),1,2), device='cuda'))
         return torch.cat((p, f[:,:,1:-1,:] - f[:,:,2:,:], p), 2)
     fields = map(lambda f: [dx(f), dy(f), dxf(f), dyf(f)], fields)
     fields = map(lambda fl: (sum(fl) / 4.0) ** 2, fields)
@@ -24,10 +24,10 @@ def lap(fields):
 
 def jacob(fields):
     def dx(f):
-        p = Variable(torch.zeros((1,1,f.size(1),2), device='cuda'))
+        p = Variable(torch.zeros((f.size(0),1,f.size(1),2), device='cuda'))
         return torch.cat((p, f[:,2:,:,:] - f[:,:-2,:,:], p), 1)
     def dy(f):
-        p = Variable(torch.zeros((1,f.size(1),1,2), device='cuda'))
+        p = Variable(torch.zeros((f.size(0),f.size(1),1,2), device='cuda'))
         return torch.cat((p, f[:,:,2:,:] - f[:,:,:-2,:], p), 2)
     fields = sum(map(lambda f: [dx(f), dy(f)], fields), [])
     field = torch.sum(torch.cat(fields, -1) ** 2, -1)
@@ -41,11 +41,11 @@ def cjacob(fields):
         return f - fmean
 
     def dx(f):
-        p = Variable(torch.zeros((1,1,f.size(1),2), device='cuda'))
+        p = Variable(torch.zeros((f.size(0),1,f.size(1),2), device='cuda'))
         d = torch.cat((p, f[:,2:,:,:] - f[:,:-2,:,:], p), 1)
         return center(d)
     def dy(f):
-        p = Variable(torch.zeros((1,f.size(1),1,2), device='cuda'))
+        p = Variable(torch.zeros((f.size(0),f.size(1),1,2), device='cuda'))
         d = torch.cat((p, f[:,:,2:,:] - f[:,:,:-2,:], p), 2)
         return center(d)
 
@@ -55,10 +55,10 @@ def cjacob(fields):
 
 def tv(fields):
     def dx(f):
-        p = Variable(torch.zeros((1,1,f.size(1),2), device='cuda'))
+        p = Variable(torch.zeros((f.size(0),1,f.size(1),2), device='cuda'))
         return torch.cat((p, f[:,2:,:,:] - f[:,:-2,:,:], p), 1)
     def dy(f):
-        p = Variable(torch.zeros((1,f.size(1),1,2), device='cuda'))
+        p = Variable(torch.zeros((f.size(0),f.size(1),1,2), device='cuda'))
         return torch.cat((p, f[:,:,2:,:] - f[:,:,:-2,:], p), 2)
     fields = sum(map(lambda f: [dx(f), dy(f)], fields), [])
     field = torch.sum(torch.abs(torch.cat(fields, -1)), -1)
