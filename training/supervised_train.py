@@ -59,7 +59,6 @@ import stack_dataset
 from archive import ModelArchive
 from helpers import (gridsample_residual, save_chunk, dvl as save_vectors,
                      upsample, downsample, AverageMeter)
-from loss import smoothness_penalty
 
 
 def main():
@@ -250,9 +249,10 @@ def train(train_loader, archive, epoch):
         prediction = submodule(src, tgt)
         masks = gen_masks(src, tgt, prediction)
         if truth is not None:
-            loss = supervised_loss(prediction=prediction, truth=truth, **masks)
+            loss = archive.loss(prediction=prediction, truth=truth, **masks)
         else:
-            loss = unsupervised_loss(src, tgt, prediction=prediction, **masks)
+            loss = archive.loss(src, tgt, prediction=prediction, **masks)
+        loss = loss.mean()
 
         # compute gradient and do optimizer step
         archive.optimizer.zero_grad()
@@ -335,7 +335,7 @@ def validate(val_loader, archive, epoch):
         src, tgt, truth = prepare_input(sample, supervised=False)
         prediction = submodule(src, tgt)
         masks = gen_masks(src, tgt, prediction)
-        loss = unsupervised_loss(src, tgt, prediction=prediction, **masks)
+        loss = archive.val_loss(src, tgt, prediction=prediction, **masks)
         losses.update(loss.item())
 
     # measure elapsed time
@@ -409,75 +409,6 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
     field = upsample(num_downsamples)(field)
     result = field.permute(0, 2, 3, 1)
     return result
-
-
-def supervised_loss(prediction, truth, **masks):
-    """
-    Calculate a supervised loss based on the mean squared error with
-    the ground truth vector field.
-    """
-    truth = truth.to(prediction.device)
-    return ((prediction - truth) ** 2).mean()
-
-
-def unsupervised_loss(src, tgt, prediction,
-                      src_masks=None, tgt_masks=None,
-                      src_field_masks=None, tgt_field_masks=None):
-    """
-    Calculate a self-supervised loss based on
-    (a) the mean squared error between the source and target images
-    (b) the smoothness of the vector field
-
-    The masks are used to ignore or reduce the loss values in certain regions
-    of the images and vector field.
-
-    If `MSE(a, b)` is the mean squared error of two images, and `Penalty(f)`
-    is the smoothness penalty of a vector field, the loss is calculated
-    roughly as
-        >>> loss = MSE(src, tgt) + lambda1 * Penalty(prediction)
-    where `lambda1` and the type of smoothness penalty are both
-    pulled from the `state_vars` dictionary.
-    """
-    src, tgt = src.to(prediction.device), tgt.to(prediction.device)
-
-    src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
-    image_loss_map = (src_warped - tgt)**2
-    if src_masks or tgt_masks:
-        image_weights = torch.ones_like(image_loss_map)
-        if src_masks is not None:
-            for mask in src_masks:
-                mask = gridsample_residual(mask, prediction,
-                                           padding_mode='border')
-                image_loss_map = image_loss_map * mask
-                image_weights = image_weights * mask
-        if tgt_masks is not None:
-            for mask in tgt_masks:
-                image_loss_map = image_loss_map * mask
-                image_weights = image_weights * mask
-        mse_loss = image_loss_map.sum() / image_weights.sum()
-    else:
-        mse_loss = image_loss_map.mean()
-
-    field_penalty = smoothness_penalty(state_vars.penalty)
-    field_loss_map = field_penalty([prediction])
-    if src_field_masks or tgt_field_masks:
-        field_weights = torch.ones_like(field_loss_map)
-        if src_field_masks is not None:
-            for mask in src_field_masks:
-                mask = gridsample_residual(mask, prediction,
-                                           padding_mode='border')
-                field_loss_map = field_loss_map * mask
-                field_weights = field_weights * mask
-        if tgt_field_masks is not None:
-            for mask in tgt_field_masks:
-                field_loss_map = field_loss_map * mask
-                field_weights = field_weights * mask
-        field_loss = field_loss_map.sum() / field_weights.sum()
-    else:
-        field_loss = field_loss_map.mean()
-
-    loss = (mse_loss + state_vars.lambda1 * field_loss) / 25000
-    return loss
 
 
 @torch.no_grad()

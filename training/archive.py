@@ -122,6 +122,8 @@ class ModelArchive(object):
         self._model = None
         self._optimizer = None
         self._state_vars = None
+        self._loss = None
+        self._val_loss = None
 
         if ModelArchive.model_exists(name):
             self._load(*args, **kwargs)
@@ -300,6 +302,20 @@ class ModelArchive(object):
         return self._optimizer
 
     @property
+    def loss(self):
+        """
+        The loss function of the model, optimized during training
+        """
+        return self._loss
+
+    @property
+    def val_loss(self):
+        """
+        The validation loss function of the model
+        """
+        return self._val_loss
+
+    @property
     def state_vars(self):
         """
         A dict of various state variables
@@ -328,6 +344,8 @@ class ModelArchive(object):
         sys.path.remove(str(self.directory))
         self._architecture = architecture
         self._model = architecture.Model(*args, **kwargs)
+        self._loss = architecture.Objective(*args, **kwargs)
+        self._val_loss = architecture.ValidationObjective(*args, **kwargs)
         if self.paths['weights'].is_file():
             self._model.load(self.paths['weights'])
 
@@ -341,6 +359,7 @@ class ModelArchive(object):
                 p.requires_grad = True
             self._model.train().cuda()
             self._model = torch.nn.DataParallel(self._model)
+            self._loss = torch.nn.DataParallel(self._loss)
 
         return self._model
 
