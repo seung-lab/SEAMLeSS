@@ -88,7 +88,7 @@ print('NG link:', ng_link(out_name, 'precomputed://' + 'gs://neuroglancer/seamle
 torch.set_grad_enabled(False)
 
 a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
-            source, out_cv, render_low_mip=render_mip, render_high_mip=max_mip, threads=thread
+            source, out_cv, render_low_mip=render_mip, render_high_mip=max_mip, threads=thread,
             skip=args.skip, topskip=0, size=args.size, should_contrast=should_contrast,
             num_targets=num_targets, flip_average=not args.no_flip_average,
             run_pairs=args.run_pairs,
