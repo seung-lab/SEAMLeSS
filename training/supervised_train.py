@@ -58,7 +58,7 @@ import masks as masklib
 import stack_dataset
 from archive import ModelArchive
 from helpers import (gridsample_residual, save_chunk, dvl as save_vectors,
-                     upsample, downsample, AverageMeter)
+                     upsample, downsample, AverageMeter, retry_enumerate)
 
 
 def main():
@@ -236,7 +236,7 @@ def train(train_loader, archive, epoch):
     else:
         start_iter = state_vars.iteration
 
-    for i, sample in enumerate(train_loader, start_iter):
+    for i, sample in retry_enumerate(train_loader, start_iter):
         if i >= len(train_loader):
             break
         state_vars.iteration = i
@@ -305,7 +305,7 @@ def validate(val_loader, archive, epoch):
 
     start_time = time.time()
     # compute output and loss
-    for i, sample in enumerate(val_loader):
+    for i, sample in retry_enumerate(val_loader):
         print('{0}\t'
               'Validation: [{1}/{2}]\t'
               .format(state_vars.name, i, len(val_loader)), end='\r')

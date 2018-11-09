@@ -8,7 +8,6 @@ import collections
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
 from skimage.transform import rescale
 from functools import reduce
 import matplotlib
@@ -413,3 +412,22 @@ def time_function(f, name=None, on=False):
         print('{}: {} sec'.format(name, time.time() - start))
         return result
     return f_timed
+
+
+def retry_enumerate(iterable, start=0):
+    """
+    Wrapper around enumerate that retries if memory is unavailable.
+    """
+    import time
+    retries = 0
+    while True:
+        iterator = None
+        try:
+            iterator = enumerate(iterable, start=start)
+        except OSError:
+            seconds = 2 ** retries
+            warnings.warn('Low on memory. Retrying in {} sec.'.format(seconds))
+            time.sleep(seconds)
+            retries += 1
+            continue
+        return iterator
