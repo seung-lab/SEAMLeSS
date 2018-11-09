@@ -1,6 +1,6 @@
 # SEAMLeSS
 
-** This README is out of date and refers to an earlier version of the code. **
+** This README is temporarily out of date and refers to an earlier version of the code. **
 
 The README will hopefully be updated soon, but in the mean time, some 
 documentation exists in the individual code files. For example, refer to 

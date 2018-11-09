@@ -7,15 +7,15 @@ This is the main module which is invoked to train a network.
 Running:
     To begin training, run
 
-        $ python3 supervised_train.py start MODEL_NAME --training_set SET [...]
+        $ python3 train.py start MODEL_NAME --training_set SET [...]
 
     or equivalently
 
-        $ ./supervised_train.py start MODEL_NAME --training_set SET [...]
+        $ ./train.py start MODEL_NAME --training_set SET [...]
 
     To get help with the command line options, use
 
-        $ python3 supervised_train.py start --help
+        $ python3 train.py start --help
 
 Resuming:
 
@@ -26,15 +26,14 @@ Resuming:
     To resume training run the following with no additional command line
     arguments:
 
-        $ python3 supervised_train.py resume MODEL_NAME
+        $ python3 train.py resume MODEL_NAME
 
     and where `MODEL_NAME` is the name of the previously stopped training run.
     The training parameters and training state will be loaded from the saved
     archive, and the model will continue to train from where it was stopped.
 
 Example:
-        $ python3 supervised_train.py start my_model --training_set \
-            training_data.h5
+        $ python3 train.py start my_model --training_set training_data.h5
 
 Specifying the GPUs:
 
@@ -43,7 +42,7 @@ Specifying the GPUs:
     If you would like to use a specific GPU, or multiple GPUs, use the
     `--gpu_ids` argument with a comma-separated list of IDs:
 
-        $ python3 supervised_train.py --gpu_ids 4,1,2 start my_model \
+        $ python3 train.py --gpu_ids 4,1,2 start my_model \
             --training_set training_data.h5
 
     The order maters insomuch as the first ID in the list will be the
@@ -54,7 +53,7 @@ Specifying the GPUs:
     Note that this must come before the `start` or `resume` command,
     and must be specified again (if desired) upon resuming:
 
-        $ python3 supervised_train.py --gpu_ids 5,3,6 resume my_model
+        $ python3 train.py --gpu_ids 5,3,6 resume my_model
 
     The reason for this is that the model may resume training on different
     GPUs, or even on a different machine, than where it started its training.
