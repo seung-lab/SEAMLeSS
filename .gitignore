@@ -14,7 +14,6 @@ data/masks/*
 data/tf/*
 data/slices/*
 data/*
-src/train.py
 
 # C extensions
 *.so

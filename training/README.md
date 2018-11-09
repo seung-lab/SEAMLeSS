@@ -1,6 +1,12 @@
 # SEAMLeSS
 
-** This documentation is a work in progress. Please let me know if you have any questions/suggestions. **
+** This README is out of date and refers to an earlier version of the code. **
+
+The README will hopefully be updated soon, but in the mean time, some 
+documentation exists in the individual code files. For example, refer to 
+`train.py` for updated usage.
+
+-------------------------------------------------------------------------------
 
 Working repository for active development of the SEAMLeSS architecture for the purposes of aligning Basil. This codebase is 
 not intended to remain consistent with the 2018 NIPS submission "Siamese Encoding and Alignment by Multiscale Learning with 
