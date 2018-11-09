@@ -68,77 +68,14 @@ def main():
     # set available GPUs
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_ids
 
-    # create or load the model, optimizer, and parameters
-    if args.command == 'start':
-        if ModelArchive.model_exists(args.name):
-            raise ValueError('The model "{}" already exists.'
-                             .format(args.name))
-        if args.saved_model is not None:
-            # load a previous model and create a copy
-            if not ModelArchive.model_exists(args.saved_model):
-                raise ValueError('The model "{}" could not be found.'
-                                 .format(args.saved_model))
-            old = ModelArchive(args.saved_model, readonly=True)
-            archive = old.start_new(readonly=False, **vars(args))
-            # TODO: remove old model from memory
-        else:
-            archive = ModelArchive(readonly=False, **vars(args))
-        state_vars = archive.state_vars
-        state_vars['name'] = args.name
-        state_vars['height'] = args.height
-        state_vars['start_lr'] = args.lr
-        state_vars['lr'] = args.lr
-        state_vars['wd'] = args.wd
-        state_vars['gamma'] = args.gamma
-        state_vars['gamma_step'] = args.gamma_step
-        state_vars['epoch'] = 0
-        state_vars['iteration'] = None
-        state_vars['num_epochs'] = args.num_epochs
-        state_vars['epochs_per_mip'] = args.epochs_per_mip
-        state_vars['training_set_path'] = Path(args.training_set).expanduser()
-        state_vars['validation_set_path'] = (
-            Path(args.validation_set).expanduser() if args.validation_set
-            else None)
-        state_vars['lm'] = args.lm
-        state_vars['hm'] = args.hm
-        state_vars['supervised'] = args.supervised
-        state_vars['batch_size'] = args.batch_size
-        state_vars['log_time'] = args.log_time
-        state_vars['checkpoint_time'] = args.checkpoint_time
-        state_vars['vis_time'] = args.vis_time
-        state_vars['lambda1'] = args.lambda1
-        state_vars['penalty'] = args.penalty
-        state_vars['gpus'] = args.gpu_ids
-        log_titles = [
-            'Time Stamp',
-            'Epoch',
-            'Iteration',
-            'Training Loss',
-            'Validation Loss',
-        ]
-        archive.set_log_titles(log_titles)
-        archive.set_optimizer_params(learning_rate=args.lr,
-                                     weight_decay=args.wd)
-
-        # save initialized state to archive; create first checkpoint
-        archive.save()
-        archive.create_checkpoint(epoch=None, iteration=None)
-    else:  # args.command == 'resume'
-        if not ModelArchive.model_exists(args.name):
-            raise ValueError('The model "{}" could not be found.'
-                             .format(args.name))
-        archive = ModelArchive(args.name, readonly=False)
-        state_vars = archive.state_vars
-        state_vars['gpus'] = args.gpu_ids
-
-    # redirect output to the archive
-    sys.stdout = archive.out
-    sys.stderr = archive.err
+    # either load or create the model, optimizer, and parameters
+    archive = load_archive(args)
+    state_vars = archive.state_vars
 
     # optimize cuda processes
     cudnn.benchmark = True
 
-    # Data loading code
+    # set up training data
     train_transform = transforms.Compose([
         stack_dataset.ToFloatTensor(),
         stack_dataset.Normalize(),
@@ -155,6 +92,7 @@ def main():
         shuffle=(train_sampler is None), num_workers=args.num_workers,
         pin_memory=True, sampler=train_sampler)
 
+    # set up validation data if present
     if state_vars.validation_set_path:
         val_transform = transforms.Compose([
             stack_dataset.ToFloatTensor(),
@@ -199,14 +137,13 @@ def main():
         state_vars.epoch = epoch + 1
         state_vars.iteration = None
         archive.save()
-        log_values = [
+        archive.log([
             datetime.datetime.now(),
             epoch,
             len(train_loader),
             '',  # train_loss
             val_loss if val_loss is not None else '',
-        ]
-        archive.log(log_values, printout=False)
+        ])
         archive.create_checkpoint(epoch, iteration=None)
         epoch_time.update(time.time() - start_time)
         print('{0}\t'
@@ -231,11 +168,7 @@ def train(train_loader, archive, epoch):
     max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
-    if state_vars.iteration is None:
-        start_iter = 0
-    else:
-        start_iter = state_vars.iteration
-
+    start_iter = 0 if state_vars.iteration is None else state_vars.iteration
     for i, sample in retry_enumerate(train_loader, start_iter):
         if i >= len(train_loader):
             break
@@ -252,7 +185,7 @@ def train(train_loader, archive, epoch):
             loss = archive.loss(prediction=prediction, truth=truth, **masks)
         else:
             loss = archive.loss(src, tgt, prediction=prediction, **masks)
-        loss = loss.mean()
+        loss = loss.mean()  # average across a batch if present
 
         # compute gradient and do optimizer step
         archive.optimizer.zero_grad()
@@ -260,27 +193,26 @@ def train(train_loader, archive, epoch):
         archive.optimizer.step()
         loss = loss.item()  # get python value without the computation graph
         losses.update(loss)
-        state_vars.iteration = i + 1  # advance iteration to resume right
+        state_vars.iteration = i + 1  # advance iteration to resume correctly
         archive.save()
 
         # measure elapsed time
         batch_time.update(time.time() - start_time)
 
-        # logging and checkpointing
+        # debugging, logging, and checkpointing
         if state_vars.vis_time and i % state_vars.vis_time == 0:
             create_debug_outputs(archive, src, tgt, prediction, truth, masks)
         if (state_vars.checkpoint_time
                 and i % state_vars.checkpoint_time == 0):
             archive.create_checkpoint(epoch=epoch, iteration=i)
         if state_vars.log_time and i % state_vars.log_time == 0:
-            log_values = [
+            archive.log([
                datetime.datetime.now(),
                epoch,
                i,
                loss,
                '',
-            ]
-            archive.log(log_values, printout=False)
+            ])
             print('{0}\t'
                   'Epoch: {1} [{2}/{3}]\t'
                   'Loss {loss.val:.10f} ({loss.avg:.10f})\t'
@@ -303,8 +235,8 @@ def validate(val_loader, archive, epoch):
     archive.model.eval()
     submodule = select_submodule(archive.model, epoch)
 
-    start_time = time.time()
     # compute output and loss
+    start_time = time.time()
     for i, sample in retry_enumerate(val_loader):
         print('{0}\t'
               'Validation: [{1}/{2}]\t'
@@ -318,6 +250,8 @@ def validate(val_loader, archive, epoch):
     # measure elapsed time
     batch_time = (time.time() - start_time)
 
+    # debugging outputs and printing
+    create_debug_outputs(archive, src, tgt, prediction, truth, masks)
     print('{0}\t'
           'Validation: [{1}/{1}]\t'
           'Loss {loss.avg:.10f}\t\t\t'
@@ -421,7 +355,7 @@ def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
     try:
         debug_dir = archive.new_debug_directory()
         save_chunk(src[0:1, ...], str(debug_dir / 'src'))
-        save_chunk(src[0:1, ...], str(debug_dir / 'xsrc'))  # xtra copy
+        save_chunk(src[0:1, ...], str(debug_dir / 'xsrc'))  # extra copy of src
         save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt'))
         warped_src = gridsample_residual(
             src[0:1, ...],
@@ -440,8 +374,84 @@ def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
     except Exception as e:
         # Don't raise the exception, since visualization issues
         # should not stop training. Just warn the user and go on.
-        print('Visualization failed: {}: {}'
-              .format(e.__class__.__name__, e))
+        print('Visualization failed: {}: {}'.format(e.__class__.__name__, e))
+
+
+def load_archive(args):
+    """
+    Load or create the model, optimizer, and parameters as a `ModelArchive`.
+
+    If the command is `start`, this attempts to create a new `ModelArchive`
+    with name `args.name`, if possible (that is, without overwriting an
+    existing one).
+    If the command is `resume`, this attempts to load it from disk.
+    """
+    if args.command == 'start':
+        if ModelArchive.model_exists(args.name):
+            raise ValueError('The model "{}" already exists.'
+                             .format(args.name))
+        if args.saved_model is not None:
+            # load a previous model and create a copy
+            if not ModelArchive.model_exists(args.saved_model):
+                raise ValueError('The model "{}" could not be found.'
+                                 .format(args.saved_model))
+            old = ModelArchive(args.saved_model, readonly=True)
+            archive = old.start_new(readonly=False, **vars(args))
+            # TODO: explicitly remove old model from memory
+        else:
+            archive = ModelArchive(readonly=False, **vars(args))
+        archive.state_vars.update({
+            'name': args.name,
+            'height': args.height,
+            'start_lr': args.lr,
+            'lr': args.lr,
+            'wd': args.wd,
+            'gamma': args.gamma,
+            'gamma_step': args.gamma_step,
+            'epoch': 0,
+            'iteration': None,
+            'num_epochs': args.num_epochs,
+            'epochs_per_mip': args.epochs_per_mip,
+            'training_set_path': Path(args.training_set).expanduser(),
+            'validation_set_path':
+                Path(args.validation_set).expanduser() if args.validation_set
+                else None,
+            'lm': args.lm,
+            'hm': args.hm,
+            'supervised': args.supervised,
+            'batch_size': args.batch_size,
+            'log_time': args.log_time,
+            'checkpoint_time': args.checkpoint_time,
+            'vis_time': args.vis_time,
+            'lambda1': args.lambda1,
+            'penalty': args.penalty,
+            'gpus': args.gpu_ids,
+        })
+        archive.set_log_titles([
+            'Time Stamp',
+            'Epoch',
+            'Iteration',
+            'Training Loss',
+            'Validation Loss',
+        ])
+        archive.set_optimizer_params(learning_rate=args.lr,
+                                     weight_decay=args.wd)
+
+        # save initialized state to archive; create first checkpoint
+        archive.save()
+        archive.create_checkpoint(epoch=None, iteration=None)
+    else:  # args.command == 'resume'
+        if not ModelArchive.model_exists(args.name):
+            raise ValueError('The model "{}" could not be found.'
+                             .format(args.name))
+        archive = ModelArchive(args.name, readonly=False)
+        archive.state_vars['gpus'] = args.gpu_ids
+
+    # redirect output through the archive
+    sys.stdout = archive.out
+    sys.stderr = archive.err
+
+    return archive
 
 
 if __name__ == '__main__':

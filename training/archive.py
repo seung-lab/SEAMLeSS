@@ -465,8 +465,11 @@ class ModelArchive(object):
         """
         if self.readonly:
             raise ReadOnlyError(self._name)
-        dirname = 'e{}_t{}'.format(self._state_vars.epoch,
-                                   self._state_vars.iteration)
+        if self._state_vars.iteration is not None:
+            dirname = 'e{}_t{}'.format(self._state_vars.epoch,
+                                       self._state_vars.iteration)
+        else:
+            dirname = 'e{}_val'.format(self._state_vars.epoch)
         debug_directory = self.debug_outputs / dirname
         if debug_directory.is_dir():
             raise FileExistsError('The debug directory {} already exists.'
@@ -482,13 +485,17 @@ class ModelArchive(object):
         """
         self.log(log_titles, printout=False)
 
-    def log(self, values, printout=True):
+    def log(self, values, printout=False):
         """
         Add a new log entry to `loss.csv`.
 
         A new row is added to the spreadsheet and populated with the
         contents of `values`. If `values` is a list, each element is
         written in its own column.
+
+        Note that this is unbuffered, so the values will be written
+        immediately, and even without a call to `save()`.
+
         Warning: If the string verion of any value contains a comma,
         this will separate that value over two columns.
         """
