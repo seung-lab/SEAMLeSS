@@ -81,17 +81,17 @@ def _parse_args(args=None):
         '--epochs_per_mip', default=4, type=int, metavar='N',
         help='number of epochs to run before switching mip levels',
     )
-    default_low, default_high = 2, 9
-    param_group.add_argument(
-        '--lm', '--low_mip', metavar='L',
-        help='mip of lowest aligner to train', type=int,
-        default=default_low,
-    ).completer = (lambda **kwargs: str(default_low))
-    param_group.add_argument(
-        '--hm', '--high_mip', metavar='H',
-        help='mip of highest aligner to train', type=int,
-        default=default_high,
-    ).completer = (lambda **kwargs: str(default_high))
+    # default_low, default_high = 2, 9
+    # param_group.add_argument(
+    #     '--lm', '--low_mip', metavar='L',
+    #     help='mip of lowest aligner to train', type=int,
+    #     default=default_low,
+    # ).completer = (lambda **kwargs: str(default_low))
+    # param_group.add_argument(
+    #     '--hm', '--high_mip', metavar='H',
+    #     help='mip of highest aligner to train', type=int,
+    #     default=default_high,
+    # ).completer = (lambda **kwargs: str(default_high))
     # param_group.add_argument(
     #     '--momentum', default=0.9, type=float, metavar='M',
     #     help='momentum')
