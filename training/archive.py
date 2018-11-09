@@ -1,42 +1,3 @@
-"""Provides abstractions for saving and restoring training states
-
-A `ModelArchive` is an abstaction for an underlying filesystem structure
-that saves all the relevant information about a trained model.
-
-It records and archives
-    - the model weights
-    - the model architecture
-    - the state of the optimizer
-    - the model's training history
-    - the training parameters used
-    - the state of the pseudorandom generators used
-    - the loss curves
-    - debugging outputs
-
-The archive is intended to be explicit enough that
-    (a) the training results can be reproduced if desired
-    (b) if training is stopped or interrupted at any point, the
-        state can be read back from it and training can continue
-        almost as if it was never interrupted
-
-Usage:
-    Create a new model archive and save the current training state:
-    >>> mymodel = ModelArchive('mymodel_v01', readonly=False)
-    (some training code ...)
-    >>> mymodel.log(loss)
-    >>> mymodel.save()  # save the updated state to disk
-
-    Load an existing trained model and run it on data:
-    >>> existing_archive = ModelArchive('existing_archive', readonly=True)
-    >>> net = existing_archive.model
-    >>> output = net(data)
-
-    Create a new model archive from an existing one:
-    >>> old_model = ModelArchive('old_model')
-    >>> new_model = old_model.start_new('new_model_v01')
-    (some training code ...)
-    >>> new_model.save()  # save the updated state of the new model to disk
-"""
 import sys
 import warnings
 import subprocess
@@ -55,14 +16,52 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
+# Key directories: `models_location` is where all the archives are stored
 git_root = Path(subprocess.check_output('git rev-parse --show-toplevel'
                                         .split()).strip().decode("utf-8"))
-models_location = git_root / Path('models/')
+models_location = git_root / 'models/'
 
 
 class ModelArchive(object):
     """
     Abstraction for the maintainence of trained model archives
+
+    A `ModelArchive` is an abstaction for an underlying filesystem structure
+    that saves all the relevant information about a trained model.
+
+    It records and archives
+        - the model weights
+        - the model architecture
+        - the state of the optimizer
+        - the model's training history
+        - the training parameters used
+        - the state of the pseudorandom generators used
+        - the loss curves
+        - debugging outputs
+
+    The archive is intended to be explicit enough that
+        (a) the training results can be reproduced if desired
+        (b) if training is stopped or interrupted at any point, the
+            state can be read back from disk and training can continue
+            almost as if it was never interrupted
+
+    Usage:
+        Create a new model archive and save the current training state:
+        >>> mymodel = ModelArchive('mymodel_v01', readonly=False)
+        (some training code ...)
+        >>> mymodel.log(loss)
+        >>> mymodel.save()  # save the updated state to disk
+
+        Load an existing trained model and run it on data:
+        >>> existing_archive = ModelArchive('existing_archive', readonly=True)
+        >>> net = existing_archive.model
+        >>> output = net(data)
+
+        Create a new model archive from an existing one:
+        >>> old_model = ModelArchive('old_model')
+        >>> new_model = old_model.start_new('new_model_v01')
+        (some training code ...)
+        >>> new_model.save()  # save the updated state of the new model to disk
     """
 
     @classmethod
@@ -101,29 +100,25 @@ class ModelArchive(object):
             'optimizer': self.directory / 'optimizer.pt',
             # the state of the pseudorandom number gerenrators
             'prand': self.directory / 'prand.pt',
-            # other paths are added below
+            # other paths
+            'loss': self.directory / 'loss.csv',
+            'command': self.directory / 'command.txt',
+            'plan': self.directory / 'plan.txt',
+            'history': self.directory / 'history.txt',
+            'progress': self.directory / 'progress.log',
+            'seed': self.directory / 'seed.txt',
+            'architecture': self.directory / 'architecture.py',
+            'commit': self.directory / 'commit.diff',
+            'state_vars': self.directory / 'state_vars.json',
+            'plot': self.directory / 'plot.png',
         }
-        for filename in [
-            'loss.csv',
-            'command.txt',
-            'plan.txt',
-            'history.txt',  # nets it was fine_tuned from
-            'progress.log',
-            'seed.txt',
-            'architecture.py',
-            'commit.diff',
-            'state_vars.json',
-            'plot.png',
-        ]:
-            key = filename.split('.')[0]
-            self.paths[key] = self.directory / filename
-
         self._architecture = None
         self._model = None
         self._optimizer = None
         self._state_vars = None
         self._loss = None
         self._val_loss = None
+        self._current_debug_directory = None
 
         if ModelArchive.model_exists(name):
             self._load(*args, **kwargs)
@@ -191,7 +186,7 @@ class ModelArchive(object):
             'loss.csv',
             'command.txt',
             'plan.txt',
-            'history.txt',  # nets it was fine_tuned from
+            'history.txt',
             'progress.log',
             'seed.txt',
             'commit.diff',
@@ -290,7 +285,7 @@ class ModelArchive(object):
     @property
     def model(self):
         """
-        A live version of the model's architecture.
+        A live version of the model.
         """
         return self._model
 
@@ -318,7 +313,7 @@ class ModelArchive(object):
     @property
     def state_vars(self):
         """
-        A dict of various state variables
+        A dict of various training state variables
 
         This dict should be used to store any additional training information
         that is needed to restore the model's training state when resuming
@@ -413,18 +408,9 @@ class ModelArchive(object):
             raise ReadOnlyError(self._name)
         if self._model:
             self._model.module.save(self.paths['weights'])
-            # also write to a json for debugging
-            # with self.paths['weights'].with_suffix('.json').open('w') as f:
-            #     state_dict = [(name, val.cpu().numpy().tolist())
-            #                   for (name, val)
-            #                   in self._model.state_dict().items()]
-            #     f.write(json.dumps(state_dict))
         if self._optimizer:
             with self.paths['optimizer'].open('wb') as f:
                 torch.save(self._optimizer.state_dict(), f)
-            # also write to a json for debugging
-            # with self.paths['optimizer'].with_suffix('.json').open('w') as f:
-            #     f.write(json.dumps(self._optimizer.state_dict()))
         with self.paths['prand'].open('wb') as f:
             torch.save(get_random_generator_state(), f)
         if self._state_vars:
@@ -466,16 +452,17 @@ class ModelArchive(object):
         if self.readonly:
             raise ReadOnlyError(self._name)
         if self._state_vars.iteration is not None:
-            dirname = 'e{}_t{}'.format(self._state_vars.epoch,
-                                       self._state_vars.iteration)
+            dirname = 'e{}_t{}/'.format(self._state_vars.epoch,
+                                        self._state_vars.iteration)
         else:
-            dirname = 'e{}_val'.format(self._state_vars.epoch)
+            dirname = 'e{}_val/'.format(self._state_vars.epoch)
         debug_directory = self.debug_outputs / dirname
         if debug_directory.is_dir():
             raise FileExistsError('The debug directory {} already exists.'
                                   .format(debug_directory))
         debug_directory.mkdir()
-        return debug_directory
+        self._current_debug_directory = debug_directory
+        return self._current_debug_directory
 
     def set_log_titles(self, log_titles):
         """
@@ -555,6 +542,7 @@ class ModelArchive(object):
         data.plot(title='Training loss for {}'.format(self._name))
         with self.paths['plot'].open('wb') as f:
             plt.savefig(f)
+        cp(self.paths['plot'], self._current_debug_directory)
 
 
 def set_seed(seed):
@@ -569,9 +557,7 @@ def set_seed(seed):
         torch.backends.cudnn.deterministic = True
         warnings.warn('You have chosen to seed training. '
                       'This will turn on the CUDNN deterministic setting, '
-                      'which can slow down your training considerably! '
-                      'You may see unexpected behavior when restarting '
-                      'from checkpoints.')
+                      'which may slow down training.')
 
 
 def get_random_generator_state():
