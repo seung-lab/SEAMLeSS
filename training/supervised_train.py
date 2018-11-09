@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # PYTHON_ARGCOMPLETE_OK
-"""Train a network.
+"""Train a multilayer aligner network.
 
 This is the main module which is invoked to train a network.
 
 Running:
     To begin training, run
 
-        $ python3 supervised_train.py start MODEL_NAME [...]
+        $ python3 supervised_train.py start MODEL_NAME --training_set SET [...]
 
     or equivalently
 
-        $ ./supervised_train.py start MODEL_NAME [...]
+        $ ./supervised_train.py start MODEL_NAME --training_set SET [...]
 
     To get help with the command line options, use
 
@@ -23,14 +23,41 @@ Resuming:
     killed by accident or circumstance and you would like to continue training.
     Before doing this, check to make sure the run is actually in fact dead,
     since attempting to resume a live run could have undefined behavior.
-    To resume training run
+    To resume training run the following with no additional command line
+    arguments:
 
         $ python3 supervised_train.py resume MODEL_NAME
 
-    where `MODEL_NAME` is the name of the previously stopped training run.
+    and where `MODEL_NAME` is the name of the previously stopped training run.
+    The training parameters and training state will be loaded from the saved
+    archive, and the model will continue to train from where it was stopped.
 
 Example:
-        $ python3 supervised_train.py start improved_net --lm 2 --hm 9
+        $ python3 supervised_train.py start my_model --training_set \
+            training_data.h5
+
+Specifying the GPUs:
+
+    If not specified explicitly, the first avalailable unused GPU will be
+    selected (or the least used GPU if all are in use).
+    If you would like to use a specific GPU, or multiple GPUs, use the
+    `--gpu_ids` argument with a comma-separated list of IDs:
+
+        $ python3 supervised_train.py --gpu_ids 4,1,2 start my_model \
+            --training_set training_data.h5
+
+    The order maters insomuch as the first ID in the list will be the
+    default GPU, and therefore will generally experience higher usage
+    than the others.
+    So the above command will use GPUs 1, 2, and 4, with 4 as the default.
+
+    Note that this must come before the `start` or `resume` command,
+    and must be specified again (if desired) upon resuming:
+
+        $ python3 supervised_train.py --gpu_ids 5,3,6 resume my_model
+
+    The reason for this is that the model may resume training on different
+    GPUs, or even on a different machine, than where it started its training.
 
 Editor's note:
 
