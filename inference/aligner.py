@@ -41,16 +41,17 @@ class AlignerDir():
     self.vec_chunk_sizes   = []
     self.vec_voxel_offsets = []
     self.vec_total_sizes   = []
-    self.vols = {}
-    self.in_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False}
-    self.out_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False, 
+    self.read = {}
+    self.write = {}
+    self.read_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False}
+    self.write_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False, 
                   'autocrop': True, 'non_aligned_writes': False}
-    self.vols['src_img'] = CV(src_path, **self.in_kwargs) 
-    self.vols['tgt_img'] = CV(tgt_path, **self.in_kwargs) 
+    self.read['src_img'] = CV(src_path, **self.read_kwargs) 
+    self.read['tgt_img'] = CV(tgt_path, **self.read_kwargs) 
     if src_mask_path:
-      self.vols['src_mask'] = CV(src_mask_path, **self.in_kwargs) 
+      self.read['src_mask'] = CV(src_mask_path, **self.read_kwargs) 
     if tgt_mask_path:
-      self.vols['tgt_mask'] = CV(tgt_mask_path, **self.in_kwargs) 
+      self.read['tgt_mask'] = CV(tgt_mask_path, **self.read_kwargs) 
     self.src_mask_mip = src_mask_mip
     self.tgt_mask_mip = tgt_mask_mip
     self.src_mask_val = src_mask_val
@@ -60,17 +61,22 @@ class AlignerDir():
     self.provenance['src_path'] = src_path
     self.provenance['tgt_path'] = tgt_path
     self.ignore_field_init = False
-    
+  
+  def for_read(self, k):
+    return self.read[k]
+
+  def for_write(self, k):
+    return self.write[k]
   
   def __getitem__(self, k):
-    return self.vols[k]
+    return self.read[k]
 
   def __contains__(self, k):
-    return k in self.vols
+    return k in self.read
 
   def create(self, max_offset, write_intermediaries):
     provenance = self.provenance
-    src_cv = self.vols['src_img'][0]
+    src_cv = self.read['src_img'][0]
     src_info = src_cv.info
     m = len(src_info['scales'])
     each_factor = Vec(2,2,1)
@@ -122,8 +128,10 @@ class AlignerDir():
       self.dst_voxel_offsets.append(scales[i]["voxel_offset"])
 
     for k in ['dst_img', 'tmp_img']:
-      self.vols[k] = CV(self.paths[k], info=img_info, provenance=provenance, 
-                                         mkdir=True, **self.out_kwargs)
+      self.read[k] = CV(self.paths[k], info=img_info, provenance=provenance, 
+                                         mkdir=True, **self.read_kwargs)
+      self.write[k] = CV(self.paths[k], info=img_info, provenance=provenance, 
+                                         mkdir=False, **self.write_kwargs)
 
     ##########################################################
     #### Create vec info file
@@ -144,13 +152,16 @@ class AlignerDir():
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
 
-    self.vols['field'] = CV(self.paths['field'], info=vec_info, 
+    self.read['field'] = CV(self.paths['field'], info=vec_info, 
                               provenance=provenance, mkdir=not self.ignore_field_init,
-                              **self.out_kwargs)
+                              **self.read_kwargs)
+    self.write['field'] = CV(self.paths['field'], info=vec_info, 
+                              provenance=provenance, mkdir=False,
+                              **self.write_kwargs)
     if write_intermediaries:
       for k in ['res', 'cumres', 'resup', 'cumresup']:
-        self.vols[k] = CV(self.paths[k], info=vec_info, provenance=provenance,
-                              mkdir=True, **self.out_kwargs)
+        self.write[k] = CV(self.paths[k], info=vec_info, provenance=provenance,
+                              mkdir=True, **self.write_kwargs)
 
       # if i in enc_dict.keys():
       #   enc_info = deepcopy(vec_info)
@@ -162,8 +173,8 @@ class AlignerDir():
       wts_info['num_channels'] = 3
       # enc_info['data_type'] = 'uint8'
       for k in ['diffs', 'diff_weights', 'weights']:
-        self.vols[k] = CV(self.paths[k], info=vec_info, provenance=provenance, 
-                         mkdir=True, **self.out_kwargs)
+        self.write[k] = CV(self.paths[k], info=vec_info, provenance=provenance, 
+                         mkdir=True, **self.write_kwargs)
 
   def get_paths(self, root):
     paths = {}
@@ -213,22 +224,20 @@ class Aligner:
     self.disable_cuda = disable_cuda
     self.device = torch.device('cpu') if disable_cuda else torch.device('cuda')
 
-    self.offset_vols = {}
+    self.vols = {}
     self.tgt_radius = tgt_radius+1
     self.tgt_range = range(1, self.tgt_radius)
     for i in range(self.tgt_radius): 
       path = '{0}/z_{1}'.format(dst_path, abs(i))
       if i == 0:
         path = dst_path
-      self.offset_vols[i] = AlignerDir(src_path, tgt_path, 
+      self.vols[i] = AlignerDir(src_path, tgt_path, 
                                        src_mask_path, tgt_mask_path, 
                                        path, src_mask_mip, 
                                        tgt_mask_mip, src_mask_val,
                                        tgt_mask_val, mip_range)
-      self.offset_vols[i].create(max_displacement, self.write_intermediaries)
+      self.vols[i].create(max_displacement, self.write_intermediaries)
     # set z_offset to 0 and self.vols to root
-    self.z = 0
-    self.set_z_offset(0)
 
     self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, 
                        dim=high_mip_chunk[0]+crop*2, skip=skip, 
@@ -242,14 +251,6 @@ class Aligner:
 
     self.img_cache = {}
     self.img_cache_lock = Lock()
-
-  def set_z(self, z):
-    self.z = z
-
-  def set_z_offset(self, z_offset):
-    print('Set z_offset to {0}'.format(z_offset))
-    self.z_offset = z_offset
-    self.vols = self.offset_vols[z_offset]
 
   def Gaussian_filter(self, kernel_size, sigma):
     x_cord = torch.arange(kernel_size)
@@ -272,9 +273,6 @@ class Aligner:
 
   def set_chunk_size(self, chunk_size):
     self.high_mip_chunk = chunk_size
-
-  def check_all_params(self):
-    return True
 
   def get_upchunked_bbox(self, bbox, ng_chunk_size, offset, mip):
     raw_x_range = bbox.x_range(mip=mip)
@@ -310,12 +308,10 @@ class Aligner:
                          mip=0, max_mip=self.max_mip) #self.process_high_mip)
     return result
 
-  def get_composed_field(self, bbox, mip, relative=False, to_tensor=True):
-    orig_z_offset = self.z_offset
-    field = self.get_field('field', bbox, mip, relative=True, to_tensor=to_tensor)
-    self.set_z_offset(0)
-    field_sf = self.get_field('field', bbox, mip, relative=True, to_tensor=to_tensor)
-    self.set_z_offset(orig_z_offset)
+  def get_composed_field(self, z, z_offset, bbox, mip, relative=False, to_tensor=True):
+    print('get_composed_field for z_offset={0} & z={1}'.format(z_offset, z))
+    field = self.get_field('field', z, z_offset, bbox, mip, relative=True, to_tensor=to_tensor)
+    field_sf = self.get_field('field', z-z_offset, 0, bbox, mip, relative=True, to_tensor=to_tensor)
     field_sf = self.blur_field(field_sf)
     field = field.permute(0,3,1,2)
     composed_field = field_sf + gridsample_residual(
@@ -327,6 +323,7 @@ class Aligner:
   def blur_field(self, field, std=128):
     """Apply Gaussian with std to a vector field
     """
+    print('blur_field')
     regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field[...,0]), std)).unsqueeze(-1)
     regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field[...,1]), std)).unsqueeze(-1)
     #regular_part = self.gauss_filter(field.permute(3,0,1,2))
@@ -336,11 +333,11 @@ class Aligner:
     field = torch.cat([regular_part_x,regular_part_y],-1)
     return field.to(device=self.device)
 
-  def get_field(self, cv_key, bbox, mip, relative=False, to_tensor=True, use_root=False):
-    z = self.z
+  def get_field(self, cv_key, z, z_offset, bbox, mip, relative=False, to_tensor=True):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-    cv = self.vols[cv_key][mip]
+    cv = self.vols[z_offset].for_read(cv_key)[mip]
+    print('get_field from {0}, MIP{1} at z_offset={2} & z={3}'.format(cv.path, mip, z_offset, z))
     field = cv[x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     res = np.expand_dims(np.squeeze(field), axis=0)
     if relative:
@@ -351,20 +348,20 @@ class Aligner:
     else:
       return res
 
-  def save_vector_patch(self, cv_key, field, bbox, mip):
-    z = self.z
+  def save_vector_patch(self, cv_key, z, z_offset, field, bbox, mip):
     field = field.data.cpu().numpy() 
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     field = np.squeeze(field)[:, :, np.newaxis, :]
-    cv = self.vols[cv_key][mip]
+    cv = self.vols[z_offset].for_write(cv_key)[mip]
+    print('save_vector_patch from {0}, MIP{1} at z_offset={2} & z={3}'.format(cv.path, mip, z_offset, z))
     cv[x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
 
-  def save_residual_patch(self, cv_key, res, crop, bbox, mip):
+  def save_residual_patch(self, cv_key, z, z_offset, res, crop, bbox, mip):
     print ("Saving residual patch {} at MIP {}".format(bbox.__str__(mip=0), mip))
     v = res * (res.shape[-2] / 2) * (2**mip)
     v = v[:,crop:-crop, crop:-crop,:]
-    self.save_vector_patch(cv_key, v, bbox, mip)
+    self.save_vector_patch(cv_key, z, z_offset, v, bbox, mip)
 
   def break_into_chunks(self, bbox, ng_chunk_size, offset, mip, render=False):
     chunks = []
@@ -420,95 +417,85 @@ class Aligner:
     """
     fields = []
     for z_offset in self.tgt_range: 
-      self.set_z_offset(z_offset)
-      fields.append(self.get_composed_field(bbox, mip, relative=False))
+      fields.append(self.get_composed_field(z, z_offset, bbox, mip, relative=False))
     field = vector_vote(fields, T=T)
-    self.set_z_offset(0)
-    self.save_vector_patch('field', field, bbox, mip)
+    self.save_vector_patch('field', z, 0, field, bbox, mip)
 
     if self.write_intermediaries:
       self.save_image_patch('diffs', diffs.cpu().numpy(), bbox, mip, to_uint8=False)
       self.save_image_patch('diff_weights', diffs.cpu().numpy(), bbox, mip, to_uint8=False)
       self.save_image_patch('weights', diffs.cpu().numpy(), bbox, mip, to_uint8=False)
 
-  def compute_residual_patch(self, out_patch_bbox, mip, inverse=False):
-    source_z = self.z
-    target_z = self.z - self.z_offset
-    if inverse:
-      source_z, target_z = target_z, source_z
+  def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
+    z_offset = source_z - target_z
     print ("Computing residual for region {}.".format(out_patch_bbox.__str__(mip=0)), flush=True)
     precrop_patch_bbox = deepcopy(out_patch_bbox)
     precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
 
     if mip == self.process_high_mip:
-      src_patch = self.get_image('src_img', precrop_patch_bbox, mip,
+      src_patch = self.get_image('src_img', source_z, z_offset, precrop_patch_bbox, mip,
                                   adjust_contrast=True, to_tensor=True)
     else:
-      src_patch = self.get_image('tmp_img', precrop_patch_bbox, mip,
+      src_patch = self.get_image('tmp_img', source_z, z_offset, precrop_patch_bbox, mip,
                                   adjust_contrast=True, to_tensor=True)
-
-    tgt_patch = self.get_image('tgt_img', precrop_patch_bbox, mip,
+    tgt_patch = self.get_image('tgt_img', target_z, z_offset, precrop_patch_bbox, mip,
                                 adjust_contrast=True, to_tensor=True) 
 
-    if 'src_mask' in self.vols:
-      src_mask = self.get_mask('src_mask', precrop_patch_bbox, 
-                           src_mip=self.vols.src_mask_mip,
-                           dst_mip=mip, valid_val=self.vols.src_mask_val)
+    if 'src_mask' in self.vols[z_offset]:
+      src_mask = self.get_mask('src_mask', source_z, z_offset, precrop_patch_bbox, 
+                           src_mip=self.vols[z_offset].src_mask_mip,
+                           dst_mip=mip, valid_val=self.vols[z_offset].src_mask_val)
       src_patch = src_patch.masked_fill_(src_mask, 0)
-    if 'tgt_mask' in self.vols:
-      tgt_mask = self.get_mask('tgt_mask', precrop_patch_bbox, 
-                           src_mip=self.vols.tgt_mask_mip,
-                           dst_mip=mip, valid_val=self.vols.tgt_mask_val)
+    if 'tgt_mask' in self.vols[z_offset]:
+      tgt_mask = self.get_mask('tgt_mask', target_z, z_offset, precrop_patch_bbox, 
+                           src_mip=self.vols[z_offset].tgt_mask_mip,
+                           dst_mip=mip, valid_val=self.vols[z_offset].tgt_mask_val)
       tgt_patch = tgt_patch.masked_fill_(tgt_mask, 0)
-
     X = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount, 
                                                  old_vectors=self.old_vectors)
     field, residuals, encodings, cum_residuals = X
 
     # save the final vector field for warping
-    self.save_vector_patch('field', field, out_patch_bbox, mip)
+    self.save_vector_patch('field', source_z, z_offset, field, out_patch_bbox, mip)
 
     if self.write_intermediaries:
       mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
       for res_mip, res, cumres in zip(mip_range, residuals[1:], cum_residuals[1:]):
           crop = self.crop_amount // 2**(res_mip - self.process_low_mip)   
-          self.save_residual_patch('res', res, crop, 
-                                   source_z, out_patch_bbox, res_mip)
-          self.save_residual_patch('cumres', cumres, crop, 
-                                   source_z, out_patch_bbox, res_mip)
+          self.save_residual_patch('res', source_z, z_offset, res, crop, out_patch_bbox, res_mip)
+          self.save_residual_patch('cumres', source_z, z_offset, cumres, crop, out_patch_bbox, res_mip)
           if self.upsample_residuals:
             crop = self.crop_amount   
             res = self.scale_residuals(res, res_mip, self.process_low_mip)
-            self.save_residual_patch('resup', res, crop, source_z, out_patch_bbox, 
+            self.save_residual_patch('resup', source_z, z_offset, res, crop, out_patch_bbox, 
                                      self.process_low_mip)
             cumres = self.scale_residuals(cumres, res_mip, self.process_low_mip)
-            self.save_residual_patch('cumresup', cumres, crop, 
-                                     source_z, out_patch_bbox, 
-                                     self.process_low_mip)
+            self.save_residual_patch('cumresup', source_z, z_offset, cumres, crop, 
+                                     out_patch_bbox, self.process_low_mip)
 
       # print('encoding size: {0}'.format(len(encodings)))
-      for k, enc in enumerate(encodings):
-          mip = self.process_low_mip + k
-          # print('encoding shape @ idx={0}, mip={1}: {2}'.format(k, mip, enc.shape))
-          crop = self.crop_amount // 2**k
-          enc = enc[:,:,crop:-crop, crop:-crop].permute(2,3,0,1)
-          enc = enc.data.cpu().numpy()
-          
-          def write_encodings(j_slice, z):
-            x_range = out_patch_bbox.x_range(mip=mip)
-            y_range = out_patch_bbox.y_range(mip=mip)
-            patch = enc[:, :, :, j_slice]
-            # uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
-            cv(self.paths['enc'][mip], 
-                mip=mip, bounded=False, 
-                fill_missing=True, autocrop=True, 
-                progress=False, provenance={})[x_range[0]:x_range[1],
-                                y_range[0]:y_range[1], z, j_slice] = patch 
+      # for k, enc in enumerate(encodings):
+      #     mip = self.process_low_mip + k
+      #     # print('encoding shape @ idx={0}, mip={1}: {2}'.format(k, mip, enc.shape))
+      #     crop = self.crop_amount // 2**k
+      #     enc = enc[:,:,crop:-crop, crop:-crop].permute(2,3,0,1)
+      #     enc = enc.data.cpu().numpy()
+      #     
+      #     def write_encodings(j_slice, z):
+      #       x_range = out_patch_bbox.x_range(mip=mip)
+      #       y_range = out_patch_bbox.y_range(mip=mip)
+      #       patch = enc[:, :, :, j_slice]
+      #       # uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
+      #       cv(self.paths['enc'][mip], 
+      #           mip=mip, bounded=False, 
+      #           fill_missing=True, autocrop=True, 
+      #           progress=False, provenance={})[x_range[0]:x_range[1],
+      #                           y_range[0]:y_range[1], z, j_slice] = patch 
   
-          # src_image encodings
-          write_encodings(slice(0, enc.shape[-1] // 2), source_z)
-          # dst_image_encodings
-          write_encodings(slice(enc.shape[-1] // 2, enc.shape[-1]), target_z)
+      #     # src_image encodings
+      #     write_encodings(slice(0, enc.shape[-1] // 2), source_z)
+      #     # dst_image_encodings
+      #     write_encodings(slice(enc.shape[-1] // 2, enc.shape[-1]), target_z)
 
   def rel_to_abs_residual(self, field, mip):    
       return field * (field.shape[-2] / 2) * (2**mip)
@@ -557,25 +544,25 @@ class Aligner:
     return cid
 
   ## Patch manipulation
-  def warp_patch(self, bbox, mip, start_z=-1):
-    z = self.z
+  def warp_patch(self, z, z_offset, bbox, mip):
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
     
-    field = self.get_field('field', influence_bbox, mip, relative=True, to_tensor=True)
+    field = self.get_field('field', z, z_offset, influence_bbox, mip, 
+                           relative=True, to_tensor=True)
     # print('field0.shape: {0}'.format(field.shape))
-    field = self.scale_residuals(field, mip+1, mip)
+    # field = self.scale_residuals(field, mip+1, mip)
     # print('field1.shape: {0}'.format(field.shape))
     mip_disp = int(self.max_displacement / 2**mip)
     # print('mip_disp: {0}'.format(mip_disp))
-    image = self.get_image('src_img', influence_bbox, mip, 
+    image = self.get_image('src_img', z, z_offset, influence_bbox, mip, 
                            adjust_contrast=False, to_tensor=True)
     # print('warp_image image0.shape: {0}'.format(image.shape))
-    if 'src_mask' in self.vols:
-      mask = self.get_mask('src_mask', influence_bbox, 
-                           src_mip=self.vols.src_mask_mip,
-                           dst_mip=mip, valid_val=self.vols.src_mask_val)
+    if 'src_mask' in self.vols[z_offset]:
+      mask = self.get_mask('src_mask', z, z_offset, influence_bbox, 
+                           src_mip=self.vols[z_offset].src_mask_mip,
+                           dst_mip=mip, valid_val=self.vols[z_offset].src_mask_val)
       image = image.masked_fill_(mask, 0)
 
     # print('warp_patch shape {0}'.format(image.shape))
@@ -592,21 +579,19 @@ class Aligner:
     # print('warp_image image3.shape: {0}'.format(image.shape))
     return image
 
-  def downsample_patch(self, cv_key, bbox, mip):
-    data = self.get_image(cv_key, bbox, mip - 1, 
-                              adjust_contrast=False, to_tensor=True)
+  def downsample_patch(self, cv_key, z, z_offset, bbox, mip):
+    data = self.get_image(cv_key, z, z_offset, bbox, mip, adjust_contrast=False, to_tensor=True)
     data = interpolate(data, scale_factor=0.5, mode='bilinear')
     return data.cpu().numpy()
 
   ## Data saving
-  def save_image_patch(self, cv_key, float_patch, bbox, mip, to_uint8=True):
-    z = self.z - self.z_offset
+  def save_image_patch(self, cv_key, z, z_offset, float_patch, bbox, mip, to_uint8=True):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = np.transpose(float_patch, (3,2,1,0))
     if to_uint8:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
-    cv = self.vols[cv_key][mip]
+    cv = self.vols[z_offset].for_write(cv_key)[mip]
     cv[x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
 
   def scale_residuals(self, res, src_mip, dst_mip):
@@ -665,17 +650,17 @@ class Aligner:
 #     with self.img_cache_lock:
 #       self.img_cache[(path, bbox, mip)] = data
 
-  def get_mask(self, cv_key, bbox, src_mip, dst_mip, valid_val, to_tensor=True):
-    data = self.get_data(cv_key, bbox, src_mip=src_mip, dst_mip=dst_mip, 
+  def get_mask(self, cv_key, z, z_offset, bbox, src_mip, dst_mip, valid_val, to_tensor=True):
+    data = self.get_data(cv_key, z, z_offset, bbox, src_mip=src_mip, dst_mip=dst_mip, 
                              to_float=False, adjust_contrast=False, 
                              to_tensor=to_tensor)
     return data == valid_val
 
-  def get_image(self, cv_key, bbox, mip, adjust_contrast=False, to_tensor=True):
-    return self.get_data(cv_key, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
+  def get_image(self, cv_key, z, z_offset, bbox, mip, adjust_contrast=False, to_tensor=True):
+    return self.get_data(cv_key, z, z_offset, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
                              adjust_contrast=adjust_contrast, to_tensor=to_tensor)
 
-  def get_data(self, cv_key, bbox, src_mip, dst_mip, 
+  def get_data(self, cv_key, z, z_offset, bbox, src_mip, dst_mip, 
                      to_float=True, adjust_contrast=False, to_tensor=True):
     """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
     
@@ -688,8 +673,7 @@ class Aligner:
        adjust_contrast: output will be normalized
        to_tensor: output will be torch.tensor
     """
-    z = self.z
-    cv = self.vols[cv_key][src_mip]
+    cv = self.vols[z_offset].for_read(cv_key)[src_mip]
     x_range = bbox.x_range(mip=src_mip)
     y_range = bbox.y_range(mip=src_mip)
     data = cv[x_range[0]:x_range[1], y_range[0]:y_range[1], z] 
@@ -716,27 +700,26 @@ class Aligner:
     return data
 
   ## High level services
-  def copy_section(self, bbox, mip):
-    z = self.z
+  def copy_section(self, z, z_offset, bbox, mip):
     print ("moving section {} mip {} to dest".format(z, mip), end='', flush=True)
     start = time()
-    chunks = self.break_into_chunks(bbox, self.vols.dst_chunk_sizes[mip],
-                                    self.vols.dst_voxel_offsets[mip], mip=mip, render=True)
+    chunks = self.break_into_chunks(bbox, self.vols[z_offset].dst_chunk_sizes[mip],
+                                    self.vols[z_offset].dst_voxel_offsets[mip], mip=mip, render=True)
     #for patch_bbox in chunks:
     def chunkwise(patch_bbox):
 
       if self.paths['src_mask']:
-        raw_patch = self.get_image('src_img', patch_bbox, mip,
+        raw_patch = self.get_image('src_img', z, z_offset, patch_bbox, mip,
                                     adjust_contrast=False, to_tensor=True)
-        raw_mask = self.get_mask('src_mask', precrop_patch_bbox, 
+        raw_mask = self.get_mask('src_mask', z, z_offset, precrop_patch_bbox, 
                                  src_mip=self.vols.src_mask_mip,
                                  dst_mip=mip, valid_val=self.vols.src_mask_val)
         raw_patch = raw_patch.masked_fill_(raw_mask, 0)
         raw_patch = raw_patch.cpu().numpy()
       else: 
-        raw_patch = self.get_image('src_img', patch_bbox, mip,
+        raw_patch = self.get_image('src_img', z, z_offset, patch_bbox, mip,
                                     adjust_contrast=False, to_tensor=False)
-      self.save_image_patch('dst_img', raw_patch, patch_bbox, mip)
+      self.save_image_patch('dst_img', z, z_offset, raw_patch, patch_bbox, mip)
 
     self.pool.map(chunkwise, chunks)
 
@@ -758,9 +741,7 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def render(self, bbox, mip):
-    z = self.z
-    z_offset = self.z_offset
+  def render(self, z, z_offset, bbox, mip):
     print('Rendering z={0} with z_offset={1} @ MIP{2}'.format(z, z_offset, mip), flush=True)
     start = time()
     chunks = self.break_into_chunks(bbox, self.vols.dst_chunk_sizes[mip],
@@ -774,14 +755,14 @@ class Aligner:
 
     def chunkwise(patch_bbox):
       warped_patch = self.warp_patch(patch_bbox, mip)
-      print('warp_image render.shape: {0}'.format(warped_patch.shape))
-      self.save_image_patch('dst_img', warped_patch, patch_bbox, mip)
+      # print('warp_image render.shape: {0}'.format(warped_patch.shape))
+      self.save_image_patch('dst_img', z, z_offset, warped_patch, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
 
-  def render_section_all_mips(self, bbox):
-    self.render(bbox, self.render_low_mip)
+  def render_section_all_mips(self, z, z_offset, bbox):
+    self.render(z, z_offset, bbox, self.render_low_mip)
     self.downsample(bbox, self.render_low_mip, self.render_high_mip)
 
   def downsample(self, bbox, source_mip, target_mip):
@@ -792,19 +773,15 @@ class Aligner:
 
       def chunkwise(patch_bbox):
         print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
-        downsampled_patch = self.downsample_patch('dst_img', patch_bbox, m)
+        downsampled_patch = self.downsample_patch('dst_img', patch_bbox, m-1)
         self.save_image_patch('dst_img', downsampled_patch, patch_bbox, m)
       self.pool.map(chunkwise, chunks)
 
-  def compute_section_pair_residuals(self, bbox, inverse=False):
-    source_z = self.z
-    target_z = self.z - self.z_offset
-    if inverse:
-      source_z, target_z = target_z, source_z
+  def compute_section_pair_residuals(self, source_z, target_z, bbox):
     for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
       start = time()
-      chunks = self.break_into_chunks(bbox, self.vols.vec_chunk_sizes[m],
-                                      self.vols.vec_voxel_offsets[m], mip=m)
+      chunks = self.break_into_chunks(bbox, self.vols[0].vec_chunk_sizes[m],
+                                      self.vols[0].vec_voxel_offsets[m], mip=m)
       print ("Aligning slice {} to slice {} at mip {} ({} chunks)".
              format(source_z, target_z, m, len(chunks)), flush=True)
 
@@ -812,7 +789,7 @@ class Aligner:
       def chunkwise(patch_bbox):
       #FIXME Torch runs out of memory
       #FIXME batchify download and upload
-        self.compute_residual_patch(patch_bbox, mip=m, inverse=inverse)
+        self.compute_residual_patch(source_z, target_z, patch_bbox, mip=m)
       self.pool.map(chunkwise, chunks)
       end = time()
       print (": {} sec".format(end - start))
@@ -828,7 +805,7 @@ class Aligner:
     self.field_sf_sum =np.zeros((total_chunks, 2), dtype=np.float32)
 
 
-  def compute_weighted_field(self, bbox, mip, T=-1):
+  def compute_weighted_field(self, z, bbox, mip, T=-1):
     """Chunked-processing of field weighting
     
     Args:
@@ -837,21 +814,20 @@ class Aligner:
        mip: field MIP level
        T: softmin temperature (default will be 2**mip)
     """
-    z = self.z
     start = time()
-    chunks = self.break_into_chunks(bbox, self.vols.vec_chunk_sizes[mip],
-                                    self.vols.vec_voxel_offsets[mip], mip=mip)
+    chunks = self.break_into_chunks(bbox, self.vols[0].vec_chunk_sizes[mip],
+                                    self.vols[0].vec_voxel_offsets[mip], mip=mip)
     print("Computing weighted field for slice {0} @ MIP{1} ({2} chunks)".
            format(z, mip, len(chunks)), flush=True)
 
     #for patch_bbox in chunks:
     def chunkwise(patch_bbox):
-      self.weight_fields(patch_bbox, mip, T=T)
+      self.weight_fields(z, patch_bbox, mip, T=T)
     self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
 
-  def multi_match(self, inverse=False, render=True):
+  def multi_match(self, source_z, inverse=False, render=True):
     """Match current z to all tgt sections within tgt_radius
     Use to compare alignments of multiple sections to use consensus in 
     generating final alignment or masks for the section z.
@@ -864,31 +840,27 @@ class Aligner:
     """
     bbox = self.total_bbox
     for z_offset in range(1, self.tgt_radius):
-      self.set_z_offset(z_offset)
-      self.compute_section_pair_residuals(bbox, inverse=inverse)
+      target_z = source_z - z_offset
+      self.compute_section_pair_residuals(source_z, target_z, bbox)
       if render:
-        self.render_section_all_mips(bbox)
+        self.render_section_all_mips(source_z, z_offset, bbox)
 
   ## Whole stack operations
-  def align_stack(self, z_range, bbox, move_anchor=True):
-    if not self.check_all_params():
-      raise Exception("Not all parameters are set")
-    #  raise Exception("Have to align a chunkaligned size")
-
-    self.total_bbox = bbox
-    start = time()
-    if move_anchor:
-      self.set_z(z_range[0])
-      for m in range(self.render_low_mip, self.high_mip+1):
-        self.copy_section(bbox, mip=m)
-      z_range = z_range[1:]
-    for z in z_range:
-      self.set_z(z)
-      self.compute_section_pair_residuals(bbox)
-      self.render_section_all_mips(bbox)
-    end = time()
-    print("Total time for aligning {} slices: {}".format(end_section-start_section,
-                                                          end - start))
+#   def align_stack_serial(self, z_range, bbox, move_anchor=True):
+#     """Align section z to warped section z-1
+#     """
+#     self.total_bbox = bbox
+#     start = time()
+#     if move_anchor:
+#       for m in range(self.render_low_mip, self.high_mip+1):
+#         self.copy_section(bbox, mip=m)
+#       z_range = z_range[1:]
+#     for z in z_range:
+#       self.compute_section_pair_residuals(bbox)
+#       self.render_section_all_mips(bbox)
+#     end = time()
+#     print("Total time for aligning {} slices: {}".format(end_section-start_section,
+#                                                           end - start))
 
   def align_stack_vector_vote(self, z_range, bbox, render_multi_match=False):
     """Align stack of images using vector voting within tgt_radius 
@@ -906,12 +878,10 @@ class Aligner:
     #   aligner.align_stack(z_range, bbox, move_anchor=False) 
     #   z_range = z_range[3:]
     for z in z_range:
-      self.set_z(z)
-      self.multi_match(inverse=False, render=render_multi_match)
-      # print('align_vector_vote field_paths: {0}'.format(field_paths))
+      self.multi_match(z, inverse=False, render=render_multi_match)
       mip = self.process_low_mip
       T = 2**mip
       print('softmin temp: {0}'.format(T))
-      self.compute_weighted_field(bbox, mip, T)
-      self.render_section_all_mips(bbox)
+      self.compute_weighted_field(z, bbox, mip, T)
+      self.render_section_all_mips(z, 0, bbox)
   
