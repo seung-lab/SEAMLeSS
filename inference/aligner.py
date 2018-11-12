@@ -417,7 +417,7 @@ class Aligner:
 
     return chunks
 
-  def weight_fields(self, bbox, mip, T=1):
+  def weight_fields(self, z, bbox, mip, T=1):
     """Calculate voting weights for the align across vector fields
     """
     fields = []
@@ -539,11 +539,11 @@ class Aligner:
     raw_x_range = self.total_bbox.x_range(mip=mip)
     raw_y_range = self.total_bbox.y_range(mip=mip)
 
-    x_chunk = self.vols.dst_chunk_sizes[mip][0]
-    y_chunk = self.vols.dst_chunk_sizes[mip][1]
+    x_chunk = self.vols[0].dst_chunk_sizes[mip][0]
+    y_chunk = self.vols[0].dst_chunk_sizes[mip][1]
 
-    x_offset = self.vols.dst_voxel_offsets[mip][0]
-    y_offset = self.vols.dst_voxel_offsets[mip][1]
+    x_offset = self.vols[0].dst_voxel_offsets[mip][0]
+    y_offset = self.vols[0].dst_voxel_offsets[mip][1]
 
     x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
     y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
@@ -736,8 +736,8 @@ class Aligner:
         raw_patch = self.get_image('src_img', z, z_offset, patch_bbox, mip,
                                     adjust_contrast=False, to_tensor=True)
         raw_mask = self.get_mask('src_mask', z, z_offset, precrop_patch_bbox, 
-                                 src_mip=self.vols.src_mask_mip,
-                                 dst_mip=mip, valid_val=self.vols.src_mask_val)
+                                 src_mip=self.vols[z_offset].src_mask_mip,
+                                 dst_mip=mip, valid_val=self.vols[z_offset].src_mask_val)
         raw_patch = raw_patch.masked_fill_(raw_mask, 0)
         raw_patch = raw_patch.cpu().numpy()
       else: 
@@ -755,8 +755,8 @@ class Aligner:
            end='', flush=True)
     start = time()
 
-    chunks = self.break_into_chunks(bbox, self.vols.dst_chunk_sizes[mip],
-                                    self.vols.dst_voxel_offsets[mip], mip=mip, render=True)
+    chunks = self.break_into_chunks(bbox, self.vols[0].dst_chunk_sizes[mip],
+                                    self.vols[0].dst_voxel_offsets[mip], mip=mip, render=True)
 
     def chunkwise(patch_bbox):
       warped_patch = self.warp_patch(patch_bbox, mip)
@@ -774,11 +774,11 @@ class Aligner:
     """
     print('Rendering z={0} with z_offset={1} @ MIP{2}'.format(z, z_offset, mip), flush=True)
     start = time()
-    chunks = self.break_into_chunks(bbox, self.vols.dst_chunk_sizes[mip],
-                                    self.vols.dst_voxel_offsets[mip], mip=mip, render=True)
+    chunks = self.break_into_chunks(bbox, self.vols[z_offset].dst_chunk_sizes[mip],
+                                    self.vols[z_offset].dst_voxel_offsets[mip], mip=mip, render=True)
 
     def chunkwise(patch_bbox):
-      warped_patch = self.warp_patch(patch_bbox, mip)
+      warped_patch = self.warp_patch(z, z_offset, patch_bbox, mip)
       # print('warp_image render.shape: {0}'.format(warped_patch.shape))
       self.save_image_patch('dst_img', z, z_offset, warped_patch, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
@@ -794,8 +794,8 @@ class Aligner:
     """
     print ("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
     for m in range(source_mip+1, target_mip + 1):
-      chunks = self.break_into_chunks(bbox, self.vols.dst_chunk_sizes[m],
-                                      self.vols.dst_voxel_offsets[m], mip=m, render=True)
+      chunks = self.break_into_chunks(bbox, self.vols[z_offset].dst_chunk_sizes[m],
+                                      self.vols[z_offset].dst_voxel_offsets[m], mip=m, render=True)
 
       def chunkwise(patch_bbox):
         print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
@@ -805,7 +805,7 @@ class Aligner:
 
   def render_section_all_mips(self, z, z_offset, bbox):
     self.render(z, z_offset, bbox, self.render_low_mip)
-    self.downsample(bbox, self.render_low_mip, self.render_high_mip)
+    self.downsample(z, z_offset, bbox, self.render_low_mip, self.render_high_mip)
 
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
     """Chunkwise vector field inference for section pair
@@ -834,8 +834,8 @@ class Aligner:
           self.prepare_source(source_z, bbox, m - 1)
     
   def count_box(self, bbox, mip):    
-    chunks = self.break_into_chunks(bbox, self.vols.dst_chunk_sizes[mip],
-                                      self.vols.dst_voxel_offsets[mip], mip=mip, render=True)
+    chunks = self.break_into_chunks(bbox, self.vols[0].dst_chunk_sizes[mip],
+                                      self.vols[0].dst_voxel_offsets[mip], mip=mip, render=True)
     total_chunks = len(chunks)
     self.image_pixels_sum =np.zeros(total_chunks)
     self.field_sf_sum =np.zeros((total_chunks, 2), dtype=np.float32)
