@@ -22,8 +22,9 @@ class Model(nn.Module):
     def __getitem__(self, index):
         return self.submodule(index)
 
-    def forward(self, src, tgt, in_field=None):
-        src, tgt = self.encode(src, tgt)
+    def forward(self, src, tgt, in_field=None, encodings=False, **kwargs):
+        if encodings:
+            src, tgt = self.encode(src, tgt)
         field = self.align(src, tgt, in_field)
         return field
 
