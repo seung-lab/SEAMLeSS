@@ -28,7 +28,12 @@ from threading import Lock
 import torch.nn as nn
 
 class AlignerDir():
-  """Manager of output cloudvolumes required by the Aligner
+  """Manager of CloudVolumes required by the Aligner
+  
+  Manage CloudVolumes used for reading & CloudVolumes used for writing. Read & write
+  distinguished by the different sets of kwargs that are used for the CloudVolume.
+  All CloudVolumes are MiplessCloudVolumes. Also add MIP and VAL used by source and
+  target masks.
   """
   def __init__(self, src_path, tgt_path, 
                      src_mask_path, tgt_mask_path, 
@@ -274,12 +279,12 @@ class Aligner:
   def set_chunk_size(self, chunk_size):
     self.high_mip_chunk = chunk_size
 
-  def get_upchunked_bbox(self, bbox, ng_chunk_size, offset, mip):
+  def get_upchunked_bbox(self, bbox, chunk_size, offset, mip):
     raw_x_range = bbox.x_range(mip=mip)
     raw_y_range = bbox.y_range(mip=mip)
 
-    x_chunk = ng_chunk_size[0]
-    y_chunk = ng_chunk_size[1]
+    x_chunk = chunk_size[0]
+    y_chunk = chunk_size[1]
 
     x_offset = offset[0]
     y_offset = offset[1]
@@ -363,13 +368,13 @@ class Aligner:
     v = v[:,crop:-crop, crop:-crop,:]
     self.save_vector_patch(cv_key, z, z_offset, v, bbox, mip)
 
-  def break_into_chunks(self, bbox, ng_chunk_size, offset, mip, render=False):
+  def break_into_chunks(self, bbox, chunk_size, offset, mip, render=False):
     chunks = []
     raw_x_range = bbox.x_range(mip=mip)
     raw_y_range = bbox.y_range(mip=mip)
 
-    x_chunk = ng_chunk_size[0]
-    y_chunk = ng_chunk_size[1]
+    x_chunk = chunk_size[0]
+    y_chunk = chunk_size[1]
 
     x_offset = offset[0]
     y_offset = offset[1]
@@ -427,6 +432,16 @@ class Aligner:
       self.save_image_patch('weights', diffs.cpu().numpy(), bbox, mip, to_uint8=False)
 
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
+    """Predict vector field that will warp section at SOURCE_Z to section at TARGET_Z
+    within OUT_PATCH_BBOX at MIP. Vector field will be stored using CloudVolume dirs
+    indexed by Z_OFFSET = SOURCE_Z - TARGET_Z.
+
+    Args
+      source_z: int of section to be warped
+      target_z: int of section to be warped to
+      out_patch_bbox: BoundingBox for region of both sections to process
+      mip: int of MIP level to use for OUT_PATCH_BBOX 
+    """
     z_offset = source_z - target_z
     print ("Computing residual for region {}.".format(out_patch_bbox.__str__(mip=0)), flush=True)
     precrop_patch_bbox = deepcopy(out_patch_bbox)
@@ -498,9 +513,13 @@ class Aligner:
       #     write_encodings(slice(enc.shape[-1] // 2, enc.shape[-1]), target_z)
 
   def rel_to_abs_residual(self, field, mip):    
-      return field * (field.shape[-2] / 2) * (2**mip)
+    """Convert vector field from relative space [-1,1] to absolute space
+    """
+    return field * (field.shape[-2] / 2) * (2**mip)
 
   def abs_to_rel_residual(self, abs_residual, patch, mip):
+    """Convert vector field from absolute space to relative space [-1,1]
+    """
     x_fraction = patch.x_size(mip=0) * 0.5
     y_fraction = patch.y_size(mip=0) * 0.5
 
@@ -545,6 +564,11 @@ class Aligner:
 
   ## Patch manipulation
   def warp_patch(self, z, z_offset, bbox, mip):
+    """Non-chunk warping
+
+    For the CloudVolume dirs at Z_OFFSET, warp the SRC_IMG using the FIELD for
+    section Z in region BBOX at MIP.
+    """
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
@@ -742,16 +766,16 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def render(self, z, z_offset, bbox, mip):
+    """Chunkwise render
+
+    For the CloudVolume dirs at Z_OFFSET, warp the SRC_IMG using the FIELD for
+    section Z in region BBOX at MIP. Chunk BBOX appropriately and save the result
+    to DST_IMG.
+    """
     print('Rendering z={0} with z_offset={1} @ MIP{2}'.format(z, z_offset, mip), flush=True)
     start = time()
     chunks = self.break_into_chunks(bbox, self.vols.dst_chunk_sizes[mip],
                                     self.vols.dst_voxel_offsets[mip], mip=mip, render=True)
-    #print("\n total chunsk is ", len(chunks))
-    #if (self.run_pairs and (z!=start_z)):
-    #    total_chunks = len(chunks) 
-    #    self.reg_field= np.sum(self.field_sf_sum, axis=0) / np.sum(self.image_pixels_sum)
-    #    self.image_pixels_sum = np.zeros(total_chunks)
-    #    self.field_sf_sum = np.zeros((total_chunks, 2), dtype=np.float32)
 
     def chunkwise(patch_bbox):
       warped_patch = self.warp_patch(patch_bbox, mip)
@@ -761,11 +785,13 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def render_section_all_mips(self, z, z_offset, bbox):
-    self.render(z, z_offset, bbox, self.render_low_mip)
-    self.downsample(bbox, self.render_low_mip, self.render_high_mip)
+  def downsample(self, z, z_offset, bbox, source_mip, target_mip):
+    """Chunkwise downsample
 
-  def downsample(self, bbox, source_mip, target_mip):
+    For the CloudVolume dirs at Z_OFFSET, warp the SRC_IMG using the FIELD for
+    section Z in region BBOX at MIP. Chunk BBOX appropriately and save the result
+    to DST_IMG.
+    """
     print ("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
     for m in range(source_mip+1, target_mip + 1):
       chunks = self.break_into_chunks(bbox, self.vols.dst_chunk_sizes[m],
@@ -773,11 +799,21 @@ class Aligner:
 
       def chunkwise(patch_bbox):
         print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
-        downsampled_patch = self.downsample_patch('dst_img', patch_bbox, m-1)
-        self.save_image_patch('dst_img', downsampled_patch, patch_bbox, m)
+        downsampled_patch = self.downsample_patch('dst_img', z, z_offset, patch_bbox, m-1)
+        self.save_image_patch('dst_img', z, z_offset, downsampled_patch, patch_bbox, m)
       self.pool.map(chunkwise, chunks)
 
+  def render_section_all_mips(self, z, z_offset, bbox):
+    self.render(z, z_offset, bbox, self.render_low_mip)
+    self.downsample(bbox, self.render_low_mip, self.render_high_mip)
+
   def compute_section_pair_residuals(self, source_z, target_z, bbox):
+    """Chunkwise vector field inference for section pair
+
+    For the CloudVolume dirs at Z_OFFSET, warp the SRC_IMG using the FIELD for
+    section Z in region BBOX at MIP. Chunk BBOX appropriately and save the result
+    to DST_IMG.
+    """
     for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
       start = time()
       chunks = self.break_into_chunks(bbox, self.vols[0].vec_chunk_sizes[m],
@@ -828,15 +864,13 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def multi_match(self, source_z, inverse=False, render=True):
-    """Match current z to all tgt sections within tgt_radius
+    """Match SOURCE_Z to all sections within TGT_RADIUS
     Use to compare alignments of multiple sections to use consensus in 
     generating final alignment or masks for the section z.
 
     Args:
        inverse: bool indicating whether to align src to tgt or tgt to src
        render: bool indicating whether to render section
-
-    Returns list of paths where fields were written
     """
     bbox = self.total_bbox
     for z_offset in range(1, self.tgt_radius):
