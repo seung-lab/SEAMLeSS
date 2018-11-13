@@ -109,6 +109,7 @@ class ModelArchive(object):
             'seed': self.directory / 'seed.txt',
             'architecture': self.directory / 'architecture.py',
             'objective': self.directory / 'objective.py',
+            'preprocessor': self.directory / 'preprocessor.py',
             'commit': self.directory / 'commit.diff',
             'state_vars': self.directory / 'state_vars.json',
             'plot': self.directory / 'plot.png',
@@ -117,8 +118,10 @@ class ModelArchive(object):
         self._model = None
         self._optimizer = None
         self._state_vars = None
+        self._objective = None
         self._loss = None
         self._val_loss = None
+        self._preprocessor = None
         self._current_debug_directory = None
 
         if ModelArchive.model_exists(name):
@@ -171,6 +174,7 @@ class ModelArchive(object):
         kwargs.update(self._state_vars)
         self._load_model(*args, **kwargs)
         self._load_objective(*args, **kwargs)
+        self._load_preprocessor(*args, **kwargs)
         self._load_optimizer(*args, **kwargs)
         # load the pseudorandom number generator last
         self._load_prand(*args, **kwargs)
@@ -199,6 +203,7 @@ class ModelArchive(object):
         # copy the architecture and objective definitions into the archive
         cp(git_root/'training'/'architecture.py', self.paths['architecture'])
         cp(git_root/'training'/'objective.py', self.paths['objective'])
+        cp(git_root/'training'/'preprocessor.py', self.paths['preprocessor'])
 
         # record the status of the git repository
         with self.paths['commit'].open(mode='wb') as f:
@@ -228,6 +233,7 @@ class ModelArchive(object):
         self._load_state_vars(*args, **kwargs)
         self._load_model(*args, **kwargs)
         self._load_objective(*args, **kwargs)
+        self._load_preprocessor(*args, **kwargs)
         self._load_optimizer(*args, **kwargs)
 
         self.save()
@@ -313,6 +319,14 @@ class ModelArchive(object):
         The validation loss function of the model
         """
         return self._val_loss
+        return self._loss
+
+    @property
+    def preprocessor(self):
+        """
+        The archive's image preprocessor
+        """
+        return self._preprocessor
 
     @property
     def state_vars(self):
@@ -362,7 +376,7 @@ class ModelArchive(object):
 
     def _load_objective(self, *args, **kwargs):
         """
-        Loads a the objective functions stored in the archive
+        Loads the objective functions stored in the archive
         """
         sys.path.insert(0, str(self.directory))
         import objective
@@ -371,6 +385,17 @@ class ModelArchive(object):
         self._loss = self._objective.Objective(*args, **kwargs)
         self._val_loss = self._objective.ValidationObjective(*args, **kwargs)
         return self._objective
+        return self._model
+
+    def _load_preprocessor(self, *args, **kwargs):
+        """
+        Loads the archive's image preprocessor
+        """
+        sys.path.insert(0, str(self.directory))
+        import preprocessor
+        sys.path.remove(str(self.directory))
+        self._preprocessor = preprocessor.Preprocessor(*args, **kwargs)
+        return self._preprocessor
 
     def _load_optimizer(self, *args, **kwargs):
         """
