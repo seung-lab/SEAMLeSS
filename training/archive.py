@@ -108,6 +108,7 @@ class ModelArchive(object):
             'progress': self.directory / 'progress.log',
             'seed': self.directory / 'seed.txt',
             'architecture': self.directory / 'architecture.py',
+            'objective': self.directory / 'objective.py',
             'commit': self.directory / 'commit.diff',
             'state_vars': self.directory / 'state_vars.json',
             'plot': self.directory / 'plot.png',
@@ -169,6 +170,7 @@ class ModelArchive(object):
         self._load_state_vars(*args, **kwargs)
         kwargs.update(self._state_vars)
         self._load_model(*args, **kwargs)
+        self._load_objective(*args, **kwargs)
         self._load_optimizer(*args, **kwargs)
         # load the pseudorandom number generator last
         self._load_prand(*args, **kwargs)
@@ -194,8 +196,9 @@ class ModelArchive(object):
             key = filename.split('.')[0]
             self.paths[key].touch(exist_ok=False)
 
-        # copy the architecture definition into the archive
+        # copy the architecture and objective definitions into the archive
         cp(git_root/'training'/'architecture.py', self.paths['architecture'])
+        cp(git_root/'training'/'objective.py', self.paths['objective'])
 
         # record the status of the git repository
         with self.paths['commit'].open(mode='wb') as f:
@@ -224,6 +227,7 @@ class ModelArchive(object):
         # initialize the model, optimizer, and state variables
         self._load_state_vars(*args, **kwargs)
         self._load_model(*args, **kwargs)
+        self._load_objective(*args, **kwargs)
         self._load_optimizer(*args, **kwargs)
 
         self.save()
@@ -339,8 +343,6 @@ class ModelArchive(object):
         sys.path.remove(str(self.directory))
         self._architecture = architecture
         self._model = architecture.Model(*args, **kwargs)
-        self._loss = architecture.Objective(*args, **kwargs)
-        self._val_loss = architecture.ValidationObjective(*args, **kwargs)
         if self.paths['weights'].is_file():
             self._model.load(self.paths['weights'])
 
@@ -357,6 +359,18 @@ class ModelArchive(object):
             self._loss = torch.nn.DataParallel(self._loss)
 
         return self._model
+
+    def _load_objective(self, *args, **kwargs):
+        """
+        Loads a the objective functions stored in the archive
+        """
+        sys.path.insert(0, str(self.directory))
+        import objective
+        sys.path.remove(str(self.directory))
+        self._objective = objective
+        self._loss = self._objective.Objective(*args, **kwargs)
+        self._val_loss = self._objective.ValidationObjective(*args, **kwargs)
+        return self._objective
 
     def _load_optimizer(self, *args, **kwargs):
         """
