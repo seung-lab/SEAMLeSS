@@ -370,7 +370,6 @@ class ModelArchive(object):
                 p.requires_grad = True
             self._model.train().cuda()
             self._model = torch.nn.DataParallel(self._model)
-            self._loss = torch.nn.DataParallel(self._loss)
 
         return self._model
 
@@ -384,8 +383,10 @@ class ModelArchive(object):
         self._objective = objective
         self._loss = self._objective.Objective(*args, **kwargs)
         self._val_loss = self._objective.ValidationObjective(*args, **kwargs)
+        if not self.readonly:
+            self._loss = torch.nn.DataParallel(self._loss.cuda())
+            self._val_loss = torch.nn.DataParallel(self._val_loss.cuda())
         return self._objective
-        return self._model
 
     def _load_preprocessor(self, *args, **kwargs):
         """
