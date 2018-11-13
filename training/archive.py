@@ -377,9 +377,13 @@ class ModelArchive(object):
         """
         Loads the objective functions stored in the archive
         """
-        sys.path.insert(0, str(self.directory))
-        import objective
-        sys.path.remove(str(self.directory))
+        try:
+            sys.path.insert(0, str(self.directory))
+            import objective
+        except ImportError:
+            return None
+        finally:
+            sys.path.remove(str(self.directory))
         self._objective = objective
         self._loss = self._objective.Objective(*args, **kwargs)
         self._val_loss = self._objective.ValidationObjective(*args, **kwargs)
@@ -392,9 +396,13 @@ class ModelArchive(object):
         """
         Loads the archive's image preprocessor
         """
-        sys.path.insert(0, str(self.directory))
-        import preprocessor
-        sys.path.remove(str(self.directory))
+        try:
+            sys.path.insert(0, str(self.directory))
+            import preprocessor
+        except ImportError:
+            return None
+        finally:
+            sys.path.remove(str(self.directory))
         self._preprocessor = preprocessor.Preprocessor(*args, **kwargs)
         return self._preprocessor
 
