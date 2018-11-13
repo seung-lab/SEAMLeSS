@@ -12,9 +12,9 @@ from skimage.transform import rescale
 from functools import reduce
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: 402
 plt.switch_backend('agg')
-import matplotlib.cm as cm
+import matplotlib.cm as cm  # noqa: 402
 
 def compose_functions(fseq):
     def compose(f1, f2):

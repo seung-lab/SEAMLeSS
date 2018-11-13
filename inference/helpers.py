@@ -10,7 +10,7 @@ from skimage.transform import rescale
 from functools import reduce
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: 402
 import matplotlib.cm as cm
 import tqdm
 

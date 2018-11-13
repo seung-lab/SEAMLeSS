@@ -13,7 +13,7 @@ from helpers import cp
 
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: 402
 
 
 # Key directories: `models_location` is where all the archives are stored
