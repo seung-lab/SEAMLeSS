@@ -13,3 +13,4 @@ pyshorteners
 argcomplete
 pandas
 opencv-python
+setuptools

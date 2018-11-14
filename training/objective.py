@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from loss import smoothness_penalty
-from helpers import gridsample_residual
+from utilities.helpers import gridsample_residual
 
 
 class Objective(nn.Module):

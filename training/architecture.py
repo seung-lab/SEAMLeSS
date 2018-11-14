@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import copy
-from helpers import gridsample_residual, upsample, downsample, load_model_from_dict
+from utilities.helpers import gridsample_residual, upsample, downsample, load_model_from_dict
 
 
 class Model(nn.Module):

@@ -3,7 +3,7 @@ import numpy as np
 from model.PyramidTransformer import PyramidTransformer
 from model.xmas import Xmas
 from normalizer import Normalizer
-from helpers import save_chunk
+from utilities.helpers import save_chunk
 
 class Process(object):
     """docstring for Process."""

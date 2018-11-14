@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from helpers import save_chunk
+from utilities.helpers import save_chunk
 import numpy as np
 
 def lap(fields):

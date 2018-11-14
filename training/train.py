@@ -82,9 +82,11 @@ from pathlib import Path
 
 import masks as masklib
 import stack_dataset
-from archive import ModelArchive
-from helpers import (gridsample_residual, save_chunk, dvl as save_vectors,
-                     upsample, downsample, AverageMeter, retry_enumerate)
+from utilities.archive import ModelArchive
+from utilities.helpers import (gridsample_residual, save_chunk,
+                               dvl as save_vectors,
+                               upsample, downsample, AverageMeter,
+                               retry_enumerate)
 
 
 def main():

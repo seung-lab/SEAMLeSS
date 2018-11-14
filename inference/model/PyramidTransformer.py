@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
-from helpers import save_chunk, gif, copy_state_to_model, gridsample_residual, identity_grid
+from utilities.helpers import save_chunk, gif, load_model_from_dict, gridsample_residual, identity_grid
 import random
 
 class G(nn.Module):
@@ -231,7 +231,7 @@ class PyramidTransformer(nn.Module):
 
         print('Loading model state from {}...'.format(archive_path))
         state_dict = torch.load(archive_path)
-        copy_state_to_model(state_dict, model)
+        load_model_from_dict(model, state_dict)
         print('Successfully loaded model state.')
         return model
 

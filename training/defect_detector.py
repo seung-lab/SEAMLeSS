@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from skimage import morphology
 import numpy as np
-from helpers import save_chunk
+from utilities.helpers import save_chunk
 import masks
 
 class DefectDetector(object):

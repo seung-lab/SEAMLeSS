@@ -10,6 +10,7 @@ pip install numpy # needed for CloudVolume to install correctly
 pip install -r requirements.txt
 # NOTE: might need to manually install a different version of PyTorch
 # depending on the available CUDA drivers. See https://pytorch.org/get-started
+python setup.py develop
 
 # Setting up CloudVolume credentials
 # see https://github.com/seung-lab/cloud-volume

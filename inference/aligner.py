@@ -7,7 +7,7 @@ import os
 import json
 from time import time
 from copy import deepcopy, copy
-from helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
+from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
 
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum

@@ -7,7 +7,7 @@ import random
 import time
 import itertools
 
-from helpers import reverse_dim, save_chunk, gif
+from utilities.helpers import reverse_dim, save_chunk, gif
 
 def half(a=None,b=None):
     if a is None and b is None:
