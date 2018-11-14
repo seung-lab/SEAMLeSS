@@ -276,7 +276,16 @@ class Aligner:
     abs_res = np.expand_dims(np.squeeze(field_sf), axis=0)
     rel_res = self.abs_to_rel_residual(abs_res, bbox, mip)
     return rel_res
-  
+ 
+  def get_field_sf_residual_h5(self, z, bbox, mip):
+      x_range = bbox.x_range(mip=mip)
+      y_range = bbox.y_range(mip=mip)
+      field_sf = cv(self.field_sf_ng_path, mip=mip, bounded=False, 
+                    fill_missing=True, progress=False)[x_range[0]:x_range[1], 
+                                                       y_range[0]:y_range[1], z]
+      abs_res = np.expand_dims(np.squeeze(field_sf), axis=0)
+      return abs_res
+
   def save_field_patch(self, field_sf, bbox, mip, z):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
@@ -455,8 +464,9 @@ class Aligner:
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
-    
-    agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
+    offset = 1949 
+    agg_flow = self.get_field_from_h5(influence_bbox, z - offset)
+    #self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
     image = torch.from_numpy(self.get_image_data(ng_path, z, influence_bbox, mip))
     image = image.unsqueeze(0)
     mip_disp = int(self.max_displacement / 2**mip)
@@ -468,9 +478,9 @@ class Aligner:
     if (self.run_pairs):
       #cid = self.get_bbox_id(bbox, mip) 
       #print ("cid is ", cid)
-      decay_factor = 0.4
       if z != start_z:
-        field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
+        #field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
+        field_sf = torch.from_numpy(self.get_field_sf_residual_h5(z+1, influence_bbox, mip))
         regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
         regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
         #regular_part = self.gauss_filter(field_sf.permute(3,0,1,2))
@@ -484,8 +494,7 @@ class Aligner:
             agg_flow, field_sf, padding_mode='border').permute(0,2,3,1)
       else:
         field_sf = agg_flow
-      #self.calc_image_mean_field(image.numpy()[0,0,mip_disp:-mip_disp,mip_disp:-mip_disp], field_sf[0, mip_disp:-mip_disp, mip_disp:-mip_disp, :], cid)
-      field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
+      #field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
       field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
       self.save_field_patch(field_sf, bbox, mip, z)
 
@@ -754,18 +763,23 @@ class Aligner:
       if m > self.process_low_mip:
           self.prepare_source(source_z, bbox, m - 1)
     
-  def count_box(self, bbox, mip):    
-    chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
-                                      self.dst_voxel_offsets[mip], mip=mip, render=True)
-    total_chunks = len(chunks)
-    self.image_pixels_sum =np.zeros(total_chunks)
-    self.field_sf_sum =np.zeros((total_chunks, 2), dtype=np.float32)
-
-
   def read_h5(self):
       file_name = "/usr/people/zhenj/mnt/zhenj/vecs_for_zhen.h5"
       f = h5py.File(file_name)
-      return f["/main"].value
+      return f
+  
+  def get_field_from_h5(self, bbox, z):
+      mip = 8
+      x_range = bbox.x_range(mip=mip) # get data accorrding to mip8 scale
+      y_range = bbox.y_range(mip=mip)
+      
+      field = torch.from_numpy(self.vector_field_file["/main"].
+                               value[z,x_range[0]:x_range[1],y_range[0]:y_range[1],:])
+      mip_field = upsample(mip - self.render_low_mip)(field.permute(0,3,1,2))
+      mip_field = mip_field.permute(0,2,3,1)
+      mip_field[...,0] = mip_field[...,0] * (2**(mip - self.render_low_mip))
+      mip_field[...,1] = mip_field[...,1] * (2**(mip - self.render_low_mip))
+      return mip_field
 
   
   ## Whole stack operations
@@ -774,7 +788,7 @@ class Aligner:
       raise Exception("Not all parameters are set")
     #if not bbox.is_chunk_aligned(self.dst_ng_path):
     #  raise Exception("Have to align a chunkaligned size")
-
+    self.vector_field_file = read_h5()
     self.total_bbox = bbox
     start_z = start_section 
     start = time()
