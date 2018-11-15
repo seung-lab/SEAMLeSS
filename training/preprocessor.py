@@ -28,10 +28,11 @@ class Preprocessor(nn.Module):
         """
         Performs contrast Limited Adaptive Histogram Equalization
         """
-        Xb = (X * 255).to(torch.uint8)[mask].squeeze().numpy()
-        eq = self.clahe.apply(Xb)
-        X[mask] = torch.from_numpy(eq).unsqueeze(0).to(torch.float) / 255
-        X[Xb == 0] = 0
+        Xb = (X * 255).to(torch.uint8)[mask].squeeze()
+        eq = torch.from_numpy(self.clahe.apply(Xb.numpy()))
+        X[mask] = eq.unsqueeze(0).to(torch.float) / 255
+        X[..., Xb == 0] = 0
+        return X
 
     def gen_mask(self, X, threshold=1):
         return ...
