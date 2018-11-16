@@ -357,7 +357,7 @@ class ModelArchive(object):
         sys.path.remove(str(self.directory))
         self._architecture = architecture
         self._model = architecture.Model(*args, **kwargs)
-        if self.paths['weights'].is_file():
+        if self.paths['weights'].exists():
             self._model.load(self.paths['weights'])
 
         # set model to eval or train mode
@@ -413,11 +413,12 @@ class ModelArchive(object):
         If the model is untrained, loads a newly initialized optimizer.
         """
         assert self.model is not None, 'The model has not yet been loaded.'
-        self._optimizer = torch.optim.Adam(self.model.parameters())
-        if self.paths['optimizer'].is_file():
-            with self.paths['optimizer'].open('rb') as f:
-                opt_state_dict = torch.load(f)
-            self._optimizer.load_state_dict(opt_state_dict)
+        if not self.readonly:
+            self._optimizer = torch.optim.Adam(self.model.parameters())
+            if self.paths['optimizer'].is_file():
+                with self.paths['optimizer'].open('rb') as f:
+                    opt_state_dict = torch.load(f)
+                self._optimizer.load_state_dict(opt_state_dict)
         return self._optimizer
 
     def _load_prand(self, seed=None, *args, **kwargs):

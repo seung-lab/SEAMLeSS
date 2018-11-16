@@ -22,6 +22,7 @@ class Process(object):
         # self.normalizer = Normalizer(min(5, self.mip))
         self.flip_average = flip_average
 
+    @torch.no_grad()
     def process(self, s, t, level=0, crop=0):
         """
         Run a net on a pair of images and return the result.
