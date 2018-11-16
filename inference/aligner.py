@@ -38,7 +38,8 @@ class AlignerDir():
   def __init__(self, src_path, tgt_path, 
                      src_mask_path, tgt_mask_path, 
                      dst_path, src_mask_mip, tgt_mask_mip,
-                     src_mask_val, tgt_mask_val, mip_range):
+                     src_mask_val, tgt_mask_val, mip_range,
+                     ignore_field_init):
     self.mip_range = mip_range
     self.paths = self.get_paths(dst_path)
     self.dst_chunk_sizes   = []
@@ -65,7 +66,7 @@ class AlignerDir():
     self.provenance['project'] = 'seamless'
     self.provenance['src_path'] = src_path
     self.provenance['tgt_path'] = tgt_path
-    self.ignore_field_init = False
+    self.ignore_field_init = ignore_field_init 
   
   def for_read(self, k):
     return self.read[k]
@@ -240,7 +241,7 @@ class Aligner:
                                        src_mask_path, tgt_mask_path, 
                                        path, src_mask_mip, 
                                        tgt_mask_mip, src_mask_val,
-                                       tgt_mask_val, mip_range)
+                                       tgt_mask_val, mip_range, ignore_field_init)
       self.vols[i].create(max_displacement, self.write_intermediaries)
     # set z_offset to 0 and self.vols to root
 
@@ -317,7 +318,7 @@ class Aligner:
     print('get_composed_field for z_offset={0} & z={1}'.format(z_offset, z))
     field = self.get_field('field', z, z_offset, bbox, mip, relative=True, to_tensor=to_tensor)
     field_sf = self.get_field('field', z-z_offset, 0, bbox, mip, relative=True, to_tensor=to_tensor)
-    field_sf = self.blur_field(field_sf)
+    # field_sf = self.blur_field(field_sf)
     field = field.permute(0,3,1,2)
     composed_field = field_sf + gridsample_residual(
         field, field_sf, padding_mode='border').permute(0,2,3,1)
