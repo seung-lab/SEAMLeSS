@@ -84,42 +84,19 @@ def create_cloudvolume(dst_path, info, src_mip, dst_mip):
   dst.commit_info()
   return dst
 
-def create_field_cloudvolume(dst_path, info, src_mip, dst_mip):
-  x_path = join(dst_path, str(dst_mip), 'x')
-  y_path = join(dst_path, str(dst_mip), 'y')
-  x_cv = create_cloudvolume(x_path, info, src_mip, dst_mip)
-  y_cv = create_cloudvolume(y_path, info, src_mip, dst_mip)
-  return x_cv, y_cv
-
-def get_field_cloudvolume(path, mip):
-  x_cv = CloudVolume(join(path, str(mip), 'x'), 
-                          mip=mip, fill_missing=True)
-  y_cv = CloudVolume(join(path, str(mip), 'y'), 
-                          mip=mip, fill_missing=True)
-  return x_cv, y_cv
-
 def get_field(cv, bbox, device=torch.device('cpu')):
-  x_cv, y_cv = cv 
-  x = x_cv[bbox.to_slices()] 
-  y = y_cv[bbox.to_slices()]
-  v = np.concatenate((x,y), axis=3)
-  t = torch.from_numpy(v)
-  return t.permute(2,0,1,3).to(device=device)
+  f = cv[bbox.to_slices()]
+  return torch.from_numpy(f).permute(2,0,1,3).to(device=device)
 
 def field_to_numpy(field):
   if field.is_cuda:
-    x = field[:,:,:,0:1].permute(1,2,0,3).cpu().numpy()
-    y = field[:,:,:,1:2].permute(1,2,0,3).cpu().numpy()
+    field = field.data.cpu().numpy() 
   else:
-    x = field[:,:,:,0:1].permute(1,2,0,3).numpy()
-    y = field[:,:,:,1:2].permute(1,2,0,3).numpy()
-  return x, y
+    field = field.data.numpy()
+  return field 
   
 def save_field(cv, bbox, field):
-  x_cv, y_cv = cv
-  x, y = field
-  x_cv[bbox.to_slices()] = x
-  y_cv[bbox.to_slices()] = y
+  cv[bbox.to_slices()] = np.transpose(field, (1,2,0,3))
 
 def add_scale(factor, info):
   """
