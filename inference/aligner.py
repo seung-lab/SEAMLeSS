@@ -29,7 +29,7 @@ from task_handler import TaskHandler, make_residual_task_message, \
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
-               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=1,
+               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=2,
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
                flip_average=True, run_pairs=False, write_intermediaries=False,
@@ -404,35 +404,43 @@ class Aligner:
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
     
-    agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
     image = torch.from_numpy(self.get_image_data(ng_path, z, influence_bbox, mip))
     image = image.unsqueeze(0)
     mip_disp = int(self.max_displacement / 2**mip)
+    if self.run_pairs:
+        field_sf = torch.from_numpy(self.get_field_sf_residual(z, influence_bbox, mip))
+        field_sf_last = torch.from_numpy(self.get_field_sf_residual(self.end_section, 
+            influence_bbox, mip))
+        regular_factor = (z - self.zs) / self.num_section   
+        agg_flow = field_sf - regular_factor * field_sf_last
+    else:
+        agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
+    
     #no need to warp if flow is identity since warp introduces noise
     if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
       image = gridsample_residual(image, agg_flow, padding_mode='zeros')
     else:
       print ("not warping")
-    if (self.run_pairs):
-      if z != start_z:
-        field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
-        field_sf_last = torch.from_numpy(self.get_field_sf_residual(self.end_section - 1, 
-                                                                    influence_bbox, mip))
-        #regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
-        #regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
-        #field_sf = torch.cat([regular_part_x,regular_part_y],-1)
-        regular_factor = (z - self.zs) / self.num_section   
-        field_sf[...,0] = field_sf[...,0] - regular_factor * field_sf_last[...,0]
-        field_sf[...,1] = field_sf[...,1] - regular_factor * field_sf_last[...,1]
-        image = gridsample_residual(image, field_sf, padding_mode='zeros')
-        #agg_flow = agg_flow.permute(0,3,1,2)
-        #field_sf = field_sf + gridsample_residual(
-        #    agg_flow, field_sf, padding_mode='border').permute(0,2,3,1)
-      #else:
-      #  field_sf = agg_flow
-      #field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
-      #field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
-      #self.save_field_patch(field_sf, bbox, mip, z)
+    #if (self.run_pairs):
+    #  if z != start_z:
+    #    field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
+    #    field_sf_last = torch.from_numpy(self.get_field_sf_residual(self.end_section - 1, 
+    #                                                                influence_bbox, mip))
+    #    #regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
+    #    #regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
+    #    #field_sf = torch.cat([regular_part_x,regular_part_y],-1)
+    #    regular_factor = (z - self.zs) / self.num_section   
+    #    field_sf[...,0] = field_sf[...,0] - regular_factor * field_sf_last[...,0]
+    #    field_sf[...,1] = field_sf[...,1] - regular_factor * field_sf_last[...,1]
+    #    image = gridsample_residual(image, field_sf, padding_mode='zeros')
+    #    #agg_flow = agg_flow.permute(0,3,1,2)
+    #    #field_sf = field_sf + gridsample_residual(
+    #    #    agg_flow, field_sf, padding_mode='border').permute(0,2,3,1)
+    #  #else:
+    #  #  field_sf = agg_flow
+    #  #field_sf = field_sf * (field_sf.shape[-2] / 2) * (2**mip)
+    #  #field_sf = field_sf.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :]
+    #  #self.save_field_patch(field_sf, bbox, mip, z)
 
     return image.numpy()[0,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
 
@@ -811,7 +819,7 @@ class Aligner:
       mip_disp = int(self.max_displacement / 2**mip)
       if z != start_z:
           agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)  
-          field_sf = torch.from_numpy(self.get_field_sf_residual(z-1, influence_bbox, mip))
+          field_sf = torch.from_numpy(self.get_field_sf_residual(z - 1, influence_bbox, mip))
           agg_flow = agg_flow.permute(0,3,1,2)
           field_sf = field_sf + gridsample_residual(agg_flow, field_sf, 
                                                     padding_mode='border').permute(0,2,3,1)
