@@ -26,7 +26,7 @@ import torch.nn as nn
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
-               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=5,
+               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=3,
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
                flip_average=True, run_pairs=False, write_intermediaries=False,
@@ -207,12 +207,12 @@ class Aligner:
             field_sf_info["scales"][i]["chunk_sizes"][0][2] = 1
         field_sf_info['num_channels'] = 2
         cv(self.field_sf_ng_path, info=field_sf_info).commit_info() 
-
-    for i in range(len(scales)):
+    print("scales len is ", len(scales))
+    for i in range(len(scales) -1):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
-
+      print("i is ", i)
       cv(self.x_field_ng_paths[i], info=vec_info).commit_info()
       cv(self.y_field_ng_paths[i], info=vec_info).commit_info()
       cv(self.x_res_ng_paths[i], info=vec_info).commit_info()
@@ -361,10 +361,12 @@ class Aligner:
         # align to the newly aligned previous slice
         tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
     field, residuals, encodings, cum_residuals = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount, old_vectors=self.old_vectors)
-    #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
-    #                        crop_amount=self.crop_amount)
+    rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
+                            crop_amount=self.crop_amount)
 
     # save the final vector field for warping
+    #offset = 1949 
+    #field = self.get_field_from_h5(out_patch_bbox, source_z - offset)
     self.save_vector_patch(field, self.x_field_ng_paths[mip], self.y_field_ng_paths[mip], source_z, out_patch_bbox, mip)
 
     if self.write_intermediaries:
@@ -464,13 +466,18 @@ class Aligner:
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
-    offset = 1949 
+    offset = 1949
+    #print(" index is ", z - offset) 
     agg_flow = self.get_field_from_h5(influence_bbox, z - offset)
-    #self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
+    #agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
     image = torch.from_numpy(self.get_image_data(ng_path, z, influence_bbox, mip))
     image = image.unsqueeze(0)
     mip_disp = int(self.max_displacement / 2**mip)
+    agg_flow =  2 * agg_flow / (image.shape[-1])
+    #agg_flow = agg_flow.permute(0,2,1,3) #27
+    #agg_flow = agg_flow.flip(3)
     #no need to warp if flow is identity since warp introduces noise
+    #print("agg_flow", agg_flow.shape, "image ", image.shape, agg_flow)
     if torch.min(agg_flow) != 0 or torch.max(agg_flow) != 0:
       image = gridsample_residual(image, agg_flow, padding_mode='zeros')
     else:
@@ -510,7 +517,8 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = float_patch[0, :, :, np.newaxis]
-    uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
+    uint_patch = (patch).astype(np.uint8)
+    #uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
     cv(ng_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
                                   progress=False)[x_range[0]:x_range[1],
                                                   y_range[0]:y_range[1], z] = uint_patch
@@ -547,7 +555,8 @@ class Aligner:
   def preprocess_data(self, data):
     sd = np.squeeze(data)
     ed = np.expand_dims(sd, 0)
-    nd = np.divide(ed, float(255.0), dtype=np.float32)
+    #nd = np.divide(ed, float(255.0), dtype=np.float32)
+    nd = ed.astype(np.float32)
     return nd
 
   def dilate_mask(self, mask, radius=5):
@@ -710,7 +719,7 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def render(self, z, bbox, mip, start_z):
-    print ("Rendering mip {}".format(mip),
+    print ("Rendering slice {} mip {}".format(z, mip),
               end='', flush=True)
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
@@ -718,10 +727,6 @@ class Aligner:
     def chunkwise(patch_bbox):
       warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
                                     (mip, self.process_high_mip), mip, start_z)
-      #if (self.run_pairs):
-        # save the image in the previous slice so it's easier to compare pairs
-      #  self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
-      #else:
       self.save_image_patch(self.dst_ng_path, warped_patch, z, patch_bbox, mip)
     self.pool.map(chunkwise, chunks)
     end = time()
@@ -765,21 +770,70 @@ class Aligner:
     
   def read_h5(self):
       file_name = "/usr/people/zhenj/mnt/zhenj/vecs_for_zhen.h5"
-      f = h5py.File(file_name)
+      f = h5py.File(file_name, 'r')
       return f
   
   def get_field_from_h5(self, bbox, z):
       mip = 8
       x_range = bbox.x_range(mip=mip) # get data accorrding to mip8 scale
       y_range = bbox.y_range(mip=mip)
-      
-      field = torch.from_numpy(self.vector_field_file["/main"].
-                               value[z,x_range[0]:x_range[1],y_range[0]:y_range[1],:])
-      mip_field = upsample(mip - self.render_low_mip)(field.permute(0,3,1,2))
+      #print("z is ", z, "xrange", x_range, "y_range", y_range) 
+      #field = torch.from_numpy(self.vector_field_file["/main"].
+      #                         value[z,x_range[0]:x_range[1],y_range[0]:y_range[1],:])
+      offset = 351
+      end = 1152
+      end_offset = offset + end
+      x_range_mip8 = list(x_range)
+      y_range_mip8 = list(y_range)
+      if x_range[0] < offset:
+          x_range_mip8[0] = 0
+          x_range_mip8[1] = x_range[1] - offset
+          x_start = offset - x_range[0]
+          x_end = x_range[1] - x_range[0] 
+      elif x_range[1] > end_offset:
+          x_range_mip8[1] = end
+          x_range_mip8[0] = x_range[0] - offset
+          x_start = 0
+          x_end = end_offset - x_range[0] 
+      else:
+          x_range_mip8[0] = x_range[0] - offset
+          x_range_mip8[1] = x_range[1] - offset
+          x_start = 0
+          x_end = x_range_mip8[1] - x_range[0]
+      if y_range[0] < offset:
+          y_range_mip8[0] = 0
+          y_range_mip8[1] = y_range[1] - offset
+          y_start = offset - y_range[0]
+          y_end = y_range[1] - y_range[0] 
+      elif y_range[1] > end_offset:
+          y_range_mip8[1] = end
+          y_range_mip8[0] = y_range[0] - offset
+          y_start = 0
+          y_end = end_offset - y_range[0]
+      else:
+          y_range_mip8[0] = y_range[0] - offset
+          y_range_mip8[1] = y_range[1] - offset
+          y_start = 0
+          y_end = y_range[1] - y_range[0]
+
+      field = torch.zeros(x_range[1] - x_range[0], y_range[1] - y_range[0], 2, dtype=torch.float)
+      field_h5 = torch.from_numpy(self.vector_field_file["/main"].
+                               value[z,x_range_mip8[0]:x_range_mip8[1],y_range_mip8[0]:y_range_mip8[1],:]).cpu()
+      field[x_start:x_end, y_start:y_end, :] = field_h5 
+      #print("xrange", x_range, "y_range", y_range, "x_rangeMip8", x_range_mip8, "y_rangeMip8", y_range_mip8, "x slice", x_start, x_end, "y slice", y_start, y_end) 
+      field_new = field #.flip(2)  
+      field_for_ups = field_new.permute(2,0,1).unsqueeze(0)
+      mip_field = upsample(mip - self.render_low_mip)(field_for_ups)
       mip_field = mip_field.permute(0,2,3,1)
-      mip_field[...,0] = mip_field[...,0] * (2**(mip - self.render_low_mip))
-      mip_field[...,1] = mip_field[...,1] * (2**(mip - self.render_low_mip))
-      return mip_field
+      mip_field = mip_field * (2**(mip - self.render_low_mip))
+      #print("mip is ", mip ,"low_mip is", self.render_low_mip)
+      #print("mip_field shape is", mip_field.shape,"xrange", x_range, "y_range", y_range, "field,shape", field.shape) 
+      #print("mip_field shape is", mip_field.shape,"xrange", x_range, "y_range", y_range, "field,shape", field.shape, "x_rangeMip8", x_range_mip8, "y_rangeMip8", y_range_mip8) 
+      #mip_field[...,1] = mip_field[...,1] * (2**(mip - self.render_low_mip))
+      #mip_field[...,0] = mip_field[...,0] / (2**(self.render_low_mip))
+      #mip_field[...,1] = mip_field[...,1] / (2**(self.render_low_mip))
+      #mip_field = self.abs_to_rel_residual(mip_field, bbox, self.render_low_mip) 
+      return mip_field 
 
   
   ## Whole stack operations
@@ -788,7 +842,7 @@ class Aligner:
       raise Exception("Not all parameters are set")
     #if not bbox.is_chunk_aligned(self.dst_ng_path):
     #  raise Exception("Have to align a chunkaligned size")
-    self.vector_field_file = read_h5()
+    self.vector_field_file = self.read_h5()
     self.total_bbox = bbox
     start_z = start_section 
     start = time()
@@ -796,8 +850,7 @@ class Aligner:
       for m in range(self.render_low_mip, self.high_mip+1):
         self.copy_section(self.src_ng_path, self.dst_ng_path, start_section, bbox, mip=m)
       start_z = start_section - 1 
-    #if (self.run_pairs):
-    #    self.count_box(bbox, self.render_low_mip);
+    start_z = start_section - 1 
     self.zs = start_section
     for z in range(start_section, end_section, -1):
       self.img_cache = {}
