@@ -345,7 +345,7 @@ class Aligner:
     return chunks
 
   def compute_residual_patch(self, source_z, target_z, out_patch_bbox, mip):
-    print ("Computing residual for region {}.".format(out_patch_bbox.__str__(mip=0)), flush=True)
+    #print ("Computing residual for region {}.".format(out_patch_bbox.__str__(mip=0)), flush=True)
     precrop_patch_bbox = deepcopy(out_patch_bbox)
     precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
 
@@ -543,13 +543,20 @@ class Aligner:
 
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-
+    print("x_range", x_range, "y_range", y_range)
+    #cv(x_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
+    #                   non_aligned_writes=False, progress=False)[x_range[0]:x_range[1],
+    #                                               y_range[0]:y_range[1], z] = x_res
+    #cv(y_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
+    #                   non_aligned_writes=False, progress=False)[x_range[0]:x_range[1],
+    #                                               y_range[0]:y_range[1], z] = y_res
     cv(x_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                       non_aligned_writes=False, progress=False)[x_range[0]:x_range[1],
+                       non_aligned_writes=True, progress=False)[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = x_res
     cv(y_path, mip=mip, bounded=False, fill_missing=True, autocrop=True,
-                       non_aligned_writes=False, progress=False)[x_range[0]:x_range[1],
+                       non_aligned_writes=True, progress=False)[x_range[0]:x_range[1],
                                                    y_range[0]:y_range[1], z] = y_res
+
 
   ## Data loading
   def preprocess_data(self, data):
@@ -736,6 +743,29 @@ class Aligner:
     self.render(z, bbox, self.render_low_mip, start_z)
     self.downsample(z, bbox, self.render_low_mip, self.render_high_mip)
 
+  def to_cv(self, z, bbox): 
+    influence_bbox = deepcopy(bbox)
+    influence_bbox.uncrop(self.max_displacement, mip=0)
+    start = time()
+    offset = 1949
+    mip_disp = int(self.max_displacement / 2**8) 
+    agg_flow = self.get_field_from_h5(influence_bbox, z - offset)
+    #print("agg_flow shape", agg_flow.shape)
+    self.save_vector_patch(agg_flow.numpy()[:, mip_disp:-mip_disp, mip_disp:-mip_disp, :], self.x_field_ng_paths[8], self.y_field_ng_paths[8], z, bbox, 8)
+
+  def upload_to_cv(self, z, bbox):
+    chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[8],
+                                   self.dst_voxel_offsets[8], mip=8, render=True)
+    for i in chunks:
+      x_range = i.x_range(mip=8)
+      y_range = i.y_range(mip=8) 
+      print("break chunks: x_range", x_range, "y_range", y_range)
+
+    def chunkwise(patch_bbox):
+      self.to_cv(z, patch_bbox)
+    self.pool.map(chunkwise, chunks)
+
+
   def downsample(self, z, bbox, source_mip, target_mip):
     print ("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
     for m in range(source_mip+1, target_mip + 1):
@@ -799,7 +829,7 @@ class Aligner:
           x_range_mip8[0] = x_range[0] - offset
           x_range_mip8[1] = x_range[1] - offset
           x_start = 0
-          x_end = x_range_mip8[1] - x_range[0]
+          x_end = x_range[1] - x_range[0]
       if y_range[0] < offset:
           y_range_mip8[0] = 0
           y_range_mip8[1] = y_range[1] - offset
@@ -819,8 +849,9 @@ class Aligner:
       field = torch.zeros(x_range[1] - x_range[0], y_range[1] - y_range[0], 2, dtype=torch.float)
       field_h5 = torch.from_numpy(self.vector_field_file["/main"].
                                value[z,x_range_mip8[0]:x_range_mip8[1],y_range_mip8[0]:y_range_mip8[1],:]).cpu()
+      print("field shape is", field.shape, "field_h5 shape is", field_h5.shape, "xrange", x_range, "y_range", y_range, "x_rangeMip8", x_range_mip8, "y_rangeMip8", y_range_mip8, "x slice", x_start, x_end, "y slice", y_start, y_end, bbox.x_range(mip=0))
       field[x_start:x_end, y_start:y_end, :] = field_h5 
-      #print("xrange", x_range, "y_range", y_range, "x_rangeMip8", x_range_mip8, "y_rangeMip8", y_range_mip8, "x slice", x_start, x_end, "y slice", y_start, y_end) 
+      #print("xrange", x_range, "y_range", y_range, "x_rangeMip8", x_range_mip8, "y_rangeMip8", y_range_mip8, "x slice", x_start, x_end, "y slice", y_start, y_end)  
       field_new = field #.flip(2)  
       field_for_ups = field_new.permute(2,0,1).unsqueeze(0)
       mip_field = upsample(mip - self.render_low_mip)(field_for_ups)
@@ -834,7 +865,20 @@ class Aligner:
       #mip_field[...,1] = mip_field[...,1] / (2**(self.render_low_mip))
       #mip_field = self.abs_to_rel_residual(mip_field, bbox, self.render_low_mip) 
       return mip_field 
-
+  
+  def uploat_field_to_cv(self, start_section, end_section, bbox):
+    self.vector_field_file = self.read_h5()
+    self.total_bbox = bbox
+    start_z = start_section 
+    start = time()
+    start_z = start_section - 1 
+    self.zs = start_section
+    x_range = bbox.x_range(mip=8)
+    y_range = bbox.y_range(mip=8)
+    for z in range(start_section, end_section, -1):
+      self.upload_to_cv(z - 1, bbox)
+    end = time()
+    print ("Total time for aligning {} slices: {}".format(end_section - start_section, end - start))  
   
   ## Whole stack operations
   def align_ng_stack(self, start_section, end_section, bbox, move_anchor=True):
@@ -857,5 +901,5 @@ class Aligner:
       #self.compute_section_pair_residuals(z - 1, z, bbox)
       self.render_section_all_mips(z - 1, bbox, start_z)
     end = time()
-    print ("Total time for aligning {} slices: {}".format(end_section - start_section,
-                                                          end - start))
+    print ("Total time for aligning {} slices: {}".format(end_section - start_section, end - start))
+ 
