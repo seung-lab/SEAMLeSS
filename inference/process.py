@@ -54,8 +54,8 @@ class Process(object):
             return nonflipped, residuals, encodings, cumulative_residuals
 
         # flipped
-        s = s.flip([1, 2])
-        t = t.flip([1, 2])
+        s = s.flip([2, 3])
+        t = t.flip([2, 3])
         field_fl, residuals_fl, encodings_fl, cumulative_residuals_fl = self.model(s, t), *[None]*3
         field_fl *= (field_fl.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
