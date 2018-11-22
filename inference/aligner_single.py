@@ -192,12 +192,11 @@ class Aligner:
             field_sf_info["scales"][i]["chunk_sizes"][0][2] = 1
         field_sf_info['num_channels'] = 2
         cv(self.field_sf_ng_path, info=field_sf_info).commit_info() 
-
-    for i in range(len(scales)):
+    for i in range(len(scales) -1):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
-
+      
       cv(self.x_field_ng_paths[i], info=vec_info).commit_info()
       cv(self.y_field_ng_paths[i], info=vec_info).commit_info()
       cv(self.x_res_ng_paths[i], info=vec_info).commit_info()
