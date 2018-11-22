@@ -1092,7 +1092,6 @@ class Aligner:
     self.zs = stack_start
     self.end_section = stack_start - stack_size
     self.num_section = stack_size
-    self.vector_field_file = self.read_h5()
     while (True):
       message = self.task_handler.get_message()
       if message != None:
