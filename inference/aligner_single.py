@@ -11,6 +11,7 @@ from copy import deepcopy, copy
 from helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
 import scipy
 import scipy.ndimage
+import h5py
 
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum
@@ -324,14 +325,77 @@ class Aligner:
       f = h5py.File(file_name, 'r')
       return f
 
+  def from_h5_file(self, bbox, z):
+      mip = 8
+      z = z - 1949
+      x_range = bbox.x_range(mip=mip) # get data accorrding to mip8 scale
+      y_range = bbox.y_range(mip=mip)
+      #print("z is ", z, "xrange", x_range, "y_range", y_range) 
+      #field = torch.from_numpy(self.vector_field_file["/main"].
+      #                         value[z,x_range[0]:x_range[1],y_range[0]:y_range[1],:])
+      offset = 351
+      end = 1152
+      end_offset = offset + end
+      x_range_mip8 = list(x_range)
+      y_range_mip8 = list(y_range)
+      if x_range[0] < offset:
+          x_range_mip8[0] = 0
+          x_range_mip8[1] = x_range[1] - offset
+          x_start = offset - x_range[0]
+          x_end = x_range[1] - x_range[0] 
+      elif x_range[1] > end_offset:
+          x_range_mip8[1] = end
+          x_range_mip8[0] = x_range[0] - offset
+          x_start = 0
+          x_end = end_offset - x_range[0] 
+      else:
+          x_range_mip8[0] = x_range[0] - offset
+          x_range_mip8[1] = x_range[1] - offset
+          x_start = 0
+          x_end = x_range_mip8[1] - x_range[0]
+      if y_range[0] < offset:
+          y_range_mip8[0] = 0
+          y_range_mip8[1] = y_range[1] - offset
+          y_start = offset - y_range[0]
+          y_end = y_range[1] - y_range[0] 
+      elif y_range[1] > end_offset:
+          y_range_mip8[1] = end
+          y_range_mip8[0] = y_range[0] - offset
+          y_start = 0
+          y_end = end_offset - y_range[0]
+      else:
+          y_range_mip8[0] = y_range[0] - offset
+          y_range_mip8[1] = y_range[1] - offset
+          y_start = 0
+          y_end = y_range[1] - y_range[0]
+
+      field = torch.zeros(x_range[1] - x_range[0], y_range[1] - y_range[0], 2, dtype=torch.float)
+      field_h5 = torch.from_numpy(self.vector_field_file["/main"].
+                               value[z,x_range_mip8[0]:x_range_mip8[1],y_range_mip8[0]:y_range_mip8[1],:]).cpu()
+      field[x_start:x_end, y_start:y_end, :] = field_h5 
+      #print("xrange", x_range, "y_range", y_range, "x_rangeMip8", x_range_mip8, "y_rangeMip8", y_range_mip8, "x slice", x_start, x_end, "y slice", y_start, y_end) 
+      field_new = field #.flip(2)  
+      field_for_ups = field_new.permute(2,0,1).unsqueeze(0)
+      mip_field = upsample(mip - self.render_low_mip)(field_for_ups)
+      mip_field = mip_field.permute(0,2,3,1)
+      mip_field = mip_field * (2**(mip - self.render_low_mip))
+      #print("mip is ", mip ,"low_mip is", self.render_low_mip)
+      #print("mip_field shape is", mip_field.shape,"xrange", x_range, "y_range", y_range, "field,shape", field.shape) 
+      #print("mip_field shape is", mip_field.shape,"xrange", x_range, "y_range", y_range, "field,shape", field.shape, "x_rangeMip8", x_range_mip8, "y_rangeMip8", y_range_mip8) 
+      #mip_field[...,1] = mip_field[...,1] * (2**(mip - self.render_low_mip))
+      #mip_field[...,0] = mip_field[...,0] / (2**(self.render_low_mip))
+      #mip_field[...,1] = mip_field[...,1] / (2**(self.render_low_mip))
+      #mip_field = self.abs_to_rel_residual(mip_field, bbox, self.render_low_mip) 
+      return mip_field 
+
   def get_field_from_h5(self, bbox, z):
       mip = 8
       #x_range = bbox.x_range(mip=mip) # get data accorrding to mip8 scale
       #y_range = bbox.y_range(mip=mip)
       Xpath = "gs://neuroglancer/seamless/vector_fixer30_fine_tuning_low_mip_e176_t200__zhen_test_sergiy_vector/field/8/x"
       Ypath = "gs://neuroglancer/seamless/vector_fixer30_fine_tuning_low_mip_e176_t200__zhen_test_sergiy_vector/field/8/y"
-      field_x = get_vector_data(Xpath, z, bbox, mip)[..., 0, 0]
-      field_y = get_vector_data(Ypath, z, bbox, mip)[..., 0, 0]
+      field_x = self.get_vector_data(Xpath, z, bbox, mip)[..., 0, 0]
+      field_y = self.get_vector_data(Ypath, z, bbox, mip)[..., 0, 0]
       field_new = torch.from_numpy(np.stack((field_x, field_y), axis=2))
       #print("xrange", x_range, "y_range", y_range, "x_rangeMip8", x_range_mip8, "y_rangeMip8", y_range_mip8, "x slice", x_start, x_end, "y slice", y_start, y_end) 
       field_for_ups = field_new.permute(2,0,1).unsqueeze(0)
@@ -444,6 +508,7 @@ class Aligner:
         agg_flow = field_sf
     else:
         agg_flow = self.get_field_from_h5(influence_bbox, z)
+        #agg_flow = self.from_h5_file(influence_bbox, z)
         agg_flow = 2 * agg_flow / (image.shape[-1])
         #agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
     
@@ -858,7 +923,9 @@ class Aligner:
           field_sf = field_sf + gridsample_residual(agg_flow, field_sf, 
                                                     padding_mode='border').permute(0,2,3,1)
       else:
-          field_sf = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip) 
+          #field_sf = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip) 
+          agg_flow = self.get_field_from_h5(influence_bbox, z)
+          field_sf = 2 * agg_flow / (agg_flow.shape[-2]) 
       #regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,0]), 128)).unsqueeze(-1)
       #regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field_sf[...,1]), 128)).unsqueeze(-1)
       #field_sf = torch.cat([regular_part_x,regular_part_y],-1)
@@ -1024,8 +1091,9 @@ class Aligner:
   def listen_for_tasks(self, stack_start, stack_size ,bbox):
     self.total_bbox = bbox
     self.zs = stack_start
-    self.end_section = stack_start + stack_size
+    self.end_section = stack_start - stack_size
     self.num_section = stack_size
+    self.vector_field_file = self.read_h5()
     while (True):
       message = self.task_handler.get_message()
       if message != None:
