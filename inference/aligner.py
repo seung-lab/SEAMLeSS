@@ -59,8 +59,8 @@ class DstDir():
   distinguished by the different sets of kwargs that are used for the CloudVolume.
   All CloudVolumes are MiplessCloudVolumes. 
   """
-  def __init__(self, dst_path, src_cv, mip_range, ignore_init, 
-                     provenance, max_offset):
+  def __init__(self, dst_path, src_cv, mip_range, provenance, max_offset):
+    print('Creating DstDir for {0}'.format(dst_path))
     self.mip_range = mip_range
     self.root = dst_path
     self.paths = {}
@@ -75,6 +75,7 @@ class DstDir():
     self.write_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False, 
                   'autocrop': True, 'non_aligned_writes': False}
     self.info = None
+    self.provenance = provenance
     self.create_info(src_cv, max_offset)
     self.add_default_cv()
   
@@ -102,7 +103,7 @@ class DstDir():
       src_info['scales'][-1]['chunk_sizes'] = [ list(map(int, chunksize)) ]
 
     self.info = deepcopy(src_info)
-    chunk_size = img_info["scales"][0]["chunk_sizes"][0][0]
+    chunk_size = self.info["scales"][0]["chunk_sizes"][0][0]
     dst_size_increase = max_offset
     if dst_size_increase % chunk_size != 0:
       dst_size_increase = dst_size_increase - (dst_size_increase % max_offset) + chunk_size
@@ -140,7 +141,7 @@ class DstDir():
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
 
-  def create_cv(name, data_type, num_channels, mkdir):
+  def create_cv(self, name, data_type, num_channels):
     path = self.paths[name]
     provenance = self.provenance 
     info = deepcopy(self.info)
@@ -228,6 +229,7 @@ class Aligner:
                       src_mask_path, tgt_mask_path, 
                       src_mask_mip, tgt_mask_mip, 
                       src_mask_val, tgt_mask_val)
+    src_cv = self.src['src_img'][0]
     self.dst = {}
     self.tgt_range = range(-tgt_radius, tgt_radius+1)
     for i in self.tgt_range:
@@ -237,7 +239,7 @@ class Aligner:
         path = '{0}/z_{1}i'.format(dst_path, abs(i))
       else: 
         path = dst_path
-      self.dst[i] = DstDir(path, mip_range, max_displacement, provenance)
+      self.dst[i] = DstDir(path, src_cv, mip_range, provenance, max_displacement)
 
     self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, 
                        dim=high_mip_chunk[0]+crop*2, skip=skip, 
@@ -371,7 +373,7 @@ class Aligner:
     v = v[:,crop:-crop, crop:-crop,:]
     self.save_vector_patch(cv, z, v, bbox, mip)
 
-  def break_into_chunks(self, bbox, chunk_size, offset, mip, render=False)
+  def break_into_chunks(self, bbox, chunk_size, offset, mip, render=False):
     chunks = []
     raw_x_range = bbox.x_range(mip=mip)
     raw_y_range = bbox.y_range(mip=mip)
@@ -444,7 +446,7 @@ class Aligner:
       if inverse:
         src_z, tgt_z = tgt_z, src_z 
       F = self.get_composed_field(src_z, tgt_z, compose_start, bbox, mip, 
-                                  inverse=inverse, relative=False, to_tensor=True):
+                                  inverse=inverse, relative=False, to_tensor=True)
 
     field = vector_vote(fields, T=T)
     composed_k = self.dst[0].get_composed_key(compose_start, inverse)
