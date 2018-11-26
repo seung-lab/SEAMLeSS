@@ -16,6 +16,4 @@ if __name__ == '__main__':
 
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
   # multi_match(a, bbox, z_range) 
-  a.align_stack_vector_vote(z_range, bbox,  
-                             render_match=args.render_match,
-                             render_final=args.render_final)
+  a.generate_pairwise(z_range, bbox, render_match=args.render_match)
