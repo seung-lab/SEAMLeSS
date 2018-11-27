@@ -3,15 +3,15 @@ from cloudvolume import CloudVolume, Storage
 class MiplessCloudVolume():
   """Multi-mip access to CloudVolumes using the same path
   """
-  def __init__(self, path, **kwargs):
+  def __init__(self, path, mkdir, **kwargs):
     self.path = path
-    self.mkdir = not self.exists()
+    self.mkdir = mkdir 
     self.kwargs = kwargs
     self.cvs = {}
 
-  def exists(self):
-    s = Storage(self.path)
-    return s.exists('info') 
+  # def exists(self):
+  #   s = Storage(self.path)
+  #   return s.exists('info') 
 
   def create(self, mip):
     print('Creating CloudVolume for {0} at MIP{1}'.format(self.path, mip))
