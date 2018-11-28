@@ -1,6 +1,7 @@
 import os
 import shutil
 import warnings
+import math
 from pathlib import Path
 from moviepy.editor import ImageSequenceClip
 import numpy as np
@@ -384,6 +385,8 @@ class AverageMeter(object):
                 self.warned = True
             val = val.item()
         self.val = val
+        if isinstance(val, float) and not math.isfinite(val):
+            return  # don't accumulate nan or inf
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count

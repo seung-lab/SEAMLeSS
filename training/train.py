@@ -73,6 +73,7 @@ import warnings
 import datetime
 import math
 import random
+import math
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -216,9 +217,10 @@ def train(train_loader, archive, epoch):
         loss = loss.mean()  # average across a batch if present
 
         # compute gradient and do optimizer step
-        archive.optimizer.zero_grad()
-        loss.backward()
-        archive.optimizer.step()
+        if math.isfinite(loss.item()):
+            archive.optimizer.zero_grad()
+            loss.backward()
+            archive.optimizer.step()
         loss = loss.item()  # get python value without the computation graph
         losses.update(loss)
         state_vars.iteration = i + 1  # advance iteration to resume correctly
@@ -238,7 +240,7 @@ def train(train_loader, archive, epoch):
                datetime.datetime.now(),
                epoch,
                i,
-               loss,
+               loss if math.isfinite(loss) else '',
                '',
             ])
             print('{0}\t'
@@ -351,11 +353,12 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
 
 
 @torch.no_grad()
-def gen_masks(src, tgt, prediction, threshold=10):
+def gen_masks(src, tgt, prediction=None, threshold=10):
     """
     Returns masks with which to weight the loss function
     """
-    src, tgt = src.to(prediction.device), tgt.to(prediction.device)
+    if prediction is not None:
+        src, tgt = src.to(prediction.device), tgt.to(prediction.device)
     src, tgt = (src * 255).to(torch.uint8), (tgt * 255).to(torch.uint8)
 
     src_mask, tgt_mask = torch.ones_like(src), torch.ones_like(tgt)
