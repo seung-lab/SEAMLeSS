@@ -192,7 +192,7 @@ class Aligner:
         field_sf_info['num_channels'] = 2
         cv(self.field_sf_ng_path, info=field_sf_info).commit_info() 
 
-    for i in range(len(scales)):
+    for i in range(len(scales) - 1):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
@@ -409,10 +409,11 @@ class Aligner:
     mip_disp = int(self.max_displacement / 2**mip)
     if self.run_pairs:
         field_sf = torch.from_numpy(self.get_field_sf_residual(z, influence_bbox, mip))
-        field_sf_last = torch.from_numpy(self.get_field_sf_residual(self.end_section, 
-            influence_bbox, mip))
-        regular_factor = (z - self.zs) / self.num_section   
-        agg_flow = field_sf - regular_factor * field_sf_last
+        #field_sf_last = torch.from_numpy(self.get_field_sf_residual(self.end_section, 
+        #    influence_bbox, mip))
+        #regular_factor = (z - self.zs) / self.num_section   
+        #agg_flow = field_sf - regular_factor * field_sf_last
+        agg_flow = field_sf
     else:
         agg_flow = self.get_aggregate_rel_flow(z, influence_bbox, res_mip_range, mip)
     
