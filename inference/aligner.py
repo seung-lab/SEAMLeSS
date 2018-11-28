@@ -23,7 +23,7 @@ from task_handler import TaskHandler, make_residual_task_message, make_render_ta
 class Aligner:
   def __init__(self, model_path, max_displacement, crop,
                mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
-               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=10,
+               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=2,
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
                flip_average=True, run_pairs=False, write_intermediaries=False,
@@ -175,8 +175,8 @@ class Aligner:
                     range(self.process_low_mip, self.process_high_mip+1)}
 
     scales = deepcopy(vec_info["scales"])
-    # print('src_info scales: {0}'.format(len(scales)))
-    for i in range(len(scales)):
+    #print('src_info scales: {0}'.format(len(scales)))
+    for i in range(len(scales)-1):
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
