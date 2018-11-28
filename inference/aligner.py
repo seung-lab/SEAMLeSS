@@ -28,6 +28,11 @@ from threading import Lock
 
 import torch.nn as nn
 
+from task_handler import TaskHandler, make_residual_task_message, \
+        make_render_task_message, make_copy_task_message, \
+        make_downsample_task_message, make_compose_task_message, \
+        make_prepare_task_message
+
 class SrcDir():
   def __init__(self, src_path, tgt_path, 
                      src_mask_path, tgt_mask_path, 
@@ -795,13 +800,6 @@ class Aligner:
       # If m > self.process_low_mip:
       #     self.prepare_source(src_z, bbox, m - 1)
     
-  def count_box(self, bbox, mip):    
-    chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
-                                      self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
-    total_chunks = len(chunks)
-    self.image_pixels_sum =np.zeros(total_chunks)
-    self.field_sf_sum =np.zeros((total_chunks, 2), dtype=np.float32)
-
   def vector_vote_chunkwise(self, z, compose_start, bbox, mip, inverse, T=-1):
     """Chunked-processing of vector voting
     
