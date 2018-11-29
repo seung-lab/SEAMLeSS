@@ -1,6 +1,7 @@
 import random
 import h5py
 import cv2
+import numpy as np
 import torch
 from torch.utils.data import Dataset, ConcatDataset
 
@@ -11,8 +12,9 @@ def compile_dataset(*h5_paths, transform=None):
     datasets = []
     for h5_path in h5_paths:
         h5f = h5py.File(h5_path, 'r')
-        ds = [StackDataset(v, transform=transform) for v in h5f.values()]
-        datasets.extend(ds)
+        for series in h5f.values():
+            ds = [StackDataset(v, transform=transform) for v in series]
+            datasets.extend(ds)
     return ConcatDataset(datasets)
 
 
@@ -125,19 +127,20 @@ class StackDataset(Dataset):
 
     def __init__(self, stack, transform=None):
         self.stack = stack
-        self.N = self.stack.shape[1]-1
+        self.N = len(stack) - 1
         self.transform = transform
 
     def __len__(self):
-        # 2*(stack.shape[1]-1) consecutive image pairs
+        # 2*(len(stack)-1) consecutive image pairs
         return 2*self.N
 
     def __getitem__(self, k):
-        # match i -> i+1 if k < stack.shape[1], else match i -> i-1
-        i = self.N - abs(k - self.N)
-        j = self.N - abs(k+1 - self.N)
-        i, j = sorted((i, j))
-        X = self.stack[0, i:j+1, :, :]
+        # match i -> i+1 if k < N, else match i -> i-1
+        i = k % self.N
+        X = self.stack[i:i+2]
+        if k >= self.N:
+            X = np.flip(X, 0)
+        X = X.copy()  # prevent modifying the dataset
         if self.transform:
             X = self.transform(X)
         return X
