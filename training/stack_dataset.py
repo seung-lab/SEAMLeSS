@@ -1,6 +1,5 @@
 import random
 import h5py
-import cv2
 import numpy as np
 import torch
 from torch.utils.data import Dataset, ConcatDataset
@@ -74,40 +73,12 @@ class RandomRotateAndScale(object):
         return X.squeeze()
 
 
-class Contrast(object):
-    """Contrast Limited Adaptive Histogram Equalization
-    """
-
-    def __init__(self, clipLimit=40, tileGridSize=(8, 8)):
-        self.clahe = cv2.createCLAHE(clipLimit=clipLimit,
-                                     tileGridSize=tileGridSize)
-
-    def __call__(self, X):
-        Xb = (X * 255).to(torch.uint8)
-        for i in range(Xb.shape[-3]):
-            eq = self.clahe.apply(Xb[..., i, :, :].squeeze().numpy())
-            X[..., i, :, :] = torch.from_numpy(eq).unsqueeze(0)
-        X = X.to(torch.float) / 255
-        X[Xb == 0] = 0
-        return X
-
-
 class ToFloatTensor(object):
     """Convert ndarray to FloatTensor
     """
 
     def __call__(self, X):
         return torch.from_numpy(X).to(torch.float)
-
-
-class Normalize(object):
-    """Rescale values from 0 to 1
-    """
-
-    def __call__(self, X):
-        X = X - X.min()
-        X = X / X.max()
-        return X
 
 
 class Split(object):

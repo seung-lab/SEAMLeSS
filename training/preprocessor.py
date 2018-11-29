@@ -21,12 +21,13 @@ class Preprocessor(nn.Module):
     def forward(self, X, *args, **kwargs):
         for i in range(X.shape[-3]):
             mask = self.gen_mask(X[..., i, :, :])
+            X[..., i, :, :] = self.normalize(X[..., i, :, :], mask=mask)
             X[..., i, :, :] = self.contrast(X[..., i, :, :], mask=mask)
         return X
 
     def contrast(self, X, mask=...):
         """
-        Performs contrast Limited Adaptive Histogram Equalization
+        Performs Contrast Limited Adaptive Histogram Equalization
         """
         Xb = (X * 255).to(torch.uint8)[mask].squeeze()
         eq = torch.from_numpy(self.clahe.apply(Xb.numpy()))
@@ -34,5 +35,16 @@ class Preprocessor(nn.Module):
         X[..., Xb == 0] = 0
         return X
 
+    def normalize(self, X, mask=..., min=0, max=1):
+        """
+        Rescale values from min to max
+        """
+        X[mask] = X[mask] - X[mask].min()
+        X[mask] = X[mask] / X[mask].max() * (max - min) + min
+        return X
+
     def gen_mask(self, X, threshold=1):
+        """
+        Return a mask that selects only the relevant parts of the image
+        """
         return ...

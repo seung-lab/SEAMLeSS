@@ -107,8 +107,7 @@ def main():
     # set up training data
     train_transform = transforms.Compose([
         stack_dataset.ToFloatTensor(),
-        stack_dataset.Normalize(),
-        stack_dataset.Contrast(),
+        archive.preprocessor,
         stack_dataset.RandomRotateAndScale(),
         stack_dataset.RandomFlip(),
         stack_dataset.Split(),
@@ -125,8 +124,7 @@ def main():
     if state_vars.validation_set_path:
         val_transform = transforms.Compose([
             stack_dataset.ToFloatTensor(),
-            stack_dataset.Normalize(),
-            stack_dataset.Contrast(),
+            archive.preprocessor,
             stack_dataset.RandomRotateAndScale(),
             stack_dataset.RandomFlip(),
             stack_dataset.Split(),
@@ -245,7 +243,7 @@ def train(train_loader, archive, epoch):
             ])
             print('{0}\t'
                   'Epoch: {1} [{2}/{3}]\t'
-                  'Loss {loss.val:.10f} ({loss.avg:.10f})\t'
+                  'Loss {loss.val:12.10f} ({loss.avg:.10f})\t'
                   'BatchTime {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'DataTime {data_time.val:.3f} ({data_time.avg:.3f})\t'
                   .format(

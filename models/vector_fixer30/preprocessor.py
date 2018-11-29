@@ -40,7 +40,6 @@ class Preprocessor:
             scaled = unit * factor
             output = scaled.astype(dtype)
         else:
-            print('Warning: couldn\'t rescale chunk ({} == {}).'.format(np.max(img), np.min(img)))
             output = np.zeros(img.shape)
         assert np.min(output) >= 0
         assert np.max(output) <= factor
@@ -80,8 +79,9 @@ class Preprocessor:
     def __call__(self, img):
         if not isinstance(img, np.ndarray):
             img = img.cpu().numpy()
-        assert img.ndim == 4 or img.ndim == 2, 'Must pass either 2D or 4D images; received shape {}'.format(img.shape)
         if img.ndim == 2:
             return torch.from_numpy(self.apply_slice(img))
+        elif img.ndim == 3:
+            return torch.from_numpy(self.apply_stack(img[np.newaxis, ...]))[0]
         else:
             return torch.from_numpy(self.apply_stack(img))
