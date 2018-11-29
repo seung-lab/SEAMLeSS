@@ -223,13 +223,12 @@ def train(train_loader, archive, epoch):
         losses.update(loss)
         state_vars.iteration = i + 1  # advance iteration to resume correctly
         archive.save()
+        state_vars.iteration = i  # revert back for logging & visualizations
 
         # measure elapsed time
         batch_time.update(time.time() - start_time)
 
         # debugging, logging, and checkpointing
-        if state_vars.vis_time and i % state_vars.vis_time == 0:
-            create_debug_outputs(archive, src, tgt, prediction, truth, masks)
         if (state_vars.checkpoint_time
                 and i % state_vars.checkpoint_time == 0):
             archive.create_checkpoint(epoch=epoch, iteration=i)
@@ -250,6 +249,8 @@ def train(train_loader, archive, epoch):
                       state_vars.name,
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses))
+        if state_vars.vis_time and i % state_vars.vis_time == 0:
+            create_debug_outputs(archive, src, tgt, prediction, truth, masks)
 
         start_time = time.time()
     return losses.avg
