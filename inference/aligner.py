@@ -1156,6 +1156,13 @@ class Aligner:
     else:
       raise Exception("Unsupported task type '{}' received from queue '{}'".format(task_type,
                                                                  self.task_handler.queue_name))
+  def delete_existing_tasks(self):
+      while(True):
+          message = self.task_handler.get_message()
+          if message != None:
+              self.task_handler.delete_message(message)
+          else:
+              break;
 
   def listen_for_tasks(self, stack_start, stack_size ,bbox):
     self.total_bbox = bbox
