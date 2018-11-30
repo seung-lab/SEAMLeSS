@@ -9,7 +9,7 @@ import os
 from os.path import join
 import json
 import math
-from time import time
+from time import time, sleep
 from copy import deepcopy, copy
 import scipy
 import scipy.ndimage
@@ -264,6 +264,7 @@ class Aligner:
     self.normalizer = Normalizer(min(5, mip_range[0])) 
     self.upsample_residuals = upsample_residuals
     self.pool = ThreadPool(threads)
+    self.threads = threads
 
   def Gaussian_filter(self, kernel_size, sigma):
     x_cord = torch.arange(kernel_size)
@@ -764,7 +765,7 @@ class Aligner:
             for j in range(i, min(len(chunks), i + self.threads)):
                 task_patches.append(chunks[j])
             render_task = make_render_task_message(src_z, field_cv, field_z, task_patches, 
-                                                   mip, dst_v, dst_z)
+                                                   mip, dst_cv, dst_z)
             self.task_handler.send_message(render_task)
         self.task_handler.wait_until_ready()
     else:
@@ -1037,8 +1038,7 @@ class Aligner:
       print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
               end='', flush=True)
       warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
-      self.save_image_patch(dst_cv, dst_z, warped_patch, z, patch_bbox, mip)
-
+      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
     self.pool.map(chunkwise, patches)
 
   def handle_prepare_task(self, message):
@@ -1143,6 +1143,7 @@ class Aligner:
     elif task_type == 'compose_task':
       self.handle_compose_task(body)
     elif task_type == 'copy_task':
+      print("copy_task ----")
       self.handle_copy_task(body)
     elif task_type == 'downsample_task':
       self.handle_downsample_task(body)

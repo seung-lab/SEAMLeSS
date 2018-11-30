@@ -3,8 +3,8 @@ import json
 
 def deserialize_miplessCV(s):
     contents = json.loads(s)
-    return MiplessCloudVolume(contains['path'],mkdir = contains['mkdir'], 
-                              **contains['kwargs'])
+    return MiplessCloudVolume(contents['path'],mkdir = contents['mkdir'], 
+                              **contents['kwargs'])
 
 class MiplessCloudVolume():
   """Multi-mip access to CloudVolumes using the same path
@@ -25,7 +25,7 @@ class MiplessCloudVolume():
           "mkdir" : self.mkdir,
           "kwargs": self.kwargs,
       }
-      s = json.dumps
+      s = json.dumps(contents)
       return s
 
   def create(self, mip):
