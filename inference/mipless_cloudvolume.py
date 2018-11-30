@@ -1,4 +1,10 @@
 from cloudvolume import CloudVolume, Storage
+import json
+
+def deserialize_miplessCV(s):
+    contents = json.loads(s)
+    return MiplessCloudVolume(contains['path'],mkdir = contains['mkdir'], 
+                              **contains['kwargs'])
 
 class MiplessCloudVolume():
   """Multi-mip access to CloudVolumes using the same path
@@ -12,6 +18,15 @@ class MiplessCloudVolume():
   # def exists(self):
   #   s = Storage(self.path)
   #   return s.exists('info') 
+  
+  def serialize(self):
+      contents = {
+          "path" : self.path,
+          "mkdir" : self.mkdir,
+          "kwargs": self.kwargs,
+      }
+      s = json.dumps
+      return s
 
   def create(self, mip):
     print('Creating CloudVolume for {0} at MIP{1}'.format(self.path, mip))
