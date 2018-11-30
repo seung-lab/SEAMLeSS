@@ -17,4 +17,5 @@ if __name__ == '__main__':
 
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
   # multi_match(a, bbox, z_range) 
-  a.generate_pairwise(z_range, bbox, render_match=args.render_match)
+  #a.generate_pairwise(z_range, bbox, render_match=args.render_match)
+  a.listen_for_tasks(args.bbox_start[2], args.bbox_stop[2] - args.bbox_start[2], bbox)
