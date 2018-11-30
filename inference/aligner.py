@@ -721,7 +721,7 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.threads * 4)):
                 task_patches.append(chunks[j])
-            copy_task = make_copy_task_message(z, source, dest, task_patches, mip=mip)
+            copy_task = make_copy_task_message(z, dst_cv, dst_z, task_patches, mip=mip)
             self.task_handler.send_message(copy_task)
         self.task_handler.wait_until_ready()
     else:
@@ -1070,12 +1070,23 @@ class Aligner:
     z = message['z']
     patches  = [deserialize_bbox(p) for p in message['patches']]
     mip = message['mip']
-    source = message['source']
-    dest = message['dest']
-
+    dst_cv = DCV(message['dst_cv'])
+    dst_z = message['dst_z']
     def chunkwise(patch_bbox):
-      raw_patch = self.get_image_data(source, z, patch_bbox, mip)
-      self.save_image_patch(dest, raw_patch, z, patch_bbox, mip)
+      src_cv = self.src['src_img']
+      if 'src_mask' in self.src:
+        mask_cv = self.src['src_mask']
+        raw_patch = self.get_image(src_cv, z, patch_bbox, mip,
+                                    adjust_contrast=False, to_tensor=True)
+        raw_mask = self.get_mask(mask_cv, z, precrop_patch_bbox, 
+                                 src_mip=self.src.src_mask_mip,
+                                 dst_mip=mip, valid_val=self.src.src_mask_val)
+        raw_patch = raw_patch.masked_fill_(raw_mask, 0)
+        raw_patch = raw_patch.cpu().numpy()
+      else: 
+        raw_patch = self.get_image(src_cv, z, patch_bbox, mip,
+                                    adjust_contrast=False, to_tensor=False)
+      self.save_image_patch(dst_cv, dst_z, raw_patch, patch_bbox, mip)
     self.pool.map(chunkwise, patches)
 
   def handle_downsample_task(self, message):

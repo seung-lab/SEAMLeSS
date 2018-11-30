@@ -12,6 +12,32 @@ def make_residual_task_message(source_z, target_z, patch_bbox, mip):
   }
   return json.dumps(content)
 
+def make_regularize_task_message(z_start, z_end, compose_start, patch_bbox, mip, sigma):
+  content = {
+      "type": "regularize_task",
+      "z_start": z_start,
+      "z_end": z_end,
+      "compose_start": compose_start,
+      "patch_bbox": patch_bbox.serialize(),
+      "mip": mip,
+      "sigma": sigma,
+  }
+  return json.dumps(content)
+
+
+def make_vector_vote_task_message(z, compose_start, patch_bbox, mip, inverse, T):
+  content = {
+      "type": "vector_vote_task",
+      "z": z,
+      "compose_start": compose_start,
+      "patch_bbox": patch_bbox.serialize(),
+      "mip": mip,
+      "inverse": inverse,
+      "T": T,
+  }
+  return json.dumps(content)
+
+
 def make_prepare_task_message(z, patches, mip, start_z):
   content = {
       "type": "prepare_task",
@@ -23,13 +49,16 @@ def make_prepare_task_message(z, patches, mip, start_z):
   return json.dumps(content)
 
 
-def make_render_task_message(z, patches, mip, start_z):
+def make_render_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
   content = {
       "type": "render_task",
       "z": z,
+      "field_cv": field_cv.serialize(),
+      "field_z": field_z,
       "patches": [p.serialize() for p in patches],
       "mip": mip,
-      "start_z": start_z,
+      "dst_cv": dst_cv.serialize(),
+      "dst_z": dst_z,
   }
   return json.dumps(content)
 
@@ -44,21 +73,22 @@ def make_compose_task_message(z, patches, mip, start_z):
   return json.dumps(content)
 
 
-def make_downsample_task_message(z, patches, mip):
+def make_downsample_task_message(cv, z, patches, mip):
   content = {
       "type": "downsample_task",
       "z": z,
+      "cv": cv.serialize(),
       "patches": [p.serialize() for p in patches],
       "mip": mip,
   }
   return json.dumps(content)
 
-def make_copy_task_message(z, source, dest, patches, mip):
+def make_copy_task_message(z, dst_cv, dst_z, patches, mip):
   content = {
       "type": "copy_task",
       "z": z,
-      "source": source,
-      "dest": dest,
+      "dst_cv": dst_cv.serialize(),
+      "dst_z": dst_z,
       "patches": [p.serialize() for p in patches],
       "mip": mip,
   }
