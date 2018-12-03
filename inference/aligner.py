@@ -216,6 +216,7 @@ class Aligner:
     else:
         self.task_handler = None
         self.distributed  = False
+    self.p_render = p_render
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip
@@ -825,7 +826,8 @@ class Aligner:
         for patch_bbox in chunks:
           residual_task = make_residual_task_message(src_z, tgt_z, patch_bbox, mip=m)
           self.task_handler.send_message(residual_task)
-        self.task_handler.wait_until_ready()
+        if not self.p_render:
+          self.task_handler.wait_until_ready()
       else:
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -900,7 +902,8 @@ class Aligner:
     mip = self.process_low_mip
     for z in z_range:
       self.multi_match(z, render=render_match)
- 
+    if self.p_render:
+        self.task_handler.wait_until_ready()
   def compose_pairwise(self, z_range, compose_start, bbox, mip, 
                              forward_compose=True, inverse_compose=True):
     """Combine pairwise vector fields in TGT_RADIUS using vector voting, while composing
