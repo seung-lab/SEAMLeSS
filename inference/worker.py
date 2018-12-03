@@ -18,8 +18,11 @@ if __name__ == '__main__':
   args = parse_args(parser) 
   a = get_aligner(args)
   bbox = get_bbox(args)
-
+  forward_compose = args.forward_compose
+  inverse_compose = args.inverse_compose 
+  compose_start = args.compose_start
   mip = args.mip
 
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
-  a.listen_for_tasks(args.bbox_start[2], args.bbox_stop[2] - args.bbox_start[2], bbox)
+  a.listen_for_tasks(args.bbox_start[2], args.bbox_stop[2] - args.bbox_start[2], bbox, 
+                     forward_compose, inverse_compose, compose_start)
