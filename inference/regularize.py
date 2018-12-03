@@ -7,6 +7,7 @@ if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--compose_start', help='earliest section composed', type=int)
   parser.add_argument('--sigma', help='std of the bump function', type=float)
+  parser.add_argument('--queue_name', type=str, default=None)
   args = parse_args(parser) 
   a = get_aligner(args)
   bbox = get_bbox(args)

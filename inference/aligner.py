@@ -32,7 +32,8 @@ import torch.nn as nn
 from task_handler import TaskHandler, make_residual_task_message, \
         make_render_task_message, make_copy_task_message, \
         make_downsample_task_message, make_compose_task_message, \
-        make_prepare_task_message
+        make_prepare_task_message, make_vector_vote_task_message, \
+        make_regularize_task_message
 
 class SrcDir():
   def __init__(self, src_path, tgt_path, 
@@ -856,7 +857,7 @@ class Aligner:
     if self.distributed:
         for patch_bbox in chunks:
             vector_vote_task = make_vector_vote_task_message(z, compose_start, patch_bbox,
-                                                            inverse, T) 
+                                                            mip, inverse, T) 
             self.task_handler.send_message(vector_vote_task)
         self.task_handler.wait_until_ready()
     #for patch_bbox in chunks:
@@ -1006,7 +1007,7 @@ class Aligner:
            format(z_range, mip, len(chunks)), flush=True)
     if self.distributed:
         for patch_bbox in chunks:
-            regularize_task = make_render_task_message(z_range[0], z_range[-1],
+            regularize_task = make_regularize_task_message(z_range[0], z_range[-1],
                                                       compose_start, patch_bbox,
                                                       mip, sigma)
             self.task_handler.send_message(regularize_task)
@@ -1104,25 +1105,22 @@ class Aligner:
   def handle_vector_vote(self, message):
       z = message['z']
       compose_start = message['compose_start']
-      patch_bbox = deserialize_bbox(message['patch_bbox'])
+      #chunks = [deserialize_bbox(p) for p in message['patch_bbox']]
+      chunks = deserialize_bbox(message['patch_bbox'])
       mip = message['mip']
       inverse = message['inverse']
       T = message['T']
-      def chunkwise(patch_bbox):
-          self.vector_vote(z, compose_start, patch_bbox, mip, inverse=inverse, T=T)
-      self.pool.map(chunkwise, chunks)
+      self.vector_vote(z, compose_start, chunks, mip, inverse=inverse, T=T)
 
   def handle_regularize(self, message):
       z_start = message['z_start']
       z_end = message['z_end']
-      compose_start = message[compose_start]
+      compose_start = message['compose_start']
       patch_bbox = deserialize_bbox(message['patch_bbox'])
       mip = message['mip']
       sigma = message['sigma']
-      z_rang = range(z_start, z_end)
-      def chunkwise(patch_bbox):
-          self.regularize_z(z_range, compose_start, patch_bbox, mip, sigma=sigma)
-      self.pool.map(chunkwise, chunks)
+      z_range = range(z_start, z_end)
+      self.regularize_z(z_range, compose_start, patch_bbox, mip, sigma=sigma)
 
 
   def handle_task_message(self, message):

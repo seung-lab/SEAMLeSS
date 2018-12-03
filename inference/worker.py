@@ -14,6 +14,7 @@ if __name__ == '__main__':
     help='compute and store the forward composition (aligning Z to COMPOSE_START)', 
     action='store_true')
   parser.add_argument('--queue_name', type=str, default=None)
+  parser.add_argument('--sigma', help='std of the bump function', type=float)
   args = parse_args(parser) 
   a = get_aligner(args)
   bbox = get_bbox(args)
