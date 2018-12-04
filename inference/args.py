@@ -60,6 +60,7 @@ def get_argparser():
   parser.add_argument('--upsample_residuals', 
     help='upsample residuals & cum_residuals when writing intermediaries; requires --write_intermediaries flag', 
     action='store_true')
+  parser.add_argument('--p_render', help='parallel rendering among all slices', action='store_true')
   return parser
 
 def parse_args(parser, arg_string=''):
