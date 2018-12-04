@@ -681,7 +681,7 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def render_parallel(self, bbox, mip, start_section, end_section, start_z):
-    print ("Rendering mip {}".format(mip),
+    print ("Rendering mip {} for {} slices".format(mip, end_section - start_section),
               end='', flush=True)
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
@@ -725,7 +725,8 @@ class Aligner:
     self.downsample(z, bbox, self.render_low_mip, self.render_high_mip)
 
   def downsample_parallel(self, bbox, source_mip, target_mip, start_section, end_section):
-    print ("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
+    print ("Downsampling {} from mip {} to mip {} for {} slices".format(bbox.__str__(mip=0), source_mip, target_mip, end_section - start_section))
+    start = time()
     for m in range(source_mip+1, target_mip + 1):
       chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[m],
                                       self.dst_voxel_offsets[m], mip=m, render=True)
@@ -737,6 +738,8 @@ class Aligner:
           downsample_task = make_downsample_task_message(z + 1, task_patches, mip=m)
           self.task_handler.send_message(downsample_task)
       self.task_handler.wait_until_ready()
+    end = time()
+    print (": {} sec".format(end - start))
       
 
   def downsample(self, z, bbox, source_mip, target_mip):
@@ -763,7 +766,7 @@ class Aligner:
       start = time()
       chunks = self.break_into_chunks(bbox, self.vec_chunk_sizes[m],
                                   self.vec_voxel_offsets[m], mip=m)
-      print ("computing residuals at mip {} ({} chunks)".format(m, len(chunks)), flush=True)
+      print ("computing residuals at mip {} ({} chunks) for {} slices".format(m, len(chunks), end_section - start_section), flush=True)
       if self.distributed:
           for z in range(start_section, end_section):
               for patch_bbox in chunks:
@@ -835,8 +838,10 @@ class Aligner:
 
 
   def compose_field_sf(self, z, bbox, mip, start_z):
+      start = time()
       chunks = self.break_into_chunks(bbox, self.dst_chunk_sizes[mip],
-                                    self.dst_voxel_offsets[mip], mip=mip, render=True)
+                                    self.dst_voxel_offsets[mip], mip=mip, render=True) 
+      print ("compose field at mip {} ({} chunks) for slice {}".format(mip, len(chunks), z), flush=True)
       if self.distributed:
           for i in range(0, len(chunks), self.threads):
               task_patches = []
@@ -849,6 +854,9 @@ class Aligner:
           def chunkwise(patch_bbox):
               self.compose_field_task(z ,patch_bbox, (mip, self.process_high_mip), mip, start_z)
           self.pool.map(chunkwise, chunks)
+      end = time()
+      print (": {} sec".format(end - start))
+
   
   def render_section_parallel(self, start_section, end_section, bbox, start_z):
       if self.distributed:
