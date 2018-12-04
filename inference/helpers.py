@@ -13,6 +13,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import tqdm
+import math
 
 def compose_functions(fseq):
     def compose(f1, f2):
@@ -341,3 +342,51 @@ def identity_grid(size, cache=False, device=None):
         identity_grid._identities[size] = I
     return I.to(device)
 identity_grid._identities = {}
+
+def invert(U):
+  """Compute the inverse vector field of residual field U
+
+  This function leverages existing pytorch functions. A faster implementation could
+  be written with CUDA.
+
+  This inverse computes the bilinearly weighted sum of all vectors for a given source
+  pixel, such that
+
+  ```
+  V(s) = \frac{- \sum_{r} w_r U(r)} {\sum_{r} w_r}  \{r | r + U(r) - s \le 1\} \\
+  w_r = | r + U(r) - s |
+  ```
+
+  Args
+     U: 4D tensor in vector field convention (1xXxYx2), where vectors are stored
+        as absolute residuals.
+
+  Returns
+     V: 4D tensor for absolute residual vector field such that V(U) = I. Undefined
+        locations in U will be filled with the average of its neighbors.
+  """
+  N = torch.zeros_like(U)
+  D = torch.zeros_like(U)
+  for ri in range(U.shape[1]):
+    for rj in range(U.shape[2]):
+      ui, uj = U[0, ri, rj, :]
+      ui, uj = ui.item(), uj.item()
+      _si = ri + ui
+      _sj = rj + uj
+      for z in range(4):
+        if z == 0:
+          si, sj = math.floor(_si), math.floor(_sj)
+        elif z == 1:
+          si, sj = math.floor(_si), math.floor(_sj+1)
+        elif z == 2:
+          si, sj = math.floor(_si+1), math.floor(_sj+1)
+        else:
+          si, sj = math.floor(_si+1), math.floor(_sj)
+        if (si < U.shape[1]) & (si >= 0): 
+          if (sj < U.shape[2]) & (sj >= 0): 
+            w = (1 - abs(_si - si)) * (1 - abs(_sj - sj))
+            N[0, si, sj, :] -= w * U[0, ri, rj, :]
+            D[0, si, sj, :] += w
+  # nan_mask = torch.iszero(D)
+  V = torch.div(N, D)
+  return V
