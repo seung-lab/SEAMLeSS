@@ -4,6 +4,9 @@ from args import get_argparser, parse_args, get_aligner, get_bbox
 
 if __name__ == '__main__':
   parser = get_argparser()
+  parser.add_argument('--render_match', 
+    help='render source with all single pairwise transforms before weighting',
+    action='store_true')
   parser.add_argument('--compose_start', 
     help='the earliest section to use in the composition',
     type=int) 
