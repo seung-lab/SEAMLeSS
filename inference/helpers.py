@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import tqdm
 import math
+from copy import deepcopy
 
 def compose_functions(fseq):
     def compose(f1, f2):
@@ -343,6 +344,57 @@ def identity_grid(size, cache=False, device=None):
     return I.to(device)
 identity_grid._identities = {}
 
+def rel_to_grid_px(u, N):
+  return N*(u + 1) / 2 - 0.5
+
+def rel_to_grid(U):
+  """Convert a relative vector field [-1,+1] to a vector field in image grid coords
+
+  Vector convention:
+   A vector of -1,-1 points to the upper left corner of the image, which maps to
+   -0.5,-0.5 in the image grid coordinates.
+   A vector of +1,+1 points to the lower right corner of the image, which maps to
+   N-0.5, N-0.5 in the image grid coordinates.
+ 
+  Args
+    U: 4D tensor in vector field convention (1xXxYx2), where vectors are stored as
+       residuals in relative convention [-1,+1]
+  
+  Returns
+    V: 4D tensor in vector field convention (1xXxYx2), where vectors are stored as
+       residuals in image grid coordinates [0, N-1]
+  """
+  V = deepcopy(U)
+  N = V.shape[1]
+  M = V.shape[2]
+  V[:,:,:,0] = rel_to_grid_px(V[:,:,:,0], N) 
+  V[:,:,:,1] = rel_to_grid_px(V[:,:,:,1], M)
+  return V 
+
+def grid_to_rel_px(v, N):
+  return 2*(v + 0.5) / N - 1 
+
+def grid_to_rel(U):
+  """Convert a vector field in image grid coordinates to a relative vector field
+
+  Vector convention:
+   See rel_to_grid
+ 
+  Args
+    U: 4D tensor in vector field convention (1xXxYx2), where vectors are stored as
+       residuals in image grid coordinates [0, N-1]
+  
+  Returns
+    V: 4D tensor in vector field convention (1xXxYx2), where vectors are stored as
+       residuals in relative coordinates [-1, +1]
+  """
+  V = deepcopy(U)
+  N = V.shape[1]
+  M = V.shape[2]
+  V[:,:,:,0] = grid_to_rel_px(V[:,:,:,0], N) 
+  V[:,:,:,1] = grid_to_rel_px(V[:,:,:,1], M) 
+  return V
+ 
 def invert(U):
   """Compute the inverse vector field of residual field U
 
@@ -365,14 +417,16 @@ def invert(U):
      V: 4D tensor for absolute residual vector field such that V(U) = I. Undefined
         locations in U will be filled with the average of its neighbors.
   """
+  n = U.shape[1] 
+  m = U.shape[2]
   N = torch.zeros_like(U)
   D = torch.zeros_like(U)
   for ri in range(U.shape[1]):
     for rj in range(U.shape[2]):
       ui, uj = U[0, ri, rj, :]
       ui, uj = ui.item(), uj.item()
-      _si = ri + ui
-      _sj = rj + uj
+      _si = rel_to_grid_px(grid_to_rel_px(ri, n) + ui, n)
+      _sj = rel_to_grid_px(grid_to_rel_px(rj, m) + uj, m)
       for z in range(4):
         if z == 0:
           si, sj = math.floor(_si), math.floor(_sj)
@@ -385,6 +439,8 @@ def invert(U):
         if (si < U.shape[1]) & (si >= 0): 
           if (sj < U.shape[2]) & (sj >= 0): 
             w = (1 - abs(_si - si)) * (1 - abs(_sj - sj))
+            # print('(ri, rj): {0}'.format((ri, rj)))
+            # print('N[{0}] = {1} * {2}'.format((si, sj), w, U[0, ri, rj, :]))
             N[0, si, sj, :] -= w * U[0, ri, rj, :]
             D[0, si, sj, :] += w
   # nan_mask = torch.iszero(D)
