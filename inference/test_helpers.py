@@ -46,10 +46,10 @@ class TestInvert(unittest.TestCase):
   def test_shift_right(self):
     U = torch.zeros((1,2,2,2))
     U[0,0,0,0] = 1 # vector from [0,0] to [1,0]
-    U[0,1,0,0] = 1 # vector from [1,0] to [2,0] out of image
+    U[0,0,1,0] = 1 # vector from [1,0] to [2,0] out of image
     V = invert(U)
     _V = torch.zeros((1,2,2,2))
-    _V[0,1,0,0] = -1
+    _V[0,0,1,0] = -1
     _V[0,0,0,0] = -10 
     _V[0,0,0,1] = -10 
     V[torch.isnan(V)] = -10
@@ -57,28 +57,28 @@ class TestInvert(unittest.TestCase):
     self.assertTrue(eq)
     
   def test_rotate_clockwise(self):
-    U = torch.zeros((1,3,3,2))
+    U = torch.zeros((1,2,2,2))
     U[0,0,0,0] = 1
-    U[0,1,0,1] = 1
+    U[0,0,1,1] = 1
     U[0,1,1,0] = -1
-    U[0,0,1,1] = -1
+    U[0,1,0,1] = -1
     V = invert(U)
-    _V = torch.zeros((1,3,3,2))
+    _V = torch.zeros((1,2,2,2))
     _V[0,0,0,1] = 1
-    _V[0,1,0,0] = -1
+    _V[0,0,1,0] = -1
     _V[0,1,1,1] = -1
-    _V[0,0,1,0] = 1
+    _V[0,1,0,0] = 1
     eq = tensor_approx_eq(V, _V)
     self.assertTrue(eq)
     W = U + gridsample_residual(V.permute(0,3,1,2), U, 'border').permute(0,2,3,1)
-    eq = tensor_approx_eq(W, torch.zeros(W))
+    eq = tensor_approx_eq(W, torch.zeros_like(W))
 
   def test_multi_src_vector(self):
     U = torch.zeros((1,2,2,2))
     U[0,0,0,0] = 1 # vector from [0,0] to [1,0]
     V = invert(U)
     _V = torch.zeros((1,2,2,2))
-    _V[0,1,0,0] = -0.5
+    _V[0,0,1,0] = -0.5
     _V[0,0,0,0] = -10 
     _V[0,0,0,1] = -10 
     V[torch.isnan(V)] = -10

@@ -423,7 +423,7 @@ def invert(U):
   D = torch.zeros_like(U)
   for ri in range(U.shape[1]):
     for rj in range(U.shape[2]):
-      ui, uj = U[0, ri, rj, :]
+      uj, ui = U[0, ri, rj, :]
       ui, uj = ui.item(), uj.item()
       _si = rel_to_grid_px(grid_to_rel_px(ri, n) + ui, n)
       _sj = rel_to_grid_px(grid_to_rel_px(rj, m) + uj, m)
