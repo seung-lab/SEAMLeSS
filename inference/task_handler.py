@@ -1,6 +1,13 @@
 import boto3
 import time
 import json
+import tenacity
+
+retry = tenacity.retry(
+  reraise=True, 
+  stop=tenacity.stop_after_attempt(7), 
+  wait=tenacity.wait_full_jitter(0.5, 60.0),
+)
 
 def make_residual_task_message(source_z, target_z, patch_bbox, mip):
   content = {
@@ -71,13 +78,14 @@ class TaskHandler:
 
     self.queue_name = queue_name
     self.queue_url  = self.sqs.get_queue_url(QueueName=self.queue_name)["QueueUrl"]
-
+  
+  @retry
   def send_message(self, message_body):
     self.sqs.send_message(
       QueueUrl=self.queue_url,
       MessageBody=message_body
     )
-
+  @retry
   def get_message(self, processing_time=90):
     response = self.sqs.receive_message(
       QueueUrl=self.queue_url,
@@ -99,13 +107,15 @@ class TaskHandler:
       return message
     else:
       return None
-
+  @retry
   def delete_message(self, message):
     receipt_handle = message['ReceiptHandle']
     self.sqs.delete_message(
         QueueUrl=self.queue_url,
         ReceiptHandle=receipt_handle
     )
+
+  @retry
   def is_empty(self):
     # hashtag hackerlife
     attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
