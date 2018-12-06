@@ -16,7 +16,7 @@ from normalizer import Normalizer
 from vector_vote import vector_vote, get_diffs, weight_diffs, \
                         compile_field_weights, weighted_sum_fields
 from temporal_regularization import create_field_bump
-from helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
+from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
 
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum
@@ -191,7 +191,7 @@ class Aligner:
     * Fi_START:   composed inverse fields from vector voting that align to START
   * reg_field: the final, regularized field
   """
-  def __init__(self, model_path, max_displacement, crop,
+  def __init__(self, archive, max_displacement, crop,
                mip_range, high_mip_chunk, src_path, tgt_path, dst_path, 
                src_mask_path='', src_mask_mip=0, src_mask_val=1, 
                tgt_mask_path='', tgt_mask_mip=0, tgt_mask_val=1,
@@ -243,12 +243,12 @@ class Aligner:
         path = dst_path
       self.dst[i] = DstDir(path, info, provenance)
 
-    self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, 
+    self.net = Process(archive, mip_range[0], is_Xmas=is_Xmas, cuda=True, 
                        dim=high_mip_chunk[0]+crop*2, skip=skip, 
                        topskip=topskip, size=size, 
                        flip_average=not disable_flip_average, old_upsample=old_upsample)
 
-    self.normalizer = Normalizer(min(5, mip_range[0])) 
+    self.normalizer = archive.preprocessor
     self.upsample_residuals = upsample_residuals
     self.pool = ThreadPool(threads)
 
@@ -504,7 +504,7 @@ class Aligner:
     field_cv = self.dst[z_offset].for_write('field')
     self.save_vector_patch(field_cv, src_z, field, out_patch_bbox, mip)
 
-    # if self.write_intermediaries:
+    # if self.write_intermediaries and residuals is not None and cum_residuals is not None:
     #   mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
     #   for res_mip, res, cumres in zip(mip_range, residuals[1:], cum_residuals[1:]):
     #       crop = self.crop_amount // 2**(res_mip - self.process_low_mip)   

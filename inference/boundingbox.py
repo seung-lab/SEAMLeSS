@@ -1,6 +1,6 @@
 import numpy as np
 from math import floor, ceil
-from helpers import crop
+from utilities.helpers import crop
 
 
 class BoundingBox:

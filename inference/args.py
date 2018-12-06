@@ -1,6 +1,8 @@
 from aligner import Aligner, BoundingBox
 from link_builder import ng_link
 import argparse
+from pathlib import Path
+from utilities.archive import ModelArchive
 
 def get_argparser():
   parser = argparse.ArgumentParser()
@@ -77,6 +79,16 @@ def parse_args(parser, arg_string=''):
 def get_aligner(args):
   """Create Aligner object from args
   """
+  model_path = Path(args.model_path)
+  model_name = model_path.stem
+  archive = ModelArchive(model_name, height=args.size)
+  # out_cv = 'gs://neuroglancer/seamless/{}_{}_{}_{}'.format(
+  #     model_name,
+  #     'e' + str(archive.state_vars.epoch) if archive.state_vars.epoch else '',
+  #     't' + str(archive.state_vars.iteration) if archive.state_vars.iteration else '',
+  #     out_name,
+  # )
+
   print('model_path: {0}'.format(args.model_path))
   print('src_path: {0}'.format(args.src_path))
   print('dst_path: {0}'.format(args.dst_path))
@@ -85,7 +97,7 @@ def get_aligner(args):
   print('Contrast:', args.should_contrast)
   print('Max mip:', args.max_mip)
   print('NG link:', ng_link('dst', 'precomputed://' + args.dst_path +'/image', 'src', 'precomputed://' + args.src_path, (args.bbox_start[0]+args.bbox_stop[0])//2, (args.bbox_start[1]+args.bbox_stop[2])//2, args.bbox_start[0]))
-  return Aligner(**vars(args))
+  return Aligner(archive, **vars(args))
 
 def get_bbox(args):
   """Create BoundingBox object from args
@@ -93,4 +105,3 @@ def get_bbox(args):
   # interleave coords by flattening
   coords = [x for t in zip(args.bbox_start[:2], args.bbox_stop[:2]) for x in t]
   return BoundingBox(*coords, mip=0, max_mip=args.max_mip)
-
