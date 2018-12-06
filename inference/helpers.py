@@ -436,11 +436,13 @@ def invert(U):
           si, sj = math.floor(_si+1), math.floor(_sj+1)
         else:
           si, sj = math.floor(_si+1), math.floor(_sj)
+        # print('  (ri, rj): {0}'.format((ri, rj)))
+        # print('  (_si, si): {0}'.format((_si, si)))
+        # print('  (_sj, sj): {0}'.format((_sj, sj)))
         if (si < U.shape[1]) & (si >= 0): 
           if (sj < U.shape[2]) & (sj >= 0): 
             w = (1 - abs(_si - si)) * (1 - abs(_sj - sj))
-            # print('(ri, rj): {0}'.format((ri, rj)))
-            # print('N[{0}] = {1} * {2}'.format((si, sj), w, U[0, ri, rj, :]))
+            # print('{0} = {1} * {2}'.format((si, sj), round(w,2), U[0, ri, rj, :]))
             N[0, si, sj, :] -= w * U[0, ri, rj, :]
             D[0, si, sj, :] += w
   # nan_mask = torch.iszero(D)

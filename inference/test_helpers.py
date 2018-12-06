@@ -73,6 +73,23 @@ class TestInvert(unittest.TestCase):
     W = U + gridsample_residual(V.permute(0,3,1,2), U, 'border').permute(0,2,3,1)
     eq = tensor_approx_eq(W, torch.zeros_like(W))
 
+  def test_rotate_clockwise3x3(self):
+    U = torch.zeros((1,3,3,2))
+    U[0,0,0,0] = 1
+    U[0,0,1,1] = 1
+    U[0,1,1,0] = -1
+    U[0,1,0,1] = -1
+    V = invert(U)
+    _V = torch.zeros((1,3,3,2))
+    _V[0,0,0,1] = 1
+    _V[0,0,1,0] = -1
+    _V[0,1,1,1] = -1
+    _V[0,1,0,0] = 1
+    eq = tensor_approx_eq(V, _V)
+    self.assertTrue(eq)
+    W = U + gridsample_residual(V.permute(0,3,1,2), U, 'border').permute(0,2,3,1)
+    eq = tensor_approx_eq(W, torch.zeros_like(W))
+
   def test_multi_src_vector(self):
     U = torch.zeros((1,2,2,2))
     U[0,0,0,0] = 1 # vector from [0,0] to [1,0]
