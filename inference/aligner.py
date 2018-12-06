@@ -768,10 +768,13 @@ class Aligner:
                                   self.vec_voxel_offsets[m], mip=m)
       print ("computing residuals at mip {} ({} chunks) for {} slices".format(m, len(chunks), end_section - start_section), flush=True)
       if self.distributed:
+          message_counter = 0;
           for z in range(start_section, end_section):
               for patch_bbox in chunks:
                   residual_task = make_residual_task_message(z + 1, z, patch_bbox, mip=m)
                   self.task_handler.send_message(residual_task)
+                  message_counter += 1
+          print("The number of message is", message_counter)
           self.task_handler.wait_until_ready()
       else:
           for z in range(start_section, end_section):
@@ -843,12 +846,15 @@ class Aligner:
                                     self.dst_voxel_offsets[mip], mip=mip, render=True) 
       print ("compose field at mip {} ({} chunks) for slice {}".format(mip, len(chunks), z), flush=True)
       if self.distributed:
+          message_number = 0
           for i in range(0, len(chunks), self.threads):
               task_patches = []
               for j in range(i, min(len(chunks), i + self.threads)):
                   task_patches.append(chunks[j])
               compose_task = make_compose_task_message(z, task_patches, mip, start_z)
               self.task_handler.send_message(compose_task)
+              message_number +=1
+          print("The number of message is", message_number)
           self.task_handler.wait_until_ready()
       else:
           def chunkwise(patch_bbox):
