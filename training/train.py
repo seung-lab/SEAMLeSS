@@ -433,6 +433,7 @@ def load_archive(args):
         archive.state_vars.update({
             'name': args.name,
             'height': args.height,
+            'feature_maps': args.feature_maps,
             'start_lr': args.lr,
             'lr': args.lr,
             'wd': args.wd,
