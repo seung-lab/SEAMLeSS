@@ -3,8 +3,12 @@ import torch
 import numpy as np
 from helpers import *
 
-def tensor_approx_eq(A, B, eta=1e-7):
-  return torch.all(torch.lt(torch.abs(torch.add(A, -B)), 1e-7)) 
+class TestTensorApproxEq(unittest.TestCase):
+
+  def test_approx_eq(self):
+    W = torch.zeros((1,2,2,2))
+    self.assertTrue(tensor_approx_eq(W, W+1e-9))
+
 
 class TestRelToGrid(unittest.TestCase):
   
@@ -19,6 +23,7 @@ class TestRelToGrid(unittest.TestCase):
     eq = tensor_approx_eq(V, _V)
     self.assertTrue(eq)
 
+
 class TestGridToRel(unittest.TestCase):
   
   def test_identity(self):
@@ -32,9 +37,11 @@ class TestGridToRel(unittest.TestCase):
     eq = tensor_approx_eq(V, _V)
     self.assertTrue(eq)
 
+
 class TestInvert(unittest.TestCase):
 
   def test_identity(self):
+    print('test_identity')
     U = torch.zeros((1,2,2,2))
     V = invert(U)
     # V = V.permute((0,3,1,2))
@@ -43,20 +50,16 @@ class TestInvert(unittest.TestCase):
     eq = tensor_approx_eq(U, V)
     self.assertTrue(eq)
 
-  def test_shift_right(self):
-    U = torch.zeros((1,2,2,2))
-    U[0,0,0,0] = 1 # vector from [0,0] to [1,0]
-    U[0,0,1,0] = 1 # vector from [1,0] to [2,0] out of image
+  def test_shift_down_right(self):
+    print('test_shift_down_right')
+    U = torch.ones((1,2,2,2))
     V = invert(U)
-    _V = torch.zeros((1,2,2,2))
-    _V[0,0,1,0] = -1
-    _V[0,0,0,0] = -10 
-    _V[0,0,0,1] = -10 
-    V[torch.isnan(V)] = -10
+    _V = -torch.ones((1,2,2,2))
     eq = tensor_approx_eq(V, _V)
     self.assertTrue(eq)
     
   def test_rotate_clockwise(self):
+    print('test_rotate_clockwise')
     U = torch.zeros((1,2,2,2))
     U[0,0,0,0] = 1
     U[0,0,1,1] = 1
@@ -68,36 +71,26 @@ class TestInvert(unittest.TestCase):
     _V[0,0,1,0] = -1
     _V[0,1,1,1] = -1
     _V[0,1,0,0] = 1
-    eq = tensor_approx_eq(V, _V)
+    eq = tensor_approx_eq(V, _V, 1e-4)
     self.assertTrue(eq)
-    W = U + gridsample_residual(V.permute(0,3,1,2), U, 'border').permute(0,2,3,1)
-    eq = tensor_approx_eq(W, torch.zeros_like(W))
+    W = compose(U, V) 
+    eq = tensor_approx_eq(W, torch.zeros_like(W), 1e-4)
 
   def test_rotate_clockwise3x3(self):
+    print('test_rotate_clockwise3x3')
     U = torch.zeros((1,3,3,2))
-    U[0,0,0,0] = 1
-    U[0,0,1,1] = 1
-    U[0,1,1,0] = -1
-    U[0,1,0,1] = -1
+    U[0,0,0,0] = 2/3.
+    U[0,0,1,1] = 2/3. 
+    U[0,1,1,0] = -2/3.
+    U[0,1,0,1] = -2/3.
     V = invert(U)
     _V = torch.zeros((1,3,3,2))
-    _V[0,0,0,1] = 1
-    _V[0,0,1,0] = -1
-    _V[0,1,1,1] = -1
-    _V[0,1,0,0] = 1
-    eq = tensor_approx_eq(V, _V)
+    _V[0,0,0,1] = 2/3.
+    _V[0,0,1,0] = -2/3.
+    _V[0,1,1,1] = -2/3.
+    _V[0,1,0,0] = 2/3.
+    eq = tensor_approx_eq(V, _V, 1e-4)
     self.assertTrue(eq)
-    W = U + gridsample_residual(V.permute(0,3,1,2), U, 'border').permute(0,2,3,1)
-    eq = tensor_approx_eq(W, torch.zeros_like(W))
+    W = compose(U, V) 
+    eq = tensor_approx_eq(W, torch.zeros_like(W), 1e-4)
 
-  def test_multi_src_vector(self):
-    U = torch.zeros((1,2,2,2))
-    U[0,0,0,0] = 1 # vector from [0,0] to [1,0]
-    V = invert(U)
-    _V = torch.zeros((1,2,2,2))
-    _V[0,0,1,0] = -0.5
-    _V[0,0,0,0] = -10 
-    _V[0,0,0,1] = -10 
-    V[torch.isnan(V)] = -10
-    eq = tensor_approx_eq(V, _V)
-    self.assertTrue(eq)
