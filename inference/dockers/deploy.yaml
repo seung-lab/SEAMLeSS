@@ -37,7 +37,7 @@ spec:
                 name: awssecret
                 key: region
         command: ["/bin/sh"]
-        args: ["-c", "python3 SEAMLeSS/inference/worker_single.py --model_path SEAMLeSS/inference/model_repository/vector_fixer30_fine_tuning_low_mip_e176_t200_.pt --mip 2 --max_mip 8 --render_mip 2 --num_targets 2 --xs 89998 --xe 384910 --ys 89998 --ye 384910 --zs 1949 --stack_size 49 --source gs://neuroglancer/minnie_v0/raw_image_2 --edge_pad 256 --should_contrast 1 --max_displacement 2048 --size 8 --out_name zhen_test_distributed_sergiy_Nov24_pairs --queue_name deepalign --run_pairs --p_render"]
+        args: ["-c", "python3 SEAMLeSS/inference/worker.py --model_path SEAMLeSS/inference/model_repository/vector_fixer30_fine_tuning_low_mip_e176_t200_.pt --mip 2 --max_mip 8 --render_mip 2 --num_targets 2 --xs 89998 --xe 384910 --ys 89998 --ye 384910 --zs 1949 --stack_size 49 --source gs://neuroglancer/minnie_v0/raw_image_2 --edge_pad 256 --should_contrast 1 --max_displacement 2048 --size 8 --out_name zhen_test_distributed_sergiy_Nov24_pairs --queue_name deepalign --run_pairs --p_render"]
         resources: 
           limits:
             nvidia.com/gpu: 1
