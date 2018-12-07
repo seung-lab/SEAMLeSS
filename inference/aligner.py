@@ -904,6 +904,7 @@ class Aligner:
       self.multi_match(z, render=render_match)
     if self.p_render:
         self.task_handler.wait_until_ready()
+
   def compose_pairwise(self, z_range, compose_start, bbox, mip, 
                              forward_compose=True, inverse_compose=True):
     """Combine pairwise vector fields in TGT_RADIUS using vector voting, while composing
@@ -921,9 +922,13 @@ class Aligner:
     T = 2**mip
     print('softmin temp: {0}'.format(T))
     if forward_compose:
-      self.dst[0].add_composed_cv(compose_start, inverse=False)
+      field_k = self.dst[0].get_composed_key(compose_start, inverse=False)
+      if field_k not in self.dst[0]:
+        self.dst[0].add_composed_cv(compose_start, inverse=False)
     if inverse_compose: 
-      self.dst[0].add_composed_cv(compose_start, inverse=True)
+      field_k = self.dst[0].get_composed_key(compose_start, inverse=True)
+      if field_k not in self.dst[0]:
+        self.dst[0].add_composed_cv(compose_start, inverse=True)
     for z in z_range:
       if forward_compose:
         self.vector_vote_chunkwise(z, compose_start, bbox, mip, inverse=False, T=T)
