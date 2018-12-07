@@ -308,6 +308,11 @@ def gridsample_residual(source, residual, padding_mode):
     field = residual + identity_grid(residual.shape, device=residual.device)
     return gridsample(source, field, padding_mode)
 
+def compose(U, V):
+  """Compose two vector fields, U(V(x))
+  """
+  return U + gridsample_residual(V.permute(0,3,1,2), U, 'border').permute(0,2,3,1) 
+
 def _create_identity_grid(size):
     with torch.no_grad():
         id_theta = torch.Tensor([[[1,0,0],[0,1,0]]]) # identity affine transform
@@ -395,7 +400,7 @@ def grid_to_rel(U):
   V[:,:,:,1] = grid_to_rel_px(V[:,:,:,1], M) 
   return V
  
-def invert(U):
+def invert_bruteforce(U):
   """Compute the inverse vector field of residual field U
 
   This function leverages existing pytorch functions. A faster implementation could
@@ -447,4 +452,50 @@ def invert(U):
             D[0, si, sj, :] += w
   # nan_mask = torch.iszero(D)
   V = torch.div(N, D)
+  return V
+
+def tensor_approx_eq(A, B, eta=1e-7):
+  return torch.all(torch.lt(torch.abs(torch.add(A, -B)), eta))
+
+def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
+  """Compute the inverse vector field of residual field U by optimization
+
+  This method uses the following loss function:
+  ```
+  L = \frac{1}{2} \| U(V) - I \|^2 + \frac{1}{2} \| V(U) - I \|^2
+  ```
+
+  Args
+     U: 4D tensor in vector field convention (1xXxYx2), where vectors are stored
+        as absolute residuals.
+
+  Returns
+     V: 4D tensor for absolute residual vector field such that V(U) = I.
+  """
+  V = -deepcopy(U) 
+  if tensor_approx_eq(U,V):
+    return V 
+  V.requires_grad = True
+  opt = torch.optim.SGD([V], lr=lr)
+  costs = []
+  currt = 0
+  print('Optimizing inverse field')
+  for t in range(max_iter):
+    currt = t
+    f = compose(U, V) 
+    g = compose(V, U)
+    L = 0.5*torch.sum(f**2) + 0.5*torch.sum(g**2)
+    costs.append(L)
+    L.backward()
+    opt.step()
+    opt.zero_grad()
+    if costs[-1] == 0:
+      break
+    if len(costs) > avgn + currn:
+        hist = sum(costs[-(avgn+currn):-currn]).item() / avgn
+        curr = sum(costs[-currn:]).item() / currn
+        if abs((hist-curr)/hist) < eps:
+            break
+  V.requires_grad = False
+  print('Final cost @ t={0}: {1}'.format(currt, costs[-1].item()))
   return V
