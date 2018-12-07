@@ -291,7 +291,7 @@ def validate(val_loader, archive, epoch):
     return losses.avg
 
 
-def select_submodule(model, epoch, init=False):
+def select_submodule(model, epoch, init=False, top_to_bottom=True):
     """
     Selects the submodule to be trained based on the current epoch.
     At epoch `epoch`, train level `epoch/epochs_per_mip` of the model.
@@ -299,7 +299,10 @@ def select_submodule(model, epoch, init=False):
     if epoch is None:
         return model
     index = epoch // state_vars.epochs_per_mip
-    submodule = model.module[:index+1].train_last()
+    if top_to_bottom:
+        submodule = model.module[-(index+1):].train_lowest()
+    else:
+        submodule = model.module[:index+1].train_highest()
     if (init and epoch % state_vars.epochs_per_mip == 0
             and index < state_vars.height
             and state_vars.iteration is None):
