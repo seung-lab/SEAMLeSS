@@ -695,10 +695,13 @@ class Aligner:
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
     if adjust_contrast:
-      data = self.normalizer.apply(data).reshape(data.shape)
+      if self.normalizer is not None:
+        data = self.normalizer(data).reshape(data.shape)
     # convert to tensor if requested, or if up/downsampling required
     if to_tensor | (src_mip != dst_mip):
-      data = torch.from_numpy(data).to(device=self.device)
+      if isinstance(data, np.ndarray):
+        data = torch.from_numpy(data)
+      data = data.to(device=self.device)
       if src_mip != dst_mip:
         # k = 2**(src_mip - dst_mip)
         size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
