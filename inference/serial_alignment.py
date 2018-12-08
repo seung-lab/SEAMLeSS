@@ -1,11 +1,12 @@
 import sys
 import torch
 from args import get_argparser, parse_args, get_aligner, get_bbox 
+from os.path import join
 
 if __name__ == '__main__':
   parser = get_argparser()
-  parser.add_argument('--tgt_path', type=str,
-    help='IGNORED: tgt_path will be set to dst_path/image')
+  #parser.add_argument('--tgt_path', type=str,
+  #  help='IGNORED: tgt_path will be set to dst_path/image')
   args = parse_args(parser)
   args.tgt_path = join(args.dst_path, 'image')
   a = get_aligner(args)
@@ -17,6 +18,8 @@ if __name__ == '__main__':
   field_cv= a.dst[0].for_read(field_k)
   dst_cv = a.dst[0].for_write('dst_img')
 
+  mip = args.mip
+  
   for z in z_range:
     a.generate_pairwise([z], bbox, render_match=False)
     a.compose_pairwise([z], args.bbox_start[2], bbox, mip,

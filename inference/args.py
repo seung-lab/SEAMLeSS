@@ -64,6 +64,13 @@ def get_argparser():
     action='store_true')
   parser.add_argument('--p_render', help='parallel rendering among all slices', action='store_true')
   parser.add_argument('--queue_name', type=str, default=None)
+  parser.add_argument('--inverse_compose', 
+    help='compute and store the inverse composition (aligning COMPOSE_START to Z)', 
+    action='store_true')
+  parser.add_argument('--forward_compose', 
+    help='compute and store the forward composition (aligning Z to COMPOSE_START)', 
+    action='store_true')
+ 
   return parser
 
 def parse_args(parser, arg_string=''):
