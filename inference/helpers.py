@@ -476,6 +476,7 @@ def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   if tensor_approx_eq(U,V):
     return V 
   V.requires_grad = True
+  n = U.shape[1] * U.shape[2]
   opt = torch.optim.SGD([V], lr=lr)
   costs = []
   currt = 0
@@ -484,11 +485,13 @@ def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
     currt = t
     f = compose(U, V) 
     g = compose(V, U)
-    L = 0.5*torch.sum(f**2) + 0.5*torch.sum(g**2)
+    L = 0.5*torch.mean(f**2) + 0.5*torch.mean(g**2)
     costs.append(L)
     L.backward()
+    V.grad *= n
     opt.step()
     opt.zero_grad()
+    assert(not torch.isnan(costs[-1]))
     if costs[-1] == 0:
       break
     if len(costs) > avgn + currn:
