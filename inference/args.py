@@ -70,6 +70,9 @@ def get_argparser():
   parser.add_argument('--forward_compose', 
     help='compute and store the forward composition (aligning Z to COMPOSE_START)', 
     action='store_true')
+  # parser.add_argument('--forward_matches_only', 
+  #   help='compute the forward matches only (aligning Z to z-1, z-2, ..., not z+1, z+2)', 
+  #   action='store_true')
  
   return parser
 

@@ -208,8 +208,8 @@ class Aligner:
                skip=0, topskip=0, size=7, should_contrast=True, 
                disable_flip_average=False, write_intermediaries=False,
                upsample_residuals=False, old_upsample=False, old_vectors=False,
-               ignore_field_init=False, z=0, tgt_radius=1, queue_name=None, 
-               p_render=False, **kwargs):
+               ignore_field_init=False, z=0, tgt_radius=1, forward_matches_only=False,
+               queue_name=None, p_render=False, **kwargs):
     if queue_name != None:
         self.task_handler = TaskHandler(queue_name)
         self.distributed  = True
@@ -249,6 +249,8 @@ class Aligner:
     info = DstDir.create_info(src_cv, mip_range, max_displacement)
     self.dst = {}
     self.tgt_range = range(-tgt_radius, tgt_radius+1)
+    if forward_only:
+      self.tgt_range = range(tgt_radius+1)
     for i in self.tgt_range:
       if i > 0:
         path = '{0}/z_{1}'.format(dst_path, abs(i))
