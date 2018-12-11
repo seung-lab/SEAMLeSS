@@ -249,7 +249,7 @@ class Aligner:
     info = DstDir.create_info(src_cv, mip_range, max_displacement)
     self.dst = {}
     self.tgt_range = range(-tgt_radius, tgt_radius+1)
-    if forward_only:
+    if forward_matches_only:
       self.tgt_range = range(tgt_radius+1)
     for i in self.tgt_range:
       if i > 0:
@@ -1193,6 +1193,7 @@ class Aligner:
       if message != None:
         print ("Got a job")
         s = time()
+        #self.task_handler.purge_queue()
         self.handle_task_message(message)
         self.task_handler.delete_message(message)
         e = time()

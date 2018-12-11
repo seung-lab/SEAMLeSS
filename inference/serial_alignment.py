@@ -6,8 +6,7 @@ from os.path import join
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--align_start', 
-    help='align without vector voting the 2nd & 3rd sections, otherwise copy them'
-    action='store_true')
+    help='align without vector voting the 2nd & 3rd sections, otherwise copy them', action='store_true')
   args = parse_args(parser)
   args.tgt_path = join(args.dst_path, 'image')
   # only compute matches to previous sections
@@ -21,7 +20,7 @@ if __name__ == '__main__':
   field_cv= a.dst[0].for_read(field_k)
   dst_cv = a.dst[0].for_write('dst_img')
   z_offset = 1
-  uncomposed_field_cv = self.dst[z_offset].for_read('field')
+  uncomposed_field_cv = a.dst[z_offset].for_read('field')
 
   mip = args.mip
   composed_range = z_range[3:]
