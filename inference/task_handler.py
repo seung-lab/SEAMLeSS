@@ -168,6 +168,9 @@ class TaskHandler:
           return False
       time.sleep(5)
     return True
+  
+  def purge_queue(self):
+    self.sqs.purge_queue(QueueUrl=self.queue_url)
 
   def wait_until_ready(self):
     while not self.is_empty():
