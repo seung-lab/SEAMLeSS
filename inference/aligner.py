@@ -1115,8 +1115,7 @@ class Aligner:
     mip = message['mip']
     def chunkwise(patch_bbox):
       downsampled_patch = self.downsample_patch(cv, z, patch_bbox, mip - 1)
-      self.save_image_patch(self.dst_ng_path, downsampled_patch, z, patch_bbox, mip)
-
+      self.save_image_patch(cv, z, downsampled_patch, patch_bbox, mip)
     self.pool.map(chunkwise, patches)
 
   def handle_vector_vote(self, message):
