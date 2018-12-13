@@ -20,8 +20,7 @@ from temporal_regularization import create_field_bump
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
 
 from skimage.morphology import disk as skdisk
-from skimage.filters.rank import maximum as skmaximum
-
+from skimage.filters.rank import maximum as skmaximum 
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -33,7 +32,7 @@ from task_handler import TaskHandler, make_residual_task_message, \
         make_render_task_message, make_copy_task_message, \
         make_downsample_task_message, make_compose_task_message, \
         make_prepare_task_message, make_vector_vote_task_message, \
-        make_regularize_task_message
+        make_regularize_task_message, make_render_low_mip_task_message
 
 class SrcDir():
   def __init__(self, src_path, tgt_path, 
@@ -642,6 +641,46 @@ class Aligner:
     # print('warp_image image3.shape: {0}'.format(image.shape))
     return image
 
+  def warp_patch_at_low_mip(self, src_z, field_cv, field_z, bbox, image_mip, vector_mip):
+    """Non-chunk warping
+
+    From BBOX at MIP, warp image at SRC_Z in CloudVolume SRC_CV using
+    field at FIELD_Z in CloudVolume FIELD_CV.
+    """
+    influence_bbox = deepcopy(bbox)
+    influence_bbox.uncrop(self.max_displacement, mip=0)
+    start = time()
+    
+    field = self.get_field(field_cv, field_z, influence_bbox, vector_mip, 
+                           relative=True, to_tensor=True)
+    field_new = upsample(vector_mip - image_mip)(field.permute(0,3,1,2))
+    mip_field = mip_field.permute(0,2,3,1)
+    mip_field = mip_field * (2**(vector_mip - image_mip))
+    mip_disp = int(self.max_displacement / 2**image_mip)
+    src_cv = self.src['src_img']
+    image = self.get_image(src_cv, src_z, influence_bbox, image_mip, 
+                           adjust_contrast=False, to_tensor=True)
+    if 'src_mask' in self.src:
+      mask_cv = self.src['src_mask']
+      mask = self.get_mask(mask_cv, src_z, influence_bbox, 
+                           src_mip=self.src.src_mask_mip,
+                           dst_mip=image_mip, valid_val=self.src.src_mask_val)
+      image = image.masked_fill_(mask, 0)
+
+    # print('warp_patch shape {0}'.format(image.shape))
+    # no need to warp if flow is identity since warp introduces noise
+    if torch.min(mip_field) != 0 or torch.max(mip_field) != 0:
+      image = gridsample_residual(image, mip_field, padding_mode='zeros')
+    else:
+      print ("not warping")
+    # print('warp_image image1.shape: {0}'.format(image.shape))
+    if self.disable_cuda:
+      image = image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+    else:
+      image = image.cpu().numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+    # print('warp_image image3.shape: {0}'.format(image.shape))
+    return image
+
   def downsample_patch(self, cv, z, bbox, mip):
     data = self.get_image(cv, z, bbox, mip, adjust_contrast=False, to_tensor=True)
     data = interpolate(data, scale_factor=0.5, mode='bilinear')
@@ -784,6 +823,29 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
+  def low_mip_render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
+    start = time()
+    chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[image_mip],
+                                    self.dst[0].dst_voxel_offsets[image_mip], mip=image_mip, render=True)
+    if self.distributed:
+        for i in range(0, len(chunks), self.threads):
+            task_patches = []
+            for j in range(i, min(len(chunks), i + self.threads)):
+                task_patches.append(chunks[j])
+            render_task = make_render_low_mip_task_message(src_z, field_cv, field_z, 
+                                                           task_patches, image_mip, 
+                                                           vector_mip, dst_cv, dst_z)
+            self.task_handler.send_message(render_task)
+        self.task_handler.wait_until_ready()
+    else:
+        def chunkwise(patch_bbox):
+          warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, patch_bbox, image_mip, vector_mip)
+          # print('warp_image render.shape: {0}'.format(warped_patch.shape))
+          self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+        self.pool.map(chunkwise, chunks)
+    end = time()
+    print (": {} sec".format(end - start))
+     
   def downsample(self, cv, z, bbox, source_mip, target_mip):
     """Chunkwise downsample
 
@@ -813,6 +875,9 @@ class Aligner:
   def render_section_all_mips(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
     self.render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
     self.downsample(dst_cv, dst_z, bbox, self.render_low_mip, self.render_high_mip)
+  
+  def render_to_low_mip(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
+      self.low_mip_render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, imag_mip, vector_mip)
 
   def compute_section_pair_residuals(self, src_z, tgt_z, bbox):
     """Chunkwise vector field inference for section pair
@@ -1059,6 +1124,23 @@ class Aligner:
       self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
     self.pool.map(chunkwise, patches)
 
+  def handle_render_task_low_mip(self, message):
+    src_z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    field_cv = DCV(message['field_cv']) 
+    image_mip = message['image_mip']
+    vector_mip = message['vector_mip']
+    field_z = message['field_z']
+    dst_cv = DCV(message['dst_cv'])
+    dst_z = message['dst_z']
+    def chunkwise(patch_bbox):
+      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+              end='', flush=True)
+      warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, 
+                                                patch_bbox,image_mip, vector_mip)
+      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+    self.pool.map(chunkwise, patches)
+
   def handle_prepare_task(self, message):
     z = message['z']
     patches  = [deserialize_bbox(p) for p in message['patches']]
@@ -1154,6 +1236,8 @@ class Aligner:
       self.handle_residual_task(body)
     elif task_type == 'render_task':
       self.handle_render_task(body)
+    elif task_type == 'render_task_low_mip':
+      self.handle_render_task_low_mip(body)
     elif task_type == 'compose_task':
       self.handle_compose_task(body)
     elif task_type == 'copy_task':
@@ -1170,13 +1254,6 @@ class Aligner:
     else:
       raise Exception("Unsupported task type '{}' received from queue '{}'".format(task_type,
                                                                  self.task_handler.queue_name))
-  def delete_existing_tasks(self):
-      while(True):
-          message = self.task_handler.get_message()
-          if message != None:
-              self.task_handler.delete_message(message)
-          else:
-              break;
 
   def listen_for_tasks(self, stack_start, stack_size ,bbox, forward_compose, inverse_compose, compose_start):
     self.total_bbox = bbox
