@@ -654,7 +654,7 @@ class Aligner:
     field = self.get_field(field_cv, field_z, influence_bbox, vector_mip, 
                            relative=True, to_tensor=True)
     field_new = upsample(vector_mip - image_mip)(field.permute(0,3,1,2))
-    mip_field = mip_field.permute(0,2,3,1)
+    mip_field = field_new.permute(0,2,3,1)
     mip_field = mip_field * (2**(vector_mip - image_mip))
     mip_disp = int(self.max_displacement / 2**image_mip)
     src_cv = self.src['src_img']
@@ -841,7 +841,7 @@ class Aligner:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, patch_bbox, image_mip, vector_mip)
           # print('warp_image render.shape: {0}'.format(warped_patch.shape))
-          self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+          self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, image_mip)
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
@@ -877,7 +877,7 @@ class Aligner:
     self.downsample(dst_cv, dst_z, bbox, self.render_low_mip, self.render_high_mip)
   
   def render_to_low_mip(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
-      self.low_mip_render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, imag_mip, vector_mip)
+      self.low_mip_render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip)
 
   def compute_section_pair_residuals(self, src_z, tgt_z, bbox):
     """Chunkwise vector field inference for section pair
