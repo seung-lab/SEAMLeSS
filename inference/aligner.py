@@ -161,11 +161,18 @@ class DstDir():
   def create_paths(self):
     for k in self.paths.keys():
       self.create_cv(k)
-  
-  def get_composed_key(self, compose_start, inverse, suffix='_compose_and_regularize_v7'):
-    k = 'F{0}'.format(suffix)
+
+  def get_composed_cv(self, compose_start, inverse, for_read):
+    k = self.get_composed_key(compose_start, inverse)
+    if for_read:
+      return self.for_read(k)
+    else:
+      return self.for_write(k)
+
+  def get_composed_key(self, compose_start, inverse, suffix='_compose_and_regularize_v13'):
+    k = 'vvote_F{0}'.format(suffix)
     if inverse:
-      k = 'inv{0}'.format(k)
+      k = 'vvote_invF{0}'.format(suffix)
     return '{0}_{1:04d}'.format(k, compose_start)
   
   def add_composed_cv(self, compose_start, inverse):
@@ -181,10 +188,17 @@ class DstDir():
     self.add_path(k, path, data_type='float32', num_channels=2)
     self.create_cv(k)
 
-  def get_regularized_key(self, reg_start, inverse, suffix='_compose_and_regularize_v6'):
-    k = 'F{0}'.format(suffix)
+  def get_regularized_cv(self, reg_start, inverse, for_read):
+    k = self.get_regularized_key(reg_start, inverse)
+    if for_read:
+      return self.for_read(k)
+    else:
+      return self.for_write(k)
+
+  def get_regularized_key(self, reg_start, inverse, suffix='_compose_and_regularize_v13'):
+    k = 'reg_F{0}'.format(suffix)
     if inverse:
-      k = 'inv{0}'.format(k)
+      k = 'reg_invF{0}'.format(suffix)
     return '{0}_{1:04d}'.format(k, reg_start)
   
   def add_regularized_cv(self, reg_start, inverse):
@@ -945,12 +959,8 @@ class Aligner:
     for z in z_range:
       write_F_k = self.dst[0].get_composed_key(compose_start, False)
       write_invF_k = self.dst[0].get_composed_key(compose_start, True)
-      if z - compose_start < self.tgt_radius:
-        read_F_k = 'field'
-        read_invF_k = 'field'
-      else:
-        read_F_k = write_F_k
-        read_invF_k = write_invF_k
+      read_F_k = write_F_k
+      read_invF_k = write_invF_k
        
       if forward_compose:
         read_F_cv = self.dst[0].for_read(read_F_k)
@@ -961,96 +971,98 @@ class Aligner:
         write_F_cv = self.dst[0].for_write(write_invF_k)
         self.vector_vote_chunkwise(z, read_F_cv, write_F_cv, bbox, mip, inverse=True, T=T)
 
-  def get_composed_neighborhood(self, z, compose_start, bbox, mip, inverse=True):
-    """Compile all composed vector fields that warp neighborhood in TGT_RANGE to Z
+  def get_neighborhood(self, z, prev_reg_cv, curr_vvote_cv, overlap, 
+                                      bbox, mip, inverse=True):
+    """Compile all vector fields that warp neighborhood in TGT_RANGE to Z
 
     Args
        z: int for index of SRC section
-       compose_start: int of earliest section used in composition
+       prev_reg_cv: CloudVolume with fields of the first OVERLAP sections
+       curr_vvote_cv: CloudVolume with fields for the sections after OVERLAP 
+       overlap: int for the number of sections for which to use the previous CloudVolume
        bbox: BoundingBox defining chunk region
        mip: int for MIP level of data
     """
     fields = []
-    Fk = self.dst[0].get_composed_key(compose_start, inverse=inverse)
-    F_cv = self.dst[0].for_read(Fk)
-    for z_offset in self.tgt_range:
-      tgt_z = z + z_offset
+    z_range = [z+z_offset for z_offset in self.tgt_range]
+    for k, tgt_z in enumerate(z_range):
+      F_cv = curr_vvote_cv
+      if k < overlap:
+        F_cv = prev_reg_cv
       F = self.get_field(F_cv, tgt_z, bbox, mip, relative=True, to_tensor=True)
       fields.append(F)
     return torch.cat(fields, 0)
  
-  def shift_composed_neighborhood(self, Fs, z, compose_start, bbox, mip, inverse=True):
-    """Shift composed neighborhood by dropping earliest z & appending next z
+  def shift_neighborhood(self, Fs, z, F_cv, bbox, mip, inverse=True):
+    """Shift field neighborhood by dropping earliest z & appending next z
   
     Args
        invFs: 4D torch tensor of inverse composed vector vote fields
        z: int representing the z of the input invFs. invFs will be shifted to z+1.
-       compose_start: int of earliest section used in composition
+       F_cv: CloudVolume where next field will be loaded 
        bbox: BoundingBox representing xy extent of invFs
        mip: int for data resolution of the field
     """
-    Fk = self.dst[0].get_composed_key(compose_start, inverse=inverse)
-    F_cv = self.dst[0].for_read(Fk)
     next_z = z + self.tgt_range[-1] + 1
     next_F = self.get_field(F_cv, next_z, bbox, mip, relative=True, to_tensor=True)
     return torch.cat((Fs[1:, ...], next_F), 0)
 
-  def regularize_z(self, z_range, compose_start, bbox, mip, sigma=1.4):
+  def regularize_z(self, z_range, overlap, bbox, mip, sigma=1.4, inverse=False, 
+                         first_block=False):
     """For a given chunk, temporally regularize each Z in Z_RANGE
     
     Make Z_RANGE as large as possible to avoid IO: self.shift_field
     is called to add and remove the newest and oldest sections.
 
     Args
-       z_range: list of ints (assumed to be monotonic & sequential)
-       compose_start: int of earliest section used in composition
+       z_range: list of ints (assumed to be a contiguous block)
+       overlap: int for number of sections that overlap with a chunk
        bbox: BoundingBox defining chunk region
        mip: int for MIP level of data
+       sigma: float standard deviation of the Gaussian kernel used for the
+        weighted average inverse
+       inverse: bool indicating whether to compute the inverse regularized field
+       first_block: bool indicating whether this is the first block, which determines
+        whether to look in the same field directory as the same vector vote block
     """
+    block_size = len(z_range)
+    overlap = self.tgt_radius
+    curr_block = z_range[0]
+    prev_block = curr_block - (block_size - overlap)
+    next_block = curr_block + (block_size - overlap)
+    self.dst[0].add_regularized_cv(prev_block, inverse=inverse)
+    self.dst[0].add_regularized_cv(curr_block, inverse=inverse)
+    self.dst[0].add_composed_cv(curr_block, inverse=inverse)
+    self.dst[0].add_composed_cv(next_block, inverse=inverse)
+    prev_reg_cv = self.dst[0].get_regularized_cv(prev_block, inverse=inverse, for_read=True)
+    curr_reg_cv = self.dst[0].get_regularized_cv(curr_block, inverse=inverse, for_read=False)
+    curr_vvote_cv = self.dst[0].get_composed_cv(curr_block, inverse=inverse, for_read=True)
+    next_vvote_cv = self.dst[0].get_composed_cv(next_block, inverse=inverse, for_read=False)
+    if first_block:
+      prev_reg_cv = curr_vvote_cv 
     z = z_range[0]
-    Fk = self.dst[0].get_composed_key(compose_start, inverse=False)
-    F_cv = self.dst[0].for_read(Fk)
-    regF_cv = self.dst[0].for_write('field')
-    invFs = self.get_composed_neighborhood(z, compose_start, bbox, mip, inverse=True)
+    invFs = self.get_neighborhood(z, prev_reg_cv, curr_vvote_cv, overlap, 
+                                  bbox, mip, inverse=not inverse)
     bump_dims = invFs.shape 
     bump = create_field_bump(bump_dims, sigma)
 
     for z in z_range:
       composed = []
-      F = self.get_field(F_cv, z, bbox, mip, relative=True, to_tensor=True)
-      for k in range(invFs.shape[0]):
-        composed.append(self.compose_fields(invFs[k:k+1,...], F))
-      composedF = torch.cat(composed, 0)
-      regF = torch.sum(torch.mul(bump, composedF), dim=0, keepdim=True)
-      self.save_residual_patch(regF_cv, z, regF, bbox, mip)
+      F = self.get_field(curr_vvote_cv, z, bbox, mip, relative=True, to_tensor=True)
+      avg_invF = torch.sum(torch.mul(bump, invFs), dim=0, keepdim=True)
+      if inverse:
+        F, avg_invF = avg_invF, F
+      regF = self.compose_fields(avg_invF, F)
+      if z >= next_block:
+        self.save_residual_patch(next_vvote_cv, z, regF, bbox, mip)
+      else:
+        self.save_residual_patch(curr_reg_cv, z, regF, bbox, mip)
       if z != z_range[-1]:
-        invFs = self.shift_composed_neighborhood(invFs, z, compose_start, bbox, mip)
+        invFs = self.shift_neighborhood(invFs, z, curr_vvote_cv, 
+                                        bbox, mip, inverse=not inverse)
 
-  def regularize_inverse_z(self, z_range, compose_start, bbox, mip, sigma=1.4):
-    """Compute the inverse of the regularized transform (see REGULARIZE_Z)
-    """
-    z = z_range[0]
-    invFk = self.dst[0].get_composed_key(compose_start, inverse=True)
-    invF_cv = self.dst[0].for_read(invFk)
-    reg_invFk = self.dst[0].get_regularized_key(compose_start, inverse=True)
-    reg_invF_cv = self.dst[0].for_write(reg_invFk)
-    Fs = self.get_composed_neighborhood(z, compose_start, bbox, mip, inverse=False)
-    bump_dims = Fs.shape 
-    bump = create_field_bump(bump_dims, sigma)
-
-    for z in z_range:
-      composed = []
-      invF = self.get_field(invF_cv, z, bbox, mip, relative=True, to_tensor=True)
-      for k in range(Fs.shape[0])[::-1]:
-        composed.append(self.compose_fields(invF, Fs[k:k+1,...]))
-      composed_invF = torch.cat(composed, 0)
-      reg_invF = torch.sum(torch.mul(bump, composed_invF), dim=0, keepdim=True)
-      self.save_residual_patch(reg_invF_cv, z, reg_invF, bbox, mip)
-      if z != z_range[-1]:
-        invFs = self.shift_composed_neighborhood(invFs, z, compose_start, bbox, 
-                                                 mip, inverse=False)
-
-  def regularize_z_chunkwise(self, z_range, compose_start, bbox, mip, sigma=1.4):
+  def regularize_z_chunkwise(self, z_range, compose_start, bbox, mip, sigma=1.4,
+                                   inverse=False, first_block=False):
     """Chunked-processing of temporal regularization 
     
     Args:
@@ -1069,7 +1081,8 @@ class Aligner:
 
     #for patch_bbox in chunks:
     def chunkwise(patch_bbox):
-      self.regularize_z(z_range, compose_start, patch_bbox, mip, sigma=sigma)
+      self.regularize_z(z_range, compose_start, patch_bbox, mip, sigma=sigma,
+                        inverse=inverse, first_block=first_block)
     self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
