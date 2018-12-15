@@ -169,7 +169,7 @@ class DstDir():
     else:
       return self.for_write(k)
 
-  def get_composed_key(self, compose_start, inverse, suffix='_compose_and_regularize_v13'):
+  def get_composed_key(self, compose_start, inverse, suffix='_compose_and_regularize_v16'):
     k = 'vvote_F{0}'.format(suffix)
     if inverse:
       k = 'vvote_invF{0}'.format(suffix)
@@ -185,32 +185,6 @@ class DstDir():
     """
     k = self.get_composed_key(compose_start, inverse)
     path = join(self.root, 'composed', self.get_composed_key(compose_start, inverse))
-    self.add_path(k, path, data_type='float32', num_channels=2)
-    self.create_cv(k)
-
-  def get_regularized_cv(self, reg_start, inverse, for_read):
-    k = self.get_regularized_key(reg_start, inverse)
-    if for_read:
-      return self.for_read(k)
-    else:
-      return self.for_write(k)
-
-  def get_regularized_key(self, reg_start, inverse, suffix='_compose_and_regularize_v13'):
-    k = 'reg_F{0}'.format(suffix)
-    if inverse:
-      k = 'reg_invF{0}'.format(suffix)
-    return '{0}_{1:04d}'.format(k, reg_start)
-  
-  def add_regularized_cv(self, reg_start, inverse):
-    """Create CloudVolume for storing regularized vector fields
-
-    Args
-       reg_start: int, indicating the earliest section used for regularization
-       inverse: bool indicating whether composition aligns REG_START to Z (True),
-        or Z to REG_START (False)
-    """
-    k = self.get_regularized_key(reg_start, inverse)
-    path = join(self.root, 'regularized', self.get_regularized_key(reg_start, inverse))
     self.add_path(k, path, data_type='float32', num_channels=2)
     self.create_cv(k)
 
@@ -971,29 +945,23 @@ class Aligner:
         write_F_cv = self.dst[0].for_write(write_invF_k)
         self.vector_vote_chunkwise(z, read_F_cv, write_F_cv, bbox, mip, inverse=True, T=T)
 
-  def get_neighborhood(self, z, prev_reg_cv, curr_vvote_cv, overlap, 
-                                      bbox, mip, inverse=True):
+  def get_neighborhood(self, z, F_cv, bbox, mip):
     """Compile all vector fields that warp neighborhood in TGT_RANGE to Z
 
     Args
        z: int for index of SRC section
-       prev_reg_cv: CloudVolume with fields of the first OVERLAP sections
-       curr_vvote_cv: CloudVolume with fields for the sections after OVERLAP 
-       overlap: int for the number of sections for which to use the previous CloudVolume
+       F_cv: CloudVolume with fields 
        bbox: BoundingBox defining chunk region
        mip: int for MIP level of data
     """
     fields = []
-    z_range = [z+z_offset for z_offset in self.tgt_range]
+    z_range = [z+z_offset for z_offset in range(self.tgt_radius + 1)]
     for k, tgt_z in enumerate(z_range):
-      F_cv = curr_vvote_cv
-      if k < overlap:
-        F_cv = prev_reg_cv
       F = self.get_field(F_cv, tgt_z, bbox, mip, relative=True, to_tensor=True)
       fields.append(F)
     return torch.cat(fields, 0)
  
-  def shift_neighborhood(self, Fs, z, F_cv, bbox, mip, inverse=True):
+  def shift_neighborhood(self, Fs, z, F_cv, bbox, mip, keep_first=False): 
     """Shift field neighborhood by dropping earliest z & appending next z
   
     Args
@@ -1003,12 +971,14 @@ class Aligner:
        bbox: BoundingBox representing xy extent of invFs
        mip: int for data resolution of the field
     """
-    next_z = z + self.tgt_range[-1] + 1
+    next_z = z + self.tgt_radius + 1
     next_F = self.get_field(F_cv, next_z, bbox, mip, relative=True, to_tensor=True)
-    return torch.cat((Fs[1:, ...], next_F), 0)
+    if keep_first:
+      return torch.cat((Fs, next_F), 0)
+    else:
+      return torch.cat((Fs[1:, ...], next_F), 0)
 
-  def regularize_z(self, z_range, overlap, bbox, mip, sigma=1.4, inverse=False, 
-                         first_block=False):
+  def regularize_z(self, z_range, dir_z, bbox, mip, sigma=1.4):
     """For a given chunk, temporally regularize each Z in Z_RANGE
     
     Make Z_RANGE as large as possible to avoid IO: self.shift_field
@@ -1028,45 +998,42 @@ class Aligner:
     block_size = len(z_range)
     overlap = self.tgt_radius
     curr_block = z_range[0]
-    prev_block = curr_block - (block_size - overlap)
-    next_block = curr_block + (block_size - overlap)
-    self.dst[0].add_regularized_cv(prev_block, inverse=inverse)
-    self.dst[0].add_regularized_cv(curr_block, inverse=inverse)
-    self.dst[0].add_composed_cv(curr_block, inverse=inverse)
-    self.dst[0].add_composed_cv(next_block, inverse=inverse)
-    prev_reg_cv = self.dst[0].get_regularized_cv(prev_block, inverse=inverse, for_read=True)
-    curr_reg_cv = self.dst[0].get_regularized_cv(curr_block, inverse=inverse, for_read=False)
-    curr_vvote_cv = self.dst[0].get_composed_cv(curr_block, inverse=inverse, for_read=True)
-    next_vvote_cv = self.dst[0].get_composed_cv(next_block, inverse=inverse, for_read=False)
-    if first_block:
-      prev_reg_cv = curr_vvote_cv 
+    next_block = curr_block + block_size
+    self.dst[0].add_composed_cv(curr_block, inverse=False)
+    self.dst[0].add_composed_cv(curr_block, inverse=True)
+    self.dst[0].add_composed_cv(next_block, inverse=False)
+    F_cv = self.dst[0].get_composed_cv(curr_block, inverse=False, for_read=True)
+    invF_cv = self.dst[0].get_composed_cv(curr_block, inverse=True, for_read=True)
+    next_cv = self.dst[0].get_composed_cv(next_block, inverse=False, for_read=False)
     z = z_range[0]
-    invFs = self.get_neighborhood(z, prev_reg_cv, curr_vvote_cv, overlap, 
-                                  bbox, mip, inverse=not inverse)
-    bump_dims = invFs.shape 
-    bump = create_field_bump(bump_dims, sigma)
+    invFs = self.get_neighborhood(z, invF_cv, bbox, mip)
+    bump_dims = np.asarray(invFs.shape)
+    bump_dims[0] = len(self.tgt_range)
+    full_bump = create_field_bump(bump_dims, sigma)
+    bump_z = 3 
 
     for z in z_range:
       composed = []
-      F = self.get_field(curr_vvote_cv, z, bbox, mip, relative=True, to_tensor=True)
+      bump = full_bump[bump_z:, ...]
+      print(z)
+      print(bump.shape)
+      print(invFs.shape)
+      F = self.get_field(F_cv, z, bbox, mip, relative=True, to_tensor=True)
       avg_invF = torch.sum(torch.mul(bump, invFs), dim=0, keepdim=True)
-      if inverse:
-        F, avg_invF = avg_invF, F
       regF = self.compose_fields(avg_invF, F)
-      if z >= next_block:
-        self.save_residual_patch(next_vvote_cv, z, regF, bbox, mip)
-      else:
-        self.save_residual_patch(curr_reg_cv, z, regF, bbox, mip)
+      self.save_residual_patch(next_cv, z, regF, bbox, mip)
       if z != z_range[-1]:
-        invFs = self.shift_neighborhood(invFs, z, curr_vvote_cv, 
-                                        bbox, mip, inverse=not inverse)
+        invFs = self.shift_neighborhood(invFs, z, invF_cv, bbox, mip, 
+                                        keep_first=bump_z > 0)
+      bump_z = max(bump_z - 1, 0)
 
-  def regularize_z_chunkwise(self, z_range, compose_start, bbox, mip, sigma=1.4,
+  def regularize_z_chunkwise(self, z_range, dir_z, bbox, mip, sigma=1.4,
                                    inverse=False, first_block=False):
     """Chunked-processing of temporal regularization 
     
     Args:
        z_range: int list, range of sections over which to regularize 
+       dir_z: int indicating the z index of the CloudVolume dir
        bbox: BoundingBox of region to process
        mip: field MIP level
        sigma: float for std of the bump function 
@@ -1081,8 +1048,7 @@ class Aligner:
 
     #for patch_bbox in chunks:
     def chunkwise(patch_bbox):
-      self.regularize_z(z_range, compose_start, patch_bbox, mip, sigma=sigma,
-                        inverse=inverse, first_block=first_block)
+      self.regularize_z(z_range, dir_z, patch_bbox, mip, sigma=sigma)
     self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))

@@ -20,11 +20,13 @@ if __name__ == '__main__':
   z_stop = args.bbox_stop[2]
 
   dst_cv = a.dst[0].for_write('dst_img')
-  for block_start in range(z_start, z_stop, args.block_size - overlap):
-    reg_range = range(block_start, block_start + args.block_size - overlap)
+  for block_start in range(z_start, z_stop, args.block_size):
+    # regularized fields are saved in the next composed block
+    next_cv = block_start + args.block_size
+    a.dst[0].add_composed_cv(next_cv, inverse=False)
+    field_cv = a.dst[0].get_composed_cv(next_cv, inverse=False, for_read=True)
+    reg_range = range(block_start, block_start + args.block_size)
     print('Rendering for z_range {0}'.format(reg_range))
-    a.dst[0].add_regularized_cv(block_start, inverse=False)
-    field_cv = a.dst[0].get_regularized_cv(block_start, inverse=False, for_read=True)
     for z in reg_range:
       a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip)
 
