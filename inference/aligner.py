@@ -882,7 +882,7 @@ class Aligner:
   
   def render_to_low_mip(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
       self.low_mip_render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip)
-      self.downsample(dst_cv, dst_z, bbox, 1, 9)
+      self.downsample(dst_cv, dst_z, bbox, image_mip, vector_mip)
 
   def compute_section_pair_residuals(self, src_z, tgt_z, bbox):
     """Chunkwise vector field inference for section pair
