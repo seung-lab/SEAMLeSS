@@ -203,7 +203,7 @@ class Aligner:
                src_mask_path='', src_mask_mip=0, src_mask_val=1, 
                tgt_mask_path='', tgt_mask_mip=0, tgt_mask_val=1,
                align_across_z=1, disable_cuda=False, max_mip=12,
-               render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=5,
+               render_low_mip=2, render_high_mip=9, is_Xmas=False, threads=5,
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, 
                disable_flip_average=False, write_intermediaries=False,
@@ -338,7 +338,8 @@ class Aligner:
     in BBOX at MIP. Use INVERSE to left-compose the next field in the list. Use RELATIVE
     to return a vector field in range [-1,1], and use TO_TENSOR to return a Tensor object.
     """
-    z_offset = src_z - tgt_z
+    #z_offset = src_z - tgt_z
+    z_offset =  tgt_z - src_z
     f_cv = self.dst[z_offset].for_read('field')
     composed_k = self.dst[0].get_composed_key(compose_start, inverse)
     F_cv = self.dst[0].for_read(composed_k)
@@ -458,7 +459,8 @@ class Aligner:
        inverse: bool, indicates the direction of composition to use 
     """
     fields = []
-    prior_z = [i for i in self.tgt_range if i < 0]
+    #prior_z = [i for i in self.tgt_range if i < 0]
+    prior_z = [i for i in self.tgt_range if i > 0]
     for z_offset in prior_z: 
       src_z = z
       tgt_z = src_z + z_offset
