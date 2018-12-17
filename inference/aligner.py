@@ -221,7 +221,7 @@ class Aligner:
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip
     self.render_high_mip  = render_high_mip
-    self.high_mip         = max(self.render_high_mip, self.process_high_mip)
+    # self.high_mip         = max(self.render_high_mip, self.process_high_mip)
     self.high_mip_chunk   = high_mip_chunk
     self.max_chunk        = max_chunk
     self.max_render_chunk = max_render_chunk
