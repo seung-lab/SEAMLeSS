@@ -18,7 +18,8 @@ if __name__ == '__main__':
   a.dst[0].add_composed_cv(args.bbox_start[2], inverse=False)
   field_k = a.dst[0].get_composed_key(args.bbox_start[2], inverse=False)
   field_cv= a.dst[0].for_read(field_k)
-  dst_cv = a.dst[0].for_write('dst_img')
+  dst_cv = a.dst[0].for_write('dst_img_1')
+  print("dst_cv", dst_cv)
   z_offset = 1
   uncomposed_field_cv = a.dst[z_offset].for_read('field')
 

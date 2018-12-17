@@ -83,6 +83,7 @@ class DstDir():
     self.write_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False, 
                   'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
     self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1)
+    self.add_path('dst_img_1', join(self.root, 'image1'), data_type='uint8', num_channels=1)
     self.add_path('field', join(self.root, 'field'), data_type='float32', num_channels=2)
     self.create_paths()
   
@@ -688,6 +689,7 @@ class Aligner:
 
   ## Data saving
   def save_image_patch(self, cv, z, float_patch, bbox, mip, to_uint8=True):
+    print("save patch to mip", mip)
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = np.transpose(float_patch, (3,2,1,0))
@@ -840,7 +842,7 @@ class Aligner:
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, patch_bbox, image_mip, vector_mip)
-          # print('warp_image render.shape: {0}'.format(warped_patch.shape))
+          print('warp_image render.shape: {0}'.format(warped_patch.shape))
           self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, image_mip)
         self.pool.map(chunkwise, chunks)
     end = time()
@@ -878,6 +880,7 @@ class Aligner:
   
   def render_to_low_mip(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
       self.low_mip_render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip)
+      self.downsample(dst_cv, dst_z, bbox, 1, 9)
 
   def compute_section_pair_residuals(self, src_z, tgt_z, bbox):
     """Chunkwise vector field inference for section pair
@@ -1138,7 +1141,7 @@ class Aligner:
               end='', flush=True)
       warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, 
                                                 patch_bbox,image_mip, vector_mip)
-      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, image_mip)
     self.pool.map(chunkwise, patches)
 
   def handle_prepare_task(self, message):
