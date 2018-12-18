@@ -44,8 +44,8 @@ if __name__ == '__main__':
     src_z = z
     tgt_z = z-1
     a.compute_section_pair_residuals(src_z, tgt_z, bbox)
-    a.render_low_mip(src_z, uncomposed_field_cv, src_z, dst_cv, src_z, bbox, 
-                    image_mip, vector_mip)
+    a.render_to_low_mip(src_z, uncomposed_field_cv, src_z, dst_cv, src_z, bbox,
+                        image_mip, vector_mip)
     #a.render_section_all_mips(src_z, uncomposed_field_cv, src_z, 
     #                          dst_cv, src_z, bbox, mip)
   # align with vector voting 
@@ -55,6 +55,6 @@ if __name__ == '__main__':
     a.compose_pairwise([z], args.bbox_start[2], bbox, mip,
                        forward_compose=True,
                        inverse_compose=False)
-    a.render_low_mip(z, field_cv, z, dst_cv, z, bbox, mip)
+    a.render_to_low_mip(z, field_cv, z, dst_cv, z, bbox, image_mip, vector_mip)
     #a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip)
 

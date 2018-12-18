@@ -397,16 +397,15 @@ class Aligner:
     chunks = []
     raw_x_range = bbox.x_range(mip=mip)
     raw_y_range = bbox.y_range(mip=mip)
-
+    
     x_chunk = chunk_size[0]
     y_chunk = chunk_size[1]
-
+    
     x_offset = offset[0]
     y_offset = offset[1]
 
     x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
     y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
-
     x_delta = 0
     y_delta = 0
     if x_remainder != 0:
@@ -419,25 +418,25 @@ class Aligner:
 
     x_start = calign_x_range[0] - x_chunk
     y_start = calign_y_range[0] - y_chunk
-
-    if (self.process_high_mip > mip):
-        high_mip_scale = 2**(self.process_high_mip - mip)
-    else:
-        high_mip_scale = 1
-
+    #print("-----------------mip", mip , "high_mip", self.process_high_mip)
+    #if (self.process_high_mip > mip):
+    #    high_mip_scale = 2**(self.process_high_mip - mip)
+    #else:
+    #    high_mip_scale = 1
+    high_mip_scale = 1
     processing_chunk = (int(self.high_mip_chunk[0] * high_mip_scale),
                         int(self.high_mip_chunk[1] * high_mip_scale))
+    #print("--------processing_chunk", processing_chunk)
     if not render and (processing_chunk[0] > self.max_chunk[0]
                       or processing_chunk[1] > self.max_chunk[1]):
       processing_chunk = self.max_chunk
     elif render and (processing_chunk[0] > self.max_render_chunk[0]
                      or processing_chunk[1] > self.max_render_chunk[1]):
       processing_chunk = self.max_render_chunk
-
     for xs in range(calign_x_range[0], calign_x_range[1], processing_chunk[0]):
       for ys in range(calign_y_range[0], calign_y_range[1], processing_chunk[1]):
         chunks.append(BoundingBox(xs, xs + processing_chunk[0],
-                                 ys, ys + processing_chunk[0],
+                                 ys, ys + processing_chunk[1],
                                  mip=mip, max_mip=self.max_mip)) #self.high_mip))
 
     return chunks
@@ -573,7 +572,7 @@ class Aligner:
     """
     x_fraction = patch.x_size(mip=0) * 0.5
     y_fraction = patch.y_size(mip=0) * 0.5
-
+    #print("++++++++++++++++abs_to_rel x_size and y_size", patch.x_size(mip=0), patch.y_size(mip=0))
     rel_residual = deepcopy(abs_residual)
     rel_residual[0, :, :, 0] /= x_fraction
     rel_residual[0, :, :, 1] /= y_fraction
@@ -653,16 +652,23 @@ class Aligner:
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
-    
+    print("image_mip is", image_mip, "vector_mip is", vector_mip) 
     field = self.get_field(field_cv, field_z, influence_bbox, vector_mip, 
                            relative=True, to_tensor=True)
+    print("field shape",field.shape)
     field_new = upsample(vector_mip - image_mip)(field.permute(0,3,1,2))
     mip_field = field_new.permute(0,2,3,1)
-    mip_field = mip_field * (2**(vector_mip - image_mip))
+    #mip_field = mip_field * (2**(vector_mip - image_mip))
+    #mip_field = 2 * mip_field / (mip_field.shape[-2]) 
+    #mip_field = mip_field /((mip_field.shape[-2] / 2) * (2**image_mip))
     mip_disp = int(self.max_displacement / 2**image_mip)
+    print("mip_field shape", mip_field.shape)
+    print("image_mip",image_mip, "vector_mip", vector_mip, "mip_dis is ", mip_disp)
+    print("bbox is ", bbox.__str__(mip=0), "influence_bbox is", influence_bbox.__str__(mip=0))
     src_cv = self.src['src_img']
     image = self.get_image(src_cv, src_z, influence_bbox, image_mip, 
                            adjust_contrast=False, to_tensor=True)
+    print("image shape", image.shape)
     if 'src_mask' in self.src:
       mask_cv = self.src['src_mask']
       mask = self.get_mask(mask_cv, src_z, influence_bbox, 
@@ -682,6 +688,8 @@ class Aligner:
     else:
       image = image.cpu().numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
     # print('warp_image image3.shape: {0}'.format(image.shape))
+    
+    print("image shape after corp", image.shape)
     return image
 
   def downsample_patch(self, cv, z, bbox, mip):
@@ -691,10 +699,10 @@ class Aligner:
 
   ## Data saving
   def save_image_patch(self, cv, z, float_patch, bbox, mip, to_uint8=True):
-    print("save patch to mip", mip)
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = np.transpose(float_patch, (3,2,1,0))
+    #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
     if to_uint8:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
@@ -831,6 +839,9 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[image_mip],
                                     self.dst[0].dst_voxel_offsets[image_mip], mip=image_mip, render=True)
+    print("low_mip_render at MIP{0} ({1} chunks)".format(image_mip,len(chunks)))
+    for c in chunks:
+        print(">>>>>>>>>chunks in low_mip_render: ", c.__str__(mip=0))
     if self.distributed:
         for i in range(0, len(chunks), self.threads):
             task_patches = []
@@ -882,7 +893,7 @@ class Aligner:
   
   def render_to_low_mip(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
       self.low_mip_render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip)
-      self.downsample(dst_cv, dst_z, bbox, image_mip, vector_mip)
+      self.downsample(dst_cv, dst_z, bbox, image_mip, self.render_high_mip)
 
   def compute_section_pair_residuals(self, src_z, tgt_z, bbox):
     """Chunkwise vector field inference for section pair
@@ -895,7 +906,7 @@ class Aligner:
       start = time()
       chunks = self.break_into_chunks(bbox, self.dst[0].vec_chunk_sizes[m],
                                       self.dst[0].vec_voxel_offsets[m], mip=m)
-      print ("Aligning slice {} to slice {} at mip {} ({} chunks)".
+      print ("compute residuals between {} to slice {} at mip {} ({} chunks)".
              format(src_z, tgt_z, m, len(chunks)), flush=True)
       if self.distributed:
         for patch_bbox in chunks:
