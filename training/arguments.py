@@ -83,6 +83,12 @@ def _parse_args(args=None):
         help='number of total epochs to run',
     )
     param_group.add_argument(
+        '--plan',
+        choices=('all', 'top_down', 'bottom_up', 'random_one'),
+        help='determines the training order',
+        type=str, default='random_one',
+    )
+    param_group.add_argument(
         '--epochs_per_mip', default=4, type=int, metavar='N',
         help='number of epochs to run before switching mip levels',
     )

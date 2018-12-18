@@ -191,7 +191,10 @@ def train(train_loader, archive, epoch):
     # switch to train mode and select the submodule to train
     archive.model.train()
     archive.adjust_learning_rate()
-    submodule = select_submodule(archive.model, epoch, init=True)
+    submodule = select_submodule(archive.model, epoch, init=True,
+                                 plan=state_vars.plan)
+    print('training levels: {}'.format(
+        ', '.join(str(l) for l in submodule.module.levels)))
     max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
@@ -262,7 +265,7 @@ def validate(val_loader, archive, epoch):
 
     # switch to evaluate mode
     archive.model.eval()
-    submodule = select_submodule(archive.model, epoch)
+    submodule = select_submodule(archive.model, epoch, plan=state_vars.plan)
 
     # compute output and loss
     start_time = time.time()
@@ -291,7 +294,7 @@ def validate(val_loader, archive, epoch):
     return losses.avg
 
 
-def select_submodule(model, epoch, init=False, top_to_bottom=True):
+def select_submodule(model, epoch, init=False, plan='top_down'):
     """
     Selects the submodule to be trained based on the current epoch.
     At epoch `epoch`, train level `epoch/epochs_per_mip` of the model.
@@ -299,10 +302,12 @@ def select_submodule(model, epoch, init=False, top_to_bottom=True):
     if epoch is None:
         return model
     index = epoch // state_vars.epochs_per_mip
-    if top_to_bottom:
-        submodule = model.module[-(index+1):].train_lowest()
-    else:
-        submodule = model.module[:index+1].train_highest()
+    submodule = {
+        'all': lambda: model.module.train_all(),
+        'top_down': lambda: model.module[-(index+1):].train_lowest(),
+        'bottom_up': lambda: model.module[:index+1].train_highest(),
+        'random_one': lambda: random.choice(model.module).train_all(),
+    }.get(plan, lambda: model.module)()
     if (init and epoch % state_vars.epochs_per_mip == 0
             and index < state_vars.height
             and state_vars.iteration is None):
@@ -445,6 +450,7 @@ def load_archive(args):
             'epoch': 0,
             'iteration': None,
             'num_epochs': args.num_epochs,
+            'plan': args.plan,
             'epochs_per_mip': args.epochs_per_mip,
             'training_set_path': Path(args.training_set).expanduser(),
             'validation_set_path':

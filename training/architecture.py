@@ -22,6 +22,9 @@ class Model(nn.Module):
     def __getitem__(self, index):
         return self.submodule(index)
 
+    def __len__(self):
+        return self.height
+
     def forward(self, src, tgt, in_field=None, **kwargs):
         if self.encode:
             src, tgt = self.encode(src, tgt)
