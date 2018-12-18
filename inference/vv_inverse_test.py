@@ -36,14 +36,14 @@ if __name__ == '__main__':
   z_stop = args.bbox_stop[2]
 
   root = 'regularized/test'
-  field_k = join(root, 'inverse_test_{:01d}/field'.format(args.test_num))
+  field_k = join(root, 'field/inverse_test_{:01d}'.format(args.test_num))
   path = join(args.dst_path, field_k) 
   a.dst[0].add_path(field_k, path, data_type='float32', num_channels=2)
   a.dst[0].create_cv(field_k)
   gw_cv = a.dst[0].for_write(field_k)
   gr_cv = a.dst[0].for_read(field_k)
   
-  dst_k = join(root, 'inverse_test{:01d}/image'.format(args.test_num))
+  dst_k = join(root, 'image/inverse_test{:01d}'.format(args.test_num))
   path = join(args.dst_path, dst_k) 
   a.dst[0].add_path(dst_k, path, data_type='uint8', num_channels=1)
   a.dst[0].create_cv(dst_k)
@@ -59,7 +59,8 @@ if __name__ == '__main__':
     invF_cv = a.dst[0].get_regularized_cv(block_start, inverse=True, for_read=True)
     print('F_cv.path {0}'.format(F_cv.path))
     print('invF_cv.path {0}'.format(invF_cv.path))
-    for z in reg_range:
+    for z in z_range:
       compose_chunkwise(a, F_cv, invF_cv, gw_cv, z, bbox, mip)
       a.render_section_all_mips(z, gr_cv, z, dst_cv, z, bbox, mip)
+
 

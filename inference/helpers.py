@@ -1,87 +1,77 @@
 import os
-import shutil
-import warnings
-import math
-from pathlib import Path
 from moviepy.editor import ImageSequenceClip
 import numpy as np
 import collections
-import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 from skimage.transform import rescale
 from functools import reduce
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt  # noqa: 402
-plt.switch_backend('agg')
-import matplotlib.cm as cm  # noqa: 402
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import tqdm
+import math
+from copy import deepcopy
 
 def compose_functions(fseq):
     def compose(f1, f2):
         return lambda x: f2(f1(x))
     return reduce(compose, fseq, lambda _: _)
 
+def copy_state_to_model(archive_params, model):
+    size_map = [
+        'number of out channels',
+        'number of in channels',
+        'kernel x dimension',
+        'kernel y dimension'
+    ]
 
-def cp(src, dst):
-    """
-    A wrapper for the shutil copy function, but that accepts path objects.
-    The shutil library will be updated to accept them directly in a later
-    version of python, and so this will no longer be needed, but for now,
-    this seemed cleaner than having explicit conversions everywere.
-    """
-    if isinstance(src, Path):
-        src = str(src)
-    if isinstance(dst, Path):
-        dst = str(dst)
-    shutil.copy(src, dst)
-
-
-@torch.no_grad()
-def load_model_from_dict(model, archive_params):
     model_params = dict(model.named_parameters())
+    archive_keys = archive_params.keys()
     model_keys = sorted(model_params.keys())
-    archive_keys = sorted(archive_params.keys())
+    archive_keys = sorted([k for k in archive_keys if 'seq' not in k])
 
-    dropped = 0
     approx = 0
+    skipped = 0
     for key in archive_keys:
         if key not in model_keys:
-            print('[WARNING]   Key {} present in archive but not in model; '
-                  .format(key))
-            dropped += 1
+            print('[WARNING]   Key ' + key + ' present in archive but not in model; skipping.')
+            skipped += 1
             continue
-        if model_params[key].shape != archive_params[key].shape:
-            print('[WARNING]   {} has different shape in model and archive: '
-                  '{}, {}'.format(key, model_params[key].shape,
-                                  archive_params[key].shape))
-            min_slices = tuple(slice(min(mdim, adim)) for mdim, adim
-                               in zip(model_params[key].shape,
-                                      archive_params[key].shape))
-            model_params[key].data[min_slices] = (
-                archive_params[key][min_slices])
-            model_params[key].data = (
-                (model_params[key] - model_params[key].mean())
-                / model_params[key].std())
-            model_params[key].data = (
-                (model_params[key] * archive_params[key].std())
-                + archive_params[key].mean())
+
+        min_size = [min(mdim,adim) for mdim, adim in zip(list(model_params[key].size()), list(archive_params[key].size()))]
+        msize, asize = model_params[key].size(), archive_params[key].size()
+        if msize != asize:
             approx += 1
-            continue
-        model_params[key].data = archive_params[key]
-    new = 0
-    for key in model_keys:
-        if key not in archive_keys:
-            print('[WARNING]   Key {} present in model but not in archive; '
-                  .format(key))
-            new += 1
-    print('Copied {} parameters exactly, {} parameters partially.'
-          .format(len(archive_keys) - dropped - approx, approx))
-    print('Skipped {} parameters in archive, found {} new parameters in model.'
-          .format(dropped, new))
+            wrong_dim = -1
+            for dim in range(len(msize)):
+                if msize[dim] != asize[dim]:
+                    wrong_dim = dim
+                    break
+            print('[WARNING]   ' + key + ' has different ' + size_map[wrong_dim] + ' in model and archive: ' + str(model_params[key].size()) + ', ' + str(archive_params[key].size()))
+            varchive = torch.std(archive_params[key])
+            vmodel = torch.std(model_params[key])
+            model_params[key].data -= torch.mean(model_params[key].data)
+            model_params[key].data *= ((varchive / 5) / vmodel).data[0]
+            model_params[key].data += torch.mean(archive_params[key])
 
-
+        min_size_slices = tuple([slice(*(s,)) for s in min_size])
+        model_params[key].data[min_size_slices] = archive_params[key][min_size_slices]
+        
+        if 'enc' not in key and msize != asize and wrong_dim == 1:
+            fm_count = asize[1]/2
+            chunks = (msize[1]-fm_count)/(asize[1]-fm_count)
+            for i in range(1,chunks+1):
+                model_params[key].data[:,i*fm_count:(i+1)*fm_count] = archive_params[key][:,fm_count:] / (i+1)
+            model_params[key].data[:,fm_count:] /= sum([1.0/k for k in range(2,chunks+2)])
+            means = torch.zeros(model_params[key].data[:,fm_count:].size())
+            std = varchive/5
+            model_params[key].data[:,fm_count:] += torch.normal(means, std).cuda()
+    print('Copied ' + str(len(model_keys) - approx) + ' parameters exactly, ' + str(approx) + ' parameters partially. Skipped ' + str(skipped) + ' parameters.')
+        
 def get_colors(angles, f, c):
     colors = f(angles)
     colors = c(colors)
@@ -161,20 +151,16 @@ def display_v(vfield, name=None, center=False):
         assert (name is not None)
         dv(vfield, name)
 
-def dvl(V_pred, name, mag=100):
+def dvl(V_pred, name, mag=10):
     factor = V_pred.shape[1] // 100
     if factor > 1:
-        # subsample the field
-        V_pred = V_pred.unfold(1, factor, factor)[..., 0]
-        V_pred = V_pred.unfold(2, factor, factor)[..., 0]
-    V_pred = V_pred * mag
-    if isinstance(V_pred, torch.Tensor):
-        V_pred = V_pred.cpu().numpy()
+        V_pred = V_pred[:,::factor,::factor,:]
+    V_pred *= 10
     plt.figure(figsize=(6,6))
     X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
     U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
     colors = np.arctan2(U,V)   # true angle
-    plt.title(Path(name).stem)
+    plt.title('V_pred')
     plt.gca().invert_yaxis()
     Q = plt.quiver(X, Y, U, V, colors, scale=6, width=0.002, angles='uv', pivot='tail')
     qk = plt.quiverkey(Q, 10.0, 10.0, 2, r'$2 \frac{m}{s}$', labelpos='E', \
@@ -210,7 +196,16 @@ def crop(data_2d, crop):
 
 def save_chunk(chunk, name, norm=True):
     if type(chunk) != np.ndarray:
-        chunk = chunk.cpu().numpy()
+        try:
+            if chunk.is_cuda:
+                chunk = chunk.data.cpu().numpy()
+            else:
+                chunk = chunk.data.numpy()
+        except Exception as e:
+            if chunk.is_cuda:
+                chunk = chunk.cpu().numpy()
+            else:
+                chunk = chunk.numpy()
     chunk = np.squeeze(chunk).astype(np.float64)
     if norm:
         chunk[:50,:50] = 0
@@ -218,8 +213,8 @@ def save_chunk(chunk, name, norm=True):
         chunk[-50:,-50:] = 1
         chunk[-10:,-10:] = 0
     plt.imsave(name + '.png', 1 - chunk, cmap='Greys')
-
-def gif(filename, array, fps=2, scale=1.0, norm=False):
+        
+def gif(filename, array, fps=8, scale=1.0, norm=False):
     """Creates a gif given a stack of images using moviepy
     >>> X = randn(100, 64, 64)
     >>> gif('test.gif', X)
@@ -246,8 +241,8 @@ def gif(filename, array, fps=2, scale=1.0, norm=False):
     if array.ndim == 3:
         array = array[..., np.newaxis] * np.ones(3)
 
-    # add 'signature' block to top left and bottom right
     if norm and array.shape[1] > 1000:
+        # add 'signature' block to top left and bottom right
         array[:,:50,:50] = 0
         array[:,:10,:10] = 255
         array[:,-50:,-50:] = 255
@@ -258,25 +253,17 @@ def gif(filename, array, fps=2, scale=1.0, norm=False):
     clip.write_gif(filename, fps=fps, verbose=False)
     return clip
 
-
-def downsample(x=1, type='average'):
+def downsample(x):
     if x > 0:
-        if type == 'average':
-            return nn.AvgPool2d(2**x, count_include_pad=False)
-        elif type == 'max':
-            return nn.MaxPool2d(2**x)
-        else:
-            raise ValueError('Unrecognized pooling type: {}'.format(type))
+        return nn.AvgPool2d(2**x, count_include_pad=False)
     else:
         return (lambda y: y)
 
-
-def upsample(x=1):
+def upsample(x):
     if x > 0:
         return nn.Upsample(scale_factor=2**x, mode='bilinear')
     else:
         return (lambda y: y)
-
 
 def gridsample(source, field, padding_mode):
     """
@@ -321,13 +308,17 @@ def gridsample_residual(source, residual, padding_mode):
     field = residual + identity_grid(residual.shape, device=residual.device)
     return gridsample(source, field, padding_mode)
 
+def compose(U, V):
+  """Compose two vector fields, U(V(x))
+  """
+  return U + gridsample_residual(V.permute(0,3,1,2), U, 'border').permute(0,2,3,1) 
 
-@torch.no_grad()
-def _create_identity_grid(size, device):
-    id_theta = torch.cuda.FloatTensor([[[1,0,0],[0,1,0]]], device=device) # identity affine transform
-    I = F.affine_grid(id_theta,torch.Size((1,1,size,size)))
-    I *= (size - 1) / size # rescale the identity provided by PyTorch
-    return I
+def _create_identity_grid(size):
+    with torch.no_grad():
+        id_theta = torch.Tensor([[[1,0,0],[0,1,0]]]) # identity affine transform
+        I = F.affine_grid(id_theta,torch.Size((1,1,size,size)))
+        I *= (size - 1) / size # rescale the identity provided by PyTorch
+        return I
 
 def identity_grid(size, cache=False, device=None):
     """
@@ -352,91 +343,119 @@ def identity_grid(size, cache=False, device=None):
         device = torch.cuda.current_device()
     if size in identity_grid._identities:
         return identity_grid._identities[size].to(device)
-    I = _create_identity_grid(size, device)
+    I = _create_identity_grid(size)
     if cache:
         identity_grid._identities[size] = I
     return I.to(device)
 identity_grid._identities = {}
 
+def rel_to_grid_px(u, N):
+  return N*(u + 1) / 2 - 0.5
 
-class AverageMeter(object):
-    """
-    Computes and stores the average and current value
-    """
+def rel_to_grid(U):
+  """Convert a relative vector field [-1,+1] to a vector field in image grid coords
 
-    def __init__(self, store=False):
-        self.reset(store)
+  Vector convention:
+   A vector of -1,-1 points to the upper left corner of the image, which maps to
+   -0.5,-0.5 in the image grid coordinates.
+   A vector of +1,+1 points to the lower right corner of the image, which maps to
+   N-0.5, N-0.5 in the image grid coordinates.
+ 
+  Args
+    U: 4D tensor in vector field convention (1xXxYx2), where vectors are stored as
+       residuals in relative convention [-1,+1]
+  
+  Returns
+    V: 4D tensor in vector field convention (1xXxYx2), where vectors are stored as
+       residuals in image grid coordinates [0, N-1]
+  """
+  V = deepcopy(U)
+  N = V.shape[1]
+  M = V.shape[2]
+  V[:,:,:,0] = rel_to_grid_px(V[:,:,:,0], N) 
+  V[:,:,:,1] = rel_to_grid_px(V[:,:,:,1], M)
+  return V 
 
-    def reset(self, store=False):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-        self.history = None
-        if store:
-            self.history = []
-        self.warned = False
+def grid_to_rel_px(v, N):
+  return 2*(v + 0.5) / N - 1 
 
-    def update(self, val, n=1):
-        if isinstance(val, torch.Tensor):
-            if not self.warned:
-                warnings.warn('Accumulating a pytorch tensor can cause a gpu '
-                              'memory leak. Converting to a python scalar.')
-                self.warned = True
-            val = val.item()
-        self.val = val
-        if isinstance(val, float) and not math.isfinite(val):
-            return  # don't accumulate nan or inf
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-        if self.history is not None:
-            self.history += [val]*n
+def grid_to_rel(U):
+  """Convert a vector field in image grid coordinates to a relative vector field
 
+  Vector convention:
+   See rel_to_grid
+ 
+  Args
+    U: 4D tensor in vector field convention (1xXxYx2), where vectors are stored as
+       residuals in image grid coordinates [0, N-1]
+  
+  Returns
+    V: 4D tensor in vector field convention (1xXxYx2), where vectors are stored as
+       residuals in relative coordinates [-1, +1]
+  """
+  V = deepcopy(U)
+  N = V.shape[1]
+  M = V.shape[2]
+  V[:,:,:,0] = grid_to_rel_px(V[:,:,:,0], N) 
+  V[:,:,:,1] = grid_to_rel_px(V[:,:,:,1], M) 
+  return V
+ 
+def invert_bruteforce(U):
+  """Compute the inverse vector field of residual field U
 
-def time_function(f, name=None, on=False):
-    """
-    Simple decorator used for timing functions.
-    More capable timing suites exist, but this suffices for many purposes.
+  This function leverages existing pytorch functions. A faster implementation could
+  be written with CUDA.
 
-    Can be disabled by setting `on` to False.
+  This inverse computes the bilinearly weighted sum of all vectors for a given source
+  pixel, such that
 
-    Usage:
-        >>> @time_function
-        >>> def func(x):
-        >>>     pass
-    """
-    if not on:
-        return f
-    import time
-    if name is None:
-        name = f.__qualname__
+  ```
+  V(s) = \frac{- \sum_{r} w_r U(r)} {\sum_{r} w_r}  \{r | r + U(r) - s \le 1\} \\
+  w_r = | r + U(r) - s |
+  ```
 
-    def f_timed(*args, **kwargs):
-        start = time.time()
-        result = f(*args, **kwargs)
-        print('{}: {} sec'.format(name, time.time() - start))
-        return result
-    return f_timed
+  Args
+     U: 4D tensor in vector field convention (1xXxYx2), where vectors are stored
+        as absolute residuals.
 
+  Returns
+     V: 4D tensor for absolute residual vector field such that V(U) = I. Undefined
+        locations in U will be filled with the average of its neighbors.
+  """
+  n = U.shape[1] 
+  m = U.shape[2]
+  N = torch.zeros_like(U)
+  D = torch.zeros_like(U)
+  for ri in range(U.shape[1]):
+    for rj in range(U.shape[2]):
+      uj, ui = U[0, ri, rj, :]
+      ui, uj = ui.item(), uj.item()
+      _si = rel_to_grid_px(grid_to_rel_px(ri, n) + ui, n)
+      _sj = rel_to_grid_px(grid_to_rel_px(rj, m) + uj, m)
+      for z in range(4):
+        if z == 0:
+          si, sj = math.floor(_si), math.floor(_sj)
+        elif z == 1:
+          si, sj = math.floor(_si), math.floor(_sj+1)
+        elif z == 2:
+          si, sj = math.floor(_si+1), math.floor(_sj+1)
+        else:
+          si, sj = math.floor(_si+1), math.floor(_sj)
+        # print('  (ri, rj): {0}'.format((ri, rj)))
+        # print('  (_si, si): {0}'.format((_si, si)))
+        # print('  (_sj, sj): {0}'.format((_sj, sj)))
+        if (si < U.shape[1]) & (si >= 0): 
+          if (sj < U.shape[2]) & (sj >= 0): 
+            w = (1 - abs(_si - si)) * (1 - abs(_sj - sj))
+            # print('{0} = {1} * {2}'.format((si, sj), round(w,2), U[0, ri, rj, :]))
+            N[0, si, sj, :] -= w * U[0, ri, rj, :]
+            D[0, si, sj, :] += w
+  # nan_mask = torch.iszero(D)
+  V = torch.div(N, D)
+  return V
 
-def retry_enumerate(iterable, start=0):
-    """
-    Wrapper around enumerate that retries if memory is unavailable.
-    """
-    import time
-    retries = 0
-    while True:
-        iterator = None
-        try:
-            iterator = enumerate(iterable, start=start)
-        except OSError:
-            seconds = 2 ** retries
-            warnings.warn('Low on memory. Retrying in {} sec.'.format(seconds))
-            time.sleep(seconds)
-            retries += 1
-            continue
-        return iterator
+def tensor_approx_eq(A, B, eta=1e-7):
+  return torch.all(torch.lt(torch.abs(torch.add(A, -B)), eta))
 
 def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   """Compute the inverse vector field of residual field U by optimization

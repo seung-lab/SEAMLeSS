@@ -12,7 +12,7 @@ def create_field_bump(shape, sigma, device=torch.device('cuda')):
   Args:
      shape: 4-element tuple describing field shape (z, w, h, 2)
   """
-  n = shape[0]
+  n = int(shape[0])
   mean = torch.tensor((n-1) / 2., device=device)
   var = torch.tensor(sigma**2., device=device)
   gz = torch.arange(n, dtype=torch.float, device=device)

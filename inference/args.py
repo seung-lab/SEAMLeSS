@@ -65,16 +65,17 @@ def get_argparser():
     action='store_true')
   parser.add_argument('--p_render', help='parallel rendering among all slices', action='store_true')
   parser.add_argument('--queue_name', type=str, default=None)
-  parser.add_argument('--inverse_compose', 
-    help='compute and store the inverse composition (aligning COMPOSE_START to Z)', 
-    action='store_true')
-  parser.add_argument('--forward_compose', 
-    help='compute and store the forward composition (aligning Z to COMPOSE_START)', 
-    action='store_true')
+#  parser.add_argument('--inverse_compose', 
+#    help='compute and store the inverse composition (aligning COMPOSE_START to Z)', 
+#    action='store_true')
+#  parser.add_argument('--forward_compose', 
+#    help='compute and store the forward composition (aligning Z to COMPOSE_START)', 
+#    action='store_true')
   # parser.add_argument('--forward_matches_only', 
   #   help='compute the forward matches only (aligning Z to z-1, z-2, ..., not z+1, z+2)', 
   #   action='store_true')
- 
+  parser.add_argument('--dir_suffix', type=str, default='',
+    help='suffix to attach for composed directories')
   return parser
 
 def parse_args(parser, arg_string=''):
