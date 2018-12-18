@@ -62,7 +62,7 @@ def _parse_args(args=None):
     start_parser.add_argument(
         '--feature_maps', '--feature_list', '--fm',
         help='the number of feature maps at each mip level',
-        type=int, nargs='+', default=None, metavar='F',
+        type=int, nargs='+', default=[], metavar='F',
     )
 
     param_group = start_parser.add_argument_group('training parameters')
@@ -222,13 +222,14 @@ def _parse_args(args=None):
         while '*' in args.name:  # all '*'s are replaced by a random hex digit
             args.name = args.name.replace(
                 '*', hex(random.getrandbits(4))[2:], 1)
-    if args.feature_maps is None or len(args.feature_maps) == 0:
-        default_num_fm = 12
-        args.feature_maps = [default_num_fm] * args.height
-    elif len(args.feature_maps) == 1:
-        args.feature_maps = args.feature_maps * args.height
-    else:
-        args.height = len(args.feature_maps)
+    if 'feature_maps' in args:
+        if len(args.feature_maps) == 0:
+            default_num_fm = 12
+            args.feature_maps = [default_num_fm] * args.height
+        elif len(args.feature_maps) == 1:
+            args.feature_maps = args.feature_maps * args.height
+        else:
+            args.height = len(args.feature_maps)
     return args
 
 
