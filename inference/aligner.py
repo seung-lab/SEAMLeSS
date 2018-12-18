@@ -680,23 +680,23 @@ class Aligner:
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
-    print("image_mip is", image_mip, "vector_mip is", vector_mip) 
+    #print("image_mip is", image_mip, "vector_mip is", vector_mip) 
     field = self.get_field(field_cv, field_z, influence_bbox, vector_mip, 
                            relative=True, to_tensor=True)
-    print("field shape",field.shape)
+    #print("field shape",field.shape)
     field_new = upsample(vector_mip - image_mip)(field.permute(0,3,1,2))
     mip_field = field_new.permute(0,2,3,1)
     #mip_field = mip_field * (2**(vector_mip - image_mip))
     #mip_field = 2 * mip_field / (mip_field.shape[-2]) 
     #mip_field = mip_field /((mip_field.shape[-2] / 2) * (2**image_mip))
     mip_disp = int(self.max_displacement / 2**image_mip)
-    print("mip_field shape", mip_field.shape)
-    print("image_mip",image_mip, "vector_mip", vector_mip, "mip_dis is ", mip_disp)
-    print("bbox is ", bbox.__str__(mip=0), "influence_bbox is", influence_bbox.__str__(mip=0))
+    #print("mip_field shape", mip_field.shape)
+    #print("image_mip",image_mip, "vector_mip", vector_mip, "mip_dis is ", mip_disp)
+    #print("bbox is ", bbox.__str__(mip=0), "influence_bbox is", influence_bbox.__str__(mip=0))
     src_cv = self.src['src_img']
     image = self.get_image(src_cv, src_z, influence_bbox, image_mip, 
                            adjust_contrast=False, to_tensor=True)
-    print("image shape", image.shape)
+    #print("image shape", image.shape)
     if 'src_mask' in self.src:
       mask_cv = self.src['src_mask']
       mask = self.get_mask(mask_cv, src_z, influence_bbox, 
@@ -717,7 +717,6 @@ class Aligner:
       image = image.cpu().numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
     # print('warp_image image3.shape: {0}'.format(image.shape))
     
-    print("image shape after corp", image.shape)
     return image
 
   def downsample_patch(self, cv, z, bbox, mip):
@@ -1233,10 +1232,10 @@ class Aligner:
     dst_cv = DCV(message['dst_cv'])
     dst_z = message['dst_z']
     def chunkwise(patch_bbox):
-      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), image_mip),
               end='', flush=True)
       warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, 
-                                                patch_bbox,image_mip, vector_mip)
+                                                patch_bbox, image_mip, vector_mip)
       self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, image_mip)
     self.pool.map(chunkwise, patches)
 
