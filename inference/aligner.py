@@ -60,7 +60,7 @@ class DstDir():
   distinguished by the different sets of kwargs that are used for the CloudVolume.
   All CloudVolumes are MiplessCloudVolumes. 
   """
-  def __init__(self, dst_path, info, provenance):
+  def __init__(self, dst_path, info, provenance, suffix=''):
     print('Creating DstDir for {0}'.format(dst_path))
     self.root = dst_path
     self.info = info
@@ -79,6 +79,7 @@ class DstDir():
                   'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
     self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1)
     self.add_path('field', join(self.root, 'field'), data_type='float32', num_channels=2)
+    self.suffix = suffix
     self.create_paths()
   
   def for_read(self, k):
@@ -169,10 +170,10 @@ class DstDir():
     else:
       return self.for_write(k)
 
-  def get_composed_key(self, compose_start, inverse, suffix='_compose_and_regularize_v16'):
-    k = 'vvote_F{0}'.format(suffix)
+  def get_composed_key(self, compose_start, inverse):
+    k = 'vvote_F{0}'.format(self.suffix)
     if inverse:
-      k = 'vvote_invF{0}'.format(suffix)
+      k = 'vvote_invF{0}'.format(self.suffix)
     return '{0}_{1:04d}'.format(k, compose_start)
   
   def add_composed_cv(self, compose_start, inverse):
@@ -212,7 +213,7 @@ class Aligner:
                skip=0, topskip=0, size=7, should_contrast=True, 
                disable_flip_average=False, write_intermediaries=False,
                upsample_residuals=False, old_upsample=False, old_vectors=False,
-               ignore_field_init=False, z=0, tgt_radius=1, **kwargs):
+               ignore_field_init=False, z=0, tgt_radius=1, dir_suffix='', **kwargs):
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip
@@ -253,7 +254,7 @@ class Aligner:
         path = '{0}/z_{1}i'.format(dst_path, abs(i))
       else: 
         path = dst_path
-      self.dst[i] = DstDir(path, info, provenance)
+      self.dst[i] = DstDir(path, info, provenance, suffix=dir_suffix)
 
     self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, 
                        dim=high_mip_chunk[0]+crop*2, skip=skip, 
@@ -931,8 +932,8 @@ class Aligner:
     if inverse_compose: 
       self.dst[0].add_composed_cv(compose_start, inverse=True)
     for z in z_range:
-      write_F_k = self.dst[0].get_composed_key(compose_start, False)
-      write_invF_k = self.dst[0].get_composed_key(compose_start, True)
+      write_F_k = self.dst[0].get_composed_key(compose_start, inverse=False)
+      write_invF_k = self.dst[0].get_composed_key(compose_start, inverse=True)
       read_F_k = write_F_k
       read_invF_k = write_invF_k
        

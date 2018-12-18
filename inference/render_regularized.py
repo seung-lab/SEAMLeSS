@@ -19,7 +19,12 @@ if __name__ == '__main__':
   z_start = args.bbox_start[2]
   z_stop = args.bbox_stop[2]
 
-  dst_cv = a.dst[0].for_write('dst_img')
+  # dst_cv = a.dst[0].for_write('dst_img')
+  dst_k = 'image_regularized{0}'.format(args.dir_suffix)
+  path = join(args.dst_path, dst_k) 
+  a.dst[0].add_path(dst_k, path, data_type='uint8', num_channels=1)
+  a.dst[0].create_cv(dst_k)
+  dst_cv = a.dst[0].for_write(dst_k)
   for block_start in range(z_start, z_stop, args.block_size):
     # regularized fields are saved in the next composed block
     next_cv = block_start + args.block_size
