@@ -4,7 +4,7 @@ from torch.autograd import Variable
 from skimage import morphology
 import numpy as np
 from utilities.helpers import save_chunk
-import masks
+import utilities.masklib as masks
 
 class DefectDetector(object):
     def __init__(self, net, minor_dilation_radius=1, major_dilation_radius=75, sigmoid_threshold=0.4, cc_count=1000):
