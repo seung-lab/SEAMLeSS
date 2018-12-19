@@ -73,7 +73,6 @@ import warnings
 import datetime
 import math
 import random
-import math
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -81,7 +80,6 @@ import torch.utils.data
 import torchvision.transforms as transforms
 from pathlib import Path
 
-import utilities.masklib
 import stack_dataset
 from utilities.archive import ModelArchive
 from utilities.helpers import (gridsample_residual, save_chunk,
@@ -211,11 +209,10 @@ def train(train_loader, archive, epoch):
         # compute output and loss
         src, tgt, truth = prepare_input(sample, max_displacement=max_disp)
         prediction = submodule(src, tgt)
-        masks = gen_masks(src, tgt, prediction)
         if truth is not None:
-            loss = archive.loss(prediction=prediction, truth=truth, **masks)
+            loss = archive.loss(prediction=prediction, truth=truth)
         else:
-            loss = archive.loss(src, tgt, prediction=prediction, **masks)
+            loss = archive.loss(src, tgt, prediction=prediction)
         loss = loss.mean()  # average across a batch if present
 
         # compute gradient and do optimizer step
@@ -254,7 +251,7 @@ def train(train_loader, archive, epoch):
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses))
         if state_vars.vis_time and i % state_vars.vis_time == 0:
-            create_debug_outputs(archive, src, tgt, prediction, truth, masks)
+            create_debug_outputs(archive, src, tgt, prediction, truth)
 
         start_time = time.time()
     return losses.avg
@@ -276,15 +273,14 @@ def validate(val_loader, archive, epoch):
               .format(state_vars.name, i, len(val_loader)), end='\r')
         src, tgt, truth = prepare_input(sample, supervised=False)
         prediction = submodule(src, tgt)
-        masks = gen_masks(src, tgt, prediction)
-        loss = archive.val_loss(src, tgt, prediction=prediction, **masks)
+        loss = archive.val_loss(src, tgt, prediction=prediction)
         losses.update(loss.item())
 
     # measure elapsed time
     batch_time = (time.time() - start_time)
 
     # debugging outputs and printing
-    create_debug_outputs(archive, src, tgt, prediction, truth, masks)
+    create_debug_outputs(archive, src, tgt, prediction, truth)
     print('{0}\t'
           'Validation: [{1}/{1}]\t'
           'Loss {loss.avg:.10f}\t\t\t'
@@ -399,33 +395,7 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
 
 
 @torch.no_grad()
-def gen_masks(src, tgt, prediction=None, threshold=10):
-    """
-    Returns masks with which to weight the loss function
-    """
-    if prediction is not None:
-        src, tgt = src.to(prediction.device), tgt.to(prediction.device)
-    src, tgt = (src * 255).to(torch.uint8), (tgt * 255).to(torch.uint8)
-
-    src_mask, tgt_mask = torch.ones_like(src), torch.ones_like(tgt)
-
-    src_mask_zero, tgt_mask_zero = (src < threshold), (tgt < threshold)
-    src_mask_five = masklib.dilate(src_mask_zero, radius=3)
-    tgt_mask_five = masklib.dilate(tgt_mask_zero, radius=3)
-    src_mask[src_mask_five], tgt_mask[tgt_mask_five] = 5, 5
-    src_mask[src_mask_zero], tgt_mask[tgt_mask_zero] = 0, 0
-
-    src_field_mask, tgt_field_mask = torch.ones_like(src), torch.ones_like(tgt)
-    src_field_mask[src_mask_zero], tgt_field_mask[tgt_mask_zero] = 0, 0
-
-    return {'src_masks': [src_mask.float()],
-            'tgt_masks': [tgt_mask.float()],
-            'src_field_masks': [src_field_mask.float()],
-            'tgt_field_masks': [tgt_field_mask.float()]}
-
-
-@torch.no_grad()
-def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
+def create_debug_outputs(archive, src, tgt, prediction, truth):
     """
     Creates a subdirectory exports any debugging outputs to that directory.
     """
@@ -449,6 +419,7 @@ def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
         if truth is not None:
             save_vectors(truth[0:1, ...].detach(),
                          str(debug_dir / 'ground_truth'))
+        masks = archive._objective.gen_masks(src, tgt, prediction)
         for k, v in masks.items():
             if v is not None and len(v) > 0:
                 save_chunk(v[0][0:1, ...], str(debug_dir / k))
