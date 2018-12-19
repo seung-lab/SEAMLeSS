@@ -277,8 +277,6 @@ def first_unused_gpu(threshold=0.05):
 _args = None
 try:
     _args = _parse_args()
-except (KeyboardInterrupt, SystemExit):
-    raise
 except Exception:
     _args = None
 
