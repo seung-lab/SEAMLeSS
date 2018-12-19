@@ -582,6 +582,8 @@ class ModelArchive(object):
         if average_over < 1:
             average_over = 1
         data = data.dropna(axis=1, how='all').interpolate()
+        if self._state_vars.plot_from is not None:
+            data = data[self._state_vars.plot_from:]
         if data.empty:
             return
         data = data.rolling(window=average_over).mean()
