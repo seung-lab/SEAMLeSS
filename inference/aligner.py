@@ -683,12 +683,10 @@ class Aligner:
     #print("image_mip is", image_mip, "vector_mip is", vector_mip) 
     field = self.get_field(field_cv, field_z, influence_bbox, vector_mip, 
                            relative=True, to_tensor=True)
+     
     #print("field shape",field.shape)
     field_new = upsample(vector_mip - image_mip)(field.permute(0,3,1,2))
     mip_field = field_new.permute(0,2,3,1)
-    #mip_field = mip_field * (2**(vector_mip - image_mip))
-    #mip_field = 2 * mip_field / (mip_field.shape[-2]) 
-    #mip_field = mip_field /((mip_field.shape[-2] / 2) * (2**image_mip))
     mip_disp = int(self.max_displacement / 2**image_mip)
     #print("mip_field shape", mip_field.shape)
     #print("image_mip",image_mip, "vector_mip", vector_mip, "mip_dis is ", mip_disp)
