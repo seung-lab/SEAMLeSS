@@ -107,7 +107,6 @@ class ModelArchive(object):
             'plan': self.directory / 'plan.txt',
             'history': self.directory / 'history.txt',
             'progress': self.directory / 'progress.log',
-            'seed': self.directory / 'seed.txt',
             'architecture': self.directory / 'architecture.py',
             'objective': self.directory / 'objective.py',
             'preprocessor': self.directory / 'preprocessor.py',
@@ -124,6 +123,7 @@ class ModelArchive(object):
         self._val_loss = None
         self._preprocessor = None
         self._current_debug_directory = None
+        self._seed = None
 
         if ModelArchive.model_exists(name):
             self._load(*args, **kwargs)
@@ -195,7 +195,6 @@ class ModelArchive(object):
             'plan.txt',
             'history.txt',
             'progress.log',
-            'seed.txt',
             'commit.diff',
         ]:
             key = filename.split('.')[0]
@@ -433,8 +432,7 @@ class ModelArchive(object):
                 prand_state = torch.load(f)
             set_random_generator_state(prand_state)
         else:
-            with self.paths['seed'].open('w') as f:
-                f.write(str(seed))
+            self._seed = seed
             print('Initializing seed to {}'.format(seed))
             set_seed(seed)
 
@@ -446,6 +444,8 @@ class ModelArchive(object):
         if self.paths['state_vars'].exists():
             with self.paths['state_vars'].open(mode='r') as f:
                 self._state_vars = dotdict(yaml.load(f))
+        if self._seed is not None:
+            self._state_vars.seed = self._seed
         return self._state_vars
 
     def save(self):
