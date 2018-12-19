@@ -324,7 +324,8 @@ def select_levels():
     elif state_vars.plan == 'bottom_up':
         return slice(None, index+1)
     elif state_vars.plan == 'random_one':
-        return random.randrange(0, state_vars.height)
+        level = random.randrange(0, state_vars.height + 1)
+        return level if level < state_vars.height else slice(None)
     else:  # state_vars.plan == 'all':
         return slice(None)
 
