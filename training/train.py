@@ -431,14 +431,18 @@ def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
     """
     try:
         debug_dir = archive.new_debug_directory()
+        stack_dir = debug_dir / 'stack'
+        stack_dir.mkdir()
         save_chunk(src[0:1, ...], str(debug_dir / 'src'))
-        save_chunk(src[0:1, ...], str(debug_dir / 'xsrc'))  # extra copy of src
+        save_chunk(src[0:1, ...], str(stack_dir / 'src'))
         save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt'))
+        save_chunk(tgt[0:1, ...], str(stack_dir / 'tgt'))
         warped_src = gridsample_residual(
             src[0:1, ...],
             prediction[0:1, ...].detach().to(src.device),
             padding_mode='zeros')
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
+        save_chunk(warped_src[0:1, ...], str(stack_dir / 'warped_src'))
         archive.visualize_loss('Training Loss', 'Validation Loss')
         save_vectors(prediction[0:1, ...].detach(),
                      str(debug_dir / 'prediction'))
