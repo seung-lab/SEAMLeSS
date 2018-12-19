@@ -318,12 +318,12 @@ class _SubmoduleView(nn.Module):
     def pixel_size_ratio(self):
         """
         The ratio of the pixel size of the submodule's highest level to
-        the pixel size at its lowest level.
+        the pixel size at its input level.
         By assumption, each level of the network has equal ability, so this
         is a measure of the power of the submodule to detect and correct
         large misalignments in its input scale.
         """
-        return 2**(self.levels[-1] - self.levels[0])
+        return 2**(self.levels[-1])
 
 
 def init_leaky_relu(m, a=None):
