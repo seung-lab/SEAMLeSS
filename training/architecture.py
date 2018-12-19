@@ -17,7 +17,8 @@ class Model(nn.Module):
         super().__init__()
         self.feature_maps = feature_maps
         self.encode = EncodingPyramid(self.feature_maps) if encodings else None
-        self.align = AligningPyramid(self.feature_maps)
+        self.align = AligningPyramid(self.feature_maps if encodings
+                                     else [1]*len(feature_maps))
 
     def __getitem__(self, index):
         return self.submodule(index)

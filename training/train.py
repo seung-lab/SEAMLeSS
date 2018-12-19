@@ -472,6 +472,7 @@ def load_archive(args):
                 Path(args.validation_set).expanduser() if args.validation_set
                 else None,
             'supervised': args.supervised,
+            'encodings': args.encodings,
             'batch_size': args.batch_size,
             'log_time': args.log_time,
             'checkpoint_time': args.checkpoint_time,

@@ -64,6 +64,12 @@ def _parse_args(args=None):
         help='the number of feature maps at each mip level',
         type=int, nargs='+', default=[], metavar='F',
     )
+    start_parser.add_argument(
+        '--encodings',
+        help='whether to use encodings or plain images',
+        default=False,
+        action='store_true',
+    )
 
     param_group = start_parser.add_argument_group('training parameters')
     param_group.add_argument(
