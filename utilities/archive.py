@@ -5,6 +5,7 @@ import random
 import torch
 import numpy as np
 import json
+import yaml
 import datetime
 from pathlib import Path
 import pandas as pd
@@ -111,7 +112,7 @@ class ModelArchive(object):
             'objective': self.directory / 'objective.py',
             'preprocessor': self.directory / 'preprocessor.py',
             'commit': self.directory / 'commit.diff',
-            'state_vars': self.directory / 'state_vars.json',
+            'state_vars': self.directory / 'state_vars.yaml',
             'plot': self.directory / 'plot.png',
         }
         self._architecture = None
@@ -439,12 +440,12 @@ class ModelArchive(object):
 
     def _load_state_vars(self, *args, **kwargs):
         """
-        Loads the dict of state variables stored in `state_vars.json`
+        Loads the dict of state variables stored in `state_vars.yaml`
         """
         self._state_vars = dotdict({'name': self._name})  # default state_vars
         if self.paths['state_vars'].exists():
             with self.paths['state_vars'].open(mode='r') as f:
-                self._state_vars = dotdict(json.load(f))
+                self._state_vars = dotdict(yaml.load(f))
         return self._state_vars
 
     def save(self):
@@ -463,13 +464,9 @@ class ModelArchive(object):
         with self.paths['prand'].open('wb') as f:
             torch.save(get_random_generator_state(), f)
         if self._state_vars:
+            s = yaml.dump(dict(self._state_vars))
             with self.paths['state_vars'].open('w') as f:
-                state_vars_serializable = {
-                    key: (str(value) if isinstance(value, Path) else value)
-                    for (key, value) in self._state_vars.items()
-                }
-                f.write(json.dumps(state_vars_serializable,
-                                   indent=2, sort_keys=True))
+                f.write(s)
 
     def create_checkpoint(self, epoch, iteration, save=True):
         """

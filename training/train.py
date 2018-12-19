@@ -195,7 +195,7 @@ def train(train_loader, archive, epoch):
     submodule = select_submodule(archive.model)
     init_submodule(submodule)
     print('training levels: {}'
-          .format(range(state_vars.height)[state_vars.levels]))
+          .format(list(range(state_vars.height))[state_vars.levels]))
     max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
