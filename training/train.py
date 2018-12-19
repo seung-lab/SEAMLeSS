@@ -163,6 +163,7 @@ def main():
         # log and save state
         state_vars.epoch = epoch + 1
         state_vars.iteration = None
+        state_vars.levels = None
         archive.save()
         archive.log([
             datetime.datetime.now(),
@@ -191,10 +192,10 @@ def train(train_loader, archive, epoch):
     # switch to train mode and select the submodule to train
     archive.model.train()
     archive.adjust_learning_rate()
-    submodule = select_submodule(archive.model, epoch, init=True,
-                                 plan=state_vars.plan)
-    print('training levels: {}'.format(
-        ', '.join(str(l) for l in submodule.module.levels)))
+    submodule = select_submodule(archive.model)
+    init_submodule(submodule)
+    print('training levels: {}'
+          .format(range(state_vars.height)[state_vars.levels]))
     max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
@@ -265,7 +266,7 @@ def validate(val_loader, archive, epoch):
 
     # switch to evaluate mode
     archive.model.eval()
-    submodule = select_submodule(archive.model, epoch, plan=state_vars.plan)
+    submodule = select_submodule(archive.model)
 
     # compute output and loss
     start_time = time.time()
@@ -294,25 +295,63 @@ def validate(val_loader, archive, epoch):
     return losses.avg
 
 
-def select_submodule(model, epoch, init=False, plan='top_down'):
+def select_submodule(model):
     """
-    Selects the submodule to be trained based on the current epoch.
-    At epoch `epoch`, train level `epoch/epochs_per_mip` of the model.
+    Selects the submodule to be trained based on the specified levels.
+    If `levels` is `None`, selects them by calling `select_levels()`
     """
-    if epoch is None:
-        return model
-    index = epoch // state_vars.epochs_per_mip
-    submodule = {
-        'all': lambda: model.module.train_all(),
-        'top_down': lambda: model.module[-(index+1):].train_lowest(),
-        'bottom_up': lambda: model.module[:index+1].train_highest(),
-        'random_one': lambda: random.choice(model.module).train_all(),
-    }.get(plan, lambda: model.module)()
-    if (init and epoch % state_vars.epochs_per_mip == 0
-            and index < state_vars.height
-            and state_vars.iteration is None):
-        submodule.init_last()
-    return torch.nn.DataParallel(submodule)
+    if state_vars.levels is None:
+        state_vars.levels = select_levels()
+    submodule = model.module[state_vars.levels]
+    if state_vars.plan == 'top_down':
+        last = 'lowest'
+    elif state_vars.plan == 'bottom_up':
+        last = 'highest'
+    else:
+        last = 'all'
+    return torch.nn.DataParallel(submodule.train_level(last))
+
+
+def select_levels():
+    """
+    Returns a slice, list, or integer representing the levels to be trained
+    during this epoch.
+    At epoch `epoch`, selects version `epoch/epochs_per_mip` of the model,
+    according to the training plan `plan`.
+    `plan` may be any of `all`, `top_down`, `bottom_up`, or `random_one`
+    """
+    if state_vars.epoch is None:
+        return slice(None)
+    index = state_vars.epoch // state_vars.epochs_per_mip
+    if state_vars.plan == 'top_down':
+        return slice(-(index+1), None)
+    elif state_vars.plan == 'bottom_up':
+        return slice(None, index+1)
+    elif state_vars.plan == 'random_one':
+        return random.randrange(0, state_vars.height)
+    else:  # state_vars.plan == 'all':
+        return slice(None)
+
+
+def init_submodule(submodule):
+    """
+    Initializes the last level of the submodule to the weights of the
+    next-to-last, if this has not already happened.
+    """
+    index = state_vars.epoch // state_vars.epochs_per_mip
+    if state_vars.initialized_list is None:
+        state_vars.initialized_list = []
+    if len(state_vars.initialized_list) < state_vars.height:
+        state_vars.initialized_list += \
+            [False]*(state_vars.height - len(state_vars.initialized_list))
+    if (index < state_vars.height
+            and not state_vars.initialized_list[index]):
+        if state_vars.plan == 'top_down':
+            submodule.module.init_level('lowest')
+        elif state_vars.plan == 'bottom_up':
+            submodule.module.init_level('highest')
+        state_vars.initialized_list[index] = True
+    return submodule
 
 
 @torch.no_grad()

@@ -273,57 +273,45 @@ class _SubmoduleView(nn.Module):
                        .permute(0, 2, 3, 1))
         return accum_field
 
-    def train_all(self):
+    def train_level(self, level=slice(None)):
         """
-        Train all the levels of the SubmoduleView
-        """
-        for p in self.parameters():
-            p.requires_grad = True
-        return self
-
-    def train_lowest(self):
-        """
-        Train only the lowest level of the SubmoduleView and freeze
-        all the other weights
+        Set only a specific level of the submodule to training mode and
+        freeze all the other weights
         """
         for p in self.parameters():
             p.requires_grad = False
         for p in self.aligners[0].parameters():
             p.requires_grad = True
+        if level == 'all':
+            for p in self.parameters():
+                p.requires_grad = True
+        elif level == 'lowest':
+            for p in self.aligners[0].parameters():
+                p.requires_grad = True
+        elif level == 'highest':
+            for p in self.aligners[-1].parameters():
+                p.requires_grad = True
+        else:
+            for p in self.aligners[level].parameters():
+                p.requires_grad = True
         return self
 
-    def train_highest(self):
+    def init_level(self, level='lowest'):
         """
-        Train only the highest level of the SubmoduleView and freeze
-        all the other weights
-        """
-        for p in self.parameters():
-            p.requires_grad = False
-        for p in self.aligners[-1].parameters():
-            p.requires_grad = True
-        return self
-
-    # TODO: init encoders, handle different size aligners
-    def init_lowest(self):
-        """
-        Initialize the lowest level of the SubmoduleView by copying the trained
-        weights of the next lowest level.
+        Initialize the last level of the SubmoduleView by copying the trained
+        weights of the next to last level.
+        Whether the last level is the lowest or highest level is determined
+        by the `level` argument.
         If the SubmoduleView has only one level, this does nothing.
         """
+        # TODO: init encoders, handle different size aligners
         if len(self.aligners) > 1:
-            state_dict = self.aligners[1].state_dict()
-            self.aligners[0].load_state_dict(state_dict)
-        return self
-
-    def init_highest(self):
-        """
-        Initialize the highest level of the SubmoduleView by copying the
-        trained weights of the next highest level.
-        If the SubmoduleView has only one level, this does nothing.
-        """
-        if len(self.aligners) > 1:
-            state_dict = self.aligners[-2].state_dict()
-            self.aligners[-1].load_state_dict(state_dict)
+            if level == 'lowest':
+                state_dict = self.aligners[1].state_dict()
+                self.aligners[0].load_state_dict(state_dict)
+            elif level == 'highest':
+                state_dict = self.aligners[-2].state_dict()
+                self.aligners[-1].load_state_dict(state_dict)
         return self
 
     @property
