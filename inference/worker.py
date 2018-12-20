@@ -11,13 +11,17 @@ if __name__ == '__main__':
   parser.add_argument('--compose_start', 
     help='the earliest section to use in the composition',
     type=int) 
-  #parser.add_argument('--inverse_compose', 
-  #  help='compute and store the inverse composition (aligning COMPOSE_START to Z)', 
-  #  action='store_true')
-  #parser.add_argument('--forward_compose', 
-  #  help='compute and store the forward composition (aligning Z to COMPOSE_START)', 
-  #  action='store_true')
+  parser.add_argument('--inverse_compose', 
+    help='compute and store the inverse composition (aligning COMPOSE_START to Z)', 
+    action='store_true')
+  parser.add_argument('--forward_compose', 
+    help='compute and store the forward composition (aligning Z to COMPOSE_START)', 
+    action='store_true')
   parser.add_argument('--sigma', help='std of the bump function', type=float)
+  parser.add_argument('--block_size',
+    help='batch size for regularization; batches are necessary to prevent large vectors from accumulating during composition',
+    type=int, default=10) 
+
   args = parse_args(parser) 
   args.tgt_path = join(args.dst_path, 'image')
   a = get_aligner(args)
