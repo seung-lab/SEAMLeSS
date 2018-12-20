@@ -10,7 +10,7 @@ if __name__ == '__main__':
   args = parse_args(parser)
   args.tgt_path = join(args.dst_path, 'image')
   # only compute matches to previous sections
-  args.forward_matches_only = True
+  args.serial_operation = True
   a = get_aligner(args)
   bbox = get_bbox(args)
 

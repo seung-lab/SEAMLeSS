@@ -220,7 +220,7 @@ class Aligner:
                skip=0, topskip=0, size=7, should_contrast=True, 
                disable_flip_average=False, write_intermediaries=False,
                upsample_residuals=False, old_upsample=False, old_vectors=False,
-               ignore_field_init=False, z=0, tgt_radius=1, forward_matches_only=False,
+               ignore_field_init=False, z=0, tgt_radius=1, serial_operation=False,
                queue_name=None, p_render=False, dir_suffix='', **kwargs):
     if queue_name != None:
         self.task_handler = TaskHandler(queue_name)
@@ -262,7 +262,8 @@ class Aligner:
     self.dst = {}
     self.tgt_radius = tgt_radius
     self.tgt_range = range(-tgt_radius, tgt_radius+1)
-    if forward_matches_only:
+    self.serial_operation = serial_operation
+    if self.serial_operation:
       self.tgt_range = range(tgt_radius+1)
     for i in self.tgt_range:
       if i > 0:
@@ -478,7 +479,11 @@ class Aligner:
       tgt_z = src_z - z_offset
       if inverse:
         src_z, tgt_z = tgt_z, src_z 
-      F = self.get_composed_field(src_z, tgt_z, read_F_cv, bbox, mip, 
+      if self.serial_operation:
+        f_cv = self.dst[z_offset].for_read('field')
+        F = self.get_field(f_cv, src_z, bbox, mip, relative=False, to_tensor=True)
+      else:
+        F = self.get_composed_field(src_z, tgt_z, read_F_cv, bbox, mip, 
                                   inverse=inverse, relative=False, to_tensor=True)
       fields.append(F)
 
