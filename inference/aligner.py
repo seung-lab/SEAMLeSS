@@ -351,8 +351,7 @@ class Aligner:
     in BBOX at MIP. Use INVERSE to left-compose the next field in the list. Use RELATIVE
     to return a vector field in range [-1,1], and use TO_TENSOR to return a Tensor object.
     """
-    #z_offset = src_z - tgt_z
-    z_offset =  tgt_z - src_z
+    z_offset = src_z - tgt_z
     f_cv = self.dst[z_offset].for_read('field')
     if inverse:
       f_z, F_z = src_z, src_z 
