@@ -15,7 +15,7 @@ class Model(nn.Module):
     `feature_maps` is the number of feature maps per encoding layer
     """
 
-    def __init__(self, height=3, mips=(6, 8, 10), *args, **kwargs):
+    def __init__(self, height=3, mips=(8, 10), *args, **kwargs):
         super().__init__()
         self.height = height
         self.mips = mips
@@ -31,10 +31,10 @@ class Model(nn.Module):
         stack = torch.cat((src, tgt), 1)
         if encodings:
             src, tgt = self.encode(src, tgt)
-        stack_t = stack.transpose(2, 3)
+        stack_t = stack.transpose(2, 3).flip(2)
         field_t = self.align(stack_t, plastic_mask=None, mip_in=mip_in)
         field_t = field_t * 2 / src.shape[-2]
-        field = field_t.transpose(1, 2).flip(3)
+        field = field_t.flip(1).transpose(1, 2)
         return field
 
     def load(self, path):
@@ -44,7 +44,7 @@ class Model(nn.Module):
         for m in self.mips:
             fms = 24
             self.aligndict[m] = Aligner(fms=[2, fms, fms, fms, fms, 2], k=7).cuda()
-            with (path/'12_20_net10_8_6_module{}.pth.tar'.format(m)).open('rb') as f:
+            with (path/'12_20_net10_8_module{}.pth.tar'.format(m)).open('rb') as f:
                 self.aligndict[m].load_state_dict(torch.load(f))
             self.align.set_mip_processor(self.aligndict[m], m)
         return self

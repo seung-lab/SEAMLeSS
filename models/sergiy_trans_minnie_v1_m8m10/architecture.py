@@ -34,7 +34,7 @@ class Model(nn.Module):
         stack_t = stack.transpose(2, 3)
         field_t = self.align(stack_t, plastic_mask=None, mip_in=mip_in)
         field_t = field_t * 2 / src.shape[-2]
-        field = field_t.transpose(1, 2)
+        field = field_t.transpose(1, 2).flip(3)
         return field
 
     def load(self, path):
