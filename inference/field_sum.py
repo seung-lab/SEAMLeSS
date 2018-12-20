@@ -30,14 +30,14 @@ def compile_field_weights(W):
     for j in range(i+1, n):
       C[i,...] += W[k,...]
       C[j,...] += W[k,...]
-      k += 1  
+      k += 1
   return C / (n-1)
 
 if __name__ == '__main__':
 
   parser = argparse.ArgumentParser(
                     description='Create chunked pearson correlation image.')
-  parser.add_argument('--field_paths', type=str, nargs='+', 
+  parser.add_argument('--field_paths', type=str, nargs='+',
     help='List of CloudVolume paths to images')
   parser.add_argument('--weight_path', type=str,
     help='CloudVolume path where weights written')
@@ -64,10 +64,10 @@ if __name__ == '__main__':
   srcs = []
   for path in args.field_paths:
     srcs.append(util.get_field_cloudvolume(path, mip=args.mip))
-  dst = util.create_field_cloudvolume(args.dst_path, srcs[0][0].info, 
+  dst = util.create_field_cloudvolume(args.dst_path, srcs[0][0].info,
                                      args.mip, args.mip)
   wts = util.get_cloudvolume(args.weight_path, mip=args.mip)
-  
+
   bbox = srcs[0][0].bbox_to_mip(bbox, args.bbox_mip, args.mip)
   fields = util.get_field(srcs[0], bbox)
   for src in srcs[1:]:

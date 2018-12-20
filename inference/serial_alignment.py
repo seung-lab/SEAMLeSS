@@ -1,11 +1,11 @@
 import sys
 import torch
-from args import get_argparser, parse_args, get_aligner, get_bbox 
+from args import get_argparser, parse_args, get_aligner, get_bbox
 from os.path import join
 
 if __name__ == '__main__':
   parser = get_argparser()
-  parser.add_argument('--align_start', 
+  parser.add_argument('--align_start',
     help='align without vector voting the 2nd & 3rd sections, otherwise copy them', action='store_true')
   args = parse_args(parser)
   args.tgt_path = join(args.dst_path, 'image')
@@ -27,7 +27,7 @@ if __name__ == '__main__':
   if args.align_start:
     copy_range = z_range[0:1]
     uncomposed_range = z_range[1:3]
-  else: 
+  else:
     copy_range = z_range[0:3]
     uncomposed_range = z_range[0:0]
 
@@ -42,9 +42,9 @@ if __name__ == '__main__':
     src_z = z
     tgt_z = z-1
     a.compute_section_pair_residuals(src_z, tgt_z, bbox)
-    a.render_section_all_mips(src_z, uncomposed_field_cv, src_z, 
+    a.render_section_all_mips(src_z, uncomposed_field_cv, src_z,
                               dst_cv, src_z, bbox, mip)
-  # align with vector voting 
+  # align with vector voting
   for z in composed_range:
     print('Aligning with vector voting z={0}'.format(z))
     a.generate_pairwise([z], bbox, render_match=False)
