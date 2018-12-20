@@ -45,9 +45,9 @@ class SrcDir():
     self.vols['src_img'] = CV(src_path, mkdir=False, **self.kwargs) 
     self.vols['tgt_img'] = CV(tgt_path, mkdir=False, **self.kwargs) 
     if src_mask_path:
-      self.read['src_mask'] = CV(src_mask_path, mkdir=False, **self.read_kwargs) 
+      self.vols['src_mask'] = CV(src_mask_path, mkdir=False, **self.kwargs) 
     if tgt_mask_path:
-      self.read['tgt_mask'] = CV(tgt_mask_path, mkdir=False, **self.read_kwargs) 
+      self.vols['tgt_mask'] = CV(tgt_mask_path, mkdir=False, **self.kwargs) 
     self.src_mask_mip = src_mask_mip
     self.tgt_mask_mip = tgt_mask_mip
     self.src_mask_val = src_mask_val
@@ -815,7 +815,7 @@ class Aligner:
             mask_cv = self.src['src_mask']
             raw_patch = self.get_image(src_cv, z, patch_bbox, mip,
                                         adjust_contrast=False, to_tensor=True)
-            raw_mask = self.get_mask(mask_cv, z, precrop_patch_bbox, 
+            raw_mask = self.get_mask(mask_cv, z, patch_bbox, 
                                      src_mip=self.src.src_mask_mip,
                                      dst_mip=mip, valid_val=self.src.src_mask_val)
             raw_patch = raw_patch.masked_fill_(raw_mask, 0)
