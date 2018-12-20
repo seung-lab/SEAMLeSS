@@ -24,8 +24,8 @@ if __name__ == '__main__':
   uncomposed_field_cv = a.dst[z_offset].for_read('field')
 
   vector_mip = args.mip
-  image_mip = 1
-  composed_range = z_range[3:]
+  image_mip = args.render_low_mip
+  composed_range = z_range
   for z in composed_range:
     a.render_to_low_mip(z, field_cv, z, dst_cv, z, bbox, image_mip, vector_mip)
 
