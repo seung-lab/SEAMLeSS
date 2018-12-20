@@ -33,6 +33,7 @@ class MiplessCloudVolume():
     self.cvs[mip] = CloudVolume(self.path, mip=mip, **self.kwargs)
     if self.mkdir:
       self.cvs[mip].commit_info()
+      self.cvs[mip].commit_provenance()
 
   def __getitem__(self, mip):
     if mip not in self.cvs:
