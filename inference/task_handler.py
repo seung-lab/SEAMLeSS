@@ -110,7 +110,8 @@ def make_downsample_task_message(cv, z, patches, mip):
       "type": "downsample_task",
       "z": z,
       "cv": cv.serialize(),
-      "patches": [p.serialize() for p in patches],
+      #"patches": [p.serialize() for p in patches],
+      "patches": p.serialize(),
       "mip": mip,
   }
   return json.dumps(content)
@@ -199,5 +200,5 @@ class TaskHandler:
 
   def wait_until_ready(self):
     while not self.is_empty():
-      time.sleep(1)
+      time.sleep(5)
 

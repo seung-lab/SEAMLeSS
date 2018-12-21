@@ -890,6 +890,33 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
      
+#  def downsample(self, cv, z, bbox, source_mip, target_mip):
+#    """Chunkwise downsample
+#
+#    For the CloudVolume dirs at Z_OFFSET, warp the SRC_IMG using the FIELD for
+#    section Z in region BBOX at MIP. Chunk BBOX appropriately and save the result
+#    to DST_IMG.
+#    """
+#    print ("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
+#    for m in range(source_mip+1, target_mip + 1):
+#      chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[m],
+#                                      self.dst[0].dst_voxel_offsets[m], mip=m, render=True)
+#      if self.distributed and len(chunks) > self.threads * 4:
+#          print("Distributed downsampling to mip", m, len(chunks)," chunks")
+#          for i in range(0, len(chunks), self.threads * 4):
+#              task_patches = []
+#              for j in range(i, min(len(chunks), i + self.threads * 4)):
+#                  task_patches.append(chunks[j])
+#              downsample_task = make_downsample_task_message(cv, z, task_patches, mip=m)
+#              self.task_handler.send_message(downsample_task)
+#          self.task_handler.wait_until_ready()
+#      else:
+#          def chunkwise(patch_bbox):
+#            print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
+#            downsampled_patch = self.downsample_patch(cv, z, patch_bbox, m-1)
+#            self.save_image_patch(cv, z, downsampled_patch, patch_bbox, m)
+#          self.pool.map(chunkwise, chunks)
+
   def downsample(self, cv, z, bbox, source_mip, target_mip):
     """Chunkwise downsample
 
@@ -902,11 +929,9 @@ class Aligner:
       chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[m],
                                       self.dst[0].dst_voxel_offsets[m], mip=m, render=True)
       if self.distributed and len(chunks) > self.threads * 4:
-          for i in range(0, len(chunks), self.threads * 4):
-              task_patches = []
-              for j in range(i, min(len(chunks), i + self.threads * 4)):
-                  task_patches.append(chunks[j])
-              downsample_task = make_downsample_task_message(cv, z, task_patches, mip=m)
+          print("Distributed downsampling to mip", m, len(chunks)," chunks")
+          for c in chunks:
+              downsample_task = make_downsample_task_message(cv, z, c, mip=m)
               self.task_handler.send_message(downsample_task)
           self.task_handler.wait_until_ready()
       else:
@@ -915,6 +940,7 @@ class Aligner:
             downsampled_patch = self.downsample_patch(cv, z, patch_bbox, m-1)
             self.save_image_patch(cv, z, downsampled_patch, patch_bbox, m)
           self.pool.map(chunkwise, chunks)
+
 
   def render_section_all_mips(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
     self.render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
@@ -1293,12 +1319,15 @@ class Aligner:
   def handle_downsample_task(self, message):
     z = message['z']
     cv = DCV(message['cv'])
-    patches  = [deserialize_bbox(p) for p in message['patches']]
+    patches  = deserialize_bbox(message['patches'])
+    #patches  = [deserialize_bbox(p) for p in message['patches']]
     mip = message['mip']
-    def chunkwise(patch_bbox):
-      downsampled_patch = self.downsample_patch(cv, z, patch_bbox, mip - 1)
-      self.save_image_patch(cv, z, downsampled_patch, patch_bbox, mip)
-    self.pool.map(chunkwise, patches)
+    downsampled_patch = self.downsample_patch(cv, z, patches, mip - 1)
+    self.save_image_patch(cv, z, downsampled_patch, patches, mip)
+    #def chunkwise(patch_bbox):
+    #  downsampled_patch = self.downsample_patch(cv, z, patch_bbox, mip - 1)
+    #  self.save_image_patch(cv, z, downsampled_patch, patch_bbox, mip)
+    #self.pool.map(chunkwise, patches)
 
   def handle_vector_vote(self, message):
       z = message['z']
