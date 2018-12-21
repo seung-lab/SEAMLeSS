@@ -215,7 +215,7 @@ class Aligner:
                src_mask_path='', src_mask_mip=0, src_mask_val=1, 
                tgt_mask_path='', tgt_mask_mip=0, tgt_mask_val=1,
                align_across_z=1, disable_cuda=False, max_mip=12,
-               render_low_mip=2, render_high_mip=9, is_Xmas=False, threads=5,
+               render_low_mip=2, render_high_mip=9, is_Xmas=False, threads=2,
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, 
                disable_flip_average=False, write_intermediaries=False,
@@ -1279,7 +1279,7 @@ class Aligner:
         mask_cv = self.src['src_mask']
         raw_patch = self.get_image(src_cv, z, patch_bbox, mip,
                                     adjust_contrast=False, to_tensor=True)
-        raw_mask = self.get_mask(mask_cv, z, precrop_patch_bbox, 
+        raw_mask = self.get_mask(mask_cv, z, patch_bbox, 
                                  src_mip=self.src.src_mask_mip,
                                  dst_mip=mip, valid_val=self.src.src_mask_val)
         raw_patch = raw_patch.masked_fill_(raw_mask, 0)
