@@ -196,6 +196,7 @@ class ModelArchive(object):
             'history.txt',
             'progress.log',
             'commit.diff',
+            'plot.png',
         ]:
             key = filename.split('.')[0]
             self.paths[key].touch(exist_ok=False)
@@ -319,7 +320,6 @@ class ModelArchive(object):
         The validation loss function of the model
         """
         return self._val_loss
-        return self._loss
 
     @property
     def preprocessor(self):
@@ -481,12 +481,18 @@ class ModelArchive(object):
         if save:
             self.save()  # ensure the saved weights are up to date
         if epoch is None:
-            checkpt_name = 'init.pt'
+            checkpt_name = 'init'
         elif iteration is None:
-            checkpt_name = 'e{}.pt'.format(epoch)
+            checkpt_name = 'e{}'.format(epoch)
         else:
-            checkpt_name = 'e{}_t{}.pt'.format(epoch, iteration)
-        cp(self.paths['weights'], self.intermediate_models / checkpt_name)
+            checkpt_name = 'e{}_t{}'.format(epoch, iteration)
+        check_dir = self.intermediate_models / checkpt_name
+        check_dir.mkdir()
+        cp(self.paths['weights'], check_dir)
+        cp(self.paths['optimizer'], check_dir)
+        cp(self.paths['prand'], check_dir)
+        cp(self.paths['state_vars'], check_dir)
+        cp(self.paths['plot'], check_dir)
 
     def new_debug_directory(self):
         """
