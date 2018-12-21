@@ -35,50 +35,62 @@ if __name__ == '__main__':
     overlap_range = z_range[overlap:2*overlap]
     composed_range = z_range[2*overlap:]
 
-  # # copy first section
-  # for z in copy_range:
-  #   print('Copying z={0}'.format(z))
-  #   a.copy_section(z, dst_cv, z, bbox, mip)
-  #   a.downsample(dst_cv, z, bbox, a.render_low_mip, a.render_high_mip)
+  # copy first section
+  for z in copy_range:
+    print('Copying z={0}'.format(z))
+    a.copy_section(z, dst_cv, z, bbox, mip)
+    a.downsample(dst_cv, z, bbox, a.render_low_mip, a.render_high_mip)
 
-  # # align without vector voting
-  # for z in uncomposed_range:
-  #   print('Aligning without vector voting z={0}'.format(z))
-  #   src_z = z
-  #   tgt_z = z-1
-  #   a.compute_section_pair_residuals(src_z, tgt_z, bbox)
-  #   a.render_section_all_mips(src_z, uncomposed_field_cv, src_z,
-  #                             dst_cv, src_z, bbox, mip)
+  # align without vector voting
+  for z in uncomposed_range:
+    print('Aligning without vector voting z={0}'.format(z))
+    src_z = z
+    tgt_z = z-1
+    a.compute_section_pair_residuals(src_z, tgt_z, bbox)
+    a.render_section_all_mips(src_z, uncomposed_field_cv, src_z,
+                              dst_cv, src_z, bbox, mip)
 
-  # # align overlap to the uncomposed
-  # for k, z in enumerate(overlap_range):
-  #   for z_offset in range(1, args.tgt_radius-k+1):
-  #     src_z = z
-  #     tgt_z = src_z - z_offset
-  #     a.compute_section_pair_residuals(src_z, tgt_z, bbox)
-  #   
-  # # setup an aligner to run pairwise 
-  # args.tgt_path = args.src_path 
-  # args.serial_operation = False 
-  # a = get_aligner(args)
+  # align overlap to the uncomposed
+  print('align overlap pairwise to previous aligned')
+  for k, z in enumerate(overlap_range):
+    for z_offset in range(k+1, args.tgt_radius+1):
+      src_z = z
+      tgt_z = src_z - z_offset
+      # print(src_z,tgt_z)
+      a.compute_section_pair_residuals(src_z, tgt_z, bbox)
+    
+  # setup an aligner to run pairwise 
+  args.tgt_path = args.src_path 
+  args.serial_operation = False 
+  a = get_aligner(args)
 
-  # # align overlap to the composed
-  # for k, z in enumerate(overlap_range):
-  #   for z_offset in range(-args.tgt_radius, 0):
-  #     src_z = z
-  #     tgt_z = src_z - z_offset
-  #     a.compute_section_pair_residuals(src_z, tgt_z, bbox)
+  # align overlap to the composed
+  print('align overlap pairwise to previous unaligned')
+  for k, z in enumerate(overlap_range):
+    for z_offset in range(1, k+1):
+      src_z = z
+      tgt_z = src_z - z_offset
+      # print(src_z,tgt_z)
+      a.compute_section_pair_residuals(src_z, tgt_z, bbox)
+  print('align overlap pairwise to future unaligned')
+  for k, z in enumerate(overlap_range):
+    for z_offset in range(-args.tgt_radius, 0):
+      src_z = z
+      tgt_z = src_z - z_offset
+      # print(src_z,tgt_z)
+      a.compute_section_pair_residuals(src_z, tgt_z, bbox)
 
   # multi-match for all of the composed 
   a.generate_pairwise(composed_range, bbox, render_match=False)
-  
+
+  pairwise_range = list(overlap_range) + list(composed_range) 
   # compose from block_start) 
-  a.compose_pairwise(composed_range, block_start, bbox, mip,
-                     forward_compose=args.forward_compose,
-                     inverse_compose=args.inverse_compose)
+  a.compose_pairwise(pairwise_range, block_start, bbox, mip,
+                     forward_compose=True,
+                     inverse_compose=False)
 
   # render all of overlap and compose
-  for z in overlap_range + composed_range:
+  for z in pairwise_range:
     a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip)
 
   # # compose and regularized all of the composed
