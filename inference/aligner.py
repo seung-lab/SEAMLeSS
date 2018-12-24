@@ -834,6 +834,36 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
+#  def render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
+#    """Chunkwise render
+#
+#    Warp the image in BBOX at MIP and SRC_Z in CloudVolume dir at SRC_Z_OFFSET, 
+#    using the field at FIELD_Z in CloudVolume dir at FIELD_Z_OFFSET, and write 
+#    the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX 
+#    appropriately.
+#    """
+#    print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
+#    start = time()
+#    chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
+#                                    self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
+#    if self.distributed:
+#        for i in range(0, len(chunks), self.threads):
+#            task_patches = []
+#            for j in range(i, min(len(chunks), i + self.threads)):
+#                task_patches.append(chunks[j])
+#            render_task = make_render_task_message(src_z, field_cv, field_z, task_patches, 
+#                                                   mip, dst_cv, dst_z)
+#            self.task_handler.send_message(render_task)
+#        self.task_handler.wait_until_ready()
+#    else:
+#        def chunkwise(patch_bbox):
+#          warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
+#          # print('warp_image render.shape: {0}'.format(warped_patch.shape))
+#          self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+#        self.pool.map(chunkwise, chunks)
+#    end = time()
+#    print (": {} sec".format(end - start))
+
   def render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
     """Chunkwise render
 
@@ -847,11 +877,8 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
                                     self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
     if self.distributed:
-        for i in range(0, len(chunks), self.threads):
-            task_patches = []
-            for j in range(i, min(len(chunks), i + self.threads)):
-                task_patches.append(chunks[j])
-            render_task = make_render_task_message(src_z, field_cv, field_z, task_patches, 
+        for patch in chunks:
+            render_task = make_render_task_message(src_z, field_cv, field_z, patch, 
                                                    mip, dst_cv, dst_z)
             self.task_handler.send_message(render_task)
         self.task_handler.wait_until_ready()
@@ -930,11 +957,15 @@ class Aligner:
                                       self.dst[0].dst_voxel_offsets[m], mip=m, render=True)
       if self.distributed and len(chunks) > self.threads * 4:
           print("Distributed downsampling to mip", m, len(chunks)," chunks")
+          #for c in chunks:
+          #  print ("distributed Downsampling {} to mip {}".format(c.__str__(mip=0), m))
           for c in chunks:
               downsample_task = make_downsample_task_message(cv, z, c, mip=m)
-              self.task_handler.send_message(downsample_task)
+              self.task_handler.send_message(downsample_task) 
           self.task_handler.wait_until_ready()
       else:
+          #for c in chunks:
+          #  print ("Downsampling {} to mip {}".format(c.__str__(mip=0), m))
           def chunkwise(patch_bbox):
             print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
             downsampled_patch = self.downsample_patch(cv, z, patch_bbox, m-1)
@@ -1237,18 +1268,21 @@ class Aligner:
 
   def handle_render_task(self, message):
     src_z = message['z']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
+    #patches  = [deserialize_bbox(p) for p in message['patches']]
+    patches  = deserialize_bbox(message['patches'])
     field_cv = DCV(message['field_cv']) 
     mip = message['mip']
     field_z = message['field_z']
     dst_cv = DCV(message['dst_cv'])
     dst_z = message['dst_z']
-    def chunkwise(patch_bbox):
-      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-              end='', flush=True)
-      warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
-      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
-    self.pool.map(chunkwise, patches)
+    #def chunkwise(patch_bbox):
+    #  print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+    #          end='', flush=True)
+    #  warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
+    #  self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+    #self.pool.map(chunkwise, patches)
+    warped_patch = self.warp_patch(src_z, field_cv, field_z, patches, mip)
+    self.save_image_patch(dst_cv, dst_z, warped_patch, patches, mip)
 
   def handle_render_task_low_mip(self, message):
     src_z = message['z']

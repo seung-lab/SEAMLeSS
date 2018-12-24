@@ -73,7 +73,8 @@ def make_render_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
       "z": z,
       "field_cv": field_cv.serialize(),
       "field_z": field_z,
-      "patches": [p.serialize() for p in patches],
+      #"patches": [p.serialize() for p in patches],
+      "patches": patches.serialize(),
       "mip": mip,
       "dst_cv": dst_cv.serialize(),
       "dst_z": dst_z,
@@ -111,7 +112,7 @@ def make_downsample_task_message(cv, z, patches, mip):
       "z": z,
       "cv": cv.serialize(),
       #"patches": [p.serialize() for p in patches],
-      "patches": p.serialize(),
+      "patches": patches.serialize(),
       "mip": mip,
   }
   return json.dumps(content)
