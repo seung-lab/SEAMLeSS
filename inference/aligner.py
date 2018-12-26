@@ -80,10 +80,11 @@ class DstDir():
     self.compile_scales()
     self.read = {}
     self.write = {}
-    self.read_kwargs = {'bounded': False, 'fill_missing': False, 'progress': False}
+    #self.read_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False}
+    self.read_kwargs = {'bounded': False, 'progress': False}
     self.write_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False, 
                   'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
-    self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1)
+    self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1, fill_missing=False)
     self.add_path('dst_img_1', join(self.root, 'image1'), data_type='uint8', num_channels=1)
     self.add_path('field', join(self.root, 'field'), data_type='float32', num_channels=2)
     self.suffix = suffix
@@ -155,16 +156,16 @@ class DstDir():
       self.vec_total_sizes.append(scales[i]["size"])
 
   def create_cv(self, k):
-    path, data_type, channels = self.paths[k]
+    path, data_type, channels, fill_missing = self.paths[k]
     provenance = self.provenance 
     info = deepcopy(self.info)
     info['data_type'] = data_type
     info['num_channels'] = channels
-    self.read[k] = CV(path, mkdir=False, info=info, provenance=provenance, **self.read_kwargs)
+    self.read[k] = CV(path, mkdir=False, info=info, provenance=provenance, fill_missing=fill_missing, **self.read_kwargs)
     self.write[k] = CV(path, mkdir=True, info=info, provenance=provenance, **self.write_kwargs)
 
-  def add_path(self, k, path, data_type='uint8', num_channels=1):
-    self.paths[k] = (path, data_type, num_channels)
+  def add_path(self, k, path, data_type='uint8', num_channels=1, fill_missing=True):
+    self.paths[k] = (path, data_type, num_channels, fill_missing)
 
   def create_paths(self):
     for k in self.paths.keys():
@@ -1448,5 +1449,3 @@ class Aligner:
       else:
         sleep(3)
         print ("Waiting for jobs...") 
-
-
