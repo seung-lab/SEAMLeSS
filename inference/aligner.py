@@ -1441,9 +1441,9 @@ class Aligner:
       if message != None:
         print ("Got a job")
         s = time()
-        self.task_handler.purge_queue()
-        #self.handle_task_message(message)
-        #self.task_handler.delete_message(message)
+        #self.task_handler.purge_queue()
+        self.handle_task_message(message)
+        self.task_handler.delete_message(message)
         e = time()
         print ("Done: {} sec".format(e - s))
       else:
