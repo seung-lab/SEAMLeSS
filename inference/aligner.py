@@ -82,7 +82,8 @@ class DstDir():
     self.write = {}
     #self.read_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False}
     self.read_kwargs = {'bounded': False, 'progress': False}
-    self.write_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False, 
+    #self.write_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False, 
+    self.write_kwargs = {'bounded': False, 'progress': False, 
                   'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
     self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1, fill_missing=False)
     self.add_path('dst_img_1', join(self.root, 'image1'), data_type='uint8', num_channels=1)
@@ -162,7 +163,7 @@ class DstDir():
     info['data_type'] = data_type
     info['num_channels'] = channels
     self.read[k] = CV(path, mkdir=False, info=info, provenance=provenance, fill_missing=fill_missing, **self.read_kwargs)
-    self.write[k] = CV(path, mkdir=True, info=info, provenance=provenance, **self.write_kwargs)
+    self.write[k] = CV(path, mkdir=True, info=info, provenance=provenance, fill_missing=fill_missing, **self.write_kwargs)
 
   def add_path(self, k, path, data_type='uint8', num_channels=1, fill_missing=True):
     self.paths[k] = (path, data_type, num_channels, fill_missing)
@@ -773,7 +774,14 @@ class Aligner:
     """
     x_range = bbox.x_range(mip=src_mip)
     y_range = bbox.y_range(mip=src_mip)
-    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] 
+    data = None
+    while data is None:
+      try:
+        data_ = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
+        data = data_
+      except AttributeError as e:
+        pass 
+    
     data = np.transpose(data, (3,2,1,0))
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
@@ -835,36 +843,6 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-#  def render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
-#    """Chunkwise render
-#
-#    Warp the image in BBOX at MIP and SRC_Z in CloudVolume dir at SRC_Z_OFFSET, 
-#    using the field at FIELD_Z in CloudVolume dir at FIELD_Z_OFFSET, and write 
-#    the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX 
-#    appropriately.
-#    """
-#    print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
-#    start = time()
-#    chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
-#                                    self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
-#    if self.distributed:
-#        for i in range(0, len(chunks), self.threads):
-#            task_patches = []
-#            for j in range(i, min(len(chunks), i + self.threads)):
-#                task_patches.append(chunks[j])
-#            render_task = make_render_task_message(src_z, field_cv, field_z, task_patches, 
-#                                                   mip, dst_cv, dst_z)
-#            self.task_handler.send_message(render_task)
-#        self.task_handler.wait_until_ready()
-#    else:
-#        def chunkwise(patch_bbox):
-#          warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
-#          # print('warp_image render.shape: {0}'.format(warped_patch.shape))
-#          self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
-#        self.pool.map(chunkwise, chunks)
-#    end = time()
-#    print (": {} sec".format(end - start))
-
   def render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
     """Chunkwise render
 
@@ -878,8 +856,11 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
                                     self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
     if self.distributed:
-        for patch in chunks:
-            render_task = make_render_task_message(src_z, field_cv, field_z, patch, 
+        for i in range(0, len(chunks), self.threads):
+            task_patches = []
+            for j in range(i, min(len(chunks), i + self.threads)):
+                task_patches.append(chunks[j])
+            render_task = make_render_task_message(src_z, field_cv, field_z, task_patches, 
                                                    mip, dst_cv, dst_z)
             self.task_handler.send_message(render_task)
         self.task_handler.wait_until_ready()
@@ -891,6 +872,33 @@ class Aligner:
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
+
+#  def render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
+#    """Chunkwise render
+#
+#    Warp the image in BBOX at MIP and SRC_Z in CloudVolume dir at SRC_Z_OFFSET, 
+#    using the field at FIELD_Z in CloudVolume dir at FIELD_Z_OFFSET, and write 
+#    the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX 
+#    appropriately.
+#    """
+#    print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
+#    start = time()
+#    chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
+#                                    self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
+#    if self.distributed:
+#        for patch in chunks:
+#            render_task = make_render_task_message(src_z, field_cv, field_z, patch, 
+#                                                   mip, dst_cv, dst_z)
+#            self.task_handler.send_message(render_task)
+#        self.task_handler.wait_until_ready()
+#    else:
+#        def chunkwise(patch_bbox):
+#          warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
+#          # print('warp_image render.shape: {0}'.format(warped_patch.shape))
+#          self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+#        self.pool.map(chunkwise, chunks)
+#    end = time()
+#    print (": {} sec".format(end - start))
 
   def low_mip_render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
     start = time()
@@ -1269,21 +1277,21 @@ class Aligner:
 
   def handle_render_task(self, message):
     src_z = message['z']
-    #patches  = [deserialize_bbox(p) for p in message['patches']]
-    patches  = deserialize_bbox(message['patches'])
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    #patches  = deserialize_bbox(message['patches'])
     field_cv = DCV(message['field_cv']) 
     mip = message['mip']
     field_z = message['field_z']
     dst_cv = DCV(message['dst_cv'])
     dst_z = message['dst_z']
-    #def chunkwise(patch_bbox):
-    #  print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-    #          end='', flush=True)
-    #  warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
-    #  self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
-    #self.pool.map(chunkwise, patches)
-    warped_patch = self.warp_patch(src_z, field_cv, field_z, patches, mip)
-    self.save_image_patch(dst_cv, dst_z, warped_patch, patches, mip)
+    def chunkwise(patch_bbox):
+      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+              end='', flush=True)
+      warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
+      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+    self.pool.map(chunkwise, patches)
+    #warped_patch = self.warp_patch(src_z, field_cv, field_z, patches, mip)
+    #self.save_image_patch(dst_cv, dst_z, warped_patch, patches, mip)
 
   def handle_render_task_low_mip(self, message):
     src_z = message['z']
