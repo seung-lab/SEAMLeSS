@@ -85,7 +85,7 @@ class DstDir():
     #self.write_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False, 
     self.write_kwargs = {'bounded': False, 'progress': False, 
                   'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
-    self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1, fill_missing=False)
+    self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1, fill_missing=True)
     self.add_path('dst_img_1', join(self.root, 'image1'), data_type='uint8', num_channels=1)
     self.add_path('field', join(self.root, 'field'), data_type='float32', num_channels=2)
     self.suffix = suffix
@@ -774,14 +774,15 @@ class Aligner:
     """
     x_range = bbox.x_range(mip=src_mip)
     y_range = bbox.y_range(mip=src_mip)
-    data = None
-    while data is None:
-      try:
-        data_ = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
-        data = data_
-      except AttributeError as e:
-        pass 
-    
+    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
+    #data = None
+    #while data is None:
+    #  try:
+    #    data_ = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
+    #    data = data_
+    #  except AttributeError as e:
+    #    pass 
+    #
     data = np.transpose(data, (3,2,1,0))
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
