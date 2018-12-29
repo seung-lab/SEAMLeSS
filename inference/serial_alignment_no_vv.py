@@ -47,11 +47,11 @@ if __name__ == '__main__':
   for z in copy_range:
     a.downsample(dst_cv, z, bbox, a.render_low_mip, a.render_high_mip)
   
- for z in align_range:
+  for z in align_range:
     src_z = z
     a.render(src_z, uncomposed_field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
 
- for z in align_range:
+  for z in align_range:
     src_z = z
     a.downsample(dst_cv, src_z, bbox, a.render_low_mip, a.render_high_mip)
     
