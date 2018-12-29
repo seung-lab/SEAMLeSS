@@ -364,12 +364,16 @@ class Aligner:
     else:
       f_z, F_z = src_z, tgt_z
     f = self.get_field(f_cv, f_z, bbox, mip, relative=True, to_tensor=to_tensor)
-    tmp_key = bbox.__str__ + str(F_z)
+    tmp_key = str(bbox.__str__) + str(F_z)
     if tmp_key in field_dic:
-        print("bbox {0} in z {1} in dictionary".format(bbox.__str__
+        #print("bbox {0} in z {1} in dictionary".format(bbox.__str__
+        #                                               ,F_z))
+        print("bbox {0} in z {1} in dictionary".format(bbox.x_range(0)
                                                        ,F_z))
-        F = field_dic[bbox.__str__ + F_z]
+        F = field_dic[str(bbox.__str__) +str(F_z)]
     else:
+        print("--------bbox {0} in z {1} not in dictionary".format(bbox.x_range(0)
+                                                       ,F_z))
         F = self.get_field(F_cv, F_z, bbox, mip, relative=True, to_tensor=to_tensor)
     if inverse:
       F = self.compose_fields(f, F)
@@ -503,8 +507,13 @@ class Aligner:
           fields.append(F)
 
         field = vector_vote(fields, T=T)
-        tmp_key = bbox.__str__ + str(z)
+        tmp_key = str(bbox.__str__) + str(z)
+        delete_key = str(bbox.__str__) + str(z-4)
+        print("put in dic z is {}, key is {}".format(z, tmp_key))
         field_dic[tmp_key] = field
+        if delete_key in field_dic:
+            del field_dic[delete_key]
+            print("delete dic z is {}, key is {}".format(z-4, tmp_key))
         self.save_vector_patch(write_F_cv, z, field, bbox, mip)
 
     # if self.write_intermediaries:
@@ -1087,7 +1096,7 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst[0].vec_chunk_sizes[mip],
                                     self.dst[0].vec_voxel_offsets[mip], mip=mip)
     print("Vector voting for slice {0} @ MIP{1} {2} ({3} chunks)".
-           format(z, mip, 'INVERSE' if inverse else 'FORWARD', len(chunks)), flush=True)
+           format(z_range.start, mip, 'INVERSE' if inverse else 'FORWARD', len(chunks)), flush=True)
     
     if self.distributed:
         for patch_bbox in chunks:

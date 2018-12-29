@@ -60,14 +60,14 @@ if __name__ == '__main__':
 
   # align with vector voting
   vvblock = 20
-  for z_block in range(composed_range.start, composed.stop, vvblock):
-      z_block_range = range(z_block, min(composed.stop, z_block + vvblock))
+  for z_block in range(composed_range.start, composed_range.stop, vvblock):
+      z_block_range = range(z_block, min(composed_range.stop, z_block + vvblock))
       print('generate pairwise with vector voting z={0}:{1}'.format(z_block_range.start,
                                                                     z_block_range.stop))
       a.generate_pairwise(z_block_range, bbox, render_match=False)
       print('compose pairwise with vector voting z={0}:{1}'.format(z_block_range.start,
                                                                    z_block_range.stop))
-      a.compose_pairwise(z_block, args.bbox_start[2], bbox, mip,
+      a.compose_pairwise(z_block_range, args.bbox_start[2], bbox, mip,
                          forward_compose=True,
                          inverse_compose=False)
       for z in z_block_range:
