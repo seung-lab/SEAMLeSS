@@ -366,11 +366,14 @@ class Aligner:
     f = self.get_field(f_cv, f_z, bbox, mip, relative=True, to_tensor=to_tensor)
     tmp_key = str(bbox.__str__) + str(F_z)
     if tmp_key in field_dic:
-        #print("bbox {0} in z {1} in dictionary".format(bbox.__str__
-        #                                               ,F_z))
         print("bbox {0} in z {1} in dictionary".format(bbox.x_range(0)
                                                        ,F_z))
-        F = field_dic[str(bbox.__str__) +str(F_z)]
+        cache_F = field_dic[str(bbox.__str__) + str(F_z)]
+        res = np.expand_dims(np.squeeze(cache_F), axis=0)
+        F = self.abs_to_rel_residual(res, bbox, mip)
+        if to_tensor:
+          res = torch.from_numpy(F)
+          F = res.to(device=self.device)
     else:
         print("--------bbox {0} in z {1} not in dictionary".format(bbox.x_range(0)
                                                        ,F_z))
@@ -417,6 +420,16 @@ class Aligner:
     y_range = bbox.y_range(mip=mip)
     field = np.squeeze(field)[:, :, np.newaxis, :]
     print('save_vector_patch from {0}, MIP{1} at z={2}'.format(cv.path, mip, z))
+    cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
+
+  def save_vector_patch_and_cache(self, cv, z, field, bbox, mip, field_dic):
+    field = field.data.cpu().numpy() 
+    x_range = bbox.x_range(mip=mip)
+    y_range = bbox.y_range(mip=mip)
+    field = np.squeeze(field)[:, :, np.newaxis, :]
+    print('save_vector_patch from {0}, MIP{1} at z={2}'.format(cv.path, mip, z))
+    tmp_key = str(bbox.__str__) + str(z)
+    field_dic[tmp_key] = field
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
 
   def save_residual_patch(self, cv, z, res, bbox, mip):
@@ -507,14 +520,15 @@ class Aligner:
           fields.append(F)
 
         field = vector_vote(fields, T=T)
-        tmp_key = str(bbox.__str__) + str(z)
+        #tmp_key = str(bbox.__str__) + str(z)
         delete_key = str(bbox.__str__) + str(z-4)
         print("put in dic z is {}, key is {}".format(z, tmp_key))
-        field_dic[tmp_key] = field
+        #field_dic[tmp_key] = field
         if delete_key in field_dic:
             del field_dic[delete_key]
             print("delete dic z is {}, key is {}".format(z-4, tmp_key))
-        self.save_vector_patch(write_F_cv, z, field, bbox, mip)
+        self.save_vector_patch_and_cache(write_F_cv, z, field, bbox, mip,
+                                         field_dic)
 
     # if self.write_intermediaries:
     #   self.save_image_patch('diffs', diffs.cpu().numpy(), bbox, mip, to_uint8=False)
