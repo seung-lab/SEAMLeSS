@@ -86,7 +86,7 @@ class DstDir():
     self.write_kwargs = {'bounded': False, 'progress': False, 
                   'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
     self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1, fill_missing=True)
-    self.add_path('dst_img_1', join(self.root, 'image1'), data_type='uint8', num_channels=1)
+    self.add_path('dst_img_2', join(self.root, 'image2'), data_type='uint8', num_channels=1)
     self.add_path('field', join(self.root, 'field'), data_type='float32', num_channels=2)
     self.suffix = suffix
     self.create_paths()
@@ -527,7 +527,7 @@ class Aligner:
         #field_dic[tmp_key] = field
         if delete_key in field_dic:
             del field_dic[delete_key]
-            print("delete dic z is {}, key is {}".format(z-4, tmp_key))
+            print("delete dic z is {}, key is {}".format(z-4, delete_key))
         self.save_vector_patch_and_cache(write_F_cv, z, field, bbox, mip,
                                          field_dic)
 
