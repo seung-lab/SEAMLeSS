@@ -427,9 +427,10 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     field = np.squeeze(field)[:, :, np.newaxis, :]
-    print('save_vector_patch from {0}, MIP{1} at z={2}'.format(cv.path, mip, z))
     tmp_key = str(bbox.__str__) + str(z)
+    print("put in dic z is {}, key is {}".format(z, tmp_key))
     field_dic[tmp_key] = field
+    print('save_vector_patch from {0}, MIP{1} at z={2}'.format(cv.path, mip, z))
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
 
   def save_residual_patch(self, cv, z, res, bbox, mip):
@@ -522,7 +523,7 @@ class Aligner:
         field = vector_vote(fields, T=T)
         #tmp_key = str(bbox.__str__) + str(z)
         delete_key = str(bbox.__str__) + str(z-4)
-        print("put in dic z is {}, key is {}".format(z, tmp_key))
+        #print("put in dic z is {}, key is {}".format(z, tmp_key))
         #field_dic[tmp_key] = field
         if delete_key in field_dic:
             del field_dic[delete_key]
