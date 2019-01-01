@@ -198,8 +198,7 @@ class DstDir():
     """
     k = self.get_composed_key(compose_start, inverse)
     path = join(self.root, 'composed', self.get_composed_key(compose_start, inverse))
-    self.add_path(k, path, data_type='float32', num_channels=2,
-                  fill_missing=False)
+    self.add_path(k, path, data_type='float32', num_channels=2)
     self.create_cv(k)
 
 class Aligner:
