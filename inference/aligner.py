@@ -87,7 +87,8 @@ class DstDir():
                   'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
     self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1, fill_missing=True)
     self.add_path('dst_img_2', join(self.root, 'image2'), data_type='uint8', num_channels=1)
-    self.add_path('field', join(self.root, 'field'), data_type='float32', num_channels=2)
+    self.add_path('field', join(self.root, 'field'), data_type='float32',
+                  num_channels=2, fill_missing=True)
     self.suffix = suffix
     self.create_paths()
   
@@ -720,21 +721,30 @@ class Aligner:
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
-    print("field_z is ", field_z)
-    influence_x_range = influence_bbox.x_range(mip=mip)
-    influence_y_range = influence_bbox.y_range(mip=mip)
-    total_bbox_x_range = self.total_bbox.x_range(mip=mip)
-    total_bbox_y_range = self.total_bbox.y_range(mip=mip)
-    a = (influence_x_range[0] >= total_bbox_x_range[0])
-    b = (influence_x_range[1] <= total_bbox_x_range[1])
-    c = (influence_y_range[0]>= total_bbox_y_range[0])
-    d = (influence_y_range[1] <= total_bbox_y_range[1])
-    not_block_block = a and b and c and d
-    if not_block_block:
-        field = self.get_field(field_cv, field_z, influence_bbox, mip,
-                               relative=True, to_tensor=True)
-    else:
-        field = 0;
+   # print("field_z is ", field_z)
+   # influence_x_range = influence_bbox.x_range(mip=mip)
+   # influence_y_range = influence_bbox.y_range(mip=mip)
+   # total_bbox_x_range = self.total_bbox.x_range(mip=mip)
+   # total_bbox_y_range = self.total_bbox.y_range(mip=mip)
+   # a = (influence_x_range[0] >= total_bbox_x_range[0])
+   # b = (influence_x_range[1] <= total_bbox_x_range[1])
+   # c = (influence_y_range[0]>= total_bbox_y_range[0])
+   # d = (influence_y_range[1] <= total_bbox_y_range[1])
+   # not_block_block = a and b and c and d
+   # print("influence_bbox x: {} y:{} total x:{} y:{} black {}".format(influence_x_range,
+   #                                                                   influence_y_range,
+   #                                                                   total_bbox_x_range,
+   #                                                                   total_bbox_y_range,
+   #                                                                   not_block_block),
+   #      flush =True)
+   # print("bbox x:{} y:{}".format(bbox.x_range(mip=mip), bbox.y_range(mip=mip)))
+    field = self.get_field(field_cv, field_z, influence_bbox, mip,
+                           relative=True, to_tensor=True)
+    #if not_block_block:
+    #    field = self.get_field(field_cv, field_z, influence_bbox, mip,
+    #                           relative=True, to_tensor=True)
+    #else:
+    #    field = 0;
     mip_disp = int(self.max_displacement / 2**mip)
     src_cv = self.src['src_img']
     image = self.get_image(src_cv, src_z, influence_bbox, mip, 
@@ -748,8 +758,9 @@ class Aligner:
 
     # print('warp_patch shape {0}'.format(image.shape))
     # no need to warp if flow is identity since warp introduces noise
-    if not_block_block and (torch.min(field) != 0 or torch.max(field) != 0):
+    if torch.min(field) != 0 or torch.max(field) != 0:
       image = gridsample_residual(image, field, padding_mode='zeros')
+      print("warped")
     else:
       print ("not warping")
     # print('warp_image image1.shape: {0}'.format(image.shape))
@@ -935,6 +946,7 @@ class Aligner:
     the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX 
     appropriately.
     """
+    self.total_bbox = bbox
     print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],

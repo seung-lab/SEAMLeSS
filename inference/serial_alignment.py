@@ -32,20 +32,20 @@ if __name__ == '__main__':
     uncomposed_range = z_range[0:0]
 
   # copy first section
-#  for z in copy_range:
-#    print('Copying z={0}'.format(z))
-#    a.copy_section(z, dst_cv, z, bbox, mip)
-#    a.downsample(dst_cv, z, bbox, a.render_low_mip, a.render_high_mip)
-#  # align without vector voting
-#  for z in uncomposed_range:
-#    print('compute residuals without vector voting z={0}'.format(z))
-#    src_z = z
-#    tgt_z = z-1
-#    a.compute_section_pair_residuals(src_z, tgt_z, bbox)
-#  #  a.render_section_all_mips(src_z, uncomposed_field_cv, src_z,
-#  #                            dst_cv, src_z, bbox, mip) 
-#    a.render(src_z, uncomposed_field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
-#    a.downsample(dst_cv, src_z - 1, bbox, a.render_low_mip, a.render_high_mip)
+  for z in copy_range:
+    print('Copying z={0}'.format(z))
+    a.copy_section(z, dst_cv, z, bbox, mip)
+    a.downsample(dst_cv, z, bbox, a.render_low_mip, a.render_high_mip)
+  # align without vector voting
+  for z in uncomposed_range:
+    print('compute residuals without vector voting z={0}'.format(z))
+    src_z = z
+    tgt_z = z-1
+    a.compute_section_pair_residuals(src_z, tgt_z, bbox)
+  #  a.render_section_all_mips(src_z, uncomposed_field_cv, src_z,
+  #                            dst_cv, src_z, bbox, mip) 
+    a.render(src_z, uncomposed_field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
+    a.downsample(dst_cv, src_z - 1, bbox, a.render_low_mip, a.render_high_mip)
 
 #a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip)
   # align with vector voting

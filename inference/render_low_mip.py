@@ -25,7 +25,9 @@ if __name__ == '__main__':
 
   vector_mip = args.mip
   image_mip = args.render_low_mip
-  composed_range = z_range[3:]
-  for z in composed_range:
+  #composed_range = z_range[3:]
+  composed_range = z_range
+  #for z in composed_range:
+  for z in [19990,19991,19992]:
     a.render_to_low_mip(z, field_cv, z, dst_cv, z, bbox, image_mip, vector_mip)
 
