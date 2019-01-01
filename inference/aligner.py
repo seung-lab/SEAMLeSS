@@ -197,7 +197,8 @@ class DstDir():
     """
     k = self.get_composed_key(compose_start, inverse)
     path = join(self.root, 'composed', self.get_composed_key(compose_start, inverse))
-    self.add_path(k, path, data_type='float32', num_channels=2)
+    self.add_path(k, path, data_type='float32', num_channels=2,
+                  fill_missing=False)
     self.create_cv(k)
 
 class Aligner:
@@ -262,6 +263,8 @@ class Aligner:
                       src_mask_mip, tgt_mask_mip, 
                       src_mask_val, tgt_mask_val)
     src_cv = self.src['src_img'][0]
+    print("source_patch is", src_path)
+    print("tgt_patch is", tgt_path)
     info = DstDir.create_info(src_cv, mip_range, max_displacement)
     self.dst = {}
     self.tgt_radius = tgt_radius
@@ -350,9 +353,37 @@ class Aligner:
     g = g.permute(0,3,1,2)
     return f + gridsample_residual(g, f, padding_mode='border').permute(0,2,3,1)
     
-  def get_composed_field(self, src_z, tgt_z, F_cv, bbox, mip, 
-                                inverse=False, relative=False, to_tensor=True,
-                        field_dic = {}):
+  def get_composed_field(self, src_z, tgt_z, F_cv, bbox, mip,
+                         inverse=False, relative=False, to_tensor=True):
+    """Get composed field for Z_LIST using CloudVolume dirs at Z_OFFSET_LIST. Use field
+    in BBOX at MIP. Use INVERSE to left-compose the next field in the list. Use RELATIVE
+    to return a vector field in range [-1,1], and use TO_TENSOR to return a Tensor object.
+    """
+    z_offset = src_z - tgt_z
+    f_cv = self.dst[z_offset].for_read('field')
+    if inverse:
+      f_z, F_z = src_z, src_z 
+    else:
+      f_z, F_z = src_z, tgt_z
+    f = self.get_field(f_cv, f_z, bbox, mip, relative=True, to_tensor=to_tensor)
+    print("f shape", f.shape)
+    print("F_cv is ", F_cv, "F_z is", F_z)
+    if F_z < 19903:
+        F = torch.zeros(f.shape, dtype=torch.float32).to(device=self.device)
+    else:
+        F = self.get_field(F_cv, F_z, bbox, mip, relative=True, to_tensor=to_tensor)
+    if inverse:
+      F = self.compose_fields(f, F)
+    else:
+      F = self.compose_fields(F, f)
+
+    if not relative:
+      F = self.rel_to_abs_residual(F, mip)
+    return F 
+
+  def get_composed_field_with_cache(self, src_z, tgt_z, F_cv, bbox, mip,
+                                    inverse=False, relative=False, to_tensor=True,
+                                    field_dic = {}):
     """Get composed field for Z_LIST using CloudVolume dirs at Z_OFFSET_LIST. Use field
     in BBOX at MIP. Use INVERSE to left-compose the next field in the list. Use RELATIVE
     to return a vector field in range [-1,1], and use TO_TENSOR to return a Tensor object.
@@ -368,7 +399,7 @@ class Aligner:
     if tmp_key in field_dic:
         print("bbox {0} in z {1} in dictionary".format(bbox.x_range(0)
                                                        ,F_z))
-        cache_F = field_dic[str(bbox.__str__) + str(F_z)]
+        cache_F = field_dic[tmp_key]
         res = np.expand_dims(np.squeeze(cache_F), axis=0)
         F = self.abs_to_rel_residual(res, bbox, mip)
         if to_tensor:
@@ -486,7 +517,7 @@ class Aligner:
 
     return chunks
 
-  def vector_vote(self, z_range, read_F_cv, write_F_cv, bbox, mip, inverse, T=1):
+  def vector_vote(self, z, read_F_cv, write_F_cv, bbox, mip, inverse, T=1):
     """Compute consensus vector field using pairwise vector fields with earlier sections. 
 
     Vector voting requires that vector fields be composed to a common section
@@ -502,34 +533,35 @@ class Aligner:
        mip: int, the data MIP level
        inverse: bool, indicates the direction of composition to use 
     """
-    field_dic = {}
-    for z in z_range:
-        fields = []
-        for z_offset in range(1, self.tgt_radius+1):
-        #for z_offset in range(self.tgt_radius, 0, -1):
-          src_z = z
-          tgt_z = src_z - z_offset
-          if inverse:
-            src_z, tgt_z = tgt_z, src_z
-          if self.serial_operation:
-            f_cv = self.dst[z_offset].for_read('field')
-            F = self.get_field(f_cv, src_z, bbox, mip, relative=False, to_tensor=True)
-          else:
-            F = self.get_composed_field(src_z, tgt_z, read_F_cv, bbox, mip,
-                                      inverse=inverse, relative=False,
-                                        to_tensor=True, field_dic=field_dic)
-          fields.append(F)
+    #field_dic = {}
+    #for z in z_range:
+    fields = []
+    #for z_offset in range(1, self.tgt_radius+1):
+    for z_offset in range(self.tgt_radius, 0, -1):
+      src_z = z
+      tgt_z = src_z - z_offset
+      if inverse:
+        src_z, tgt_z = tgt_z, src_z
+      if self.serial_operation:
+        f_cv = self.dst[z_offset].for_read('field')
+        F = self.get_field(f_cv, src_z, bbox, mip, relative=False, to_tensor=True)
+      else:
+        F = self.get_composed_field(src_z, tgt_z, read_F_cv, bbox, mip,
+                                    inverse=inverse, relative=False,
+                                    to_tensor=True)
+      fields.append(F)
 
-        field = vector_vote(fields, T=T)
+    field = vector_vote(fields, T=T)
         #tmp_key = str(bbox.__str__) + str(z)
-        delete_key = str(bbox.__str__) + str(z-4)
+        #delete_key = str(bbox.__str__) + str(z-4)
         #print("put in dic z is {}, key is {}".format(z, tmp_key))
         #field_dic[tmp_key] = field
-        if delete_key in field_dic:
-            del field_dic[delete_key]
-            print("delete dic z is {}, key is {}".format(z-4, delete_key))
-        self.save_vector_patch_and_cache(write_F_cv, z, field, bbox, mip,
-                                         field_dic)
+        #if delete_key in field_dic:
+        #    del field_dic[delete_key]
+        #    print("delete dic z is {}, key is {}".format(z-4, delete_key))
+    self.save_vector_patch(write_F_cv, z, field, bbox, mip)
+        #self.save_vector_patch_and_cache(write_F_cv, z, field, bbox, mip,
+        #                                 field_dic)
 
     # if self.write_intermediaries:
     #   self.save_image_patch('diffs', diffs.cpu().numpy(), bbox, mip, to_uint8=False)
@@ -688,9 +720,21 @@ class Aligner:
     influence_bbox = deepcopy(bbox)
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
-    
-    field = self.get_field(field_cv, field_z, influence_bbox, mip, 
-                           relative=True, to_tensor=True)
+    print("field_z is ", field_z)
+    influence_x_range = influence_bbox.x_range(mip=mip)
+    influence_y_range = influence_bbox.y_range(mip=mip)
+    total_bbox_x_range = self.total_bbox.x_range(mip=mip)
+    total_bbox_y_range = self.total_bbox.y_range(mip=mip)
+    a = (influence_x_range[0] >= total_bbox_x_range[0])
+    b = (influence_x_range[1] <= total_bbox_x_range[1])
+    c = (influence_y_range[0]>= total_bbox_y_range[0])
+    d = (influence_y_range[1] <= total_bbox_y_range[1])
+    not_block_block = a and b and c and d
+    if not_block_block:
+        field = self.get_field(field_cv, field_z, influence_bbox, mip,
+                               relative=True, to_tensor=True)
+    else:
+        field = 0;
     mip_disp = int(self.max_displacement / 2**mip)
     src_cv = self.src['src_img']
     image = self.get_image(src_cv, src_z, influence_bbox, mip, 
@@ -704,7 +748,7 @@ class Aligner:
 
     # print('warp_patch shape {0}'.format(image.shape))
     # no need to warp if flow is identity since warp introduces noise
-    if torch.min(field) != 0 or torch.max(field) != 0:
+    if not_block_block and (torch.min(field) != 0 or torch.max(field) != 0):
       image = gridsample_residual(image, field, padding_mode='zeros')
     else:
       print ("not warping")
@@ -945,8 +989,6 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[image_mip],
                                     self.dst[0].dst_voxel_offsets[image_mip], mip=image_mip, render=True)
     print("low_mip_render at MIP{0} ({1} chunks)".format(image_mip,len(chunks)))
-    for c in chunks:
-        print(">>>>>>>>>chunks in low_mip_render: ", c.__str__(mip=0))
     if self.distributed:
         for i in range(0, len(chunks), self.threads):
             task_patches = []
@@ -1047,8 +1089,8 @@ class Aligner:
         for patch_bbox in chunks:
           residual_task = make_residual_task_message(src_z, tgt_z, patch_bbox, mip=m)
           self.task_handler.send_message(residual_task)
-        if not self.p_render:
-          self.task_handler.wait_until_ready()
+        #if not self.p_render:
+        self.task_handler.wait_until_ready()
       else:
       #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -1096,9 +1138,9 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def vector_vote_chunkwise(self, z_range, read_F_cv, write_F_cv, bbox, mip, inverse, T=-1):
+  def vector_vote_chunkwise(self, z, read_F_cv, write_F_cv, bbox, mip, inverse, T=-1):
     """Chunked-processing of vector voting
-    
+
     Args:
        z: section of fields to weight
        read_F_cv: CloudVolume with the vectors to compose against
@@ -1111,18 +1153,18 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst[0].vec_chunk_sizes[mip],
                                     self.dst[0].vec_voxel_offsets[mip], mip=mip)
     print("Vector voting for slice {0} @ MIP{1} {2} ({3} chunks)".
-           format(z_range.start, mip, 'INVERSE' if inverse else 'FORWARD', len(chunks)), flush=True)
-    
+           format(z, mip, 'INVERSE' if inverse else 'FORWARD', len(chunks)), flush=True)
+
     if self.distributed:
         for patch_bbox in chunks:
-            vector_vote_task = make_vector_vote_task_message(z_range, read_F_cv, write_F_cv,
+            vector_vote_task = make_vector_vote_task_message(z, read_F_cv, write_F_cv,
                                                              patch_bbox, mip, inverse, T) 
             self.task_handler.send_message(vector_vote_task)
         self.task_handler.wait_until_ready()
     #for patch_bbox in chunks:
     else:
         def chunkwise(patch_bbox):
-            self.vector_vote(z_range, read_F_cv, write_F_cv, patch_bbox, mip, inverse=inverse, T=T)
+            self.vector_vote(z, read_F_cv, write_F_cv, patch_bbox, mip, inverse=inverse, T=T)
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
@@ -1135,8 +1177,9 @@ class Aligner:
     """
     bbox = self.total_bbox
     mip = self.process_low_mip
-    for z_offset in self.tgt_range:
-      if z_offset != 0: 
+    #for z_offset in self.tgt_range:
+    for z_offset in range(self.tgt_range[-1], 0, -1):
+      if z_offset != 0:
         src_z = z
         tgt_z = src_z - z_offset
         self.compute_section_pair_residuals(src_z, tgt_z, bbox)
@@ -1159,8 +1202,8 @@ class Aligner:
     mip = self.process_low_mip
     for z in z_range:
       self.multi_match(z, render=render_match)
-    if self.p_render:
-        self.task_handler.wait_until_ready()
+    #if self.p_render:
+    #    self.task_handler.wait_until_ready()
  
   def compose_pairwise(self, z_range, compose_start, bbox, mip,
                              forward_compose=True, inverse_compose=True):
@@ -1182,20 +1225,20 @@ class Aligner:
       self.dst[0].add_composed_cv(compose_start, inverse=False)
     if inverse_compose: 
       self.dst[0].add_composed_cv(compose_start, inverse=True)
-    #for z in z_range:
-    write_F_k = self.dst[0].get_composed_key(compose_start, inverse=False)
-    write_invF_k = self.dst[0].get_composed_key(compose_start, inverse=True)
-    read_F_k = write_F_k
-    read_invF_k = write_invF_k
-     
-    if forward_compose:
-      read_F_cv = self.dst[0].for_read(read_F_k)
-      write_F_cv = self.dst[0].for_write(write_F_k)
-      self.vector_vote_chunkwise(z_range, read_F_cv, write_F_cv, bbox, mip, inverse=False, T=T)
-    if inverse_compose:
-      read_F_cv = self.dst[0].for_read(read_invF_k)
-      write_F_cv = self.dst[0].for_write(write_invF_k)
-      self.vector_vote_chunkwise(z_range, read_F_cv, write_F_cv, bbox, mip, inverse=True, T=T)
+    for z in z_range:
+        write_F_k = self.dst[0].get_composed_key(compose_start, inverse=False)
+        write_invF_k = self.dst[0].get_composed_key(compose_start, inverse=True)
+        read_F_k = write_F_k
+        read_invF_k = write_invF_k
+         
+        if forward_compose:
+          read_F_cv = self.dst[0].for_read(read_F_k)
+          write_F_cv = self.dst[0].for_write(write_F_k)
+          self.vector_vote_chunkwise(z, read_F_cv, write_F_cv, bbox, mip, inverse=False, T=T)
+        if inverse_compose:
+          read_F_cv = self.dst[0].for_read(read_invF_k)
+          write_F_cv = self.dst[0].for_write(write_invF_k)
+          self.vector_vote_chunkwise(z, read_F_cv, write_F_cv, bbox, mip, inverse=True, T=T)
 
   def get_neighborhood(self, z, F_cv, bbox, mip):
     """Compile all vector fields that warp neighborhood in TGT_RANGE to Z
@@ -1414,7 +1457,7 @@ class Aligner:
 
   def handle_vector_vote(self, message):
       z = message['z']
-      z_end = message['z_end']
+      #z_end = message['z_end']
       read_F_cv = DCV(message['read_F_cv'])
       write_F_cv =DCV(message['write_F_cv'])
       #chunks = [deserialize_bbox(p) for p in message['patch_bbox']]
@@ -1422,8 +1465,8 @@ class Aligner:
       mip = message['mip']
       inverse = message['inverse']
       T = message['T']
-      z_range = range(z, z_end)
-      self.vector_vote(z_range, read_F_cv, write_F_cv, chunks, mip, inverse=inverse, T=T)
+      #z_range = range(z, z_end)
+      self.vector_vote(z, read_F_cv, write_F_cv, chunks, mip, inverse=inverse, T=T)
 
   def handle_regularize(self, message):
       z_start = message['z_start']

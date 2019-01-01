@@ -32,59 +32,58 @@ if __name__ == '__main__':
     uncomposed_range = z_range[0:0]
 
   # copy first section
-  for z in copy_range:
-    print('Copying z={0}'.format(z))
-    a.copy_section(z, dst_cv, z, bbox, mip)
-    #a.downsample(dst_cv, z, bbox, a.render_low_mip, a.render_high_mip)
-  # align without vector voting
-  for z in uncomposed_range:
-    print('compute residuals  without vector voting z={0}'.format(z))
-    src_z = z
-    tgt_z = z-1
-    a.compute_section_pair_residuals(src_z, tgt_z, bbox)
-    #a.render_section_all_mips(src_z, uncomposed_field_cv, src_z,
-    #                          dst_cv, src_z, bbox, mip)
-  
-  for z in copy_range:
-    a.downsample(dst_cv, z, bbox, a.render_low_mip, a.render_high_mip)
+#  for z in copy_range:
+#    print('Copying z={0}'.format(z))
+#    a.copy_section(z, dst_cv, z, bbox, mip)
+#    a.downsample(dst_cv, z, bbox, a.render_low_mip, a.render_high_mip)
+#  # align without vector voting
+#  for z in uncomposed_range:
+#    print('compute residuals without vector voting z={0}'.format(z))
+#    src_z = z
+#    tgt_z = z-1
+#    a.compute_section_pair_residuals(src_z, tgt_z, bbox)
+#  #  a.render_section_all_mips(src_z, uncomposed_field_cv, src_z,
+#  #                            dst_cv, src_z, bbox, mip) 
+#    a.render(src_z, uncomposed_field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
+#    a.downsample(dst_cv, src_z - 1, bbox, a.render_low_mip, a.render_high_mip)
 
-  for z in uncomposed_range:
-    print('Aligning without vector voting z={0}'.format(z))
-    src_z = z
-    a.render(src_z, uncomposed_field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
-
-  for z in uncomposed_range:
-    print('Downsample z={0}'.format(z))
-    src_z = z
-    a.downsample(dst_cv, src_z, bbox, a.render_low_mip, a.render_high_mip)
-
+#a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip)
   # align with vector voting
-  vvblock = 20
-  for z_block in range(composed_range.start, composed_range.stop, vvblock):
-      z_block_range = range(z_block, min(composed_range.stop, z_block + vvblock))
-      print('generate pairwise with vector voting z={0}:{1}'.format(z_block_range.start,
-                                                                    z_block_range.stop))
-      a.generate_pairwise(z_block_range, bbox, render_match=False)
-      print('compose pairwise with vector voting z={0}:{1}'.format(z_block_range.start,
-                                                                   z_block_range.stop))
-      a.compose_pairwise(z_block_range, args.bbox_start[2], bbox, mip,
-                         forward_compose=True,
+  for z in composed_range:
+      print('generate pairwise with vector voting z={0}'.format(z))
+      a.generate_pairwise([z], bbox, render_match=False)
+      print('compose pairwise with vector voting z={0}'.format(z))
+      a.compose_pairwise([z], args.bbox_start[2], bbox, mip, forward_compose=True,
                          inverse_compose=False)
-      for z in z_block_range:
-          print('Aligning with vector voting z={0}'.format(z))
-          src_z = z
-          a.render(src_z, field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
-          #a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip)
-      for z in z_block_range:
-          print('Downsample z={0}'.format(z))
-          src_z = z
-          a.downsample(dst_cv, src_z, bbox, a.render_low_mip, a.render_high_mip)
+      src_z = z
+      print('Aligning with vector voting z={0}'.format(z))
+      a.render(src_z, field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
+      print('Downsample z={0}'.format(z-1))
+      a.downsample(dst_cv, src_z -1, bbox, a.render_low_mip, a.render_high_mip)
+
+  print('Downsample z={0}'.format(composed_range[-1]))
+  a.downsample(dst_cv, composed_range[-1], bbox, a.render_low_mip, a.render_high_mip)
 
 
 
-
-
-
-
-
+  #vvblock = 20
+  #for z_block in range(composed_range.start, composed_range.stop, vvblock):
+  #    z_block_range = range(z_block, min(composed_range.stop, z_block + vvblock))
+  #    print('generate pairwise with vector voting z={0}:{1}'.format(z_block_range.start,
+  #                                                                  z_block_range.stop))
+  #    a.generate_pairwise(z_block_range, bbox, render_match=False)
+  #    print('compose pairwise with vector voting z={0}:{1}'.format(z_block_range.start,
+  #                                                                 z_block_range.stop))
+  #    a.compose_pairwise(z_block_range, args.bbox_start[2], bbox, mip,
+  #                       forward_compose=True,
+  #                       inverse_compose=False)
+  #    for z in z_block_range:
+  #        print('Aligning with vector voting z={0}'.format(z))
+  #        src_z = z
+  #        a.render(src_z, field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
+  #        #a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip)
+  #    for z in z_block_range:
+  #        print('Downsample z={0}'.format(z))
+  #        src_z = z
+  #        a.downsample(dst_cv, src_z, bbox, a.render_low_mip, a.render_high_mip)
 
