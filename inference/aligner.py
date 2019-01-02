@@ -28,178 +28,13 @@ from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
 
 import torch.nn as nn
+from directory_manager import SrcDir, DstDir
 
 from task_handler import TaskHandler, make_residual_task_message, \
         make_render_task_message, make_copy_task_message, \
         make_downsample_task_message, make_compose_task_message, \
         make_prepare_task_message, make_vector_vote_task_message, \
         make_regularize_task_message, make_render_low_mip_task_message
-
-class SrcDir():
-  def __init__(self, src_path, tgt_path, 
-                     src_mask_path, tgt_mask_path, 
-                     src_mask_mip, tgt_mask_mip,
-                     src_mask_val, tgt_mask_val):
-    self.vols = {}
-    self.kwargs = {'bounded': False, 'fill_missing': True, 'progress': False}
-    self.vols['src_img'] = CV(src_path, mkdir=False, **self.kwargs) 
-    self.vols['tgt_img'] = CV(tgt_path, mkdir=False, **self.kwargs) 
-    if src_mask_path:
-      self.vols['src_mask'] = CV(src_mask_path, mkdir=False, **self.kwargs) 
-    if tgt_mask_path:
-      self.vols['tgt_mask'] = CV(tgt_mask_path, mkdir=False, **self.kwargs) 
-    self.src_mask_mip = src_mask_mip
-    self.tgt_mask_mip = tgt_mask_mip
-    self.src_mask_val = src_mask_val
-    self.tgt_mask_val = tgt_mask_val
-
-  def __getitem__(self, k):
-    return self.vols[k]
-
-  def __contains__(self, k):
-    return k in self.vols
-
-class DstDir():
-  """Manager of CloudVolumes required by the Aligner
-  
-  Manage CloudVolumes used for reading & CloudVolumes used for writing. Read & write
-  distinguished by the different sets of kwargs that are used for the CloudVolume.
-  All CloudVolumes are MiplessCloudVolumes. 
-  """
-  def __init__(self, dst_path, info, provenance, suffix=''):
-    print('Creating DstDir for {0}'.format(dst_path))
-    self.root = dst_path
-    self.info = info
-    self.provenance = provenance
-    self.paths = {} 
-    self.dst_chunk_sizes = []
-    self.dst_voxel_offsets = []
-    self.vec_chunk_sizes = [] 
-    self.vec_voxel_offsets = []
-    self.vec_total_sizes = []
-    self.compile_scales()
-    self.read = {}
-    self.write = {}
-    #self.read_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False}
-    self.read_kwargs = {'bounded': False, 'progress': False}
-    #self.write_kwargs = {'bounded': False, 'fill_missing': True, 'progress': False, 
-    self.write_kwargs = {'bounded': False, 'progress': False, 
-                  'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
-    self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1, fill_missing=True)
-    self.add_path('dst_img_2', join(self.root, 'image2'), data_type='uint8', num_channels=1)
-    self.add_path('field', join(self.root, 'field'), data_type='float32',
-                  num_channels=2, fill_missing=True)
-    self.suffix = suffix
-    self.create_paths()
-  
-  def for_read(self, k):
-    return self.read[k]
-
-  def for_write(self, k):
-    return self.write[k]
-  
-  def __getitem__(self, k):
-    return self.read[k]
-
-  def __contains__(self, k):
-    return k in self.read
-
-  @classmethod
-  def create_info(cls, src_cv, mip_range, max_offset):
-    src_info = src_cv.info
-    m = len(src_info['scales'])
-    each_factor = Vec(2,2,1)
-    factor = Vec(2**m,2**m,1)
-    for _ in mip_range: 
-      src_cv.add_scale(factor)
-      factor *= each_factor
-      chunksize = src_info['scales'][-2]['chunk_sizes'][0] // each_factor
-      src_info['scales'][-1]['chunk_sizes'] = [ list(map(int, chunksize)) ]
-
-    info = deepcopy(src_info)
-    chunk_size = info["scales"][0]["chunk_sizes"][0][0]
-    dst_size_increase = max_offset
-    if dst_size_increase % chunk_size != 0:
-      dst_size_increase = dst_size_increase - (dst_size_increase % max_offset) + chunk_size
-    scales = info["scales"]
-    for i in range(len(scales)):
-      scales[i]["voxel_offset"][0] -= int(dst_size_increase / (2**i))
-      scales[i]["voxel_offset"][1] -= int(dst_size_increase / (2**i))
-
-      scales[i]["size"][0] += int(dst_size_increase / (2**i))
-      scales[i]["size"][1] += int(dst_size_increase / (2**i))
-
-      x_remainder = scales[i]["size"][0] % scales[i]["chunk_sizes"][0][0]
-      y_remainder = scales[i]["size"][1] % scales[i]["chunk_sizes"][0][1]
-
-      x_delta = 0
-      y_delta = 0
-      if x_remainder != 0:
-        x_delta = scales[i]["chunk_sizes"][0][0] - x_remainder
-      if y_remainder != 0:
-        y_delta = scales[i]["chunk_sizes"][0][1] - y_remainder
-
-      scales[i]["size"][0] += x_delta
-      scales[i]["size"][1] += y_delta
-
-      scales[i]["size"][0] += int(dst_size_increase / (2**i))
-      scales[i]["size"][1] += int(dst_size_increase / (2**i))
-      #make it slice-by-slice writable
-      scales[i]["chunk_sizes"][0][2] = 1
-    return info
-
-  def compile_scales(self):
-    scales = self.info["scales"]
-    for i in range(len(scales)):
-      self.dst_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
-      self.dst_voxel_offsets.append(scales[i]["voxel_offset"]) 
-      self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
-      self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
-      self.vec_total_sizes.append(scales[i]["size"])
-
-  def create_cv(self, k):
-    path, data_type, channels, fill_missing = self.paths[k]
-    provenance = self.provenance 
-    info = deepcopy(self.info)
-    info['data_type'] = data_type
-    info['num_channels'] = channels
-    self.read[k] = CV(path, mkdir=False, info=info, provenance=provenance, fill_missing=fill_missing, **self.read_kwargs)
-    self.write[k] = CV(path, mkdir=True, info=info, provenance=provenance, fill_missing=fill_missing, **self.write_kwargs)
-
-  def add_path(self, k, path, data_type='uint8', num_channels=1, fill_missing=True):
-    self.paths[k] = (path, data_type, num_channels, fill_missing)
-
-  def create_paths(self):
-    for k in self.paths.keys():
-      self.create_cv(k)
-
-  def get_composed_cv(self, compose_start, inverse, for_read):
-    k = self.get_composed_key(compose_start, inverse)
-    if for_read:
-      return self.for_read(k)
-    else:
-      return self.for_write(k)
-
-  def get_composed_key(self, compose_start, inverse):
-    #k = 'vvote_F{0}'.format(self.suffix)
-    k = 'F{0}'.format(self.suffix)
-    if inverse:
-      k = 'vvote_invF{0}'.format(self.suffix)
-    #return '{0}_{1:04d}'.format(k, compose_start)
-    return '{0}{1:04d}'.format(k, compose_start)
-
-  def add_composed_cv(self, compose_start, inverse):
-    """Create CloudVolume for storing composed vector fields
-
-    Args
-       compose_start: int, indicating the earliest section used for composing
-       inverse: bool indicating whether composition aligns COMPOSE_START to Z (True),
-        or Z to COMPOSE_START (False)
-    """
-    k = self.get_composed_key(compose_start, inverse)
-    path = join(self.root, 'composed', self.get_composed_key(compose_start, inverse))
-    self.add_path(k, path, data_type='float32', num_channels=2)
-    self.create_cv(k)
 
 class Aligner:
   """
@@ -446,7 +281,7 @@ class Aligner:
       return res
 
   def save_vector_patch(self, cv, z, field, bbox, mip):
-    field = field.data.cpu().numpy() 
+    # field = field.data.cpu().numpy() 
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     field = np.squeeze(field)[:, :, np.newaxis, :]
@@ -454,7 +289,7 @@ class Aligner:
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
 
   def save_vector_patch_and_cache(self, cv, z, field, bbox, mip, field_dic):
-    field = field.data.cpu().numpy() 
+    # field = field.data.cpu().numpy() 
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     field = np.squeeze(field)[:, :, np.newaxis, :]
@@ -559,6 +394,7 @@ class Aligner:
         #if delete_key in field_dic:
         #    del field_dic[delete_key]
         #    print("delete dic z is {}, key is {}".format(z-4, delete_key))
+    field = field.data.cpu().numpy() 
     self.save_vector_patch(write_F_cv, z, field, bbox, mip)
         #self.save_vector_patch_and_cache(write_F_cv, z, field, bbox, mip,
         #                                 field_dic)
@@ -582,6 +418,7 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
     # assert(torch.all(torch.isnan(invf)))
+    invf = invf.data.cpu().numpy() 
     self.save_residual_patch(dst_cv, z, invf, out_bbox, mip) 
 
   def compute_residual_patch(self, src_z, tgt_z, out_patch_bbox, mip):
@@ -626,6 +463,7 @@ class Aligner:
     # save the final vector field for warping
     z_offset = src_z - tgt_z
     field_cv = self.dst[z_offset].for_write('field')
+    field = field.data.cpu().numpy() 
     self.save_vector_patch(field_cv, src_z, field, out_patch_bbox, mip)
 
     # if self.write_intermediaries and residuals is not None and cum_residuals is not None:
@@ -808,13 +646,16 @@ class Aligner:
     else:
       print ("not warping")
     # print('warp_image image1.shape: {0}'.format(image.shape))
+    # mip_field = self.rel_to_abs_residual(mip_field, image_mip)
     if self.disable_cuda:
       image = image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+      # f = mip_field.numpy()[:,mip_disp:-mip_disp,mip_disp:-mip_disp,:]
     else:
       image = image.cpu().numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+      # f = mip_field.cpu().numpy()[:,mip_disp:-mip_disp,mip_disp:-mip_disp,:]
     # print('warp_image image3.shape: {0}'.format(image.shape))
     
-    return image
+    return image 
 
   def downsample_patch(self, cv, z, bbox, mip):
     data = self.get_image(cv, z, bbox, mip, adjust_contrast=False, to_tensor=True)
@@ -1015,6 +856,7 @@ class Aligner:
           warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, patch_bbox, image_mip, vector_mip)
           print('warp_image render.shape: {0}'.format(warped_patch.shape))
           self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, image_mip)
+          # self.save_vector_patch(out_field_cv, dst_z, up_field, patch_bbox, image_mip)
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
@@ -1324,6 +1166,7 @@ class Aligner:
       F = self.get_field(F_cv, z, bbox, mip, relative=True, to_tensor=True)
       avg_invF = torch.sum(torch.mul(bump, invFs), dim=0, keepdim=True)
       regF = self.compose_fields(avg_invF, F)
+      regF = regF.data.cpu().numpy() 
       self.save_residual_patch(next_cv, z, regF, bbox, mip)
       if z != z_range[-1]:
         invFs = self.shift_neighborhood(invFs, z, invF_cv, bbox, mip, 
