@@ -354,9 +354,13 @@ class ModelArchive(object):
         """
         sys.path.insert(0, str(self.directory))
         import architecture
+        try:
+            import architecture2
+        except ImportError:
+            architecture2 = None
         sys.path.remove(str(self.directory))
-        self._architecture = architecture
-        self._model = architecture.Model(*args, **kwargs)
+        self._architecture = architecture if architecture2 is None else architecture2
+        self._model = self._architecture.Model(*args, **kwargs)
         if self.paths['weights'].exists():
             self._model.load(self.paths['weights'])
 

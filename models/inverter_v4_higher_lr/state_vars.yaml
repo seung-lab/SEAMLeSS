@@ -1,0 +1,28 @@
+batch_size: 1
+checkpoint_time: 100
+encodings: false
+epoch: 130
+epochs_per_mip: 40000000000000000000
+feature_maps: [3, 6, 12]
+gamma: 1.0
+gamma_step: 3000
+gpus: '2'
+height: 3
+initialized_list: [true, true, true]
+iteration: 478
+lambda1: 0.1
+levels: !!python/object/apply:builtins.slice [null, 1, null]
+log_time: 1
+lr: 2.0e-06
+name: inverter_v4_higher_lr
+num_epochs: 1000000
+penalty: lap
+plan: bottom_up
+seed: 4568
+start_lr: 2.0e-06
+supervised: true
+training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, bnehoran,
+  training_data, minnie_sniped_mip8_640px_train.h5]
+validation_set_path: null
+vis_time: 50
+wd: 0

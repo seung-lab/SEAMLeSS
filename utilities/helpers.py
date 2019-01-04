@@ -309,7 +309,8 @@ def gridsample(source, field, padding_mode):
     """
     if source.shape[2] != source.shape[3]:
         raise NotImplementedError('Grid sampling from non-square tensors '
-                                  'not yet implementd here.')
+                                  'not yet implementd here: {}'
+                                  .format(source.shape))
     scaled_field = field * source.shape[2] / (source.shape[2] - 1)
     return F.grid_sample(source, scaled_field, mode="bilinear", padding_mode=padding_mode)
 

@@ -257,9 +257,9 @@ class _SubmoduleView(nn.Module):
                 accum_field = (upsample(prev_level - i)
                                (accum_field.permute(0, 3, 1, 2))
                                .permute(0, 2, 3, 1))
-                src = gridsample_residual(src, accum_field,
-                                          padding_mode='border')
-            factor = 2 / src.shape[-1]  # scale to [-1,1]
+                # src = gridsample_residual(src, accum_field,
+                #                           padding_mode='border')
+            factor = 2 / src.shape[-1] * 100  # scale to [-1,1]
             res_field = aligner(src, tgt) * factor
             if accum_field is not None:
                 resampled = gridsample_residual(

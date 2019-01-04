@@ -1,0 +1,28 @@
+batch_size: 1
+checkpoint_time: 100
+encodings: false
+epoch: 28
+epochs_per_mip: 40000000000000000000
+feature_maps: [3, 6, 12]
+gamma: 1.0
+gamma_step: 3000
+gpus: '3'
+height: 3
+initialized_list: [true, true, true]
+iteration: 2000
+lambda1: 0.1
+levels: !!python/object/apply:builtins.slice [null, 1, null]
+log_time: 1
+lr: 2.0e-05
+name: inverter_v7_left_inverse
+num_epochs: 1000000
+penalty: lap
+plan: bottom_up
+seed: 4568
+start_lr: 2.0e-05
+supervised: true
+training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, bnehoran,
+  training_data, mip2_mixed.h5]
+validation_set_path: null
+vis_time: 50
+wd: 0

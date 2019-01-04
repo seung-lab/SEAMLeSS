@@ -65,8 +65,9 @@ class SupervisedLoss(nn.Module):
         super().__init__()
 
     def forward(self, prediction, truth):  # TODO: use masks
-        truth = truth.to(prediction.device)
-        return ((prediction - truth) ** 2).mean()
+        forward = truth + gridsample_residual(prediction.permute(0, 3, 1, 2), truth, 'border').permute(0, 2, 3, 1)
+        backward = prediction + gridsample_residual(truth.permute(0, 3, 1, 2), prediction, 'border').permute(0, 2, 3, 1)
+        return (forward ** 2 + backward ** 2).mean()
 
 
 class SelfSupervisedLoss(nn.Module):
@@ -148,14 +149,14 @@ def gen_masks(src, tgt, prediction=None, threshold=10):
 
     src_mask, tgt_mask = torch.ones_like(src), torch.ones_like(tgt)
 
-    src_mask_zero, tgt_mask_zero = (src < threshold), (tgt < threshold)
-    src_mask_five = masklib.dilate(src_mask_zero, radius=3)
-    tgt_mask_five = masklib.dilate(tgt_mask_zero, radius=3)
-    src_mask[src_mask_five], tgt_mask[tgt_mask_five] = 5, 5
-    src_mask[src_mask_zero], tgt_mask[tgt_mask_zero] = 0, 0
+    # src_mask_zero, tgt_mask_zero = (src < threshold), (tgt < threshold)
+    # src_mask_five = masklib.dilate(src_mask_zero, radius=3)
+    # tgt_mask_five = masklib.dilate(tgt_mask_zero, radius=3)
+    # src_mask[src_mask_five], tgt_mask[tgt_mask_five] = 5, 5
+    # src_mask[src_mask_zero], tgt_mask[tgt_mask_zero] = 0, 0
 
     src_field_mask, tgt_field_mask = torch.ones_like(src), torch.ones_like(tgt)
-    src_field_mask[src_mask_zero], tgt_field_mask[tgt_mask_zero] = 0, 0
+    # src_field_mask[src_mask_zero], tgt_field_mask[tgt_mask_zero] = 0, 0
 
     return {'src_masks': [src_mask.float()],
             'tgt_masks': [tgt_mask.float()],

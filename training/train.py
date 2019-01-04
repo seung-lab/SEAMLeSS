@@ -90,6 +90,7 @@ from utilities.helpers import (gridsample_residual, save_chunk,
 
 def main():
     global state_vars
+    global net
     args = parse_args()
 
     # set available GPUs
@@ -139,6 +140,8 @@ def main():
     train_losses = AverageMeter()
     val_losses = AverageMeter()
     epoch_time = AverageMeter()
+
+    net = ModelArchive('vector_fixer30_mip4_teacher').model
 
     print('=========== BEGIN TRAIN LOOP ============')
     start_epoch = state_vars.epoch
@@ -207,12 +210,11 @@ def train(train_loader, archive, epoch):
         data_time.update(time.time() - start_time)
 
         # compute output and loss
-        src, tgt, truth = prepare_input(sample, max_displacement=max_disp)
-        prediction = submodule(src, tgt)
-        if truth is not None:
-            loss = archive.loss(prediction=prediction, truth=truth)
-        else:
-            loss = archive.loss(src, tgt, prediction=prediction)
+        with torch.no_grad():
+            src, tgt, truth = prepare_input(sample, supervised=False, max_displacement=max_disp)
+            truth = net(src, tgt)
+        prediction = submodule(-truth[..., 0:1].permute(0, 3, 1, 2), -truth[..., 1:2].permute(0, 3, 1, 2))
+        loss = archive.loss(prediction=prediction, truth=truth)
         loss = loss.mean()  # average across a batch if present
 
         # compute gradient and do optimizer step
@@ -410,7 +412,7 @@ def create_debug_outputs(archive, src, tgt, prediction, truth):
         save_chunk(tgt[0:1, ...], str(stack_dir / 'tgt'))
         warped_src = gridsample_residual(
             src[0:1, ...],
-            prediction[0:1, ...].detach().to(src.device),
+            truth[0:1, ...].detach().to(src.device),
             padding_mode='zeros')
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
         save_chunk(warped_src[0:1, ...], str(stack_dir / 'warped_src'))
@@ -420,6 +422,17 @@ def create_debug_outputs(archive, src, tgt, prediction, truth):
         if truth is not None:
             save_vectors(truth[0:1, ...].detach(),
                          str(debug_dir / 'ground_truth'))
+            diff1 = (gridsample_residual(truth[0:1, ...].permute(0,3,1,2), prediction[0:1, ...], 'border').permute(0,2,3,1) + prediction[0:1, ...]).detach()
+            save_vectors(diff1, str(debug_dir / 'diff1'))
+            save_vectors((gridsample_residual(prediction[0:1, ...].permute(0,3,1,2), truth[0:1, ...], 'border').permute(0,2,3,1) + truth[0:1, ...]).detach(),
+                         str(debug_dir / 'diff2'))
+            diff1_src = gridsample_residual(
+                src[0:1, ...],
+                diff1.detach().to(src.device),
+                padding_mode='zeros')
+            # save_chunk(diff1_src[0:1, ...], str(debug_dir / 'diff1_src'))
+            save_chunk(diff1_src[0:1, ...], str(stack_dir / 'diff1_src'))
+
         masks = archive._objective.gen_masks(src, tgt, prediction)
         for k, v in masks.items():
             if v is not None and len(v) > 0:
