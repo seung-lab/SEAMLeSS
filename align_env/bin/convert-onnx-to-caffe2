@@ -3,8 +3,8 @@
 
 import sys
 
-from markdown.__main__ import run
+from caffe2.python.onnx.bin.conversion import onnx_to_caffe2
 
 
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(onnx_to_caffe2())

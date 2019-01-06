@@ -1,15 +1,4 @@
 #!/usr/people/popovych/SEAMLeSS/align_env/bin/python3
-#
-# Author: Mike McKerns (mmckerns @caltech and @uqfoundation)
-# Copyright (c) 2018 The Uncertainty Quantification Foundation.
-# License: 3-clause BSD.  The full license text is available at:
-#  - https://github.com/uqfoundation/pathos/blob/master/LICENSE
-
-from pathos.portpicker import portnumber, __doc__
-
-
-if __name__ == '__main__':
-
-    pick = portnumber(min=1024,max=65535)
-    print( pick() )
-
+# EASY-INSTALL-SCRIPT: 'pathos==0.2.2.1','portpicker'
+__requires__ = 'pathos==0.2.2.1'
+__import__('pkg_resources').run_script('pathos==0.2.2.1', 'portpicker')

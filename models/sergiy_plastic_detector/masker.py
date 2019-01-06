@@ -2,8 +2,6 @@ from torch import nn
 from torch.autograd import Variable
 import numpy as np
 import torch
-from augment import res_warp_img, res_warp_res
-from loss import similarity_score, smoothness_penalty
 import os
 
 
@@ -50,65 +48,18 @@ class Masker(nn.Module):
         #nn.init.kaiming_normal_(m.bias.data)
 
 
-    def __init__(self, arch_desc):
+    def __init__(self, fms, k):
         super(Masker, self).__init__()
         self.best_val = 1000000
-        self.name = arch_desc_to_str(arch_desc)
 
-        self.params = {"batchnorm": False,
-                       "inputnorm": False,
-                       "instancenorm": False,
-                       "act_f": nn.LeakyReLU(inplace=True),
-                       "k": 7,
-                       "initc_mult": np.sqrt(60)}
-
-        fms = arch_desc['fms']
-
-        if 'k' in arch_desc:
-            self.params['k'] = arch_desc['k']
-
-        if 'initc_mult' in arch_desc:
-            self.params['initc_mult'] = arch_desc['initc_mult']
-
-        if 'act_f' in arch_desc:
-            act_f = arch_desc['act_f']
-            if act_f == 'lrelu':
-                self.params['act_f'] = nn.LeakyReLU(inplace=True)
-            elif act_f == 'tanh':
-                self.params['act_f'] = nn.Tanh()
-            else:
-                raise Exception("bad act_f")
-
-        if 'tags' in arch_desc and 'batchnorm' in arch_desc['tags']:
-            print ("Use batchnorm!")
-            self.params['batchnorm'] = True
-
-        if 'tags' in arch_desc and 'instancenorm' in arch_desc['tags']:
-            print ("Use instancenorm!")
-            self.params['instancenorm'] = True
-
-        if 'tags' in arch_desc and 'inputnorm' in arch_desc['tags']:
-            print ("Use inputnorm!")
-            self.params['inputnorm'] = True
-
-        k = self.params['k']
         p = (k - 1) // 2
         self.layers = []
 
-        if self.params['inputnorm']:
-            self.layers.append(torch.nn.InstanceNorm2d(num_features=fms[0]))
-
         for i in range(len(fms) - 1):
             self.layers.append(nn.Conv2d(fms[i], fms[i + 1], k, padding=p))
-            self.initc(self.layers[-1], self.params['initc_mult'])
 
             if i != len(fms) - 2:
-                if self.params['batchnorm']:
-                    self.layers.append(nn.BatchNorm2d(fms[i + 1]))
-                if self.params['instancenorm']:
-                    self.layers.append(torch.nn.InstanceNorm2d(
-                                                  num_features=fms[i + 1]))
-                self.layers.append(self.params['act_f'])
+                self.layers.append(nn.LeakyReLU(inplace=True))
 
         #self.layers.append(torch.nn.Sigmoid())
         self.seq = nn.Sequential(*self.layers)

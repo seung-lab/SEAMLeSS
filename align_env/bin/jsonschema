@@ -3,8 +3,8 @@
 
 import sys
 
-from markdown.__main__ import run
+from jsonschema.cli import main
 
 
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(main())
