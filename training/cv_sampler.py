@@ -9,7 +9,7 @@ class Sampler(object):
         import httplib2shim
         httplib2shim.patch()
         self.source = source
-        self.vol = cv.CloudVolume(source, mip=mip)
+        self.vol = cv.CloudVolume(source, mip=mip, fill_missing=True, bounded=False)
         self.dim = dim
         self.vol_info = self.vol.info['scales'][0]
         self.vol_size = self.vol_info['size']
@@ -69,6 +69,7 @@ if __name__ == "__main__":
     ze = zs + args.stack_height
     print (xs, ys, zs)
     print (xe, ye, ze)
+    import pdb; pdb.set_trace()
     dataset = np.empty((1, args.stack_height, args.xy_dim, args.xy_dim))
 
     sampler = Sampler(source=('gs://' + args.source), dim=args.xy_dim,
