@@ -41,6 +41,20 @@ def make_regularize_task_message(z_start, z_end, compose_start, patch_bbox, mip,
   }
   return json.dumps(content)
 
+def make_batch_vvote_message(z_range, read_F_cv, write_F_cv, patch_bbox, mip, inverse, T):
+  content = {
+      "type": "batch_vvote_task",
+      "z": z_range.start,
+      "z_end": z_range.stop,
+      "read_F_cv": read_F_cv.serialize(),
+      "write_F_cv": write_F_cv.serialize(),
+      "patch_bbox": patch_bbox.serialize(),
+      "mip": mip,
+      "inverse": inverse,
+      "T": T,
+  }
+  return json.dumps(content)
+
 
 def make_vector_vote_task_message(z, read_F_cv, write_F_cv, patch_bbox, mip, inverse, T):
   content = {
