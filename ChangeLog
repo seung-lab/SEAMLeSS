@@ -1,0 +1,507 @@
+CHANGES
+=======
+
+* Add defaults for render\_low\_mip & render\_high\_mip in args.py
+* Fix tgt\_range in aligner for serial\_alignment
+* update upsampling
+* fix
+* new model
+* add forward and inverse compose flags back
+* clean up
+* multi-GPU interface for regular and invert
+* fix bug for upsample
+* Add compose\_invert\_regularize that includes creating optimized inverses
+* Remove regularized\_cv & add dir\_suffix flag for regularization tests
+* upsample vector at mip8 to mip2 and render
+* fix bugs
+* :wMerge branch 'pairwise-align-across-archives-muti-gpu' of https://github.com/seung-lab/SEAMLeSS into pairwise-align-across-archives-muti-gpu
+* fix bugs
+* Fix render-related mip flags in args.py
+* Fix regularization across blocks
+* Update inference to use regularized inverses to re-regularize overlap
+* fix bugs
+* upsampling and rendering at mip1
+* add docker file
+* fix bugs
+* fix bugs
+* add purge function for sqs
+* fix coordinate issue in the NG link
+* Setup serial alignment to copy & align initial sections
+* Update aligner for blocker compose and regularization
+* Update inverse loss function to MSE
+* Revert render.py to operate only on root dir field
+* Add debug script to compose two fields to test inverse quality
+* Make compose and regularize operate in blocks over z\_range
+* fix bugs
+* add serial alinger
+* fix bugs
+* Add vector field inverse based on optimization
+* Correct bug in invert tests
+* multi-gpu version
+* Update invert tests
+* Fix bug in invert & tests to account for x,y being stored as [N, Y, X, 2]
+* Add tests for inverse method
+* Start invert method to create inverse of a vector field
+* Visualization after logging
+* Use preprocessor from archive rather than built-in one
+* Fix dataset indexing to allow multiple sequences per dataset
+* Skip empty sections
+* Add vector\_fixer30 as a ModelArchive using version e260\_t200
+* Debug aligner for regularization & add client scripts
+* Remove MiplessCloudVolume exist check
+* Add Sergiy's Rollback Pyramid model
+* Change multi\_match method call
+* Debug aligner.py
+* Update aligner.py for temporal regularization
+* Add check if miplessCV exists to determine if mkdir needed
+* Fix flip averaging bug
+* Make z and z\_offset explicit parameters to aligner methods
+* Fix some inference issues with archive
+* Add one-off temporal regularization
+* Update util.py for combined CloudVolumes for fields
+* Remove spatial regularization from get\_composed\_field
+* Incorporate model archive into inference
+* Fix preprocessor code
+* Redirect imports to utilities package
+* Add noqa to matplotlib imports
+* Move archive and helpers code to utilities package
+* Allow objective and preprocessor to not exist
+* Fix objective loading
+* Factor out contrast normalization as an archive preprocessor
+* Move ojective code into its own file
+* Changes to allow running full net
+* Finish making z, z\_offset explicit in aligner.py
+* Debug aligner.py
+* Debug pairwise align across
+* Rename supervised\_train.py to train.py
+* Update header comment for training code
+* Move defect net weight files into a directory
+* Remove old training code
+* Remove unused lm and hm command line args
+* Clean up archive code
+* Visualize during validation and clean up training code
+* Retry forking if it fails for lack of memory
+* Factor out debugging outputs creation
+* Wrap objective/loss function in a PyTorch module
+* Allow # comments in loss.csv
+* Allow self-supervised loss calculation on batches
+* Perform validation in main process
+* Debug
+* Update CloudVolume handling in Aligner for pairwise vector voting
+* Add class for MIP agnostic CloudVolume
+* Create tensors directly on GPU
+* Fix argument misspelling
+* Move model saving/loading code to architecture
+* Start aligner modifications for vector voting + pairwise
+* Adjust vector vote to use pairwise
+* Allow skipping levels
+* Add simple timing decorator
+* Allow random names wildcard for rapid testing
+* Change state\_vars to a dotdict for easier notation
+* Add masking for self-supervised training
+* When training on batches, only visualize the first sample
+* Redo normalizer and preprocessing to speed up training
+* Bug fix for submodule initialization
+* Simplify dataset loading
+* Format validation loss better
+* Fix resuming at same iteration
+* Display validation progress
+* Fix plotting bug
+* Cache args in order not to parse them twice
+* Start iteration bug fix
+* Only deal with masks if they exist
+* Add @torch.no\_grad() to prepare\_input
+* Specify plotting columns as individual arguments
+* Also copy over loss when initializing with a trained net
+* Allow resuming from the middle of an epoch
+* Stop initializing final layer when fine-tuning
+* Don't output ground truth for unsupervised
+* Add @torch.no\_grad() decorators
+*  Add newest trained vf30
+* Rewrite architecture code and clean up submodule API
+* Add latest iteration of trained net vf30.pt
+* Clean up model loading code
+* Add capability to train using subset of aligners
+* Use torch.chunk instead of torch.split
+* Print the model name for recognition in terminal
+* Unite all vector handling methods
+* Slightly simplify architecture
+* Bring back the random field generation
+* Typo correction and default weight decay at 0
+* Seed before model initialization
+* Use random field of only three possible displacements
+* Automatically find an unused GPU if not specified
+* Update multi\_match to align serially with vector voting
+* Update aligner loading, masking, weighting, & params
+* Update aligner interfaces with abstracted args
+* Fix boundingbox range & size incosistencies
+* Update/add vector voting helper methods
+* Update util permutes, names, & restrict new CV to single slice
+* Add/update mask generation & compilation methods
+* Separate common argparse methods & Aligner + BoundingBox creation
+* Remove eval dir & move files into inference
+* Change default parameters
+* Give vector field printouts more meaningful titles
+* Change history to a txt file
+* Fix vector display bug
+* Pretty-print state\_vars.json
+* scipy gaussian blurring
+* Also save at the beginning of each epoch
+* Increase vector debug output magnification
+* Record training iteration
+* Clean up src/tgt debugging outputs
+* Fix file output redirection
+* Clean and comment training code
+* Use saved batch size
+* Redirect output to log file
+* Allow disabling log, checkpoint, and vis intervals
+* Add parameter for field generation
+* Fix training code errors
+* Use random sampler
+* Allow serialization of pathlib Paths
+* Rename helpers copy method to cp to avoid confusion with python copy
+* Add function to set log titles
+* Require training data, and make validation data optional
+* Perform args processing before imports
+* Fix model loading consistency
+* using field\_sf with no\_anchor flag
+* Save internal module from DataParallel abstraction
+* Allow starting from other initialized nets
+* Add pandas dependency
+* Discourage overwriting the model name
+* Add visualization of training curves
+* Clean up code
+* Add validation code
+* Rename archive.update() to archive.save()
+* Several updates to enable supervised training
+* gaussian blurring refined
+* gaussian blurring
+* global mean reg
+* refine code
+* refine code: half done
+* global regular
+* Update training
+* Update CPC main
+* Initial commit of supervised training code
+* Update architecture API
+* Rename log\_time
+* Add command and history to archive
+* Add a state\_vars file to archive
+* Update command line arguments
+* Checkout aug.py from "multi-gpu"
+* Checkout stack\_dataset.py from "multi-gpu"
+* Rearrange archive code
+* Finish model loading code
+* no shift image for pairwise
+* bug fix
+* Clean up warp\_patch
+* fix bugs
+* incorporate pairwise
+* Rename architecture template and modify API
+* Factor out commit getter
+* Prevent setting arbitrary names
+* Add a system file copy to helpers.py
+* Update archive.py
+* Add a flag to accept a net trained with old vector conventions (#7)
+* Checkout helpers.py from multi-gpu
+* Hide the wrapper function for shutil.copy
+* update .gitignore to ignore debugging outputs
+* Initial commit of archiving code
+* Add a module defining a command line API with tab completion
+* Add argcomplete to requirements and add a sample setup script
+* Add multi\_match to call aligner method & then run CPC
+* Update aligner.py
+* Include get\_bounding\_pts method to BoundingBox
+* Make inference & eval modules
+* Add CPC class for easier handling
+* Refactor ng path handling into class dict
+* Add match\_section to make match pair explicit
+* Update aligner & add render\_section to use saved vector field
+* Move eval dir & add field eval methods
+* Add back grad disabling at inference time
+* Fix PyramidTransformer merge
+* Add pairs.py to specify src & tgt z
+* Add Gaussian blur method in eval
+* Add int8\_to\_norm for cpc
+* Update cpc with z offset & reverse composite image (default)
+* Fix more multi-gpu merge conflicts
+* Update vis\_interval start & arg help
+* Add log\_interval for training
+* Add a flag to accept a net trained with old vector conventions (to ease the transition)
+* Resolve multi-gpu merge conflicts
+* Update eval README
+* Remove earlier cpc
+* Rewrite cpc using pytorch
+* Print logging scalars as python numbers
+* Fix visualization lookup
+* Clean up helpers.py
+* Put zero field on the same device as encodings
+* Refactor grid sampling and identity grid in inference code
+* Improve use of no\_grad and zeros
+* Switch to new vector field convention in training code
+* Use torch.no\_grad to disable computation graph at inference time
+* Switch to using new grid sampler wrapper in pyramid.py
+* Add grid sampling function for residuals
+* Add size-agnostic grid sampling and identity grid generation functions to helpers.py
+* Bring helpers.py closer together in training and inference
+* Add proper error handling to loss.py
+* Update stack\_dataset to also provide reverse image pairs
+* Run single GPU training through data\_parallel
+* Update training model identity with device
+* Apply grid sampling changes at inference as well
+* Fix saving intermediate models
+* Fix border effects for aligner module grid sampler
+* Correct augmentation by moving normalize last
+* Make visualize\_outputs multi-gpu compatible
+* Add back augmentation for translation, contrast, & cutouts
+* Move augmentation to be dataset transforms
+* Update defaul low mip source to cleaned drosophila data
+* Save state every 100 log events
+* Fix log outputs
+* Move normalizer to dataloader & reorganize methods in epoch train loop
+* Add clean\_stack to remove empty/low-info images from training data
+* Be explicit about tensor device placement in pyramid & training
+* Fix typos in train.py ModelWrapper
+* Adjust stack\_dataset to output 2D tensors for src & tgt
+* Update .gitignore for .swp
+* Fix off-by-one in process.py
+* add flag --skip and change default size to 8
+* add flag --skip and change default size to 8
+* Rework train.py & stack\_dataset.py for bugs
+* Add matriarch\_tile7 and vector\_fixer11
+* Rework train.py with ModelWrapper for multi-gpu
+* Update DataLoader for minibatching & add flags for it
+* Rework stack\_dataset to deliver consecutive image pair
+* Remove defect net & related masks
+* Add option to write out residuals and encodings (#5)
+* Modify inspect README & requirements; remove unnecessary inspect files
+* Update requirements for inspect
+* Update eval/inspect for python neuroglancer package API
+* Adjust fields under upsampling and grid sampling to account for non-size-agnostic conventions
+* Allow direct printing of bboxes
+* Undo indexing dimension adjustment
+* Add flag '--old\_upsample' to revert to old upsampling method
+* Fix training from scratch
+* Add upsample helper method and check for None
+* Update to accomodate dimension convention change for tensor indexing
+* Change deprecated upsampling in defect net to interpolate
+* Update architecture with optional flag to enable preencoder
+* Fix torch type calls
+* Change vector field addition to composition
+* Convert all grid sampling to bilinear
+* Remove temporary file
+* Upgrade to the newest version of pytorch
+* Add set\_mip & set\_path to inspect field
+* Fix div-by-zero error in eval
+* Add residual and encoding return values
+* Add inspect for Neuroflow vector fields in eval
+* Rename inference/client.py
+* Remove unneeded files in Neuroflow-SEAMLeSS merge
+* Move inference/requirements.txt and inference/setup.py
+* New architecture and minor refactors
+* Add option to run inference on consecutive pairs of input slices (#2)
+* Fix argument triples in chuncked.py
+* Update str to int for chunked.py argparse
+* Add a flag for disabling the flip averaging
+* Add averaging to correct any drift
+* flip image
+* Removed highpass from normalizer
+* New model with tile training
+* Added experimental drift-correction matriarch models
+* Added latest matriarch
+* Fixed unnecessary \* 2 in process.py
+* Properly fixed type conversion
+* Fixed improper numpy type conversion
+* Added support for in-terminal Neuroglancer links; added missing dependencies to requirements.txt
+* Minor refactors, new command line argument support
+* Update requirements.txt
+* Fixed missing mip levels issue for high mip inference
+* Eric changes
+* Patched bad backtracing (TODO:properly fix)
+* Added models for inference
+* Eric refactor
+* Pre-multitarget
+* Add chunked NCC evaluation method
+* Migrate to python3 (+ minor refactors) (#3)
+* Add a .gitignore file (#2)
+* Minor fixes to README
+* Added weight decay to supervised pre-encoder training
+* Minor changes to fix bugs in pre-encoder only training
+* More README updates, removed unused files unet2d.py and dnet.py
+* More README updates
+* More README updates
+* Update README
+* Combine requirements into one requirements.txt file
+* Disabled weight normalization
+* Fix bug on visualize\_outputs(None)
+* Minor README addition
+* Updated README (still in progress)
+* update requirements.txt to reflect torch version
+* Add command line args for training data location
+* update requirements.txt
+* update requirements.txt
+* update requirements.txt
+* Added test model
+* Added partial requirements.txt; TODO: add missing requirements
+* Minor refactors
+* Updated README
+* Updated README
+* Updated README
+* Fixed Python2 print statements
+* Refactored visualization code, adjusted contrast augmentation semantics and increased maximum cut proportion
+* Missing line of code in README
+* Updated README with fine-tuning example
+* Minor refactor in pyramid encoder feature map count calculation
+* Added consensus field penalty masking for more useful gradient
+* Added proper flipping consensus
+* Merged from master
+* Revised training for consensus penalty
+* Reverted pyramid.py
+* Made pe\_only training supervised
+* Removed pe
+* Residual net refinements
+* Consensus refactor
+* Heavy refactor, added tiling and gaussian noise augmentation, removing highpass contrasting, exlcluded pinky100 from training (tiling)
+* Add requirements.txt
+* Large refactor of defect detection, contrasting/normalization, mask logic, and dataset generation. Adjusted weighted random sampling. Added new vector field visualization (distortion grid)
+* Added help messages for all parameters
+* More refactoring, added grid line field visualization, added raw source mask visualization, added centered jacobian loss
+* Included model archive
+* Minor refactor of order of declarations in train.py
+* Removed old flag arguments
+* Minor consensus refactor. Changed default mask smoothing parameter
+* Major refactor of train.py, added mask helper functions, added weighted draw to cutouts, moved smoothness inside run\_sample
+* Switched to dense folds training for low mip, added double emphasis for defects in target
+* Disabled residual field gif visualizations for performance reasons
+* Minor rescaling refactor
+* Major refactor, adding use of ceil for masks, adding mask helpers, and fixing unflow penalty. Fixed nan issue regarding weight normalization
+* Removed name, unet, dilate, amp parameters
+* Removed multitarget
+* Refactoring visualization code
+* Removed explicit crack\_fold\_mse\_mask
+* Removed displace\_slice, simplified mask selection
+* Updated aug, added center to helpers, added vis, removed pyramid select functions
+* Moved requires\_grad = True inside load conditional, used only full\_father dataset, moved visualization to sample\_idx == 0
+* Removed inference code
+* Added missing import
+* Refactored training to use defect detector net instead of static crack and fold masks
+* Cleaned up augmentation, added rotational cutouts, increased missing data augmentation, added true multi-target support
+* Contrasting adjustments, minor refactor for high mip/low mip dataset loading
+* Fixed new vector field visualization, added support for converting residuals to gifs, adjusted MSE weighting in training, suppressed h5py warnings, added specific coordinates for cv\_sampler for folds in Basil
+* Minor bug fixes
+* Updated for separate crack and fold masks at different mip levels
+* Refactored masks, added infrastructure for fold masks
+* Resolved crack masking bug
+* Added missing network definition for prednet
+* Removed testing code for adversarial training
+* Moved coords to within training directory
+* Added coords for basil training data and masks
+* Refactored into training directory, added support for crack detector masks
+* Added matching to predictions, additional augmentation
+* Resolved further patch size-related bugs
+* Lingering issues related to size-invariant inference resolved
+* Size invariant SEAMLeSS
+* Added new crack model
+* optimizer with an example added
+* Updated default model size. Added new crack model
+* Newest model upload
+* Updated README
+* Refactored to separate training and inference
+* More minor refactoring
+* Added relative dath path
+* More refactoring
+* Added missing UNet
+* More refactoring, added previously-missing analysis helpers
+* Minor refactoring
+* Create README.md
+* Changed gen\_stack source to be argument
+* Initial commit
+* cleaned junk
+* Added retrained Jacob, fixed residuals (kind of)
+* Added Jacob
+* Adjusted client for convolutional pyramid
+* Resolved abs\_res merge conflicts
+* Added dilated network
+* CUDNN support
+* 1 min per section
+* render/net different chunks
+* Fixed model loading bug
+* Changed to absolute displacements, added new models
+* removed rel to abs conversion
+* manual fixing
+* separate residual layers
+* threads flag added
+* inference 2x faster
+* basil model
+* client
+* fix for cavelab import
+* upsample choice added
+* unet3d
+* 3D unet
+* inference gsutil removed
+* basil ready training
+* model seperated and xmas added
+* XmasTransformer model
+* resolved
+* timings
+* sorry Sergiy, caught one mistake
+* inference merge resolved (hopefully)
+* resolved merge conflict
+* hierarchical training works
+* client
+* all works
+* gMerge branch 'master' of https://github.com/seung-lab/Neuroflow
+* gMerge branch 'master' of https://github.com/seung-lab/Neuroflow
+* identity bug fixed
+* identity bug fixed
+* refactor, new render
+* refactor, new render
+* m
+* m
+* save
+* save
+* fused working, but border effect
+* fused working, but border effect
+* training mip 6 working
+* training mip 6 working
+* python3 print
+* python3 print
+* Added new model, minor refactor to process to compensate for pyramids trained at mip other than 0
+* Added new model, minor refactor to process to compensate for pyramids trained at mip other than 0
+* augmentation added
+* augmentation added
+* xmas network
+* sequence training
+* somethings working
+* somethings working
+* download upload tested
+* download upload tested
+* refactor bbox
+* refactor bbox
+* sort of working, no render yet
+* sort of working, no render yet
+* carcase
+* carcase
+* Unet and xmas added
+* Unet and xmas added
+* Cropping added and improved bug v2 for duplicated pyramids
+* pyramidtransformer renamed
+* inference working
+* simple process
+* simple process added
+* Added pyramid implementation, naming convention for model archives, and a basic archived model to use for testing
+* inference added
+* loss improved
+* loss averaged over all layers
+* skip layers added, vizualization improved
+* bug improved
+* gated learning
+* training with labels
+* labeling added, loss seperated
+* clean workspaces
+* simple model
+* docker addition
+* Crack and Folds working
+* test case and vizualizations added
+* readme modifs
+* initial commit
