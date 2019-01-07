@@ -23,8 +23,7 @@ def blur(img, kernel_size, sigma):
   return conv2d(img, gk)
 
 class Blur():
-
-  def __init__(self, src_path, dst_path, src_mip, bbox_start, bbox_stop, 
+  def __init__(self, src_path, dst_path, src_mip, bbox_start, bbox_stop,
                bbox_mip, kernel_size, sigma, disable_cuda):
     self.kernel_size = kernel_size
     self.sigma = sigma
@@ -34,15 +33,15 @@ class Blur():
       self.device = torch.device('cuda')
     else:
       self.device = torch.device('cpu')
-  
+
     self.src = util.get_cloudvolume(src_path, mip=src_mip)
     self.src_bbox = self.src.bbox_to_mip(bbox, bbox_mip, src_mip)
-    self.dst = util.create_cloudvolume(dst_path, self.src.info, 
+    self.dst = util.create_cloudvolume(dst_path, self.src.info,
                                        src_mip, src_mip)
-   
+
     self.pad = nn.ReplicationPad2d(self.kernel_size // 2)
     self.pad.to(device=self.device)
- 
+
   def run(self):
     z_range = range(self.src_bbox.minpt[2], self.src_bbox.maxpt[2])
     for z in z_range:
@@ -63,7 +62,7 @@ if __name__ == '__main__':
 
   parser = argparse.ArgumentParser(
                     description='Create chunked pearson correlation image.')
-  parser.add_argument('--src_path', type=str, 
+  parser.add_argument('--src_path', type=str,
     help='CloudVolume path of images to be evaluated')
   parser.add_argument('--dst_path', type=str,
     help='CloudVolume path for where eval image written')
@@ -78,7 +77,7 @@ if __name__ == '__main__':
   parser.add_argument('--kernel_size', type=int, default=11,
     help='Gaussian kernel size')
   parser.add_argument('--sigma', type=int, default=2,
-    help='Gaussian kernel standard deviation') 
+    help='Gaussian kernel standard deviation')
   parser.add_argument('--disable_cuda', action='store_true', help='Disable CUDA')
   args = parser.parse_args()
 

@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import copy
-from utilities.helpers import gridsample_residual, upsample, downsample, load_model_from_dict
 from masker import Masker
 
 
@@ -16,21 +15,24 @@ class Model(nn.Module):
 
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.height = height
-        self.mips = mips
-        self.encode = None
-        # this is hardcoded here, in a hurry sry
         fms = 24
-        self.masker = Masker(fms=[2, fms, fms, fms, fms, 2], k=7).cuda()
+        self.masker = Masker(fms=[1, fms, fms, fms, fms, fms, 1], k=7).cuda()
 
     def __getitem__(self, index):
         return self.submodule(index)
 
-    def forward(self, src, tgt, mip_in=10,
+    def forward(self, img, mip_in=8,
                 encodings=False, **kwargs):
-        stack = torch.cat((src, tgt), 1)
-        mask = self.masker(stack)
-        return mask
+        img = torch.cuda.FloatTensor(img).unsqueeze(0).unsqueeze(0) / 255. - 0.5
+        img_down   = nn.functional.avg_pool2d(img, (2, 2))
+        img_down   = nn.functional.avg_pool2d(img_down, (2, 2))
+        img_down_t = img_down#.transpose(2, 3)
+        mask_down_t  = self.masker(img_down_t)
+        mask_down    = mask_down_t#.transpose(2, 3)
+        mask_down    = nn.functional.interpolate(mask_down, scale_factor=2)
+        mask         = nn.functional.interpolate(mask_down, scale_factor=2)
+        bool_mask    = mask[0, 0].unsqueeze(-1).unsqueeze(-1).cpu().detach().numpy() > 0.9
+        return bool_mask
 
     def load(self, path):
         """
