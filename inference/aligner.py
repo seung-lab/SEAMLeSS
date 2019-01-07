@@ -623,7 +623,7 @@ class Aligner:
       #print("image shape is", image.shape)
       if 'src_mask' in self.src:
           mask_cv = self.src['src_mask']
-          mask = self.get_mask(mask_cv, src_z, new_bbox,
+          mask = self.get_mask(mask_cv, z, new_bbox,
                                src_mip=self.src.src_mask_mip,
                                dst_mip=mip, valid_val=self.src.src_mask_val)
           image = image.masked_fill_(mask, 0)
@@ -874,8 +874,8 @@ class Aligner:
         self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
-          #warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
-          warped_patch = self.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
+          warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
+          #warped_patch = self.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
           # print('warp_image render.shape: {0}'.format(warped_patch.shape))
           self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
         self.pool.map(chunkwise, chunks)
