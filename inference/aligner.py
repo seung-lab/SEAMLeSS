@@ -55,7 +55,7 @@ class Aligner:
                src_mask_path='', src_mask_mip=0, src_mask_val=1, 
                tgt_mask_path='', tgt_mask_mip=0, tgt_mask_val=1,
                align_across_z=1, disable_cuda=False, max_mip=12,
-               render_low_mip=2, render_high_mip=9, is_Xmas=False, threads=2,
+               render_low_mip=2, render_high_mip=9, is_Xmas=False, threads=1,
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, 
                disable_flip_average=False, write_intermediaries=False,
@@ -590,6 +590,58 @@ class Aligner:
     cid = ((in_y_range[0] - calign_y_range[0]) // in_y_len) * line_bbox_num + (in_x_range[0] - calign_x_range[0]) // in_x_len
     return cid
 
+  def profile_field(self, field):
+      min_x = math.floor(np.min(field[...,0]))
+      min_y = math.floor(np.min(field[...,1]))
+      return np.float32([min_x, min_y])
+
+  def adjust_bbox(self, bbox, dis):
+      influence_bbox = deepcopy(bbox)
+      x_range = influence_bbox.x_range(mip=0)
+      y_range = influence_bbox.y_range(mip=0)
+      #print("x_range is", x_range, "y_range is", y_range)
+      new_bbox = BoundingBox(x_range[0] - dis[0], x_range[1] - dis[0],
+                                   y_range[0] - dis[1], y_range[1] - dis[1],
+                                   mip=0)
+      #print(new_bbox.x_range(mip=0), new_bbox.y_range(mip=0))
+      return new_bbox
+
+  def gridsample_cv(self, image_cv, field_cv, bbox, z, mip):
+      f =  self.get_field(field_cv, z, bbox, mip, relative=False,
+                          to_tensor=False)
+      distance = self.profile_field(f)
+      distance = (distance//(2**mip)) * 2**mip
+      new_bbox = self.adjust_bbox(bbox, distance)
+      #print("distance is", distance)
+      f = f - distance
+      res = self.abs_to_rel_residual(f, bbox, mip)
+      res = torch.from_numpy(res)
+      field = res.to(device = self.device)
+      #print("field shape is", field.shape)
+      image = self.get_image(image_cv, z, new_bbox, mip,
+                             adjust_contrast=False, to_tensor=True)
+      #print("image shape is", image.shape)
+      if 'src_mask' in self.src:
+          mask_cv = self.src['src_mask']
+          mask = self.get_mask(mask_cv, src_z, new_bbox,
+                               src_mip=self.src.src_mask_mip,
+                               dst_mip=mip, valid_val=self.src.src_mask_val)
+          image = image.masked_fill_(mask, 0)
+      image = gridsample_residual(image,field,padding_mode='zeros')
+      return image
+
+  def warp_using_gridsample_cv(self, src_z, field_cv, field_z, bbox, mip):
+      influence_bbox = deepcopy(bbox)
+      influence_bbox.uncrop(self.max_displacement, mip=0)
+      mip_disp = int(self.max_displacement / 2**mip)
+      src_cv = self.src['src_img']
+      image = self.gridsample_cv(src_cv, field_cv, influence_bbox, field_z, mip)
+      if self.disable_cuda:
+        image = image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+      else:
+        image = image.cpu().numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+      return image
+
   ## Patch manipulation
   def warp_patch(self, src_z, field_cv, field_z, bbox, mip):
     """Non-chunk warping
@@ -822,7 +874,8 @@ class Aligner:
         self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
-          warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
+          #warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
+          warped_patch = self.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
           # print('warp_image render.shape: {0}'.format(warped_patch.shape))
           self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
         self.pool.map(chunkwise, chunks)
