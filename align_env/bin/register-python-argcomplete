@@ -1,4 +1,0 @@
-#!/usr/people/popovych/SEAMLeSS/align_env/bin/python3
-# EASY-INSTALL-SCRIPT: 'argcomplete==1.9.4','register-python-argcomplete'
-__requires__ = 'argcomplete==1.9.4'
-__import__('pkg_resources').run_script('argcomplete==1.9.4', 'register-python-argcomplete')

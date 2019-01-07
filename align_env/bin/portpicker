@@ -1,4 +1,0 @@
-#!/usr/people/popovych/SEAMLeSS/align_env/bin/python3
-# EASY-INSTALL-SCRIPT: 'pathos==0.2.2.1','portpicker'
-__requires__ = 'pathos==0.2.2.1'
-__import__('pkg_resources').run_script('pathos==0.2.2.1', 'portpicker')
