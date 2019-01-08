@@ -92,6 +92,9 @@ class Aligner:
     provenance['project'] = 'seamless'
     provenance['src_path'] = src_path
     provenance['tgt_path'] = tgt_path
+    provenance['model'] = archive
+    provenance['max_displacement'] = max_displacement
+    provenance['crop'] = crop
 
     self.src = SrcDir(src_path, tgt_path, 
                       src_mask_path, tgt_mask_path, 
