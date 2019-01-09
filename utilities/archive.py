@@ -4,10 +4,10 @@ import subprocess
 import random
 import torch
 import numpy as np
-import json
 import yaml
 import datetime
 from pathlib import Path
+import importlib
 import pandas as pd
 
 from utilities.helpers import cp
@@ -352,11 +352,9 @@ class ModelArchive(object):
 
         If the model is untrained, loads a newly initialized model.
         """
-        sys.path.insert(0, str(self.directory))
-        import architecture
-        sys.path.remove(str(self.directory))
-        self._architecture = architecture
-        self._model = architecture.Model(*args, **kwargs)
+        self._architecture = importlib.import_module(
+            '{}.{}.architecture'.format(models_location.stem, self._name))
+        self._model = self._architecture.Model(*args, **kwargs)
         if self.paths['weights'].exists():
             self._model.load(self.paths['weights'])
 
@@ -377,14 +375,11 @@ class ModelArchive(object):
         """
         Loads the objective functions stored in the archive
         """
-        try:
-            sys.path.insert(0, str(self.directory))
-            import objective
-        except ImportError:
+        if self.paths['objective'].exists():
+            self._objective = importlib.import_module(
+                '{}.{}.objective'.format(models_location.stem, self._name))
+        else:
             return None
-        finally:
-            sys.path.remove(str(self.directory))
-        self._objective = objective
         self._loss = self._objective.Objective(*args, **kwargs)
         self._val_loss = self._objective.ValidationObjective(*args, **kwargs)
         if not self.readonly:
@@ -396,13 +391,11 @@ class ModelArchive(object):
         """
         Loads the archive's image preprocessor
         """
-        try:
-            sys.path.insert(0, str(self.directory))
-            import preprocessor
-        except ImportError:
+        if self.paths['preprocessor'].exists():
+            preprocessor = importlib.import_module(
+                '{}.{}.preprocessor'.format(models_location.stem, self._name))
+        else:
             return None
-        finally:
-            sys.path.remove(str(self.directory))
         self._preprocessor = preprocessor.Preprocessor(*args, **kwargs)
         return self._preprocessor
 
