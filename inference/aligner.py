@@ -105,8 +105,8 @@ class Aligner:
     self.tgt_radius = tgt_radius
     self.tgt_range = range(-tgt_radius, tgt_radius+1)
     self.serial_operation = serial_operation
-    if self.serial_operation:
-      self.tgt_range = range(tgt_radius+1)
+    if self.serial_operation: 
+      self.tgt_range = range(tgt_radius+1) 
     for i in self.tgt_range:
       if i > 0:
         path = '{0}/z_{1}'.format(dst_path, abs(i))
@@ -608,6 +608,9 @@ class Aligner:
       return favg
 
   def profile_field(self, field):
+      #min_x = self.min_abs(field[0,...,0])
+      #min_y = self.min_abs(field[0,...,1])
+      #return np.float32([min_x, min_y])
       avg_x = self.avg_field(field[0,...,0])
       avg_y = self.avg_field(field[0,...,1])
       return torch.from_numpy(np.float32([avg_x, avg_y]))
@@ -627,19 +630,20 @@ class Aligner:
   def gridsample_cv(self, image_cv, field_cv, bbox, z, mip):
       f =  self.get_field(field_cv, z, bbox, mip, relative=False,
                           to_tensor=True)
-      im_off = 10240
-      f += im_off
+      #im_off = 10240
+      #f += im_off
       distance = self.profile_field(f)
       distance = (distance//(2**mip)) * 2**mip
       x_range = bbox.x_range(mip=0)
       y_range = bbox.y_range(mip=0)
       #print("x_range is", x_range, "y_range is", y_range)
-      new_bbox = BoundingBox(x_range[0] - im_off, x_range[1] - im_off,
-                             y_range[0] - im_off, y_range[1] - im_off, mip=0)
-      new_bbox = self.adjust_bbox(new_bbox, distance)
-      #new_bbox = self.adjust_bbox(bbox, distance)
+      #new_bbox = BoundingBox(x_range[0] - im_off, x_range[1] - im_off,
+      #                       y_range[0] - im_off, y_range[1] - im_off, mip=0)
+      #new_bbox = self.adjust_bbox(new_bbox, distance)
+      new_bbox = self.adjust_bbox(bbox, distance)
       print("distance is", distance)
       f = f - distance.to(device = self.device)
+      #f = f - distance
       res = self.abs_to_rel_residual(f, bbox, mip)
       #res = torch.from_numpy(res)
       field = res.to(device = self.device)
@@ -661,7 +665,8 @@ class Aligner:
       influence_bbox.uncrop(self.max_displacement, mip=0)
       mip_disp = int(self.max_displacement / 2**mip)
       src_cv = self.src['src_img']
-      image = self.gridsample_cv(src_cv, field_cv, influence_bbox, field_z, mip)
+      image = self.gridsample_cv(src_cv, field_cv, influence_bbox, field_z,
+                                 mip)
       if self.disable_cuda:
         image = image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
       else:
@@ -901,7 +906,6 @@ class Aligner:
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
-          #warped_patch = self.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
           # print('warp_image render.shape: {0}'.format(warped_patch.shape))
           self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
         self.pool.map(chunkwise, chunks)
@@ -911,10 +915,7 @@ class Aligner:
   def render_grid_cv(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
     """Chunkwise render
 
-    Warp the image in BBOX at MIP and SRC_Z in CloudVolume dir at SRC_Z_OFFSET, 
-    using the field at FIELD_Z in CloudVolume dir at FIELD_Z_OFFSET, and write 
-    the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX 
-    appropriately.
+    Warp the image in BBOX using CloudVolume grid_sample
     """
     self.total_bbox = bbox
     print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
@@ -922,8 +923,9 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
                                     self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
     #prof_chunk = chunks[len(chunks)//2]
-    #f =  self.get_field(field_cv, src_z, prof_chunk, mip, relative=False, to_tensor=False)
-    #f += 10240
+    #f =  self.get_field(field_cv, src_z, prof_chunk, mip, relative=False,
+    #                    to_tensor=False)
+    ##f += 10240
     #distance = self.profile_field(f)
     #distance = (distance//(2**mip)) * 2**mip
     if self.distributed:
@@ -931,9 +933,9 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.threads)):
                 task_patches.append(chunks[j])
-            render_task = make_render_task_message(src_z, field_cv, field_z, task_patches, 
-                                                   mip, dst_cv, dst_z)
-            self.task_handler.send_message(render_task)
+            render_task_cv = make_render_cv_task_message(src_z, field_cv, field_z, task_patches,
+                                                      mip, dst_cv, dst_z)
+            self.task_handler.send_message(render_task_cv)
         self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
@@ -1381,6 +1383,22 @@ class Aligner:
     mip = message['mip']
     self.compute_residual_patch(source_z, target_z, patch_bbox, mip)
 
+  def handle_render_task_cv(self, message):
+    src_z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    #patches  = deserialize_bbox(message['patches'])
+    field_cv = DCV(message['field_cv']) 
+    mip = message['mip']
+    field_z = message['field_z']
+    dst_cv = DCV(message['dst_cv'])
+    dst_z = message['dst_z']
+    def chunkwise(patch_bbox):
+      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+              end='', flush=True)
+      warped_patch = self.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
+      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+    self.pool.map(chunkwise, patches)
+
   def handle_render_task(self, message):
     src_z = message['z']
     patches  = [deserialize_bbox(p) for p in message['patches']]
@@ -1535,6 +1553,8 @@ class Aligner:
       self.handle_residual_task(body)
     elif task_type == 'render_task':
       self.handle_render_task(body)
+    elif task_type == 'render_task_cv':
+      self.handle_render_task_cv(body)
     elif task_type == 'render_task_low_mip':
       self.handle_render_task_low_mip(body)
     elif task_type == 'compose_task':
