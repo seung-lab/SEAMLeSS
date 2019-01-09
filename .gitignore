@@ -129,3 +129,6 @@ bin/projects
 *.debug
 intermediate_models/
 debug_outputs/
+
+# secrets
+inference/docker/secret.yaml
