@@ -16,9 +16,9 @@ class Model(nn.Module):
     def __init__(self, feature_maps=None, encodings=True, *args, **kwargs):
         super().__init__()
         self.feature_maps = feature_maps
-        self.encode = EncodingPyramid(self.feature_maps) if encodings else None
+        self.encode = EncodingPyramid(self.feature_maps, **kwargs) if encodings else None
         self.align = AligningPyramid(self.feature_maps if encodings
-                                     else [1]*len(feature_maps))
+                                     else [1]*len(feature_maps), **kwargs)
 
     def __getitem__(self, index):
         return self.submodule(index)
@@ -107,7 +107,7 @@ class EncodingPyramid(nn.Module):
     for normal image inputs.
     """
 
-    def __init__(self, feature_list, input_fm=1):
+    def __init__(self, feature_list, input_fm=1, **kwargs):
         super().__init__()
         self.feature_list = [input_fm] + list(feature_list)
         self.list = nn.ModuleList([
@@ -192,7 +192,7 @@ class AligningPyramid(nn.Module):
     feature maps respectively.
     """
 
-    def __init__(self, feature_list):
+    def __init__(self, feature_list, **kwargs):
         super().__init__()
         self.feature_list = list(feature_list)
         self.list = nn.ModuleList([Aligner(ch) for ch in feature_list])
