@@ -44,7 +44,7 @@ if __name__ == '__main__':
     a.compute_section_pair_residuals(src_z, tgt_z, bbox)
   #  a.render_section_all_mips(src_z, uncomposed_field_cv, src_z,
   #                            dst_cv, src_z, bbox, mip) 
-    a.render(src_z, uncomposed_field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
+    a.render_grid_cv(src_z, uncomposed_field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
     a.downsample(dst_cv, src_z - 1, bbox, a.render_low_mip, a.render_high_mip)
 
 #a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip)

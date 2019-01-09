@@ -590,9 +590,21 @@ class Aligner:
     cid = ((in_y_range[0] - calign_y_range[0]) // in_y_len) * line_bbox_num + (in_x_range[0] - calign_x_range[0]) // in_x_len
     return cid
 
+  def min_abs(self, field):
+      abs_data = np.finfo(np.float32).max
+      print("field.shape is", field.shape)
+      for i in range(len(field)):
+          for j in range(len(field[0])):
+              tmp_field = field[i,j]
+              if (tmp_field != 0.0) & (math.fabs(tmp_field) < math.fabs(abs_data)):
+                  #print("0 cor is", i, j, tmp_field)
+                  abs_data = tmp_field
+      print("abs_data is", abs_data)
+      return abs_data
+
   def profile_field(self, field):
-      min_x = math.floor(np.min(field[...,0]))
-      min_y = math.floor(np.min(field[...,1]))
+      min_x = self.min_abs(field[0,...,0])
+      min_y = self.min_abs(field[0,...,1])
       return np.float32([min_x, min_y])
 
   def adjust_bbox(self, bbox, dis):
@@ -600,19 +612,26 @@ class Aligner:
       x_range = influence_bbox.x_range(mip=0)
       y_range = influence_bbox.y_range(mip=0)
       #print("x_range is", x_range, "y_range is", y_range)
-      new_bbox = BoundingBox(x_range[0] - dis[0], x_range[1] - dis[0],
-                                   y_range[0] - dis[1], y_range[1] - dis[1],
+      new_bbox = BoundingBox(x_range[0] + dis[0], x_range[1] + dis[0],
+                                   y_range[0] + dis[1], y_range[1] + dis[1],
                                    mip=0)
       #print(new_bbox.x_range(mip=0), new_bbox.y_range(mip=0))
       return new_bbox
+  #def adjust_field(self, field, distance):
 
-  def gridsample_cv(self, image_cv, field_cv, bbox, z, mip):
+  def gridsample_cv(self, image_cv, field_cv, bbox, z, mip, distance):
       f =  self.get_field(field_cv, z, bbox, mip, relative=False,
                           to_tensor=False)
-      distance = self.profile_field(f)
-      distance = (distance//(2**mip)) * 2**mip
+      #im_off = 10240
+      #f += im_off
+      x_range = bbox.x_range(mip=0)
+      y_range = bbox.y_range(mip=0)
+      #print("x_range is", x_range, "y_range is", y_range)
+      #new_bbox = BoundingBox(x_range[0] + im_off, x_range[1] + im_off,
+      #                       y_range[0] + im_off, y_range[1] + im_off, mip=0)
+      #new_bbox = self.adjust_bbox(new_bbox, distance)
       new_bbox = self.adjust_bbox(bbox, distance)
-      #print("distance is", distance)
+      print("distance is", distance)
       f = f - distance
       res = self.abs_to_rel_residual(f, bbox, mip)
       res = torch.from_numpy(res)
@@ -627,15 +646,17 @@ class Aligner:
                                src_mip=self.src.src_mask_mip,
                                dst_mip=mip, valid_val=self.src.src_mask_val)
           image = image.masked_fill_(mask, 0)
-      image = gridsample_residual(image,field,padding_mode='zeros')
+      image = gridsample_residual(image, field, padding_mode='zeros')
       return image
 
-  def warp_using_gridsample_cv(self, src_z, field_cv, field_z, bbox, mip):
+  def warp_using_gridsample_cv(self, src_z, field_cv, field_z, bbox, mip,
+                               distance):
       influence_bbox = deepcopy(bbox)
       influence_bbox.uncrop(self.max_displacement, mip=0)
       mip_disp = int(self.max_displacement / 2**mip)
       src_cv = self.src['src_img']
-      image = self.gridsample_cv(src_cv, field_cv, influence_bbox, field_z, mip)
+      image = self.gridsample_cv(src_cv, field_cv, influence_bbox, field_z,
+                                 mip, distance)
       if self.disable_cuda:
         image = image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
       else:
@@ -882,6 +903,44 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
+  def render_grid_cv(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
+    """Chunkwise render
+
+    Warp the image in BBOX at MIP and SRC_Z in CloudVolume dir at SRC_Z_OFFSET, 
+    using the field at FIELD_Z in CloudVolume dir at FIELD_Z_OFFSET, and write 
+    the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX 
+    appropriately.
+    """
+    self.total_bbox = bbox
+    print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
+    start = time()
+    chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
+                                    self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
+    prof_chunk = chunks[len(chunks)//2]
+    f =  self.get_field(field_cv, src_z, prof_chunk, mip, relative=False, to_tensor=False)
+    #f += 10240
+    distance = self.profile_field(f)
+    distance = (distance//(2**mip)) * 2**mip
+    if self.distributed:
+        for i in range(0, len(chunks), self.threads):
+            task_patches = []
+            for j in range(i, min(len(chunks), i + self.threads)):
+                task_patches.append(chunks[j])
+            render_task = make_render_task_message(src_z, field_cv, field_z, task_patches, 
+                                                   mip, dst_cv, dst_z)
+            self.task_handler.send_message(render_task)
+        self.task_handler.wait_until_ready()
+    else:
+        def chunkwise(patch_bbox):
+          warped_patch = self.warp_using_gridsample_cv(src_z, field_cv,
+                                                       field_z, patch_bbox,
+                                                       mip, distance)
+          # print('warp_image render.shape: {0}'.format(warped_patch.shape))
+          self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+        self.pool.map(chunkwise, chunks)
+    end = time()
+    print (": {} sec".format(end - start))
+
 #  def render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
 #    """Chunkwise render
 #
@@ -991,7 +1050,8 @@ class Aligner:
 
 
   def render_section_all_mips(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
-    self.render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
+    #self.render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
+    self.render_grid_cv(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
     self.downsample(dst_cv, dst_z, bbox, self.render_low_mip, self.render_high_mip)
   
   def render_to_low_mip(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
