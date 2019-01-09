@@ -92,7 +92,7 @@ class Aligner:
     provenance['project'] = 'seamless'
     provenance['src_path'] = src_path
     provenance['tgt_path'] = tgt_path
-    provenance['model'] = archive
+    provenance['model'] = archive.name
     provenance['max_displacement'] = max_displacement
     provenance['crop'] = crop
 
@@ -1527,15 +1527,7 @@ class Aligner:
       raise Exception("Unsupported task type '{}' received from queue '{}'".format(task_type,
                                                                  self.task_handler.queue_name))
 
-  def listen_for_tasks(self, stack_start, stack_size ,bbox, forward_compose, inverse_compose, compose_start):
-    self.total_bbox = bbox
-    self.zs = stack_start
-    self.end_section = stack_start + stack_size
-    self.num_section = stack_size
-    if forward_compose:
-      self.dst[0].add_composed_cv(compose_start, inverse=False)
-    if inverse_compose: 
-      self.dst[0].add_composed_cv(compose_start, inverse=True)
+  def listen_for_tasks(self):
     while (True):
       message = self.task_handler.get_message()
       if message != None:
