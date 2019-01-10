@@ -1,5 +1,5 @@
 import numpy as np
-from helpers import save_chunk, compose_functions
+from utilities.helpers import save_chunk, compose_functions
 from scipy.ndimage import gaussian_filter
 from skimage.filters import rank
 from skimage.morphology import disk

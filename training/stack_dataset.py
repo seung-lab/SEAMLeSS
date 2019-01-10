@@ -1,46 +1,117 @@
-import warnings
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore",category=FutureWarning)
-    import h5py
-
-import torch
+import random
+import h5py
 import numpy as np
-from torch.utils.data import Dataset
-import matplotlib
-matplotlib.use('Agg')
+import torch
+from torch.utils.data import Dataset, ConcatDataset
+
+from aug import aug_input, rotate_and_scale, random_translation
+
+
+def compile_dataset(*h5_paths, transform=None):
+    datasets = []
+    for h5_path in h5_paths:
+        h5f = h5py.File(h5_path, 'r')
+        for series in h5f.values():
+            ds = [StackDataset(v, transform=transform) for v in series]
+            datasets.extend(ds)
+    return ConcatDataset(datasets)
+
+
+class RandomAugmentation(object):
+    """Apply random Gaussian noise, cutouts, & brightness adjustment
+    """
+
+    def __init__(self, factor=2):
+        self.factor = factor
+
+    def __call__(self, X):
+        src, tgt = X['src'].clone(), X['tgt'].clone()
+        aug_src, aug_src_masks = aug_input(src)
+        aug_tgt, aug_tgt_masks = aug_input(tgt)
+        X['aug_src'] = aug_src
+        X['aug_tgt'] = aug_tgt
+        X['aug_src_masks'] = aug_src_masks
+        X['aug_tgt_masks'] = aug_src_masks
+        return X
+
+
+class RandomFlip(object):
+    """Randomly flip src & tgt images
+    """
+
+    def __call__(self, X):
+        if random.choice([True, False]):
+            X = X.flip(1)
+        if random.choice([True, False]):
+            X = X.flip(2)
+        return X
+
+
+class RandomTranslation(object):
+    """Randomly translate src & tgt images separately
+    """
+
+    def __init__(self, max_displacement=2**6):
+        self.max_displacement = max_displacement
+
+    def __call__(self, X):
+        src, tgt = X['src'], X['tgt']
+        if random.randint(0, 1) == 0:
+            src = random_translation(src, self.max_displacement)
+        if random.randint(0, 1) == 0:
+            tgt = random_translation(tgt, self.max_displacement)
+        return {'src': src, 'tgt': tgt}
+
+
+class RandomRotateAndScale(object):
+    """Randomly rotate & scale src and tgt images
+    """
+
+    def __call__(self, X):
+        if random.choice([True, False]):
+            X, _ = rotate_and_scale(X, None)
+        return X.squeeze()
+
+
+class ToFloatTensor(object):
+    """Convert ndarray to FloatTensor
+    """
+
+    def __call__(self, X):
+        return torch.from_numpy(X).to(torch.float)
+
+
+class Split(object):
+    """Split sample into a (src, tgt) pair
+    """
+
+    def __call__(self, X):
+        return {'src': X[0:1, ...], 'tgt': X[1:2, ...]}
+
 
 class StackDataset(Dataset):
-    def __init__(self, source_h5, mip=-1):
-        self.h5f = h5py.File(source_h5, 'r')
+    """Deliver consecutive image pairs from 3D image stack
 
-        self.datasets = []
-        for k in self.h5f.keys():
-            if 'pinky' not in k:
-                self.datasets.append(self.h5f[k])
-            else:
-                print('Throwing out pinky...')
-        self.lengths = [d.shape[0] for d in self.datasets]
-        self.clengths = np.cumsum(self.lengths)
-        self.length = sum(self.lengths)
-        self.mip = mip
+    Args:
+        stack (4D ndarray): 1xZxHxW image array
+    """
 
-    def map_total_index(self, idx):
-        chunks = [idx < l for l in self.clengths]
-        assert True in chunks, 'Index {} not contains in Stack Dataset with lengths {}.'.format(idx, self.lengths)
-        dataset_idx = chunks.index(True)
-        sub_idx = idx if dataset_idx == 0 else idx - self.clengths[dataset_idx - 1]
-        return (dataset_idx, sub_idx)
+    def __init__(self, stack, transform=None):
+        self.stack = stack
+        self.N = len(stack) - 1
+        self.transform = transform
 
     def __len__(self):
+        # 2*(len(stack)-1) consecutive image pairs
+        return 2*self.N
 
-        return self.length
-
-    def __getitem__(self, idx):
-        dataset_idx, sub_idx = self.map_total_index(idx)
-        t = torch.FloatTensor(self.datasets[dataset_idx][sub_idx]) / 255.
-
-        output = { 'X': t }
-        if self.mip != -1:
-            output['mip'] = self.mip
-
-        return output
+    def __getitem__(self, k):
+        # match i -> i+1 if k < N, else match i -> i-1
+        i = k % self.N
+        X = self.stack[i:i+2]
+        if k >= self.N:
+            X = np.flip(X, 0)
+        X = X.copy()  # prevent modifying the dataset
+        if self.transform:
+            X = self.transform(X)
+        return X

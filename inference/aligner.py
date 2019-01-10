@@ -7,7 +7,7 @@ import os
 import json
 from time import time
 from copy import deepcopy, copy
-from helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
+from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
 
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum
@@ -20,7 +20,7 @@ from threading import Lock
 import torch.nn as nn
 
 class Aligner:
-  def __init__(self, model_path, max_displacement, crop,
+  def __init__(self, archive, max_displacement, crop,
                mip_range, high_mip_chunk, src_ng_path, dst_ng_path,
                render_low_mip=2, render_high_mip=6, is_Xmas=False, threads=5,
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
@@ -76,7 +76,7 @@ class Aligner:
     self.x_field_ng_paths = [os.path.join(r, 'x') for r in self.field_ng_paths]
     self.y_field_ng_paths = [os.path.join(r, 'y') for r in self.field_ng_paths]
 
-    self.net = Process(model_path, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip, size=size, flip_average=flip_average, old_upsample=old_upsample)
+    self.net = Process(archive, mip_range[0], is_Xmas=is_Xmas, cuda=True, dim=high_mip_chunk[0]+crop*2, skip=skip, topskip=topskip, size=size, flip_average=flip_average, old_upsample=old_upsample)
     
     self.write_intermediaries = write_intermediaries
     self.upsample_residuals = upsample_residuals
@@ -298,8 +298,7 @@ class Aligner:
     # save the final vector field for warping
     self.save_vector_patch(field, self.x_field_ng_paths[mip], self.y_field_ng_paths[mip], source_z, out_patch_bbox, mip)
 
-    if self.write_intermediaries:
-  
+    if self.write_intermediaries and residuals is not None and cum_residuals is not None:
       mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
       for res_mip, res, cumres in zip(mip_range, residuals[1:], cum_residuals[1:]):
           crop = self.crop_amount // 2**(res_mip - self.process_low_mip)   
@@ -323,7 +322,7 @@ class Aligner:
 
  
       # print('encoding size: {0}'.format(len(encodings)))
-      for k, enc in enumerate(encodings):
+      for k, enc in enumerate(encodings) if encodings is not None else []:
           mip = self.process_low_mip + k
           # print('encoding shape @ idx={0}, mip={1}: {2}'.format(k, mip, enc.shape))
           crop = self.crop_amount // 2**k

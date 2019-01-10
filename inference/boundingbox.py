@@ -1,5 +1,5 @@
 import numpy as np
-from helpers import crop
+from utilities.helpers import crop
 
 class BoundingBox:
   def __init__(self, xs, xe, ys, ye, mip, max_mip=12):

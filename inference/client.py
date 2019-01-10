@@ -1,8 +1,10 @@
 import sys
 import torch
+from pathlib import Path
 from aligner import Aligner, BoundingBox
 from link_builder import ng_link
 import argparse
+from utilities.archive import ModelArchive
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--source', type=str)
@@ -50,8 +52,8 @@ mip = args.mip
 render_mip = args.render_mip
 should_contrast = bool(args.should_contrast)
 num_targets = args.num_targets
-model_path = args.model_path
-model_name = model_path[model_path.rindex('/')+1:model_path.rindex('.')]
+model_path = Path(args.model_path)
+model_name = model_path.stem
 max_displacement = args.max_displacement
 edge_pad  = args.edge_pad
 mip_range = (mip,mip)
@@ -67,7 +69,13 @@ v_off = (xs, ys, zs)
 x_size = xe - xs
 y_size = ye - ys
 stack_size = args.stack_size
-out_cv = 'gs://neuroglancer/seamless/{}_{}'.format(model_name, out_name) 
+archive = ModelArchive(model_name, height=args.size)
+out_cv = 'gs://neuroglancer/seamless/{}_{}_{}_{}'.format(
+    model_name,
+    'e' + str(archive.state_vars.epoch) if archive.state_vars.epoch else '',
+    't' + str(archive.state_vars.iteration) if archive.state_vars.iteration else '',
+    out_name,
+)
 
 if num_targets < 1:
     print('num_targets must be > 0')
@@ -80,11 +88,11 @@ print('Coordinates:', (args.xs, args.ys, args.zs), (args.xe, args.ye, args.zs+ar
 print('Mip:', mip)
 print('Contrast:', should_contrast)
 print('Max mip:', max_mip)
-print('NG link:', ng_link(out_name, 'precomputed://' + 'gs://neuroglancer/seamless/' + model_name+'_'+out_name+'/image', source[source.rindex('/')+1:], 'precomputed://' + source, (xs+xe)//2, (ys+ye)//2, zs))
+print('NG link:', ng_link(out_name, 'precomputed://' + out_cv+'/image', source[source.rindex('/')+1:], 'precomputed://' + source, (xs+xe)//2, (ys+ye)//2, zs))
 
 torch.set_grad_enabled(False)
 
-a = Aligner(model_path, max_displacement, edge_pad, mip_range, high_mip_chunk,
+a = Aligner(archive, max_displacement, edge_pad, mip_range, high_mip_chunk,
             source, out_cv, render_low_mip=render_mip, render_high_mip=max_mip,
             skip=args.skip, topskip=0, size=args.size, should_contrast=should_contrast,
             num_targets=num_targets, flip_average=not args.no_flip_average,

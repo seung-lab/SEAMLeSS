@@ -1,724 +1,511 @@
-"""Train a network.
+#!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
+"""Train a multilayer aligner network.
 
 This is the main module which is invoked to train a network.
 
 Running:
-    To begin training, run this on a machine with a GPU.
-    (Don't forget to install the required dependencies in requirements.txt)
+    To begin training, run
 
-        $ python3 train.py [--param1_name VALUE1 --param2_name VALUE2 ...]
-            EXPERIMENT_NAME
+        $ python3 train.py start MODEL_NAME --training_set SET [...]
+
+    or equivalently
+
+        $ ./train.py start MODEL_NAME --training_set SET [...]
+
+    To get help with the command line options, use
+
+        $ python3 train.py start --help
+
+Resuming:
+
+    It is possible to resume training. This is useful if a training run was
+    killed by accident or circumstance and you would like to continue training.
+    Before doing this, check to make sure the run is actually in fact dead,
+    since attempting to resume a live run could have undefined behavior.
+    To resume training run the following with no additional command line
+    arguments:
+
+        $ python3 train.py resume MODEL_NAME
+
+    and where `MODEL_NAME` is the name of the previously stopped training run.
+    The training parameters and training state will be loaded from the saved
+    archive, and the model will continue to train from where it was stopped.
 
 Example:
-        $ python3 train.py --state_archive pt/SOME_ARCHIVE.pt --size 8
-            --lambda1 2 --lambda2 0.04 --lambda3 0 --lambda4 5 --lambda5 0
-            --mask_smooth_radius 75 --mask_neighborhood_radius 75 --lr 0.0003
-            --trunc 0 --fine_tuning --hm --padding 0 --vis_interval 5
-            --lambda6 1 fine_tune_example
+        $ python3 train.py start my_model --training_set training_data.h5
 
-Todo:
-    * Refactor main method
-    * Expand docstring
+Specifying the GPUs:
+
+    If not specified explicitly, the first avalailable unused GPU will be
+    selected (or the least used GPU if all are in use).
+    If you would like to use a specific GPU, or multiple GPUs, use the
+    `--gpu_ids` argument with a comma-separated list of IDs:
+
+        $ python3 train.py --gpu_ids 4,1,2 start my_model \
+            --training_set training_data.h5
+
+    The order maters insomuch as the first ID in the list will be the
+    default GPU, and therefore will generally experience higher usage
+    than the others.
+    So the above command will use GPUs 1, 2, and 4, with 4 as the default.
+
+    Note that this must come before the `start` or `resume` command,
+    and must be specified again (if desired) upon resuming:
+
+        $ python3 train.py --gpu_ids 5,3,6 resume my_model
+
+    The reason for this is that the model may resume training on different
+    GPUs, or even on a different machine, than where it started its training.
+
+Editor's note:
+
+    The top of this file should contain the comment `# PYTHON_ARGCOMPLETE_OK`
+    in order to allow command line tab completion to work properly.
 
 """
+from arguments import parse_args  # keep first for fast args access
 
 import os
+import sys
 import time
-import torch
-import torch.nn.functional as F
-from torch.autograd import Variable
-from torch.utils.data import DataLoader, ConcatDataset
-import argparse
+import warnings
+import datetime
+import math
 import random
 
-import masks
-from stack_dataset import StackDataset
-from pyramid import PyramidTransformer
-from defect_net import *
-from defect_detector import DefectDetector
-from helpers import reverse_dim, downsample, gridsample_residual
-from aug import aug_stacks, aug_input, rotate_and_scale, crack, displace_slice
-from vis import visualize_outputs
-from loss import similarity_score, smoothness_penalty
-from normalizer import Normalizer
+import torch
+import torch.backends.cudnn as cudnn
+import torch.utils.data
+import torchvision.transforms as transforms
+from pathlib import Path
+
+import stack_dataset
+from utilities.archive import ModelArchive
+from utilities.helpers import (gridsample_residual, save_chunk,
+                               dvl as save_vectors,
+                               upsample, downsample, AverageMeter,
+                               retry_enumerate)
 
 
 def main():
-    """Start training a net."""
+    global state_vars
     args = parse_args()
-    name = args.name
-    trunclayer = args.trunc
-    skiplayers = args.skip
-    size = args.size
-    fall_time = args.fall_time
-    padding = args.padding
-    dim = args.dim + padding
-    kernel_size = args.k
-    log_path = 'out/' + name + '/'
-    log_file = log_path + name + '.log'
-    lr = args.lr
-    # batch_size = args.batch_size
-    fine_tuning = args.fine_tuning
-    epoch = args.epoch
-    start_time = time.time()
-    similarity = similarity_score(should_reduce=False)
-    smoothness = smoothness_penalty(args.penalty)
-    history = []
-    if args.pe_only:
-        args.pe = "only"
 
-    # setup the defect detector
-    if args.mm or args.hm:
-        hm_defect_detector = DefectDetector(
-            torch.load(args.hm_defect_net).cpu().cuda(),
-            major_dilation_radius=args.mask_neighborhood_radius,
-            sigmoid_threshold = 0.5 if args.hm else 0.4)
-    if args.mm or (not args.hm):
-        lm_defect_detector = DefectDetector(
-            torch.load(args.lm_defect_net).cpu().cuda(),
-            major_dilation_radius=args.mask_neighborhood_radius,
-            sigmoid_threshold = 0.5 if args.hm else 0.4)
-    normalizer = Normalizer(5 if args.hm else 2)
+    # set available GPUs
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_ids
 
-    if args.mm:
-        train_dataset1 = StackDataset(os.path.expanduser(args.hm_src), mip=5)
-        train_dataset2 = StackDataset(os.path.expanduser(args.lm_src), mip=2)
-        train_dataset3 = StackDataset(os.path.expanduser(args.vhm_src), mip=8)
-        train_dataset = ConcatDataset(
-            [train_dataset1, train_dataset2, train_dataset3])
+    # either load or create the model, optimizer, and parameters
+    archive = load_archive(args)
+    state_vars = archive.state_vars
+
+    # optimize cuda processes
+    cudnn.benchmark = True
+
+    # set up training data
+    train_transform = transforms.Compose([
+        stack_dataset.ToFloatTensor(),
+        archive.preprocessor,
+        stack_dataset.RandomRotateAndScale(),
+        stack_dataset.RandomFlip(),
+        stack_dataset.Split(),
+    ])
+    train_dataset = stack_dataset.compile_dataset(
+        state_vars.training_set_path, transform=train_transform)
+    train_sampler = torch.utils.data.RandomSampler(train_dataset)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=state_vars.batch_size,
+        shuffle=(train_sampler is None), num_workers=args.num_workers,
+        pin_memory=True, sampler=train_sampler)
+
+    # set up validation data if present
+    if state_vars.validation_set_path:
+        val_transform = transforms.Compose([
+            stack_dataset.ToFloatTensor(),
+            archive.preprocessor,
+            stack_dataset.RandomRotateAndScale(),
+            stack_dataset.RandomFlip(),
+            stack_dataset.Split(),
+        ])
+        validation_dataset = stack_dataset.compile_dataset(
+            state_vars.validation_set_path, transform=val_transform)
+        val_loader = torch.utils.data.DataLoader(
+            validation_dataset, batch_size=1,
+            shuffle=False, num_workers=0, pin_memory=True)
     else:
-        if args.hm:
-            train_dataset1 = StackDataset(
-                os.path.expanduser(args.hm_src), mip=5)
-            train_dataset2 = StackDataset(
-                os.path.expanduser(args.vhm_src), mip=8)
-            train_dataset = ConcatDataset([train_dataset1, train_dataset2])
-        else:
-            train_dataset2 = StackDataset(  # dataset focused on extreme folds
-                os.path.expanduser(args.lm_src), mip=2)
-            train_dataset = ConcatDataset([train_dataset2])
-    train_loader = DataLoader(
-        train_dataset, batch_size=1, shuffle=True, num_workers=5,
-        pin_memory=True)
+        val_loader = None
 
-    if not os.path.isdir(log_path):
-        os.makedirs(log_path)
-    if not os.path.isdir('pt'):
-        os.makedirs('pt')
-
-    with open(log_path + 'args.txt', 'a') as f:
-        f.write(str(args))
-
-    if args.state_archive is None:
-        model = PyramidTransformer(
-            size=size, dim=dim, skip=skiplayers, k=kernel_size).cuda()
-    else:
-        model = PyramidTransformer.load(
-            args.state_archive, height=size, dim=dim, skips=skiplayers,
-            k=kernel_size)
-        for p in model.parameters():
-            p.requires_grad = True
-        model.train(True)
-
-    def opt(layer):
-        params = []
-        if not args.pe_only and not args.enc_only:
-            if layer >= skiplayers and not fine_tuning:
-                print('Training only layer {}'.format(layer))
-                params.extend(model.pyramid.mlist[layer].parameters())
-            else:
-                print('Training all residual networks.')
-                params.extend(model.pyramid.mlist.parameters())
-
-            if fine_tuning or epoch < fall_time - 1:
-                print('Training all encoder parameters.')
-                params.extend(model.pyramid.enclist.parameters())
-                if args.pe:
-                    params.extend(model.pyramid.pe.parameters())
-            else:
-                print('Freezing encoder parameters.')
-        elif args.pe_only:
-            print('Training pre-encoder only.')
-            params.extend(model.pyramid.pe.parameters())
-        elif args.enc_only:
-            print('Training all encoder parameters only.')
-            params.extend(model.pyramid.enclist.parameters())
-            params.extend(model.pyramid.pe.parameters())
-
-        lr_ = lr if not fine_tuning else lr * args.fine_tuning_lr_factor
-        print(
-            'Building optimizer for layer {} (fine tuning: {}, lr: {})'
-            .format(layer, fine_tuning, lr_))
-        return torch.optim.Adam(
-            params, lr=lr_, weight_decay=0.0001 if args.pe_only else 0)
-
-    def prefix(tag=None):
-        if tag is None:
-            return '{}{}_e{}_t{}_'.format(log_path, name, epoch, t)
-        else:
-            return '{}{}_e{}_t{}_{}_'.format(log_path, name, epoch, t, tag)
-
-    def run_pair(src, target, src_mask=None, target_mask=None, train=True):
-        if train and not args.skip_sample_aug:
-            # random rotation
-            should_rotate = random.randint(0, 1) == 0
-            if should_rotate:
-                src, grid = rotate_and_scale(
-                    src.unsqueeze(0).unsqueeze(0), None)
-                target = rotate_and_scale(
-                    target.unsqueeze(0).unsqueeze(0), grid=grid)[0].squeeze()
-                if src_mask is not None:
-                    src_mask = torch.ceil(
-                        rotate_and_scale(
-                            src_mask.unsqueeze(0).unsqueeze(0), grid=grid
-                        )[0].squeeze())
-                    target_mask = torch.ceil(
-                        rotate_and_scale(
-                            target_mask.unsqueeze(0).unsqueeze(0), grid=grid
-                        )[0].squeeze())
-
-                src = src.squeeze()
-
-        input_src = src.clone()
-        input_target = target.clone()
-
-        src_cutout_masks = []
-        target_cutout_masks = []
-
-        if train and not args.skip_sample_aug:
-            input_src, src_cutout_masks = aug_input(input_src)
-            input_target, target_cutout_masks = aug_input(input_target)
-        elif train:
-            print('Skipping sample-wise augmentation.')
-
-        src = Variable(torch.FloatTensor(normalizer.apply(
-            src.data.cpu().numpy()))).cuda()
-        target = Variable(torch.FloatTensor(normalizer.apply(
-            target.data.cpu().numpy()))).cuda()
-        input_src = Variable(torch.FloatTensor(normalizer.apply(
-            input_src.data.cpu().numpy()))).cuda()
-        input_target = Variable(torch.FloatTensor(normalizer.apply(
-            input_target.data.cpu().numpy()))).cuda()
-
-        rf = run_sample(
-            src, target, input_src, input_target, src_mask, target_mask,
-            src_cutout_masks, target_cutout_masks, train)
-        if rf is not None:
-            if not args.pe_only:
-                cost = (rf['similarity_error']
-                        + args.lambda1
-                        * smooth_factor * rf['smoothness_error'])
-                (cost/2).backward(retain_graph=args.lambda6 > 0)
-            else:
-                (rf['contrast_error']/2).backward()
-
-        src = reverse_dim(reverse_dim(src, 0), 1)
-        target = reverse_dim(reverse_dim(target, 0), 1)
-        input_src = reverse_dim(reverse_dim(input_src, 0), 1)
-        input_target = reverse_dim(reverse_dim(input_target, 0), 1)
-        if src_mask is not None:
-            src_mask = reverse_dim(reverse_dim(src_mask, 0), 1)
-        if target_mask is not None:
-            target_mask = reverse_dim(reverse_dim(target_mask, 0), 1)
-        src_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
-                            for m in src_cutout_masks]
-        target_cutout_masks = [reverse_dim(reverse_dim(m, -2), -1)
-                               for m in target_cutout_masks]
-
-        rb = run_sample(
-            src, target, input_src, input_target, src_mask, target_mask,
-            src_cutout_masks, target_cutout_masks, train)
-        if rb is not None:
-            if not args.pe_only:
-                cost = (rb['similarity_error']
-                        + args.lambda1
-                        * smooth_factor * rb['smoothness_error'])
-                (cost/2).backward(retain_graph=args.lambda6 > 0)
-            else:
-                (rb['contrast_error']/2).backward()
-
-        ##################################
-        # CONSENSUS PENALTY COMPUTATION ##
-        ##################################
-        if (not args.pe_only and args.lambda6 > 0 and rf is not None
-                and rb is not None):
-            smaller_dim = dim // (2**trunclayer)
-            zmf = (rf['pred'] != 0).float() * (rf['input_target'] != 0).float()
-            zmf = (zmf.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
-                   .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
-            zmb = (rb['pred'] != 0).float() * (rb['input_target'] != 0).float()
-            zmb = (zmb.detach().unsqueeze(0).view(1, 1, smaller_dim, smaller_dim)
-                   .repeat(1, 2, 1, 1).permute(0, 2, 3, 1))
-            rffield, rbfield = rf['field'] * zmf, rb['field'] * zmb
-            rbfield_reversed = -reverse_dim(reverse_dim(rbfield, 1), 2)
-            consensus_diff = rffield - rbfield_reversed
-            consensus_error_field = (consensus_diff[:, :, :, 0] ** 2
-                                     + consensus_diff[:, :, :, 1] ** 2)
-            mean_consensus = torch.mean(consensus_error_field)
-            rf['consensus_field'] = rffield
-            rb['consensus_field'] = rbfield_reversed
-            rf['consensus_error_field'] = consensus_error_field
-            rb['consensus_error_field'] = consensus_error_field
-            rf['consensus'] = mean_consensus
-            rb['consensus'] = mean_consensus
-            consensus = args.lambda6 * mean_consensus
-            consensus.backward()
-
-        return rf, rb
-
-    def run_sample(src, target, input_src, input_target, mask=None,
-                   target_mask=None, src_cutout_masks=[],
-                   target_cutout_masks=[], train=True):
-        model.train(train)
-        if args.dry_run:
-            print('Bailing for dry run [not an error].')
-            return None
-
-        # if we're just training the pre-encoder, no need to do everything
-        if args.pe_only:
-            contrasted_stack = model.apply(input_src, input_target, 
-                                           use_preencoder=args.pe)
-            pred = contrasted_stack.squeeze()
-            y = torch.cat((src.unsqueeze(0), target.squeeze().unsqueeze(0)), 0)
-            contrast_err = similarity(pred, y)
-            contrast_err_src = contrast_err[0:1]
-            contrast_err_target = contrast_err[1:2]
-            for m in src_cutout_masks:
-                contrast_err_src = (contrast_err_src
-                                    * m.view(contrast_err_src.size()).float())
-            for m in target_cutout_masks:
-                contrast_err_target = (contrast_err_target
-                                       * m.view(contrast_err_target.size())
-                                       .float())
-            contrast_err = torch.mean(torch.cat((contrast_err_src,
-                                                 contrast_err_target), 0))
-            return {'contrast_error': contrast_err}
-
-        pred, field, residuals = model.apply(input_src, input_target,
-                                             trunclayer, use_preencoder=args.pe)
-        # resample tensors that are in our source coordinate space with our
-        # new field prediction to move them into target coordinate space so
-        # we can compare things fairly
-        src = downsample(trunclayer)(src.unsqueeze(0).unsqueeze(0))
-        target = downsample(trunclayer)(target.unsqueeze(0).unsqueeze(0))
-        pred = gridsample_residual(src, field, padding_mode='zeros')
-        raw_mask = None
-        if mask is not None:
-            mask = downsample(trunclayer)(mask.unsqueeze(0).unsqueeze(0))
-            raw_mask = mask
-            mask = torch.ceil(gridsample_residual(mask, field, padding_mode='border'))
-        if target_mask is not None:
-            target_mask = downsample(trunclayer)(target_mask.unsqueeze(0).unsqueeze(0))
-            target_mask = masks.dilate(target_mask, 1, binary=False)
-        if len(src_cutout_masks) > 0:
-            src_cutout_masks = [
-                torch.ceil(gridsample_residual(m.float(), field, padding_mode='border')).byte()
-                for m in src_cutout_masks]
-
-        if len(target_cutout_masks) > 0:
-             target_cutout_masks = [torch.ceil(downsample(trunclayer)(m.float())).byte() for m in target_cutout_masks]
-
-        # first we'll build a binary mask to completely ignore
-        # 'irrelevant' pixels
-        similarity_binary_masks = []
-
-        # mask away similarity error from pixels outside the boundary of
-        # either prediction or target
-        # in other words, we need valid data in both the target and prediction
-        # to count the error from that pixel
-        border_mask = masks.low_pass(masks.intersect([pred != 0, target != 0]))
-        border_mask, no_valid_pixels = masks.contract(border_mask, 5,
-                                                      return_sum=True)
-        if no_valid_pixels:
-            print('Skipping empty border mask.')
-            visualize_outputs(prefix('empty_border_mask') + '{}',
-                              {'src': input_src, 'target': input_target})
-            return None
-        similarity_binary_masks.append(border_mask)
-
-        # mask away similarity error from pixels within cutouts in either the
-        # source or target
-        cutout_similarity_masks = src_cutout_masks + target_cutout_masks
-        if len(cutout_similarity_masks) > 0:
-            cutout_similarity_mask = masks.union(cutout_similarity_masks)
-            cutout_similarity_mask = masks.invert(cutout_similarity_mask)
-            similarity_binary_masks.append(cutout_similarity_mask)
-
-        # mask away similarity error for pixels within a defect in the
-        # target image
-        if target_mask is not None:
-            target_defect_similarity_mask = masks.contract(
-                target_mask < 2, 2).detach()
-            similarity_binary_masks.append(target_defect_similarity_mask)
-
-        similarity_binary_mask = masks.intersect(similarity_binary_masks)
-
-        # reweight remaining pixels for focus areas
-        similarity_weights = Variable(torch.ones(border_mask.size())).cuda()
-        if mask is not None:
-            similarity_weights.data[
-                masks.intersect([mask > 0, mask <= 1]).data
-            ] = args.lambda4
-            similarity_weights.data[
-                masks.dilate(mask > 1, 2).data
-            ] = args.lambda5
-
-        similarity_weights *= similarity_binary_mask.float()
-
-        if torch.sum(similarity_weights[border_mask.data]).data[0] < args.eps:
-            print('Skipping all zero similarity weights (factor == 0).')
-            visualize_outputs(prefix('zero_similarity_weights') + '{}',
-                              {'src': input_src, 'target': input_target})
-            return None
-
-        # similarity_mask_factor = (
-        #     torch.sum(border_mask.float())
-        #     / torch.sum(similarity_weights[border_mask.data])).data[0]
-        similarity_mask_factor = 1
-
-        # compute raw similarity error and masked/weighted similarity error
-        similarity_error_field = similarity(pred, target)
-        weighted_similarity_error_field = (similarity_error_field
-                                           * similarity_weights
-                                           * similarity_mask_factor)
-
-        # perform masking/weighting for smoothness penalty
-        smoothness_binary_mask = (masks.intersect([src != 0, target != 0])
-                                  .view(similarity_binary_mask.size()))
-        smoothness_weights = Variable(
-            torch.ones(smoothness_binary_mask.size())).cuda()
-        if raw_mask is not None:
-            # everywhere we have non-standard smoothness, slightly reduce
-            # the smoothness penalty
-            smoothness_weights[raw_mask > 0] = args.lambda2
-            # on top of cracks and folds only, significantly reduce
-            # the smoothness penalty
-            smoothness_weights[raw_mask > 1] = args.lambda3
-        smoothness_weights = masks.contract(
-            smoothness_weights, args.mask_smooth_radius,
-            ceil=False, binary=False)
-        smoothness_weights *= smoothness_binary_mask.float().detach()
-        smoothness_weights = F.avg_pool2d(
-            smoothness_weights, 2*args.mask_smooth_radius+1, stride=1,
-            padding=args.mask_smooth_radius
-        )**.5
-        if raw_mask is not None:
-            # reset the most significant smoothness penalty relaxation
-            smoothness_weights[raw_mask > 1] = args.lambda3
-        smoothness_weights = F.avg_pool2d(smoothness_weights, 5,
-                                          stride=1, padding=2)
-        if (torch.sum(smoothness_weights[smoothness_binary_mask.byte().data])
-                .data[0] < args.eps):
-            print('Skipping all zero smoothness weights (factor == 0).')
-            visualize_outputs(prefix('zero_smoothness_weights') + '{}',
-                              {'src': input_src, 'target': input_target})
-            return None
-
-        # smoothness_mask_factor = (dim**2. / torch.sum(
-        #     smoothness_weights[smoothness_binary_mask.byte().data]).data[0])
-        smoothness_mask_factor = 1
-
-        smoothness_weights /= smoothness_mask_factor
-        smoothness_weights = gridsample_residual(smoothness_weights.detach(), field, padding_mode='border')
-        if args.hm:
-            smoothness_weights = smoothness_weights.detach()
-        smoothness_weights = smoothness_weights * border_mask.float().detach()
-
-        weighted_smoothness_error_field = smoothness(
-            [field], weights=smoothness_weights)
-
-        if mask is not None:
-            hpred = pred.clone().detach()
-            hpred[(mask > 1).detach()] = torch.min(pred).data[0]
-        else:
-            hpred = pred
-
-        return {
-            'src': src,
-            'target': target,
-            'input_src': downsample(trunclayer)(input_src.unsqueeze(0).unsqueeze(0)),
-            'input_target': downsample(trunclayer)(input_target.unsqueeze(0).unsqueeze(0)),
-            'field': field,
-            'residuals': residuals,
-            'pred': pred,
-            'hpred': hpred,
-            'src_mask': mask,
-            'raw_src_mask': raw_mask,
-            'target_mask': target_mask,
-            'similarity_error':
-                torch.mean(weighted_similarity_error_field[border_mask]),
-            'smoothness_error':
-                torch.sum(weighted_smoothness_error_field),
-            'smoothness_weights': smoothness_weights,
-            'similarity_weights': similarity_weights,
-            'similarity_error_field': weighted_similarity_error_field,
-            'smoothness_error_field': weighted_smoothness_error_field
-        }
+    # Averaging
+    train_losses = AverageMeter()
+    val_losses = AverageMeter()
+    epoch_time = AverageMeter()
 
     print('=========== BEGIN TRAIN LOOP ============')
-    for epoch in range(args.epoch, args.num_epochs):
-        print('Beginning training epoch: {}'.format(epoch))
-        for t, tensor_dict in enumerate(train_loader):
-            if t == 0:
-                if epoch % fall_time == 0 and (trunclayer > 0
-                                               or args.trunc == 0):
-                    # only fine tune if running a tuning session
-                    fine_tuning = False or args.fine_tuning
-                    if epoch > 0 and trunclayer > 0:
-                        trunclayer -= 1
-                    optimizer = opt(trunclayer)
-                elif (epoch >= fall_time * size - 1
-                      or epoch % fall_time == fall_time - 1):
-                    if not fine_tuning:
-                        fine_tuning = True
-                        optimizer = opt(trunclayer)
+    start_epoch = state_vars.epoch
+    for epoch in range(start_epoch, state_vars.num_epochs):
+        start_time = time.time()
+        state_vars.epoch = epoch
+        archive.save()
 
-            # Get inputs
-            X = Variable(tensor_dict['X'], requires_grad=False).cuda()
-            this_mip = tensor_dict['mip'][0]
-            if trunclayer == 0:
-                mask_stack = (
-                    lm_defect_detector.masks_from_stack(X) if this_mip == 2
-                    else hm_defect_detector.masks_from_stack(X))
-            else:
-                mask_stack = None
-            stacks, top, left = aug_stacks(
-                [X, mask_stack] if trunclayer == 0 else [X], 
-                padding=padding, jitter=not args.no_jitter,
-                jitter_displacement=2**(args.size-1))
-            X, mask_stack = stacks[0], stacks[1] if trunclayer == 0 else None
+        # train for one epoch
+        train_loss = train(train_loader, archive, epoch)
+        train_losses.update(train_loss)
 
-            errs = []
-            penalties = []
-            consensus_list = []
-            contrast_errors = []
-            smooth_factor = 1 if trunclayer == 0 and fine_tuning else 0.05
-            for sample_idx, i in enumerate(range(1, X.size(1)-1)):
-                ##################################
-                # RUN SINGLE PAIR OF SLICES ######
-                ##################################
-                src, target = X[0, i], X[0, i+1]
-                src_mask, target_mask = (
-                    (mask_stack[0, i], mask_stack[0, i+1]) if trunclayer == 0
-                    else (None, None))
+        # evaluate on validation set
+        if val_loader:
+            val_loss = validate(val_loader, archive, epoch)
+            val_losses.update(val_loss)
+        else:
+            val_loss = None
 
-                if (min(torch.var(src).data[0], torch.var(target).data[0])
-                        < args.blank_var_threshold):
-                    print("Skipping blank sections: ({}, {})."
-                          .format(torch.var(src).data[0],
-                                  torch.var(target).data[0]))
-                    visualize_outputs(prefix('blank_sections') + '{}',
-                                      {'src': src, 'target': target})
-                    continue
-
-                rf, rb = run_pair(src, target, src_mask, target_mask)
-                if rf is not None:
-                    if not args.pe_only:
-                        errs.append(rf['similarity_error'].data[0])
-                        penalties.append(rf['smoothness_error'].data[0])
-                        if args.lambda6 > 0 and 'consensus' in rf:
-                            consensus_list.append(rf['consensus'].data[0])
-                    else:
-                        contrast_errors.append(rf['contrast_error'].data[0])
-
-                if rb is not None:
-                    if not args.pe_only:
-                        errs.append(rb['similarity_error'].data[0])
-                        penalties.append(rb['smoothness_error'].data[0])
-                        if args.lambda6 > 0 and 'consensus' in rb:
-                            consensus_list.append(rb['consensus'].data[0])
-                    else:
-                        contrast_errors.append(rb['contrast_error'].data[0])
-
-                if (sample_idx == 0 and t % args.vis_interval == 0
-                        and not args.pe_only):
-                    visualize_outputs(prefix('forward') + '{}', rf)
-                    visualize_outputs(prefix('backward') + '{}', rb)
-                ##################################
-
-                optimizer.step()
-                model.zero_grad()
-
-            if args.pe_only:
-                mean_contrast = (
-                    (sum(contrast_errors) / len(contrast_errors))
-                    if len(contrast_errors) > 0 else 0)
-                print('Mean contraster error: {}'.format(mean_contrast))
-                torch.save(model.state_dict(), 'pt/' + name + '.pt')
-            # Save some info
-            if len(errs) > 0:
-                mean_err_train = sum(errs) / len(errs)
-                mean_penalty_train = sum(penalties) / len(penalties)
-                mean_consensus = (
-                    (sum(consensus_list) / len(consensus_list))
-                    if len(consensus_list) > 0 else torch.tensor(0.))
-                print(t, smooth_factor, trunclayer,
-                      (mean_err_train + args.lambda1
-                      * mean_penalty_train * smooth_factor).item(),
-                      mean_err_train.item(), mean_penalty_train.item(),
-                      mean_consensus.item())
-                history.append((
-                    time.time() - start_time,
-                    (mean_err_train + mean_penalty_train * smooth_factor).item(),
-                    mean_err_train.item(), mean_penalty_train.item(),
-                    mean_consensus.item()))
-                torch.save(model.state_dict(), 'pt/' + name + '.pt')
-                if t % 100 == 0:
-                    torch.save(model.state_dict(), prefix() + '.pt')
-
-                print('Writing status to: {}'.format(log_file))
-                with open(log_file, 'a') as log:
-                    for tr in history:
-                        for val in tr:
-                            log.write(str(val) + ', ')
-                        log.write('\n')
-                    history = []
-            else:
-                print(
-                    "Skipping writing status for stack with no valid slices.")
+        # log and save state
+        state_vars.epoch = epoch + 1
+        state_vars.iteration = None
+        state_vars.levels = None
+        archive.save()
+        archive.log([
+            datetime.datetime.now(),
+            epoch,
+            len(train_loader),
+            '',  # train_loss
+            val_loss if val_loss is not None else '',
+        ])
+        archive.create_checkpoint(epoch, iteration=None)
+        epoch_time.update(time.time() - start_time)
+        print('{0}\t'
+              'Completed Epoch {1}\t'
+              'TrainLoss {train_losses.val:.10f} ({train_losses.avg:.10f})\t'
+              'ValLoss {val_losses.val:.10f} ({val_losses.avg:.10f})\t'
+              'EpochTime {epoch_time.val:.3f} ({epoch_time.avg:.3f})\t'
+              '\n'
+              .format(state_vars.name, epoch, train_losses=train_losses,
+                      val_losses=val_losses, epoch_time=epoch_time))
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('name')
-    parser.add_argument(
-        '--dry_run',
-        help='tests data loading when passed, skipping training',
-        action='store_true')
-    parser.add_argument(
-        '--vis_interval',
-        help='the number of stacks in between each visualization',
-        type=int, default=10)
-    parser.add_argument(
-        '--mask_smooth_radius',
-        help='radius of average pooling kernel for smoothing smoothness '
-        'penalty weights', type=int, default=20)
-    parser.add_argument(
-        '--mask_neighborhood_radius',
-        help='radius (in pixels) of neighborhood effects of cracks and folds',
-        type=int, default=20)
-    parser.add_argument(
-        '--eps',
-        help='epsilon value to avoid divide-by-zero',
-        type=float, default=1e-6)
-    parser.add_argument(
-        '--no_jitter',
-        help='omit jitter when augmenting image stacks', action='store_true')
-    parser.add_argument(
-        '--hm',
-        help='do high mip (mip 5) training run; runs at mip 2 if flag is '
-        'omitted', action='store_true')
-    parser.add_argument(
-        '--mm',
-        help='mix mips while training (2,5,7,8)', action='store_true')
-    parser.add_argument(
-        '--blank_var_threshold',
-        help='variance threshold under which an image will be considered '
-        'blank and omitted', type=float, default=0.001)
-    parser.add_argument(
-        '--lambda1', help='total smoothness penalty coefficient',
-        type=float, default=0.1)
-    parser.add_argument(
-        '--lambda2', help='smoothness penalty reduction around cracks/folds',
-        type=float, default=0.3)
-    parser.add_argument(
-        '--lambda3',
-        help='smoothness penalty reduction on top of cracks/folds',
-        type=float, default=0.00001)
-    parser.add_argument(
-        '--lambda4', help='MSE multiplier in regions around cracks and folds',
-        type=float, default=10)
-    parser.add_argument(
-        '--lambda5',
-        help='MSE multiplier in regions on top of cracks and folds',
-        type=float, default=0)
-    parser.add_argument(
-        '--lambda6',
-        help='coefficient for drift-prevention consensus loss in training '
-        '(default=0)', type=float, default=0)
-    parser.add_argument(
-        '--skip',
-        help='number of residuals (starting at the bottom of the pyramid) to '
-        'omit from the aggregate field', type=int, default=0)
-    parser.add_argument(
-        '--size',
-        help='height of pyramid/number of residual modules in the pyramid',
-        type=int, default=5)
-    parser.add_argument(
-        '--dim',
-        help='side dimension of training images', type=int, default=1152)
-    parser.add_argument(
-        '--trunc',
-        help='truncation layer; should usually be size-1 (0 IF FINE TUNING)',
-        type=int, default=4)
-    parser.add_argument(
-        '--lr',
-        help='starting learning rate', type=float, default=0.0002)
-    parser.add_argument(
-        '--num_epochs',
-        help='number of training epochs', type=int, default=1000)
-    parser.add_argument(
-        '--state_archive',
-        help='saved model to initialize with', type=str, default=None)
-    # parser.add_argument(
-    #     '--batch_size',
-    #     help='size of batch', type=int, default=1)
-    parser.add_argument(
-        '--k',
-        help='kernel size', type=int, default=7)
-    parser.add_argument(
-        '--fall_time',
-        help='epochs between layers', type=int, default=2)
-    parser.add_argument(
-        '--epoch',
-        help='training epoch to start from', type=int, default=0)
-    parser.add_argument(
-        '--padding',
-        help='amount of padding to add to training stacks',
-        type=int, default=128)
-    parser.add_argument(
-        '--fine_tuning',
-        help='when passed, begin with fine tuning (reduce learning rate, '
-        'train all parameters)', action='store_true')
-    parser.add_argument(
-        '--skip_sample_aug',
-        help='skips slice-wise augmentation when passed (no cutouts, etc)',
-        action='store_true')
-    parser.add_argument(
-        '--penalty',
-        help='type of smoothness penalty (lap, jacob, cjacob, tv)',
-        type=str, default='jacob')
-    parser.add_argument(
-        '--lm_defect_net',
-        help='mip2 defect net archive', type=str,
-        default='basil_defect_unet18070201')
-    parser.add_argument(
-        '--hm_defect_net',
-        help='mip5 defect net archive', type=str,
-        default='basil_defect_unet_mip518070305')
-    parser.add_argument(
-        '--fine_tuning_lr_factor',
-        help='factor by which to reduce learning rate during fine tuning',
-        type=float, default=0.2)
-    parser.add_argument(
-        '--pe', action='store_true', 
-        help="Add a preencoder to preprocess the inputs")
-    parser.add_argument(
-        '--pe_only', action='store_true',
-        help="Only train the preencoder.")
-    parser.add_argument(
-        '--enc_only', action='store_true')
-    parser.add_argument(
-        '--vhm_src',
-        help='very high mip source (mip 8)', type=str,
-        default='~/matriarch_mixed.h5')
-    parser.add_argument(
-        '--hm_src',
-        help='high mip source (mip 5)', type=str, default='~/mip5_mixed.h5')
-    parser.add_argument(
-        '--lm_src',
-        help='low mip source (mip 2)', type=str, default='~/mip2_mixed.h5')
-    return parser.parse_args()
+def train(train_loader, archive, epoch):
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    losses = AverageMeter()
+
+    # switch to train mode and select the submodule to train
+    archive.model.train()
+    archive.adjust_learning_rate()
+    submodule = select_submodule(archive.model)
+    init_submodule(submodule)
+    print('training levels: {}'
+          .format(list(range(state_vars.height))[state_vars.levels]))
+    max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
+
+    start_time = time.time()
+    start_iter = 0 if state_vars.iteration is None else state_vars.iteration
+    for i, sample in retry_enumerate(train_loader, start_iter):
+        if i >= len(train_loader):
+            break
+        state_vars.iteration = i
+
+        # measure data loading time
+        data_time.update(time.time() - start_time)
+
+        # compute output and loss
+        src, tgt, truth = prepare_input(sample, max_displacement=max_disp)
+        prediction = submodule(src, tgt)
+        if truth is not None:
+            loss = archive.loss(prediction=prediction, truth=truth)
+        else:
+            loss = archive.loss(src, tgt, prediction=prediction)
+        loss = loss.mean()  # average across a batch if present
+
+        # compute gradient and do optimizer step
+        if math.isfinite(loss.item()):
+            archive.optimizer.zero_grad()
+            loss.backward()
+            archive.optimizer.step()
+        loss = loss.item()  # get python value without the computation graph
+        losses.update(loss)
+        state_vars.iteration = i + 1  # advance iteration to resume correctly
+        archive.save()
+        state_vars.iteration = i  # revert back for logging & visualizations
+
+        # measure elapsed time
+        batch_time.update(time.time() - start_time)
+
+        # debugging, logging, and checkpointing
+        if (state_vars.checkpoint_time
+                and i % state_vars.checkpoint_time == 0):
+            archive.create_checkpoint(epoch=epoch, iteration=i)
+        if state_vars.log_time and i % state_vars.log_time == 0:
+            archive.log([
+               datetime.datetime.now(),
+               epoch,
+               i,
+               loss if math.isfinite(loss) else '',
+               '',
+            ])
+            print('{0}\t'
+                  'Epoch: {1} [{2}/{3}]\t'
+                  'Loss {loss.val:12.10f} ({loss.avg:.10f})\t'
+                  'BatchTime {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'DataTime {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                  .format(
+                      state_vars.name,
+                      epoch, i, len(train_loader), batch_time=batch_time,
+                      data_time=data_time, loss=losses))
+        if state_vars.vis_time and i % state_vars.vis_time == 0:
+            create_debug_outputs(archive, src, tgt, prediction, truth)
+
+        start_time = time.time()
+    return losses.avg
+
+
+@torch.no_grad()
+def validate(val_loader, archive, epoch):
+    losses = AverageMeter()
+
+    # switch to evaluate mode
+    archive.model.eval()
+    submodule = select_submodule(archive.model)
+
+    # compute output and loss
+    start_time = time.time()
+    for i, sample in retry_enumerate(val_loader):
+        print('{0}\t'
+              'Validation: [{1}/{2}]\t'
+              .format(state_vars.name, i, len(val_loader)), end='\r')
+        src, tgt, truth = prepare_input(sample, supervised=False)
+        prediction = submodule(src, tgt)
+        loss = archive.val_loss(src, tgt, prediction=prediction)
+        losses.update(loss.item())
+
+    # measure elapsed time
+    batch_time = (time.time() - start_time)
+
+    # debugging outputs and printing
+    create_debug_outputs(archive, src, tgt, prediction, truth)
+    print('{0}\t'
+          'Validation: [{1}/{1}]\t'
+          'Loss {loss.avg:.10f}\t\t\t'
+          'Time {batch_time:.3f}\t'
+          .format(state_vars.name, len(val_loader),
+                  batch_time=batch_time, loss=losses))
+
+    return losses.avg
+
+
+def select_submodule(model):
+    """
+    Selects the submodule to be trained based on the specified levels.
+    If `levels` is `None`, selects them by calling `select_levels()`
+    """
+    if state_vars.levels is None:
+        state_vars.levels = select_levels()
+    submodule = model.module[state_vars.levels]
+    if state_vars.plan == 'top_down':
+        last = 'lowest'
+    elif state_vars.plan == 'bottom_up':
+        last = 'highest'
+    else:
+        last = 'all'
+    return torch.nn.DataParallel(submodule.train_level(last))
+
+
+def select_levels():
+    """
+    Returns a slice, list, or integer representing the levels to be trained
+    during this epoch.
+    At epoch `epoch`, selects version `epoch/epochs_per_mip` of the model,
+    according to the training plan `plan`.
+    `plan` may be any of `all`, `top_down`, `bottom_up`, or `random_one`
+    """
+    if state_vars.epoch is None:
+        return slice(None)
+    index = state_vars.epoch // state_vars.epochs_per_mip
+    if state_vars.plan == 'top_down':
+        return slice(-(index+1), None)
+    elif state_vars.plan == 'bottom_up':
+        return slice(None, index+1)
+    elif state_vars.plan == 'random_one':
+        level = random.randrange(0, state_vars.height + 1)
+        return level if level < state_vars.height else slice(None)
+    else:  # state_vars.plan == 'all':
+        return slice(None)
+
+
+def init_submodule(submodule):
+    """
+    Initializes the last level of the submodule to the weights of the
+    next-to-last, if this has not already happened.
+    """
+    index = state_vars.epoch // state_vars.epochs_per_mip
+    if state_vars.initialized_list is None:
+        state_vars.initialized_list = []
+    if len(state_vars.initialized_list) < state_vars.height:
+        state_vars.initialized_list += \
+            [False]*(state_vars.height - len(state_vars.initialized_list))
+    if (index < state_vars.height
+            and not state_vars.initialized_list[index]):
+        if state_vars.plan == 'top_down':
+            submodule.module.init_level('lowest')
+        elif state_vars.plan == 'bottom_up':
+            submodule.module.init_level('highest')
+        state_vars.initialized_list[index] = True
+    return submodule
+
+
+@torch.no_grad()
+def prepare_input(sample, supervised=None, max_displacement=2):
+    """
+    Formats the input received from the data loader and produces a
+    ground truth vector field if supervised.
+    If `supervised` is None, it uses the value specified in state_vars
+    """
+    if supervised is None:
+        supervised = state_vars.supervised
+    if supervised:
+        src = sample['src'].cuda()
+        truth_field = random_field(src.shape, max_displacement=max_displacement)
+        tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
+    else:
+        src = sample['src'].cuda()
+        tgt = sample['tgt'].cuda()
+        truth_field = None
+    return src, tgt, truth_field
+
+
+@torch.no_grad()
+def random_field(shape, max_displacement=2, num_downsamples=7):
+    """
+    Genenerates a random vector field smoothed by bilinear interpolation.
+
+    The vectors generated will have values representing displacements of
+    between (approximately) `-max_displacement` and `max_displacement` pixels
+    at the size dictated by `shape`.
+    The actual values, however, will be scaled to the spatial transformer
+    standard, where -1 and 1 represent the edges of the image.
+
+    `num_downsamples` dictates the block size for the random field.
+    Each block will have size `2**num_downsamples`.
+    """
+    zero = torch.zeros(shape, device='cuda')
+    zero = torch.cat([zero, zero.clone()], 1)
+    smaller = downsample(num_downsamples)(zero)
+    std = max_displacement / shape[-2] / math.sqrt(2)
+    field = torch.nn.init.normal_(smaller, mean=0, std=std)
+    field = upsample(num_downsamples)(field)
+    result = field.permute(0, 2, 3, 1)
+    return result
+
+
+@torch.no_grad()
+def create_debug_outputs(archive, src, tgt, prediction, truth):
+    """
+    Creates a subdirectory exports any debugging outputs to that directory.
+    """
+    try:
+        debug_dir = archive.new_debug_directory()
+        stack_dir = debug_dir / 'stack'
+        stack_dir.mkdir()
+        save_chunk(src[0:1, ...], str(debug_dir / 'src'))
+        save_chunk(src[0:1, ...], str(stack_dir / 'src'))
+        save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt'))
+        save_chunk(tgt[0:1, ...], str(stack_dir / 'tgt'))
+        warped_src = gridsample_residual(
+            src[0:1, ...],
+            prediction[0:1, ...].detach().to(src.device),
+            padding_mode='zeros')
+        save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
+        save_chunk(warped_src[0:1, ...], str(stack_dir / 'warped_src'))
+        archive.visualize_loss('Training Loss', 'Validation Loss')
+        save_vectors(prediction[0:1, ...].detach(),
+                     str(debug_dir / 'prediction'))
+        if truth is not None:
+            save_vectors(truth[0:1, ...].detach(),
+                         str(debug_dir / 'ground_truth'))
+        masks = archive._objective.gen_masks(src, tgt, prediction)
+        for k, v in masks.items():
+            if v is not None and len(v) > 0:
+                save_chunk(v[0][0:1, ...], str(debug_dir / k))
+    except Exception as e:
+        # Don't raise the exception, since visualization issues
+        # should not stop training. Just warn the user and go on.
+        print('Visualization failed: {}: {}'.format(e.__class__.__name__, e))
+
+
+def load_archive(args):
+    """
+    Load or create the model, optimizer, and parameters as a `ModelArchive`.
+
+    If the command is `start`, this attempts to create a new `ModelArchive`
+    with name `args.name`, if possible (that is, without overwriting an
+    existing one).
+    If the command is `resume`, this attempts to load it from disk.
+    """
+    if args.command == 'start':
+        if ModelArchive.model_exists(args.name):
+            raise ValueError('The model "{}" already exists.'
+                             .format(args.name))
+        if args.saved_model is not None:
+            # load a previous model and create a copy
+            if not ModelArchive.model_exists(args.saved_model):
+                raise ValueError('The model "{}" could not be found.'
+                                 .format(args.saved_model))
+            old = ModelArchive(args.saved_model, readonly=True)
+            archive = old.start_new(readonly=False, **vars(args))
+            # TODO: explicitly remove old model from memory
+        else:
+            archive = ModelArchive(readonly=False, **vars(args))
+        archive.state_vars.update({
+            'name': args.name,
+            'height': args.height,
+            'feature_maps': args.feature_maps,
+            'start_lr': args.lr,
+            'lr': args.lr,
+            'wd': args.wd,
+            'gamma': args.gamma,
+            'gamma_step': args.gamma_step,
+            'epoch': 0,
+            'iteration': None,
+            'num_epochs': args.num_epochs,
+            'plan': args.plan,
+            'epochs_per_mip': args.epochs_per_mip,
+            'training_set_path': Path(args.training_set).expanduser(),
+            'validation_set_path':
+                Path(args.validation_set).expanduser() if args.validation_set
+                else None,
+            'supervised': args.supervised,
+            'encodings': args.encodings,
+            'batch_size': args.batch_size,
+            'log_time': args.log_time,
+            'checkpoint_time': args.checkpoint_time,
+            'vis_time': args.vis_time,
+            'lambda1': args.lambda1,
+            'penalty': args.penalty,
+            'gpus': args.gpu_ids,
+        })
+        archive.set_log_titles([
+            'Time Stamp',
+            'Epoch',
+            'Iteration',
+            'Training Loss',
+            'Validation Loss',
+        ])
+        archive.set_optimizer_params(learning_rate=args.lr,
+                                     weight_decay=args.wd)
+
+        # save initialized state to archive; create first checkpoint
+        archive.save()
+        archive.create_checkpoint(epoch=None, iteration=None)
+    else:  # args.command == 'resume'
+        if not ModelArchive.model_exists(args.name):
+            raise ValueError('The model "{}" could not be found.'
+                             .format(args.name))
+        archive = ModelArchive(args.name, readonly=False)
+        archive.state_vars['gpus'] = args.gpu_ids
+
+    # redirect output through the archive
+    sys.stdout = archive.out
+    sys.stderr = archive.err
+
+    return archive
 
 
 if __name__ == '__main__':

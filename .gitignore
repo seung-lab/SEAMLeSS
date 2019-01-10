@@ -14,7 +14,6 @@ data/masks/*
 data/tf/*
 data/slices/*
 data/*
-src/train.py
 
 # C extensions
 *.so
@@ -122,3 +121,8 @@ venv.bak/
 # output images
 out/
 bin/projects
+
+# debugging outputs
+*.debug
+intermediate_models/
+debug_outputs/

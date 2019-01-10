@@ -10,3 +10,8 @@ neuroglancer
 visdom
 pathos
 pyshorteners
+argcomplete
+pandas
+opencv-python
+setuptools
+pyyaml

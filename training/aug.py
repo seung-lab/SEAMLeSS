@@ -7,7 +7,7 @@ import random
 import time
 import itertools
 
-from helpers import reverse_dim, save_chunk, gif
+from utilities.helpers import reverse_dim, save_chunk, gif
 
 def half(a=None,b=None):
     if a is None and b is None:
@@ -34,8 +34,8 @@ def rotate_and_scale(imslice, size=0.01, scale=0.01, grid=None):
         scale = np.random.normal(1, scale)
         mat = torch.FloatTensor([[[np.cos(theta),-np.sin(theta),0],[np.sin(theta),np.cos(theta),0]]]) * scale
         grid = F.affine_grid(mat, imslice.size() if type(imslice) != list else imslice[0].size())
-        if (imslice.is_cuda if type(imslice) != list else imslice[0].is_cuda):
-            grid = grid.cuda()
+        # if (imslice.is_cuda if type(imslice) != list else imslice[0].is_cuda):
+        #     grid = grid.cuda()
     if type(imslice) == list:
         output = [apply_grid(o.clone(), grid) for o in imslice]
     else:
@@ -70,6 +70,28 @@ def crack(imslice, width_range=(4,32)):
             outslice.data[idx,p-width:p] = color
         mask.data[idx,p-width:p] = 0
     return outslice, mask
+
+def random_translation(src, max_displacement=2**6):
+    """Shift src by x & y up to max_displacement, keeping src size
+
+    Args:
+    * img: 2D array
+    """
+    dst = torch.zeros(src.size())
+    d = int(max_displacement / (2. * np.sqrt(2)))
+    xoff = weighted_draw(1,d) * half(1,-1)
+    yoff = weighted_draw(1,d) * half(1,-1)
+    if xoff >= 0:
+        if yoff >= 0:
+            dst[xoff:,yoff:] = src[:-xoff,:-yoff]
+        else:
+            dst[xoff:,:yoff] = src[:-xoff,-yoff:]
+    else:
+        if yoff >= 0:
+            dst[:xoff,yoff:] = src[-xoff:,:-yoff]
+        else:
+            dst[:xoff,:yoff] = src[-xoff:,-yoff:]
+    return dst
 
 def jitter_stacks(Xs, max_displacement=2**6, min_cut=32):
     assert len(Xs) > 0
@@ -150,7 +172,8 @@ def gen_gradient(size, flip=None, period_median=25, peak=0.3, randomize_peak=Tru
         grad = -grad
     if rotate:
         grad = rotate_and_scale(grad.unsqueeze(0).unsqueeze(0), None, 0.1)[0].squeeze()
-    return grad.cuda()
+    # return grad.cuda()
+    return grad
 
 def gen_tiles(size, dim=None, min_count=6, max_count=32, peak=0.5):
     assert len(size) == 2
@@ -168,7 +191,8 @@ def gen_tiles(size, dim=None, min_count=6, max_count=32, peak=0.5):
         shift = random.randint(0, dim)
         shift_idxs = range(tiles.size(0))
         shift_idxs = list(shift_idxs[shift:]) + list(shift_idxs[:shift])
-        shift_idxs = torch.from_numpy(np.array(shift_idxs)).cuda().long()
+        # shift_idxs = torch.from_numpy(np.array(shift_idxs)).cuda().long()
+        shift_idxs = torch.from_numpy(np.array(shift_idxs)).long()
         if flip:
             tiles[idx*dim:(idx+1)*dim,:] = tiles[idx*dim:(idx+1)*dim][:,shift_idxs]
         else:
@@ -260,7 +284,8 @@ def random_rect_mask(size):
     dimy = random.randint(1,size[-2]//2)
     mx = size[-2]//2-dimx//2
     my = size[-2]//2-dimy//2
-    prerotated_centered = Variable(torch.zeros(size)).cuda()
+    # prerotated_centered = Variable(torch.zeros(size)).cuda()
+    prerotated_centered = torch.zeros(size)
     prerotated_centered[mx:mx+dimx,my:my+dimy] = 1
     rotated_centered, _ = rotate_and_scale(prerotated_centered, None, 0)
     upper_bound = int(size[-2]//2 - max(dimx,dimy) / np.sqrt(2))
@@ -284,7 +309,8 @@ def aug_input(x, factor=2):
     for _ in range(gaussian_cutouts):
         mask = random_rect_mask(out.size()).squeeze(0).squeeze(0)
         sigma = np.random.uniform(0.001,0.03)
-        noise = Variable(torch.FloatTensor(np.random.normal(0,sigma,out.size()))).cuda()
+        # noise = Variable(torch.FloatTensor(np.random.normal(0,sigma,out.size()))).cuda()
+        noise = torch.FloatTensor(np.random.normal(0,sigma,out.size()))
         if half():
             # randomly smooth the noise
             r = random.randint(1,20)
@@ -299,9 +325,9 @@ def aug_input(x, factor=2):
         out[mask] = out[mask] * half(f,1./f)
 
     for _ in range(missing_cutouts):
-        mask = random_rect_mask(out.size())
+        mask = random_rect_mask(out.size()).squeeze(0)
         missing_masks.append(mask)
-        mask = mask.squeeze(0).squeeze(0)
+        mask = mask.squeeze(0)
         out[mask] = np.random.uniform(1/255.,1)
 
     out = aug_brightness(out, factor)
