@@ -4,9 +4,10 @@ import subprocess
 import random
 import torch
 import numpy as np
-import json
+import yaml
 import datetime
 from pathlib import Path
+import importlib
 import pandas as pd
 
 from utilities.helpers import cp
@@ -106,12 +107,11 @@ class ModelArchive(object):
             'plan': self.directory / 'plan.txt',
             'history': self.directory / 'history.txt',
             'progress': self.directory / 'progress.log',
-            'seed': self.directory / 'seed.txt',
             'architecture': self.directory / 'architecture.py',
             'objective': self.directory / 'objective.py',
             'preprocessor': self.directory / 'preprocessor.py',
             'commit': self.directory / 'commit.diff',
-            'state_vars': self.directory / 'state_vars.json',
+            'state_vars': self.directory / 'state_vars.yaml',
             'plot': self.directory / 'plot.png',
         }
         self._architecture = None
@@ -123,6 +123,7 @@ class ModelArchive(object):
         self._val_loss = None
         self._preprocessor = None
         self._current_debug_directory = None
+        self._seed = None
 
         if ModelArchive.model_exists(name):
             self._load(*args, **kwargs)
@@ -194,8 +195,8 @@ class ModelArchive(object):
             'plan.txt',
             'history.txt',
             'progress.log',
-            'seed.txt',
             'commit.diff',
+            'plot.png',
         ]:
             key = filename.split('.')[0]
             self.paths[key].touch(exist_ok=False)
@@ -319,7 +320,6 @@ class ModelArchive(object):
         The validation loss function of the model
         """
         return self._val_loss
-        return self._loss
 
     @property
     def preprocessor(self):
@@ -352,11 +352,9 @@ class ModelArchive(object):
 
         If the model is untrained, loads a newly initialized model.
         """
-        sys.path.insert(0, str(self.directory))
-        import architecture
-        sys.path.remove(str(self.directory))
-        self._architecture = architecture
-        self._model = architecture.Model(*args, **kwargs)
+        self._architecture = importlib.import_module(
+            '{}.{}.architecture'.format(models_location.stem, self._name))
+        self._model = self._architecture.Model(*args, **kwargs)
         if self.paths['weights'].exists():
             self._model.load(self.paths['weights'])
 
@@ -377,14 +375,11 @@ class ModelArchive(object):
         """
         Loads the objective functions stored in the archive
         """
-        try:
-            sys.path.insert(0, str(self.directory))
-            import objective
-        except ImportError:
+        if self.paths['objective'].exists():
+            self._objective = importlib.import_module(
+                '{}.{}.objective'.format(models_location.stem, self._name))
+        else:
             return None
-        finally:
-            sys.path.remove(str(self.directory))
-        self._objective = objective
         self._loss = self._objective.Objective(*args, **kwargs)
         self._val_loss = self._objective.ValidationObjective(*args, **kwargs)
         if not self.readonly:
@@ -396,13 +391,11 @@ class ModelArchive(object):
         """
         Loads the archive's image preprocessor
         """
-        try:
-            sys.path.insert(0, str(self.directory))
-            import preprocessor
-        except ImportError:
+        if self.paths['preprocessor'].exists():
+            preprocessor = importlib.import_module(
+                '{}.{}.preprocessor'.format(models_location.stem, self._name))
+        else:
             return None
-        finally:
-            sys.path.remove(str(self.directory))
         self._preprocessor = preprocessor.Preprocessor(*args, **kwargs)
         return self._preprocessor
 
@@ -432,19 +425,20 @@ class ModelArchive(object):
                 prand_state = torch.load(f)
             set_random_generator_state(prand_state)
         else:
-            with self.paths['seed'].open('w') as f:
-                f.write(str(seed))
+            self._seed = seed
             print('Initializing seed to {}'.format(seed))
             set_seed(seed)
 
     def _load_state_vars(self, *args, **kwargs):
         """
-        Loads the dict of state variables stored in `state_vars.json`
+        Loads the dict of state variables stored in `state_vars.yaml`
         """
         self._state_vars = dotdict({'name': self._name})  # default state_vars
         if self.paths['state_vars'].exists():
             with self.paths['state_vars'].open(mode='r') as f:
-                self._state_vars = dotdict(json.load(f))
+                self._state_vars = dotdict(yaml.load(f))
+        if self._seed is not None:
+            self._state_vars.seed = self._seed
         return self._state_vars
 
     def save(self):
@@ -463,13 +457,9 @@ class ModelArchive(object):
         with self.paths['prand'].open('wb') as f:
             torch.save(get_random_generator_state(), f)
         if self._state_vars:
+            s = yaml.dump(dict(self._state_vars))
             with self.paths['state_vars'].open('w') as f:
-                state_vars_serializable = {
-                    key: (str(value) if isinstance(value, Path) else value)
-                    for (key, value) in self._state_vars.items()
-                }
-                f.write(json.dumps(state_vars_serializable,
-                                   indent=2, sort_keys=True))
+                f.write(s)
 
     def create_checkpoint(self, epoch, iteration, save=True):
         """
@@ -484,12 +474,18 @@ class ModelArchive(object):
         if save:
             self.save()  # ensure the saved weights are up to date
         if epoch is None:
-            checkpt_name = 'init.pt'
+            checkpt_name = 'init'
         elif iteration is None:
-            checkpt_name = 'e{}.pt'.format(epoch)
+            checkpt_name = 'e{}'.format(epoch)
         else:
-            checkpt_name = 'e{}_t{}.pt'.format(epoch, iteration)
-        cp(self.paths['weights'], self.intermediate_models / checkpt_name)
+            checkpt_name = 'e{}_t{}'.format(epoch, iteration)
+        check_dir = self.intermediate_models / checkpt_name
+        check_dir.mkdir()
+        cp(self.paths['weights'], check_dir)
+        cp(self.paths['optimizer'], check_dir)
+        cp(self.paths['prand'], check_dir)
+        cp(self.paths['state_vars'], check_dir)
+        cp(self.paths['plot'], check_dir)
 
     def new_debug_directory(self):
         """
@@ -585,6 +581,8 @@ class ModelArchive(object):
         if average_over < 1:
             average_over = 1
         data = data.dropna(axis=1, how='all').interpolate()
+        if self._state_vars.plot_from is not None:
+            data = data[self._state_vars.plot_from:]
         if data.empty:
             return
         data = data.rolling(window=average_over).mean()

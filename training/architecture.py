@@ -13,17 +13,21 @@ class Model(nn.Module):
     `feature_maps` is the number of feature maps per encoding layer
     """
 
-    def __init__(self, height, feature_maps=12, *args, **kwargs):
+    def __init__(self, feature_maps=None, encodings=True, *args, **kwargs):
         super().__init__()
-        self.height = height
-        self.encode = EncodingPyramid([1] + [feature_maps]*(height - 1))
-        self.align = AligningPyramid(height)
+        self.feature_maps = feature_maps
+        self.encode = EncodingPyramid(self.feature_maps, **kwargs) if encodings else None
+        self.align = AligningPyramid(self.feature_maps if encodings
+                                     else [1]*len(feature_maps), **kwargs)
 
     def __getitem__(self, index):
         return self.submodule(index)
 
-    def forward(self, src, tgt, in_field=None, encodings=False, **kwargs):
-        if encodings:
+    def __len__(self):
+        return self.height
+
+    def forward(self, src, tgt, in_field=None, **kwargs):
+        if self.encode:
             src, tgt = self.encode(src, tgt)
         field = self.align(src, tgt, in_field)
         return field
@@ -43,6 +47,10 @@ class Model(nn.Module):
         """
         with path.open('wb') as f:
             torch.save(self.state_dict(), f)
+
+    @property
+    def height(self):
+        return len(self.feature_maps)
 
     def submodule(self, index):
         """
@@ -92,14 +100,16 @@ class EncodingPyramid(nn.Module):
     `feature_list` should be a list of integers, each of which specifies
     the number of feature maps at a particular mip level.
     For example,
-        >>> EncodingPyramid([1, 2, 4, 8])
-    creates a pyramid with four Encoder modules, with 1, 2, 4, and 8
+        >>> EncodingPyramid([2, 4, 8, 16])
+    creates a pyramid with four Encoder modules, with 2, 4, 8, and 16
     feature maps respectively.
+    `input_fm` is the number of input feature maps, and should remain 1
+    for normal image inputs.
     """
 
-    def __init__(self, feature_list):
+    def __init__(self, feature_list, input_fm=1, **kwargs):
         super().__init__()
-        self.feature_list = list(feature_list)
+        self.feature_list = [input_fm] + list(feature_list)
         self.list = nn.ModuleList([
             Encoder(infm, outfm)
             for infm, outfm
@@ -145,11 +155,18 @@ class Aligner(nn.Module):
         self.seq.apply(init_leaky_relu)
 
     def forward(self, src, tgt):
-        if src.shape[1] == 1:  # single images
+        if src.shape[1] != tgt.shape[1]:
+            raise ValueError('Cannot align src and tgt of different shapes. '
+                             'src: {}, tgt: {}'.format(src.shape, tgt.shape))
+        elif src.shape[1] % self.channels != 0:
+            raise ValueError('Number of channels does not divide stack size. '
+                             '{} channels for {}'
+                             .format(self.channels, src.shape))
+        if src.shape[1] == self.channels:
             stack = torch.cat((src, tgt), dim=1)
             field = self.seq(stack).permute(0, 2, 3, 1)
             return field
-        else:  # stack of encodings  # TODO: improve handling
+        else:  # stack of encodings
             fields = []
             for pair in zip(src.split(self.channels, dim=1),
                             tgt.split(self.channels, dim=1)):
@@ -166,15 +183,22 @@ class AligningPyramid(nn.Module):
 
     If `src_input` and `tgt_input` are lists, then they are taken to be
     precomputed encodings or downsamples of the respective images.
+
+    `feature_list` should be a list of integers, each of which specifies
+    the number of feature maps at a particular mip level.
+    For example,
+        >>> AligningPyramid([2, 4, 8, 16])
+    creates a pyramid with four Aligner modules, with 2, 4, 8, and 16
+    feature maps respectively.
     """
 
-    def __init__(self, height):
+    def __init__(self, feature_list, **kwargs):
         super().__init__()
-        self.height = height
-        self.list = nn.ModuleList([Aligner() for __ in range(height)])
+        self.feature_list = list(feature_list)
+        self.list = nn.ModuleList([Aligner(ch) for ch in feature_list])
 
     def forward(self, src_input, tgt_input, accum_field=None):
-        for i in reversed(range(self.height)):
+        for i in reversed(range(len(self.feature_list))):
             if isinstance(src_input, list) and isinstance(tgt_input, list):
                 src, tgt = src_input[i], tgt_input[i]
             else:
@@ -200,8 +224,6 @@ class _SubmoduleView(nn.Module):
     """
     Returns a view into a sequence of aligners of a model.
     This is useful for training and testing.
-
-    This can be modified later to also include encodings.
     """
 
     def __init__(self, model, index):
@@ -209,15 +231,28 @@ class _SubmoduleView(nn.Module):
         if isinstance(index, int):
             index = slice(index, index+1)
         self.levels = range(model.height)[index]
+        self.encoders = model.encode.list if model.encode else None
         self.aligners = model.align.list[index]
 
-    def forward(self, src_input, tgt_input, accum_field=None):
+    def forward(self, src, tgt, accum_field=None):
+        # encode
+        if self.encoders:
+            src_stack, tgt_stack = [], []
+            for module in self.encoders:
+                src, tgt = module(src, tgt)
+                src_stack.append(src)
+                tgt_stack.append(tgt)
+                src, tgt = downsample()(src), downsample()(tgt)
+        else:
+            src_stack, tgt_stack = src, tgt
+
+        # align
         prev_level = None
         for i, aligner in zip(reversed(self.levels), reversed(self.aligners)):
-            if isinstance(src_input, list) and isinstance(tgt_input, list):
-                src, tgt = src_input[i], tgt_input[i]
+            if isinstance(src_stack, list) and isinstance(tgt_stack, list):
+                src, tgt = src_stack[i], tgt_stack[i]
             else:
-                src, tgt = downsample(i)(src_input), downsample(i)(tgt_input)
+                src, tgt = downsample(i)(src_stack), downsample(i)(tgt_stack)
             if prev_level is not None:
                 accum_field = (upsample(prev_level - i)
                                (accum_field.permute(0, 3, 1, 2))
@@ -239,46 +274,57 @@ class _SubmoduleView(nn.Module):
                        .permute(0, 2, 3, 1))
         return accum_field
 
-    def train_all(self):
+    def train_level(self, level=slice(None)):
         """
-        Train all the levels of the submodule
-        """
-        for p in self.parameters():
-            p.requires_grad = True
-        return self
-
-    def train_last(self):
-        """
-        Train only the final level of the submodule and freeze
-        all the other weights
+        Set only a specific level of the submodule to training mode and
+        freeze all the other weights
         """
         for p in self.parameters():
             p.requires_grad = False
-        for p in self.aligners[-1].parameters():
+        for p in self.aligners[0].parameters():
             p.requires_grad = True
+        if level == 'all':
+            for p in self.parameters():
+                p.requires_grad = True
+        elif level == 'lowest':
+            for p in self.aligners[0].parameters():
+                p.requires_grad = True
+        elif level == 'highest':
+            for p in self.aligners[-1].parameters():
+                p.requires_grad = True
+        else:
+            for p in self.aligners[level].parameters():
+                p.requires_grad = True
         return self
 
-    def init_last(self):
+    def init_level(self, level='lowest'):
         """
-        Initialize the last level of the submodule by copying the trained
-        weights of the previous level.
-        If the submodule has only one level, this does nothing.
+        Initialize the last level of the SubmoduleView by copying the trained
+        weights of the next to last level.
+        Whether the last level is the lowest or highest level is determined
+        by the `level` argument.
+        If the SubmoduleView has only one level, this does nothing.
         """
+        # TODO: init encoders, handle different size aligners
         if len(self.aligners) > 1:
-            state_dict = self.aligners[-2].state_dict()
-            self.aligners[-1].load_state_dict(state_dict)
+            if level == 'lowest':
+                state_dict = self.aligners[1].state_dict()
+                self.aligners[0].load_state_dict(state_dict)
+            elif level == 'highest':
+                state_dict = self.aligners[-2].state_dict()
+                self.aligners[-1].load_state_dict(state_dict)
         return self
 
     @property
     def pixel_size_ratio(self):
         """
         The ratio of the pixel size of the submodule's highest level to
-        the pixel size at its lowest level.
+        the pixel size at its input level.
         By assumption, each level of the network has equal ability, so this
         is a measure of the power of the submodule to detect and correct
         large misalignments in its input scale.
         """
-        return 2**(self.levels[-1] - self.levels[0])
+        return 2**(self.levels[-1])
 
 
 def init_leaky_relu(m, a=None):

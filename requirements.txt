@@ -14,3 +14,4 @@ argcomplete
 pandas
 opencv-python
 setuptools>=34.0.0
+pyyaml

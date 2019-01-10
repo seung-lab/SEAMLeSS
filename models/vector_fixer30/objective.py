@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from utilities import masklib
 from loss import smoothness_penalty
 from utilities.helpers import gridsample_residual
 
@@ -50,9 +51,8 @@ class ValidationObjective(Objective):
     """
 
     def __init__(self, *args, **kwargs):
-        if 'supervised' in kwargs:
-            kwargs = {k: v for k, v in kwargs.items() if k != 'supervised'}
-        super().__init__(*args, supervised=False, **kwargs)
+        kwargs['supervised'] = False
+        super().__init__(*args, **kwargs)
 
 
 class SupervisedLoss(nn.Module):
@@ -64,7 +64,7 @@ class SupervisedLoss(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
 
-    def forward(self, prediction, truth, **masks):  # TODO: use masks
+    def forward(self, prediction, truth):  # TODO: use masks
         truth = truth.to(prediction.device)
         return ((prediction - truth) ** 2).mean()
 
@@ -89,9 +89,13 @@ class SelfSupervisedLoss(nn.Module):
         self.field_penalty = smoothness_penalty(penalty)
         self.lambda1 = lambda1
 
-    def forward(self, src, tgt, prediction,
-                src_masks=None, tgt_masks=None,
-                src_field_masks=None, tgt_field_masks=None):
+    def forward(self, src, tgt, prediction):
+        masks = gen_masks(src, tgt, prediction)
+        src_masks = masks['src_masks']
+        tgt_masks = masks['tgt_masks']
+        src_field_masks = masks['src_field_masks']
+        tgt_field_masks = masks['tgt_field_masks']
+
         src, tgt = src.to(prediction.device), tgt.to(prediction.device)
 
         src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
@@ -131,3 +135,29 @@ class SelfSupervisedLoss(nn.Module):
 
         loss = (mse_loss + self.lambda1 * field_loss) / 25000
         return loss
+
+
+@torch.no_grad()
+def gen_masks(src, tgt, prediction=None, threshold=10):
+    """
+    Returns masks with which to weight the loss function
+    """
+    if prediction is not None:
+        src, tgt = src.to(prediction.device), tgt.to(prediction.device)
+    src, tgt = (src * 255).to(torch.uint8), (tgt * 255).to(torch.uint8)
+
+    src_mask, tgt_mask = torch.ones_like(src), torch.ones_like(tgt)
+
+    src_mask_zero, tgt_mask_zero = (src < threshold), (tgt < threshold)
+    src_mask_five = masklib.dilate(src_mask_zero, radius=3)
+    tgt_mask_five = masklib.dilate(tgt_mask_zero, radius=3)
+    src_mask[src_mask_five], tgt_mask[tgt_mask_five] = 5, 5
+    src_mask[src_mask_zero], tgt_mask[tgt_mask_zero] = 0, 0
+
+    src_field_mask, tgt_field_mask = torch.ones_like(src), torch.ones_like(tgt)
+    src_field_mask[src_mask_zero], tgt_field_mask[tgt_mask_zero] = 0, 0
+
+    return {'src_masks': [src_mask.float()],
+            'tgt_masks': [tgt_mask.float()],
+            'src_field_masks': [src_field_mask.float()],
+            'tgt_field_masks': [tgt_field_mask.float()]}
