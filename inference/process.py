@@ -8,7 +8,9 @@ from utilities.helpers import save_chunk
 
 class Process(object):
     """docstring for Process."""
-    def __init__(self, archive, mip, cuda=True, is_Xmas=False, dim=1280, skip=0, topskip=0, size=7, contrast=True, flip_average=True, old_upsample=False):
+    def __init__(self, archive, mip, cuda=True, is_Xmas=False, dim=1280, 
+                      skip=0, topskip=0, size=7, 
+                      flip_average=True, old_upsample=False):
         super(Process, self).__init__()
         self.cuda = cuda
         self.height = size
@@ -17,15 +19,20 @@ class Process(object):
         # self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=skip, topskips=topskip, cuda=cuda, dim=dim, old_upsample=old_upsample)
         self.mip = mip
         self.dim = dim
-        self.should_contrast = contrast
-        self.normalizer = self.archive.preprocessor
-        # self.normalizer = Normalizer(min(5, self.mip))
+
         self.flip_average = flip_average
 
     @torch.no_grad()
-    def process(self, s, t, level=0, crop=0):
-        """
-        Run a net on a pair of images and return the result.
+    def process(self, s, t, level=0, crop=0, old_vectors=False):
+        """Run source & target image through SEAMLeSS net. Provide final
+        vector field and intermediaries.
+
+        Args:
+           s: source tensor
+           t: target tensor
+           level: MIP of source & target images
+           crop: one-sided pixel amount to crop from final vector field
+           old_vectors: flag to use vector handling from previous versions of torch 
 
         If flip averaging is on, run the net twice.
         The second time, flip the image 180 degrees.
@@ -34,36 +41,26 @@ class Process(object):
         """
         if level != self.mip:
             return None
-        s, t = torch.from_numpy(s).unsqueeze(0), torch.from_numpy(t).unsqueeze(0)
-        if self.should_contrast and self.normalizer:
-            s = self.normalizer(s).reshape(t.shape)
-            t = self.normalizer(t).reshape(t.shape)
-        else:
-            print('Skipping contrast...')
-        if self.cuda:
-            s, t = s.cuda(), t.cuda()
 
         # nonflipped
-        field, residuals, encodings, cumulative_residuals = self.model(s, t), *[None]*3
-        field *= (field.shape[-2] / 2) * (2 ** self.mip)
+        unflipped, residuals, encodings, cumulative_residuals = self.model(s, t, old_vectors=old_vectors), *[None]*3
+        unflipped *= (unflipped.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
-            field = field[:,crop:-crop, crop:-crop,:]
-        nonflipped = field.cpu().numpy()
+            unflipped = unflipped[:,crop:-crop, crop:-crop,:]
 
         if not self.flip_average:
-            return nonflipped, residuals, encodings, cumulative_residuals
+            return unflipped, residuals, encodings, cumulative_residuals
 
         # flipped
         s = s.flip([2, 3])
         t = t.flip([2, 3])
-        field_fl, residuals_fl, encodings_fl, cumulative_residuals_fl = self.model(s, t), *[None]*3
+        field_fl, residuals_fl, encodings_fl, cumulative_residuals_fl = self.model(s, t, old_vectors=old_vectors), *[None]*3
         field_fl *= (field_fl.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
             field_fl = field_fl[:,crop:-crop, crop:-crop,:]
-        flipped = -field_fl.flip([1, 2])
-        flipped = flipped.cpu().numpy()
-
-        return (flipped + nonflipped)/2.0, residuals, encodings, cumulative_residuals # TODO: include flipped resid & enc
+        flipped = -field_fl.flip([1,2])
+        
+        return (flipped + unflipped)/2.0, residuals, encodings, cumulative_residuals # TODO: include flipped resid & enc
 #        return flipped, residuals_fl, encodings_fl, cumulative_residuals_fl # TODO: include flipped resid & enc
 
 #Simple test

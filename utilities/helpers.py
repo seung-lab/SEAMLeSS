@@ -437,3 +437,50 @@ def retry_enumerate(iterable, start=0):
             retries += 1
             continue
         return iterator
+
+def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
+  """Compute the inverse vector field of residual field U by optimization
+
+  This method uses the following loss function:
+  ```
+  L = \frac{1}{2} \| U(V) - I \|^2 + \frac{1}{2} \| V(U) - I \|^2
+  ```
+
+  Args
+     U: 4D tensor in vector field convention (1xXxYx2), where vectors are stored
+        as absolute residuals.
+
+  Returns
+     V: 4D tensor for absolute residual vector field such that V(U) = I.
+  """
+  V = -deepcopy(U) 
+  if tensor_approx_eq(U,V):
+    return V 
+  V.requires_grad = True
+  n = U.shape[1] * U.shape[2]
+  opt = torch.optim.SGD([V], lr=lr)
+  costs = []
+  currt = 0
+  print('Optimizing inverse field')
+  for t in range(max_iter):
+    currt = t
+    f = compose(U, V) 
+    g = compose(V, U)
+    L = 0.5*torch.mean(f**2) + 0.5*torch.mean(g**2)
+    costs.append(L)
+    L.backward()
+    V.grad *= n
+    opt.step()
+    opt.zero_grad()
+    assert(not torch.isnan(costs[-1]))
+    if costs[-1] == 0:
+      break
+    if len(costs) > avgn + currn:
+        hist = sum(costs[-(avgn+currn):-currn]).item() / avgn
+        curr = sum(costs[-currn:]).item() / currn
+        if abs((hist-curr)/hist) < eps:
+            break
+  V.requires_grad = False
+  print('Final cost @ t={0}: {1}'.format(currt, costs[-1].item()))
+  return V
+

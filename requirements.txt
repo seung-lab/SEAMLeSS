@@ -13,5 +13,5 @@ pyshorteners
 argcomplete
 pandas
 opencv-python
-setuptools
+setuptools>=34.0.0
 pyyaml
