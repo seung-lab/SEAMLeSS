@@ -81,6 +81,19 @@ def make_prepare_task_message(z, patches, mip, start_z):
   }
   return json.dumps(content)
 
+def make_render_cv_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
+  content = {
+      "type": "render_task_cv",
+      "z": z,
+      "field_cv": field_cv.serialize(),
+      "field_z": field_z,
+      "patches": [p.serialize() for p in patches],
+      #"patches": patches.serialize(),
+      "mip": mip,
+      "dst_cv": dst_cv.serialize(),
+      "dst_z": dst_z,
+  }
+  return json.dumps(content)
 
 def make_render_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
   content = {
