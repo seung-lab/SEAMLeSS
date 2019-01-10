@@ -36,6 +36,9 @@ parser.add_argument('--run_pairs',
   action='store_true')
 parser.add_argument('--old_upsample', help='revert to the old pytorch upsampling (using align_corners=True)',
   action='store_true')
+parser.add_argument('--old_vectors', help='expect the net to return vectors in the old vector field convention, '
+  'where -1 and 1 refer to the centers of the border pixels rather than the image edges.',
+  action='store_true')
 parser.add_argument('--write_intermediaries', 
   help='write encodings, residuals, & cumulative residuals to cloudvolumes', 
   action='store_true')
@@ -95,7 +98,7 @@ a = Aligner(archive, max_displacement, edge_pad, mip_range, high_mip_chunk,
             num_targets=num_targets, flip_average=not args.no_flip_average,
             run_pairs=args.run_pairs,
             write_intermediaries=args.write_intermediaries, 
-            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample)
+            upsample_residuals=args.upsample_residuals, old_upsample=args.old_upsample, old_vectors=args.old_vectors)
 
 bbox = BoundingBox(v_off[0], v_off[0]+x_size, v_off[1], v_off[1]+y_size, mip=0, max_mip=max_mip)
 
