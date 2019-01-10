@@ -124,7 +124,7 @@ class EPyramid(nn.Module):
         self.TRAIN_SIZE = train_size
         self.pe = PreEnc(fm_0)
 
-    def forward(self, stack, target_level, vis=None, use_preencoder=False):
+    def forward(self, stack, target_level, vis=None, use_preencoder=False, old_vectors=False):
         if vis is not None:
             gif(vis + 'input', gif_prep(stack))
 
@@ -157,6 +157,8 @@ class EPyramid(nn.Module):
                 new_input_i = torch.cat((resampled_source, inputs_i[:,inputs_i.size(1)//2:]), 1)
                 factor = (self.TRAIN_SIZE / (2. ** i)) / new_input_i.size()[-1]
                 rfield = self.mlist[i](new_input_i) * factor
+                if old_vectors: # expect vectors in old convention, so rescale to new convention
+                    rfield *= new_input_i.size()[-1] / (new_input_i.size()[-1] - 1)
                 residuals.append(rfield)
                 # Resample field_so_far using rfield. Add rfield to the result 
                 # to produce the new field_so_far.
@@ -195,11 +197,11 @@ class PyramidTransformer(nn.Module):
         for g in self.pyramid.mlist:
             g.requires_grad = True
 
-    def forward(self, x, idx=0, vis=None, use_preencoder=False):
+    def forward(self, x, idx=0, vis=None, use_preencoder=False, old_vectors=False):
         if use_preencoder == "only":
             # only run the preencoder and return the results
             return self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
-        field, residuals, encodings, cumulative_residuals = self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
+        field, residuals, encodings, cumulative_residuals = self.pyramid(x, idx, vis, use_preencoder=use_preencoder, old_vectors=old_vectors)
         return gridsample_residual(x[:,0:1,:,:], field, padding_mode='zeros'), field, residuals, encodings, cumulative_residuals
 
     ################################################################
@@ -235,7 +237,7 @@ class PyramidTransformer(nn.Module):
         print('Successfully loaded model state.')
         return model
 
-    def apply(self, source, target, skip=0, vis=None, use_preencoder=False):
+    def apply(self, source, target, skip=0, vis=None, use_preencoder=False, old_vectors=False):
         """
         Applies the model to an input. Inputs (source and target) are
         expected to be of shape (dim // (2 ** skip), dim // (2 ** skip)),
@@ -249,4 +251,4 @@ class PyramidTransformer(nn.Module):
         source = source.unsqueeze(0)
         if len(target.size()) == 2:
             target = target.unsqueeze(0)
-        return self(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis, use_preencoder=use_preencoder)
+        return self(torch.cat((source,target), 0).unsqueeze(0), idx=skip, vis=vis, use_preencoder=use_preencoder, old_vectors=old_vectors)

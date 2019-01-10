@@ -26,7 +26,7 @@ class Aligner:
                max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
                skip=0, topskip=0, size=7, should_contrast=True, num_targets=1,
                flip_average=True, run_pairs=False, write_intermediaries=False,
-               upsample_residuals=False, old_upsample=False):
+               upsample_residuals=False, old_upsample=False, old_vectors=False):
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
     self.render_low_mip   = render_low_mip
@@ -38,6 +38,7 @@ class Aligner:
     self.num_targets      = num_targets
     self.run_pairs = run_pairs
     self.size = size
+    self.old_vectors=old_vectors
 
     self.max_displacement = max_displacement
     self.crop_amount      = crop
@@ -290,7 +291,7 @@ class Aligner:
     else:
         # align to the newly aligned previous slice
         tgt_patch = self.get_image_data(self.dst_ng_path, target_z, precrop_patch_bbox, mip, should_backtrack=True)
-    field, residuals, encodings, cum_residuals = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount)
+    field, residuals, encodings, cum_residuals = self.net.process(src_patch, tgt_patch, mip, crop=self.crop_amount, old_vectors=self.old_vectors)
     #rel_residual = precrop_patch_bbox.spoof_x_y_residual(1024, 0, mip=mip,
     #                        crop_amount=self.crop_amount)
 
