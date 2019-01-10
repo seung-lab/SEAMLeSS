@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # sample script to setup a virtual environment able to run SEAMLeSS
 
-sudo apt-get install virtualenv g++ python3-dev
+sudo apt-get install virtualenv g++ python3-dev python3-tk
 
 # set up a virtual environment
 virtualenv -p python3 ~/venvseamless
