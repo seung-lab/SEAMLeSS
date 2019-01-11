@@ -17,8 +17,8 @@ from normalizer import Normalizer
 from vector_vote import vector_vote, get_diffs, weight_diffs, \
                         compile_field_weights, weighted_sum_fields
 from temporal_regularization import create_field_bump
-from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, np_downsample
-from helpers import  invert
+from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
+                              np_downsample, invert
 
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum 
@@ -62,7 +62,7 @@ class Aligner:
                disable_flip_average=False, write_intermediaries=False,
                upsample_residuals=False, old_upsample=False, old_vectors=False,
                ignore_field_init=False, z=0, tgt_radius=1, serial_operation=False,
-               queue_name=None, p_render=False, dir_suffix='', inverse_model=None,
+               queue_name=None, p_render=False, dir_suffix='', inverter=None,
                **kwargs):
     if queue_name != None:
         self.task_handler = TaskHandler(queue_name)
@@ -128,7 +128,7 @@ class Aligner:
 
     self.normalizer = archive.preprocessor
     self.upsample_residuals = upsample_residuals
-    self.inverse_model = inverse_model 
+    self.inverter = inverter 
     self.pool = ThreadPool(threads)
     self.threads = threads
 
@@ -465,7 +465,8 @@ class Aligner:
     if optimizer: 
       invf = invert(f)[:,crop:-crop, crop:-crop,:]    
     else:
-      invf = self.inverse_model(f)[:,crop-crop, crop-crop,:]
+      invf = self.inverter(f)[:,crop:-crop, crop:-crop,:]
+    print('invf shape: {0}'.format(invf.shape))
     end = time()
     print (": {} sec".format(end - start))
     # assert(torch.all(torch.isnan(invf)))

@@ -39,7 +39,9 @@ if __name__ == '__main__':
     F_cv = a.dst[0].get_composed_cv(curr_block, inverse=False, for_read=True)
     invF_cv = a.dst[0].get_composed_cv(curr_block, inverse=True, for_read=False)
     for z in compose_range:
-      a.invert_field_chunkwise(z, F_cv, invF_cv, bbox, mip)
+      a.invert_field_chunkwise(z, F_cv, invF_cv, bbox, mip, optimizer=False)
+    if a.distributed:
+      a.task_handler.wait_until_ready()
 
     reg_range = range(block_start, block_start + args.block_size)
     print('Regularizing for z_range {0}'.format(reg_range))
