@@ -27,7 +27,8 @@ if __name__ == '__main__':
   for block_start in range(z_start, z_stop, args.block_size):
     compose_range = range(block_start, block_start + args.block_size + overlap)
     print('Composing for z_range {0}'.format(compose_range))
-    a.compose_pairwise(compose_range, block_start, bbox, mip,
+    if block_start != z_start:
+      a.compose_pairwise(compose_range, block_start, bbox, mip,
                        forward_compose=args.forward_compose,
                        inverse_compose=False)
     print('Inverting composed fields for z_range {0}'.format(compose_range))

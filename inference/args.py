@@ -76,6 +76,8 @@ def get_argparser():
   #   action='store_true')
   parser.add_argument('--dir_suffix', type=str, default='',
     help='suffix to attach for composed directories')
+  parser.add_argument('--inverse_path', type=str, default='',
+    help='path to the inverse net; default is None')
   return parser
 
 def parse_args(parser, arg_string=''):
@@ -96,6 +98,10 @@ def get_aligner(args):
   model_path = Path(args.model_path)
   model_name = model_path.stem
   archive = ModelArchive(model_name, height=args.size)
+  args.inverse_model = None
+  if args.inverse_path:
+    args.inverse_model = ModelArchive(Path(args.inverse_path).stem).model
+  print(args.inverse_model)
   # out_cv = 'gs://neuroglancer/seamless/{}_{}_{}_{}'.format(
   #     model_name,
   #     'e' + str(archive.state_vars.epoch) if archive.state_vars.epoch else '',
