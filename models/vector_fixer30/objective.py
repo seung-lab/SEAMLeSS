@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from utilities import masklib
-from loss import smoothness_penalty
+from training.loss import smoothness_penalty
 from utilities.helpers import gridsample_residual
 
 
