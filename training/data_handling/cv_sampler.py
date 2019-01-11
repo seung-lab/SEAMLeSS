@@ -2,9 +2,9 @@ import cloudvolume as cv
 import numpy as np
 
 class Sampler(object):
-    def __init__(self, source='gs://neuroglancer/pinky40_v11/image', mip=5, dim=1152, height=10, zs=1, ze=1000, test_fraction=0.2):
-        import httplib2shim
-        httplib2shim.patch()
+    def __init__(self, source='gs://neuroglancer/pinky40_v11/image', mip=5, dim=1152, height=2, zs=1, ze=1000, test_fraction=0.2):
+        # import httplib2shim
+        # httplib2shim.patch()
         self.source = source
         self.vol = cv.CloudVolume(source, mip=mip)
         self.dim = dim

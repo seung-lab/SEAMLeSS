@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from cv_sampler import Sampler
 import numpy as np
 import h5py
@@ -11,9 +12,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('name')
 parser.add_argument('--count', type=int)
 parser.add_argument('--test', action='store_true')
-parser.add_argument('--mip', type=int, default=5)
-parser.add_argument('--stack_height', type=int, default=10)
-parser.add_argument('--dim', type=int, default=1152)
+parser.add_argument('--mip', type=int, default=2)
+parser.add_argument('--stack_height', type=int, default=2)
+parser.add_argument('--dim', type=int, default=1536)
 parser.add_argument('--coords', type=str, default=None)
 parser.add_argument('--check_mask', action='store_true')
 parser.add_argument('--mask', type=str, default=None)
