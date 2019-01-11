@@ -3,11 +3,19 @@ FROM nvidia/cuda:9.0-cudnn7-runtime-ubuntu16.04
 RUN apt-get update -y 
 RUN apt-get upgrade -y
 RUN apt-get install -y python3-pip vim screen tmux htop
+RUN pip3 install pip --upgrade 
 RUN pip3 install numpy
 
 WORKDIR /opt
 RUN pwd
 
 RUN apt-get install -y git
+RUN pwd
+COPY requirements.txt .
+RUN pip3 install -r requirements.txt
+
 ADD . ./SEAMLeSS
-RUN cd SEAMLeSS && pip3 install -r requirements.txt
+WORKDIR SEAMLeSS
+RUN pip3 install --no-cache-dir --upgrade setuptools
+RUN python3 setup.py develop
+RUN python3 -c "import imageio; imageio.plugins.ffmpeg.download();"

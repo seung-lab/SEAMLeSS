@@ -9,8 +9,8 @@ from six import iteritems
 import os
 import math
 
-from .residuals import res_warp_img, res_warp_res, combine_residuals
-from .preprocessors import TissueNormalizer, RangeAdjuster
+from residuals import res_warp_img, res_warp_res, combine_residuals
+from preprocessors import TissueNormalizer, RangeAdjuster
 
 class RollbackPyramid(nn.Module):
     def __init__(self, max_mip=14, name='pyramid', rollback=True):

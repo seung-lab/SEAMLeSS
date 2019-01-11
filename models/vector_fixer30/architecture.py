@@ -19,7 +19,7 @@ class Model(nn.Module):
         super().__init__()
         self.height = height
         self.encode = None
-        self.align = PyramidTransformer(size=height, dim=dim)
+        self.align = PyramidTransformer(size=height, dim=dim, *args, **kwargs)
 
     def __getitem__(self, index):
         return self.submodule(index)
@@ -532,7 +532,7 @@ class EPyramid(nn.Module):
 
 class PyramidTransformer(nn.Module):
     def __init__(self, size=4, dim=1536, skip=0, topskips=0, k=7, student=False,
-                 num_targets=1):
+                 num_targets=1, *args, **kwargs):
         super(PyramidTransformer, self).__init__()
         if not student:
             self.pyramid = EPyramid(size, dim, skip, topskips, k, num_targets)

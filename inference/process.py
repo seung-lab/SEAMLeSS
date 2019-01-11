@@ -43,7 +43,6 @@ class Process(object):
             return None
 
         # nonflipped
-
         unflipped, residuals, encodings, cumulative_residuals = self.model(s, t, old_vectors=old_vectors), *[None]*3
         unflipped *= (unflipped.shape[-2] / 2) * (2 ** self.mip)
         if crop>0:
@@ -53,7 +52,6 @@ class Process(object):
             return unflipped, residuals, encodings, cumulative_residuals
 
         # flipped
-
         s = s.flip([2, 3])
         t = t.flip([2, 3])
         field_fl, residuals_fl, encodings_fl, cumulative_residuals_fl = self.model(s, t, old_vectors=old_vectors), *[None]*3

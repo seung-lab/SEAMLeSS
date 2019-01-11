@@ -5,7 +5,7 @@ import torch
 import os
 import math
 
-from .residuals import res_warp_img, res_warp_res
+from residuals import res_warp_img, res_warp_res
 
 class Aligner(nn.Module):
     def initc(self, m, mult=1):

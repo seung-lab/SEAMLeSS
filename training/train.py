@@ -73,7 +73,6 @@ import warnings
 import datetime
 import math
 import random
-import math
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -81,7 +80,6 @@ import torch.utils.data
 import torchvision.transforms as transforms
 from pathlib import Path
 
-import masks as masklib
 import stack_dataset
 from utilities.archive import ModelArchive
 from utilities.helpers import (gridsample_residual, save_chunk,
@@ -163,6 +161,7 @@ def main():
         # log and save state
         state_vars.epoch = epoch + 1
         state_vars.iteration = None
+        state_vars.levels = None
         archive.save()
         archive.log([
             datetime.datetime.now(),
@@ -191,7 +190,10 @@ def train(train_loader, archive, epoch):
     # switch to train mode and select the submodule to train
     archive.model.train()
     archive.adjust_learning_rate()
-    submodule = select_submodule(archive.model, epoch, init=True)
+    submodule = select_submodule(archive.model)
+    init_submodule(submodule)
+    print('training levels: {}'
+          .format(list(range(state_vars.height))[state_vars.levels]))
     max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
@@ -207,11 +209,10 @@ def train(train_loader, archive, epoch):
         # compute output and loss
         src, tgt, truth = prepare_input(sample, max_displacement=max_disp)
         prediction = submodule(src, tgt)
-        masks = gen_masks(src, tgt, prediction)
         if truth is not None:
-            loss = archive.loss(prediction=prediction, truth=truth, **masks)
+            loss = archive.loss(prediction=prediction, truth=truth)
         else:
-            loss = archive.loss(src, tgt, prediction=prediction, **masks)
+            loss = archive.loss(src, tgt, prediction=prediction)
         loss = loss.mean()  # average across a batch if present
 
         # compute gradient and do optimizer step
@@ -250,7 +251,7 @@ def train(train_loader, archive, epoch):
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses))
         if state_vars.vis_time and i % state_vars.vis_time == 0:
-            create_debug_outputs(archive, src, tgt, prediction, truth, masks)
+            create_debug_outputs(archive, src, tgt, prediction, truth)
 
         start_time = time.time()
     return losses.avg
@@ -262,7 +263,7 @@ def validate(val_loader, archive, epoch):
 
     # switch to evaluate mode
     archive.model.eval()
-    submodule = select_submodule(archive.model, epoch)
+    submodule = select_submodule(archive.model)
 
     # compute output and loss
     start_time = time.time()
@@ -272,15 +273,14 @@ def validate(val_loader, archive, epoch):
               .format(state_vars.name, i, len(val_loader)), end='\r')
         src, tgt, truth = prepare_input(sample, supervised=False)
         prediction = submodule(src, tgt)
-        masks = gen_masks(src, tgt, prediction)
-        loss = archive.val_loss(src, tgt, prediction=prediction, **masks)
+        loss = archive.val_loss(src, tgt, prediction=prediction)
         losses.update(loss.item())
 
     # measure elapsed time
     batch_time = (time.time() - start_time)
 
     # debugging outputs and printing
-    create_debug_outputs(archive, src, tgt, prediction, truth, masks)
+    create_debug_outputs(archive, src, tgt, prediction, truth)
     print('{0}\t'
           'Validation: [{1}/{1}]\t'
           'Loss {loss.avg:.10f}\t\t\t'
@@ -291,20 +291,64 @@ def validate(val_loader, archive, epoch):
     return losses.avg
 
 
-def select_submodule(model, epoch, init=False):
+def select_submodule(model):
     """
-    Selects the submodule to be trained based on the current epoch.
-    At epoch `epoch`, train level `epoch/epochs_per_mip` of the model.
+    Selects the submodule to be trained based on the specified levels.
+    If `levels` is `None`, selects them by calling `select_levels()`
     """
-    if epoch is None:
-        return model
-    index = epoch // state_vars.epochs_per_mip
-    submodule = model.module[:index+1].train_last()
-    if (init and epoch % state_vars.epochs_per_mip == 0
-            and index < state_vars.height
-            and state_vars.iteration is None):
-        submodule.init_last()
-    return torch.nn.DataParallel(submodule)
+    if state_vars.levels is None:
+        state_vars.levels = select_levels()
+    submodule = model.module[state_vars.levels]
+    if state_vars.plan == 'top_down':
+        last = 'lowest'
+    elif state_vars.plan == 'bottom_up':
+        last = 'highest'
+    else:
+        last = 'all'
+    return torch.nn.DataParallel(submodule.train_level(last))
+
+
+def select_levels():
+    """
+    Returns a slice, list, or integer representing the levels to be trained
+    during this epoch.
+    At epoch `epoch`, selects version `epoch/epochs_per_mip` of the model,
+    according to the training plan `plan`.
+    `plan` may be any of `all`, `top_down`, `bottom_up`, or `random_one`
+    """
+    if state_vars.epoch is None:
+        return slice(None)
+    index = state_vars.epoch // state_vars.epochs_per_mip
+    if state_vars.plan == 'top_down':
+        return slice(-(index+1), None)
+    elif state_vars.plan == 'bottom_up':
+        return slice(None, index+1)
+    elif state_vars.plan == 'random_one':
+        level = random.randrange(0, state_vars.height + 1)
+        return level if level < state_vars.height else slice(None)
+    else:  # state_vars.plan == 'all':
+        return slice(None)
+
+
+def init_submodule(submodule):
+    """
+    Initializes the last level of the submodule to the weights of the
+    next-to-last, if this has not already happened.
+    """
+    index = state_vars.epoch // state_vars.epochs_per_mip
+    if state_vars.initialized_list is None:
+        state_vars.initialized_list = []
+    if len(state_vars.initialized_list) < state_vars.height:
+        state_vars.initialized_list += \
+            [False]*(state_vars.height - len(state_vars.initialized_list))
+    if (index < state_vars.height
+            and not state_vars.initialized_list[index]):
+        if state_vars.plan == 'top_down':
+            submodule.module.init_level('lowest')
+        elif state_vars.plan == 'bottom_up':
+            submodule.module.init_level('highest')
+        state_vars.initialized_list[index] = True
+    return submodule
 
 
 @torch.no_grad()
@@ -352,52 +396,31 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
 
 
 @torch.no_grad()
-def gen_masks(src, tgt, prediction=None, threshold=10):
-    """
-    Returns masks with which to weight the loss function
-    """
-    if prediction is not None:
-        src, tgt = src.to(prediction.device), tgt.to(prediction.device)
-    src, tgt = (src * 255).to(torch.uint8), (tgt * 255).to(torch.uint8)
-
-    src_mask, tgt_mask = torch.ones_like(src), torch.ones_like(tgt)
-
-    src_mask_zero, tgt_mask_zero = (src < threshold), (tgt < threshold)
-    src_mask_five = masklib.dilate(src_mask_zero, radius=3)
-    tgt_mask_five = masklib.dilate(tgt_mask_zero, radius=3)
-    src_mask[src_mask_five], tgt_mask[tgt_mask_five] = 5, 5
-    src_mask[src_mask_zero], tgt_mask[tgt_mask_zero] = 0, 0
-
-    src_field_mask, tgt_field_mask = torch.ones_like(src), torch.ones_like(tgt)
-    src_field_mask[src_mask_zero], tgt_field_mask[tgt_mask_zero] = 0, 0
-
-    return {'src_masks': [src_mask.float()],
-            'tgt_masks': [tgt_mask.float()],
-            'src_field_masks': [src_field_mask.float()],
-            'tgt_field_masks': [tgt_field_mask.float()]}
-
-
-@torch.no_grad()
-def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
+def create_debug_outputs(archive, src, tgt, prediction, truth):
     """
     Creates a subdirectory exports any debugging outputs to that directory.
     """
     try:
         debug_dir = archive.new_debug_directory()
+        stack_dir = debug_dir / 'stack'
+        stack_dir.mkdir()
         save_chunk(src[0:1, ...], str(debug_dir / 'src'))
-        save_chunk(src[0:1, ...], str(debug_dir / 'xsrc'))  # extra copy of src
+        save_chunk(src[0:1, ...], str(stack_dir / 'src'))
         save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt'))
+        save_chunk(tgt[0:1, ...], str(stack_dir / 'tgt'))
         warped_src = gridsample_residual(
             src[0:1, ...],
             prediction[0:1, ...].detach().to(src.device),
             padding_mode='zeros')
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
+        save_chunk(warped_src[0:1, ...], str(stack_dir / 'warped_src'))
         archive.visualize_loss('Training Loss', 'Validation Loss')
         save_vectors(prediction[0:1, ...].detach(),
                      str(debug_dir / 'prediction'))
         if truth is not None:
             save_vectors(truth[0:1, ...].detach(),
                          str(debug_dir / 'ground_truth'))
+        masks = archive._objective.gen_masks(src, tgt, prediction)
         for k, v in masks.items():
             if v is not None and len(v) > 0:
                 save_chunk(v[0][0:1, ...], str(debug_dir / k))
@@ -433,6 +456,7 @@ def load_archive(args):
         archive.state_vars.update({
             'name': args.name,
             'height': args.height,
+            'feature_maps': args.feature_maps,
             'start_lr': args.lr,
             'lr': args.lr,
             'wd': args.wd,
@@ -441,12 +465,14 @@ def load_archive(args):
             'epoch': 0,
             'iteration': None,
             'num_epochs': args.num_epochs,
+            'plan': args.plan,
             'epochs_per_mip': args.epochs_per_mip,
             'training_set_path': Path(args.training_set).expanduser(),
             'validation_set_path':
                 Path(args.validation_set).expanduser() if args.validation_set
                 else None,
             'supervised': args.supervised,
+            'encodings': args.encodings,
             'batch_size': args.batch_size,
             'log_time': args.log_time,
             'checkpoint_time': args.checkpoint_time,

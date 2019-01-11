@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import copy
 from utilities.helpers import gridsample_residual, upsample, downsample, load_model_from_dict
-from .alignermodule import Aligner
-from .rollback_pyramid import RollbackPyramid
+from alignermodule import Aligner
+from rollback_pyramid import RollbackPyramid
 
 
 class Model(nn.Module):
@@ -15,35 +15,29 @@ class Model(nn.Module):
     `feature_maps` is the number of feature maps per encoding layer
     """
 
-    def __init__(self, height=3, mips=(8, 9, 10), *args, **kwargs):
+    def __init__(self, height=1, mips=(8), *args, **kwargs):
         super().__init__()
         self.height = height
         self.mips = mips
         self.encode = None
-        self.align = RollbackPyramid()
+        self.invert = None
         self.aligndict = {}
 
     def __getitem__(self, index):
         return self.submodule(index)
 
-    def forward(self, src, tgt, in_field=None, plastic_mask=None, mip_in=8,
-                encodings=False, **kwargs):
-        stack = torch.cat((src, tgt), 1)
-        if encodings:
-            src, tgt = self.encode(src, tgt)
-        field = self.align(stack, plastic_mask=None, mip_in=mip_in)
-        field = field * 2 / src.shape[-2]
-        return field
+    def forward(self, field, **kwargs):
+        inv_field = self.invert(field)
+        return inv_field
 
     def load(self, path):
         """
         Loads saved weights into the model
         """
-        for m in self.mips:
-            self.aligndict[m] = Aligner(fms=[2, 16, 16, 16, 16, 2], k=7).cuda()
-            with (path/'aligner_mip{}.pth.tar'.format(m)).open('rb') as f:
-                self.aligndict[m].load_state_dict(torch.load(f))
-            self.align.set_mip_processor(self.aligndict[m], m)
+        fms = 24
+        self.invert = Aligner(fms=[2, fms, fms, fms, fms, 2], k=7).cuda()
+        with (path/'inverter_mip8{}.pth.tar'.format(m)).open('rb') as f:
+            self.invert.load_state_dict(torch.load(f))
         return self
 
     def save(self, path):

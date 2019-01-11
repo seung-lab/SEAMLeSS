@@ -59,6 +59,17 @@ def _parse_args(args=None):
         help='the number of mip levels to train',
         type=int, default=7, metavar='H',
     )
+    start_parser.add_argument(
+        '--feature_maps', '--feature_list', '--fm',
+        help='the number of feature maps at each mip level',
+        type=int, nargs='+', default=[], metavar='F',
+    )
+    start_parser.add_argument(
+        '--encodings',
+        help='whether to use encodings or plain images',
+        default=False,
+        action='store_true',
+    )
 
     param_group = start_parser.add_argument_group('training parameters')
     param_group.add_argument(
@@ -76,6 +87,12 @@ def _parse_args(args=None):
     param_group.add_argument(
         '--num_epochs', default=1000000, type=int, metavar='N',
         help='number of total epochs to run',
+    )
+    param_group.add_argument(
+        '--plan',
+        choices=('all', 'top_down', 'bottom_up', 'random_one'),
+        help='determines the training order',
+        type=str, default='random_one',
     )
     param_group.add_argument(
         '--epochs_per_mip', default=4, type=int, metavar='N',
@@ -198,6 +215,8 @@ def _parse_args(args=None):
 
     argcomplete.autocomplete(parser)
     args = parser.parse_args(args)
+
+    # autocomplete some arguments
     if 'interval' in args and args.interval is not None:
         args.log_time = args.interval
         args.checkpoint_time = args.interval
@@ -206,9 +225,17 @@ def _parse_args(args=None):
     if args.gpu_ids is None:
         args.gpu_ids = first_unused_gpu()
     if 'test_' in args.name:  # random names for rapid testing
-        while '*' in args.name:
+        while '*' in args.name:  # all '*'s are replaced by a random hex digit
             args.name = args.name.replace(
                 '*', hex(random.getrandbits(4))[2:], 1)
+    if 'feature_maps' in args:
+        if len(args.feature_maps) == 0:
+            default_num_fm = 12
+            args.feature_maps = [default_num_fm] * args.height
+        elif len(args.feature_maps) == 1:
+            args.feature_maps = args.feature_maps * args.height
+        else:
+            args.height = len(args.feature_maps)
     return args
 
 

@@ -92,6 +92,9 @@ class Aligner:
     provenance['project'] = 'seamless'
     provenance['src_path'] = src_path
     provenance['tgt_path'] = tgt_path
+    provenance['model'] = archive.name
+    provenance['max_displacement'] = max_displacement
+    provenance['crop'] = crop
 
     self.src = SrcDir(src_path, tgt_path, 
                       src_mask_path, tgt_mask_path, 
@@ -1194,7 +1197,7 @@ class Aligner:
       self.low_mip_render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip)
       self.downsample(dst_cv, dst_z, bbox, image_mip, self.render_high_mip)
 
-  def compute_section_pair_residuals(self, src_z, tgt_z, bbox):
+  def compute_section_pair_residuals(self, src_z, tgt_z, bbox, ignore_wait=False):
     """Chunkwise vector field inference for section pair
 
     For the CloudVolume dirs at Z_OFFSET, warp the SRC_IMG using the FIELD for
@@ -1212,7 +1215,8 @@ class Aligner:
           residual_task = make_residual_task_message(src_z, tgt_z, patch_bbox, mip=m)
           self.task_handler.send_message(residual_task)
         #if not self.p_render:
-        self.task_handler.wait_until_ready()
+        if not ignore_wait:
+          self.task_handler.wait_until_ready()
       else:
       #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -1322,7 +1326,7 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def multi_match(self, z, render=True):
+  def multi_match(self, z, render=True, ignore_wait=False):
     """Match Z to all sections within TGT_RADIUS
 
     Args:
@@ -1331,17 +1335,18 @@ class Aligner:
     bbox = self.total_bbox
     mip = self.process_low_mip
     #for z_offset in self.tgt_range:
-    for z_offset in range(self.tgt_range[-1], 0, -1):
+    # for z_offset in range(self.tgt_range[-1], 0, -1):
+    for z_offset in range(self.tgt_range[0], 0, 1):
       if z_offset != 0:
         src_z = z
         tgt_z = src_z - z_offset
-        self.compute_section_pair_residuals(src_z, tgt_z, bbox)
+        self.compute_section_pair_residuals(src_z, tgt_z, bbox, ignore_wait=ignore_wait)
         if render:
           field_cv = self.dst[z_offset].for_read('field')
           dst_cv = self.dst[z_offset].for_write('dst_img')
           self.render_section_all_mips(src_z, field_cv, src_z, dst_cv, tgt_z, bbox, mip)
 
-  def generate_pairwise(self, z_range, bbox, render_match=False):
+  def generate_pairwise(self, z_range, bbox, render_match=False, batch_size=1):
     """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in TGT_RADIUS
   
     Args:
@@ -1353,8 +1358,24 @@ class Aligner:
     """
     self.total_bbox = bbox
     mip = self.process_low_mip
+    batch_count = 0
+    start = 0
     for z in z_range:
-      self.multi_match(z, render=render_match)
+      start = time()
+      batch_count += 1 
+      self.multi_match(z, render=render_match, ignore_wait=True)
+      if batch_count == batch_size and self.distributed:
+        print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
+        self.task_handler.wait_until_ready()
+        end = time()
+        print (": {} sec".format(end - start))
+        batch_count = 0
+    # report on remaining sections after batch 
+    if batch_count > 0 and self.distributed: 
+      print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
+      self.task_handler.wait_until_ready()
+      end = time()
+      print (": {} sec".format(end - start))
     #if self.p_render:
     #    self.task_handler.wait_until_ready()
  
@@ -1707,15 +1728,7 @@ class Aligner:
       raise Exception("Unsupported task type '{}' received from queue '{}'".format(task_type,
                                                                  self.task_handler.queue_name))
 
-  def listen_for_tasks(self, stack_start, stack_size ,bbox, forward_compose, inverse_compose, compose_start):
-    self.total_bbox = bbox
-    self.zs = stack_start
-    self.end_section = stack_start + stack_size
-    self.num_section = stack_size
-    if forward_compose:
-      self.dst[0].add_composed_cv(compose_start, inverse=False)
-    if inverse_compose: 
-      self.dst[0].add_composed_cv(compose_start, inverse=True)
+  def listen_for_tasks(self):
     while (True):
       message = self.task_handler.get_message()
       if message != None:

@@ -1,9 +1,9 @@
-from .helpers import gridsample_residual
+from helpers import gridsample_residual
 
 
 def res_warp_res(res_a, res_b, is_pix_res=True):
     if is_pix_res:
-        res_b = 2 * res_b / (res_b.shape[0])
+        res_b = 2 * res_b / (res_b.shape[-2])
 
     if len(res_a.shape) == 4:
         result = gridsample_residual(

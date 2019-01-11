@@ -1,4 +1,4 @@
 #!/bin/bash
 SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
-docker build -t seunglab/pairwise_inference:gpu_test -f Dockerfile.gpu ../../
-docker push seunglab/pairwise_inference:gpu_test
+docker build -t seunglab/seamless:pairwise -f Dockerfile.gpu ../../
+docker push seunglab/seamless:pairwise
