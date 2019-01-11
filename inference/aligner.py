@@ -34,7 +34,8 @@ from task_handler import TaskHandler, make_residual_task_message, \
         make_render_task_message, make_copy_task_message, \
         make_downsample_task_message, make_compose_task_message, \
         make_prepare_task_message, make_vector_vote_task_message, \
-        make_regularize_task_message, make_render_low_mip_task_message
+        make_regularize_task_message, make_render_low_mip_task_message, \
+        make_invert_field_task_message
 
 class Aligner:
   """
@@ -61,7 +62,8 @@ class Aligner:
                disable_flip_average=False, write_intermediaries=False,
                upsample_residuals=False, old_upsample=False, old_vectors=False,
                ignore_field_init=False, z=0, tgt_radius=1, serial_operation=False,
-               queue_name=None, p_render=False, dir_suffix='', **kwargs):
+               queue_name=None, p_render=False, dir_suffix='', inverse_model=None,
+               **kwargs):
     if queue_name != None:
         self.task_handler = TaskHandler(queue_name)
         self.distributed  = True
@@ -126,6 +128,7 @@ class Aligner:
 
     self.normalizer = archive.preprocessor
     self.upsample_residuals = upsample_residuals
+    self.inverse_model = inverse_model 
     self.pool = ThreadPool(threads)
     self.threads = threads
 
@@ -449,7 +452,7 @@ class Aligner:
     #   self.save_image_patch('diff_weights', diffs.cpu().numpy(), bbox, mip, to_uint8=False)
     #   self.save_image_patch('weights', diffs.cpu().numpy(), bbox, mip, to_uint8=False)
 
-  def invert_field(self, z, src_cv, dst_cv, out_bbox, mip):
+  def invert_field(self, z, src_cv, dst_cv, out_bbox, mip, optimizer=False):
     """Compute the inverse vector field for a given OUT_BBOX
     """
     crop = self.crop_amount
@@ -459,7 +462,10 @@ class Aligner:
                            relative=True, to_tensor=True)
     print('invert_field shape: {0}'.format(f.shape))
     start = time()
-    invf = invert(f)[:,crop:-crop, crop:-crop,:]    
+    if optimizer: 
+      invf = invert(f)[:,crop:-crop, crop:-crop,:]    
+    else:
+      invf = self.inverse_model(f)[:,crop-crop, crop-crop,:]
     end = time()
     print (": {} sec".format(end - start))
     # assert(torch.all(torch.isnan(invf)))
@@ -1108,7 +1114,7 @@ class Aligner:
     self.image_pixels_sum =np.zeros(total_chunks)
     self.field_sf_sum =np.zeros((total_chunks, 2), dtype=np.float32)
 
-  def invert_field_chunkwise(self, z, src_cv, dst_cv, bbox, mip):
+  def invert_field_chunkwise(self, z, src_cv, dst_cv, bbox, mip, optimizer=False):
     """Chunked-processing of vector field inversion 
     
     Args:
@@ -1117,6 +1123,7 @@ class Aligner:
        dst_cv: CloudVolume for inverted field
        bbox: boundingbox of region to process
        mip: field MIP level
+       optimizer: bool to use the Optimizer instead of the net
     """
     start = time()
     chunks = self.break_into_chunks(bbox, self.dst[0].vec_chunk_sizes[mip],
@@ -1125,7 +1132,7 @@ class Aligner:
            format(z, mip, len(chunks)), flush=True)
     if self.distributed:
         for patch_bbox in chunks:
-          invert_task = make_invert_field_task_message(z, src_cv, dst_cv, patch_bbox, mip)
+          invert_task = make_invert_field_task_message(z, src_cv, dst_cv, patch_bbox, mip, optimizer)
           self.task_handler.send_message(invert_task)
     else: 
     #for patch_bbox in chunks:
@@ -1206,8 +1213,8 @@ class Aligner:
     bbox = self.total_bbox
     mip = self.process_low_mip
     #for z_offset in self.tgt_range:
-    # for z_offset in range(self.tgt_range[-1], 0, -1):
-    for z_offset in range(self.tgt_range[0], 0, 1):
+    for z_offset in range(self.tgt_range[-1], 0, -1):
+    # for z_offset in range(self.tgt_range[0], 0, 1):
       if z_offset != 0:
         src_z = z
         tgt_z = src_z - z_offset
@@ -1554,11 +1561,13 @@ class Aligner:
       self.regularize_z(z_range, compose_start, patch_bbox, mip, sigma=sigma)
 
   def handle_invert(self, message):
+      z = message['z']
       src_cv = DCV(message['src_cv'])
       dst_cv = DCV(message['dst_cv'])
       patch_bbox = deserialize_bbox(message['patch_bbox'])
       mip = message['mip']
-      self.invert_field(z, src_cv, dst_cv, patch_bbox, mip)
+      optimizer = message['optimizer']
+      self.invert_field(z, src_cv, dst_cv, patch_bbox, mip, optimizer)
 
   def handle_task_message(self, message):
     #message types:

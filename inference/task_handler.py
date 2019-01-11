@@ -19,13 +19,15 @@ def make_residual_task_message(source_z, target_z, patch_bbox, mip):
   }
   return json.dumps(content)
 
-def make_invert_field_task_message(z, src_cv, dst_cv, patch_bbox, mip):
+def make_invert_field_task_message(z, src_cv, dst_cv, patch_bbox, mip, optimizer):
   content = {
       "type": "invert_task",
+      "z": z,
       "src_cv": src_cv.serialize(),
       "dst_cv": dst_cv.serialize(),
       "patch_bbox": patch_bbox.serialize(),
       "mip": mip,
+      "optimizer": optimizer,
   }
   return json.dumps(content)
 

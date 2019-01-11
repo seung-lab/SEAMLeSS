@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import copy
 from utilities.helpers import gridsample_residual, upsample, downsample, load_model_from_dict
-from alignermodule import Aligner
-from rollback_pyramid import RollbackPyramid
+from .alignermodule import Aligner
+from .rollback_pyramid import RollbackPyramid
 
 
 class Model(nn.Module):
