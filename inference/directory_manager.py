@@ -78,7 +78,8 @@ class DstDir():
     m = len(src_info['scales'])
     each_factor = Vec(2,2,1)
     factor = Vec(2**m,2**m,1)
-    for _ in mip_range: 
+    print("mip_range ", mip_range)
+    for _ in mip_range:
       src_cv.add_scale(factor)
       factor *= each_factor
       chunksize = src_info['scales'][-2]['chunk_sizes'][0] // each_factor
@@ -86,6 +87,7 @@ class DstDir():
 
     info = deepcopy(src_info)
     chunk_size = info["scales"][0]["chunk_sizes"][0][0]
+    print("chunk_size is", chunk_size)
     dst_size_increase = max_offset
     if dst_size_increase % chunk_size != 0:
       dst_size_increase = dst_size_increase - (dst_size_increase % max_offset) + chunk_size
@@ -115,6 +117,56 @@ class DstDir():
       #make it slice-by-slice writable
       scales[i]["chunk_sizes"][0][2] = 1
     return info
+
+  @classmethod
+  def create_info_batch(cls, src_cv, mip_range, max_offset, size_batch,
+                       size_chunk, batch_mip):
+    src_info = src_cv.info
+    m = len(src_info['scales'])
+    each_factor = Vec(2,2,1)
+    factor = Vec(2**m,2**m,1)
+    for _ in mip_range: 
+      src_cv.add_scale(factor)
+      factor *= each_factor
+      chunksize = src_info['scales'][-2]['chunk_sizes'][0] // each_factor
+      src_info['scales'][-1]['chunk_sizes'] = [ list(map(int, chunksize)) ]
+
+    info = deepcopy(src_info)
+    chunk_size = info["scales"][0]["chunk_sizes"][0][0]
+    dst_size_increase = max_offset
+    if dst_size_increase % chunk_size != 0:
+      dst_size_increase = dst_size_increase - (dst_size_increase % max_offset) + chunk_size
+    scales = info["scales"]
+    scales[batch_mip]["chunk_sizes"][0][0] = size_chunk
+    scales[batch_mip]["chunk_sizes"][0][1] = size_chunk
+    for i in range(len(scales)):
+      scales[i]["voxel_offset"][0] -= int(dst_size_increase / (2**i))
+      scales[i]["voxel_offset"][1] -= int(dst_size_increase / (2**i))
+
+      scales[i]["size"][0] += int(dst_size_increase / (2**i))
+      scales[i]["size"][1] += int(dst_size_increase / (2**i))
+
+      x_remainder = scales[i]["size"][0] % scales[i]["chunk_sizes"][0][0]
+      y_remainder = scales[i]["size"][1] % scales[i]["chunk_sizes"][0][1]
+
+      x_delta = 0
+      y_delta = 0
+      if x_remainder != 0:
+        x_delta = scales[i]["chunk_sizes"][0][0] - x_remainder
+      if y_remainder != 0:
+        y_delta = scales[i]["chunk_sizes"][0][1] - y_remainder
+
+      scales[i]["size"][0] += x_delta
+      scales[i]["size"][1] += y_delta
+
+      scales[i]["size"][0] += int(dst_size_increase / (2**i))
+      scales[i]["size"][1] += int(dst_size_increase / (2**i))
+      #make it slice-by-slice writable
+      scales[i]["chunk_sizes"][0][2] = 1
+
+    scales[batch_mip]["chunk_sizes"][0][2] = size_batch
+    return info
+
 
   def compile_scales(self):
     scales = self.info["scales"]
