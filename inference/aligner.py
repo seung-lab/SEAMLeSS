@@ -110,8 +110,8 @@ class Aligner:
     self.tgt_radius = tgt_radius
     self.tgt_range = range(-tgt_radius, tgt_radius+1)
     self.serial_operation = serial_operation
-    if self.serial_operation: 
-      self.tgt_range = range(tgt_radius+1) 
+    if self.serial_operation:
+      self.tgt_range = range(tgt_radius+1)
     for i in self.tgt_range:
       if i > 0:
         path = '{0}/z_{1}'.format(dst_path, abs(i))
@@ -274,36 +274,68 @@ class Aligner:
     return field.to(device=self.device)
 
   def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True):
+    """Retrieve vector field from CloudVolume.
+
+    Args
+      CV: MiplessCloudVolume storing vector field as MIP0 residuals in X,Y,Z,2 order
+      Z: int for section index
+      BBOX: BoundingBox for X & Y extent of the field to retrieve
+      MIP: int for resolution at which to pull the vector field
+      RELATIVE: bool indicating whether to convert MIP0 residuals to relative residuals
+        from [-1,1] based on residual location within shape of the BBOX
+      TO_TENSOR: bool indicating whether to return FIELD as a torch tensor
+
+    Returns
+      FIELD: vector field with dimensions of BBOX at MIP, with RELATIVE residuals &
+        as TO_TENSOR, using convention (Z,Y,X,2) 
+
+    Note that the grid convention for torch.grid_sample is (N,H,W,2), where the
+    components in the final dimension are (x,y). We are NOT altering it here.
+    """
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-    print('get_field from {0}, MIP{1} @ z={2}'.format(cv.path, mip, z))
+    print('get_field from {bbox}, z={z}, MIP{mip} to {path}'.format(bbox=bbox,
+                                 z=z, mip=mip, path=cv.path))
     field = cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
-    res = np.expand_dims(np.squeeze(field), axis=0)
+    field = np.transpose(field, (2,0,1,3))
     if relative:
-      res = self.abs_to_rel_residual(res, bbox, mip)
+      field = self.abs_to_rel_residual(field, bbox, mip)
     if to_tensor:
-      res = torch.from_numpy(res)
-      return res.to(device=self.device)
+      field = torch.from_numpy(field)
+      return field.to(device=self.device)
     else:
-      return res
+      return field 
 
   def save_vector_patch(self, cv, z, field, bbox, mip):
+    """Save vector field to CloudVolume.
+
+    Args
+      CV: MiplessCloudVolume to store vector field as MIP0 residuals in X,Y,Z,2 order
+      Z: int for section index
+      FIELD: ndarray vector field with dimensions of BBOX at MIP with absolute MIP0 
+        residuals, using grid_sample convention of (Z,Y,X,2), where the components in 
+        the final dimension are (x,y).
+      BBOX: BoundingBox for X & Y extent of the field to be stored
+      MIP: int for resolution at which to store the vector field
+    """
     # field = field.data.cpu().numpy() 
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-    field = np.squeeze(field)[:, :, np.newaxis, :]
-    print('save_vector_patch from {0}, MIP{1} at z={2}'.format(cv.path, mip, z))
+    field = np.transpose(field, (1,2,0,3))
+    print('save_vector_patch at {bbox}, z={z}, MIP{mip} to {path}'.format(bbox=bbox,
+                                 z=z, mip=mip, path=cv.path))
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
 
   def save_vector_patch_and_cache(self, cv, z, field, bbox, mip, field_dic):
     # field = field.data.cpu().numpy() 
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-    field = np.squeeze(field)[:, :, np.newaxis, :]
+    field = np.transpose(field, (2,1,0,3))
     tmp_key = str(bbox.__str__) + str(z)
     print("put in dic z is {}, key is {}".format(z, tmp_key))
     field_dic[tmp_key] = field
-    print('save_vector_patch from {0}, MIP{1} at z={2}'.format(cv.path, mip, z))
+    print('save_vector_patch_and_cache at {bbox}, z={z}, MIP{mip} to {path}'.format(bbox=bbox,
+                                 z=z, mip=mip, path=cv.path))
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
 
   def save_residual_patch(self, cv, z, res, bbox, mip):
@@ -558,19 +590,18 @@ class Aligner:
     #       write_encodings(slice(enc.shape[-1] // 2, enc.shape[-1]), tgt_z)
 
   def rel_to_abs_residual(self, field, mip):    
-    """Convert vector field from relative space [-1,1] to absolute space
+    """Convert vector field from relative space [-1,1] to absolute MIP0 space
     """
     return field * (field.shape[-2] / 2) * (2**mip)
 
   def abs_to_rel_residual(self, abs_residual, patch, mip):
-    """Convert vector field from absolute space to relative space [-1,1]
+    """Convert vector field from absolute MIP0 space to relative space [-1,1]
     """
     x_fraction = patch.x_size(mip=0) * 0.5
     y_fraction = patch.y_size(mip=0) * 0.5
-    #print("++++++++++++++++abs_to_rel x_size and y_size", patch.x_size(mip=0), patch.y_size(mip=0))
     rel_residual = deepcopy(abs_residual)
-    rel_residual[0, :, :, 0] /= x_fraction
-    rel_residual[0, :, :, 1] /= y_fraction
+    rel_residual[:, :, :, 0] /= x_fraction
+    rel_residual[:, :, :, 1] /= y_fraction
     return rel_residual
 
   def get_bbox_id(self, in_bbox, mip):
@@ -600,62 +631,32 @@ class Aligner:
     cid = ((in_y_range[0] - calign_y_range[0]) // in_y_len) * line_bbox_num + (in_x_range[0] - calign_x_range[0]) // in_x_len
     return cid
 
-  def min_abs(self, field):
-      abs_data = np.finfo(np.float32).max
-      print("field.shape is", field.shape)
-      for i in range(len(field)):
-          for j in range(len(field[0])):
-              tmp_field = field[i,j]
-              if (tmp_field != 0.0) & (math.fabs(tmp_field) < math.fabs(abs_data)):
-                  #print("0 cor is", i, j, tmp_field)
-                  abs_data = tmp_field
-      print("abs_data is", abs_data)
-      return abs_data
-
-  def avg_field(self, field):
-      favg = field.sum() / torch.nonzero(field).size(0)
-      print("field.shape is", field.shape)
-      return favg
-
   def profile_field(self, field):
-      #min_x = self.min_abs(field[0,...,0])
-      #min_y = self.min_abs(field[0,...,1])
-      #return np.float32([min_x, min_y])
-      avg_x = self.avg_field(field[0,...,0])
-      avg_y = self.avg_field(field[0,...,1])
-      return torch.from_numpy(np.float32([avg_x, avg_y]))
+      min_x = math.floor(np.min(field[...,0]))
+      min_y = math.floor(np.min(field[...,1]))
+      return np.float32([min_x, min_y])
 
   def adjust_bbox(self, bbox, dis):
       influence_bbox = deepcopy(bbox)
       x_range = influence_bbox.x_range(mip=0)
       y_range = influence_bbox.y_range(mip=0)
       #print("x_range is", x_range, "y_range is", y_range)
-      new_bbox = BoundingBox(x_range[0] + dis[0], x_range[1] + dis[0],
-                                   y_range[0] + dis[1], y_range[1] + dis[1],
+      new_bbox = BoundingBox(x_range[0] - dis[0], x_range[1] - dis[0],
+                                   y_range[0] - dis[1], y_range[1] - dis[1],
                                    mip=0)
       #print(new_bbox.x_range(mip=0), new_bbox.y_range(mip=0))
       return new_bbox
-  #def adjust_field(self, field, distance):
 
   def gridsample_cv(self, image_cv, field_cv, bbox, z, mip):
       f =  self.get_field(field_cv, z, bbox, mip, relative=False,
-                          to_tensor=True)
-      #im_off = 10240
-      #f += im_off
+                          to_tensor=False)
       distance = self.profile_field(f)
       distance = (distance//(2**mip)) * 2**mip
-      x_range = bbox.x_range(mip=0)
-      y_range = bbox.y_range(mip=0)
-      #print("x_range is", x_range, "y_range is", y_range)
-      #new_bbox = BoundingBox(x_range[0] - im_off, x_range[1] - im_off,
-      #                       y_range[0] - im_off, y_range[1] - im_off, mip=0)
-      #new_bbox = self.adjust_bbox(new_bbox, distance)
       new_bbox = self.adjust_bbox(bbox, distance)
-      print("distance is", distance)
-      f = f - distance.to(device = self.device)
-      #f = f - distance
+      #print("distance is", distance)
+      f = f - distance
       res = self.abs_to_rel_residual(f, bbox, mip)
-      #res = torch.from_numpy(res)
+      res = torch.from_numpy(res)
       field = res.to(device = self.device)
       #print("field shape is", field.shape)
       image = self.get_image(image_cv, z, new_bbox, mip,
@@ -667,7 +668,7 @@ class Aligner:
                                src_mip=self.src.src_mask_mip,
                                dst_mip=mip, valid_val=self.src.src_mask_val)
           image = image.masked_fill_(mask, 0)
-      image = gridsample_residual(image, field, padding_mode='zeros')
+      image = gridsample_residual(image,field,padding_mode='zeros')
       return image
 
   def warp_using_gridsample_cv(self, src_z, field_cv, field_z, bbox, mip):
@@ -675,8 +676,7 @@ class Aligner:
       influence_bbox.uncrop(self.max_displacement, mip=0)
       mip_disp = int(self.max_displacement / 2**mip)
       src_cv = self.src['src_img']
-      image = self.gridsample_cv(src_cv, field_cv, influence_bbox, field_z,
-                                 mip)
+      image = self.gridsample_cv(src_cv, field_cv, influence_bbox, field_z, mip)
       if self.disable_cuda:
         image = image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
       else:
@@ -779,7 +779,7 @@ class Aligner:
   def save_image_patch(self, cv, z, float_patch, bbox, mip, to_uint8=True):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-    patch = np.transpose(float_patch, (3,2,1,0))
+    patch = np.transpose(float_patch, (2,3,0,1))
     #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
     if to_uint8:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
@@ -830,7 +830,7 @@ class Aligner:
     #  except AttributeError as e:
     #    pass 
     #
-    data = np.transpose(data, (3,2,1,0))
+    data = np.transpose(data, (2,3,0,1))
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
     if adjust_contrast:
@@ -916,42 +916,7 @@ class Aligner:
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
-          # print('warp_image render.shape: {0}'.format(warped_patch.shape))
-          self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
-        self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
-
-  def render_grid_cv(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
-    """Chunkwise render
-
-    Warp the image in BBOX using CloudVolume grid_sample
-    """
-    self.total_bbox = bbox
-    print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
-    start = time()
-    chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
-                                    self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
-    #prof_chunk = chunks[len(chunks)//2]
-    #f =  self.get_field(field_cv, src_z, prof_chunk, mip, relative=False,
-    #                    to_tensor=False)
-    ##f += 10240
-    #distance = self.profile_field(f)
-    #distance = (distance//(2**mip)) * 2**mip
-    if self.distributed:
-        for i in range(0, len(chunks), self.threads):
-            task_patches = []
-            for j in range(i, min(len(chunks), i + self.threads)):
-                task_patches.append(chunks[j])
-            render_task_cv = make_render_cv_task_message(src_z, field_cv, field_z, task_patches,
-                                                      mip, dst_cv, dst_z)
-            self.task_handler.send_message(render_task_cv)
-        self.task_handler.wait_until_ready()
-    else:
-        def chunkwise(patch_bbox):
-          warped_patch = self.warp_using_gridsample_cv(src_z, field_cv,
-                                                       field_z, patch_bbox,
-                                                       mip)
+          #warped_patch = self.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
           # print('warp_image render.shape: {0}'.format(warped_patch.shape))
           self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
         self.pool.map(chunkwise, chunks)
@@ -1067,8 +1032,7 @@ class Aligner:
 
 
   def render_section_all_mips(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
-    #self.render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
-    self.render_grid_cv(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
+    self.render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
     self.downsample(dst_cv, dst_z, bbox, self.render_low_mip, self.render_high_mip)
   
   def render_to_low_mip(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
@@ -1412,22 +1376,6 @@ class Aligner:
     mip = message['mip']
     self.compute_residual_patch(source_z, target_z, patch_bbox, mip)
 
-  def handle_render_task_cv(self, message):
-    src_z = message['z']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    #patches  = deserialize_bbox(message['patches'])
-    field_cv = DCV(message['field_cv']) 
-    mip = message['mip']
-    field_z = message['field_z']
-    dst_cv = DCV(message['dst_cv'])
-    dst_z = message['dst_z']
-    def chunkwise(patch_bbox):
-      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-              end='', flush=True)
-      warped_patch = self.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
-      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
-    self.pool.map(chunkwise, patches)
-
   def handle_render_task(self, message):
     src_z = message['z']
     patches  = [deserialize_bbox(p) for p in message['patches']]
@@ -1584,8 +1532,6 @@ class Aligner:
       self.handle_residual_task(body)
     elif task_type == 'render_task':
       self.handle_render_task(body)
-    elif task_type == 'render_task_cv':
-      self.handle_render_task_cv(body)
     elif task_type == 'render_task_low_mip':
       self.handle_render_task_low_mip(body)
     elif task_type == 'compose_task':
