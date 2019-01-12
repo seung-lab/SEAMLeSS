@@ -1,0 +1,28 @@
+batch_size: 1
+checkpoint_time: 100
+encodings: false
+epoch: 187
+epochs_per_mip: 4
+feature_maps: [12, 12, 12, 12, 12, 12, 12]
+gamma: 1
+gamma_step: 30
+gpus: '3'
+height: 7
+initialized_list: [true, true, true, true, true, true, true]
+iteration: 0
+lambda1: 0.1
+levels: 5
+log_time: 1
+lr: 0.0005
+name: test_one_slice_lr0_0005_10
+num_epochs: 1000000
+penalty: lap
+plan: random_one
+seed: 455
+start_lr: 0.0005
+supervised: true
+training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, bnehoran,
+  training_data, cf_masks_minnie_mip2_cleaned.h5]
+validation_set_path: null
+vis_time: 50
+wd: 0
