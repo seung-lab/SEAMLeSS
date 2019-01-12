@@ -1047,8 +1047,8 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.threads)):
                 task_patches.append(chunks[j])
-            render_task = make_render_task_message(src_z, field_cv, field_z, task_patches,
-                                                   mip, dst_cv, dst_z)
+            render_task_batch = make_batch_render_message(src_z, field_cv, field_z, task_patches,
+                                                   mip, dst_cv, dst_z, batch)
             self.task_handler.send_message(render_task)
         self.task_handler.wait_until_ready()
     else:
@@ -1549,6 +1549,40 @@ class Aligner:
     mip = message['mip']
     self.compute_residual_patch(source_z, target_z, patch_bbox, mip)
 
+  def handle_render_task_cv(self, message):
+    src_z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    #patches  = deserialize_bbox(message['patches'])
+    field_cv = DCV(message['field_cv']) 
+    mip = message['mip']
+    field_z = message['field_z']
+    dst_cv = DCV(message['dst_cv'])
+    dst_z = message['dst_z']
+    def chunkwise(patch_bbox):
+      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+              end='', flush=True)
+      warped_patch = self.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
+      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+    self.pool.map(chunkwise, patches)
+
+  def handle_batch_render_task(self, message):
+    src_z = message['z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    batch = message['batch']
+    field_cv = DCV(message['field_cv'])
+    mip = message['mip']
+    field_z = message['field_z']
+    dst_cv = DCV(message['dst_cv'])
+    dst_z = message['dst_z']
+    def chunkwise(patch_bbox):
+      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
+              end='', flush=True)
+      warped_patch = self.warp_patch_batch(src_z, field_cv, field_z,
+                                           patch_bbox, mip, batch)
+      self.save_image_patch_batch(dst_cv, (dst_z, dst_z + batch),
+                                  warped_patch, patch_bbox, mip)
+    self.pool.map(chunkwise, patches)
+
   def handle_render_task(self, message):
     src_z = message['z']
     patches  = [deserialize_bbox(p) for p in message['patches']]
@@ -1705,6 +1739,10 @@ class Aligner:
       self.handle_residual_task(body)
     elif task_type == 'render_task':
       self.handle_render_task(body)
+    elif task_type == 'render_task_cv':
+      self.handle_render_task_cv(body)
+    elif task_type == 'batch_render_task':
+      self.handle_batch_render_task(body)
     elif task_type == 'render_task_low_mip':
       self.handle_render_task_low_mip(body)
     elif task_type == 'compose_task':

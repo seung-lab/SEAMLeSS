@@ -98,6 +98,22 @@ def make_render_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
   }
   return json.dumps(content)
 
+def make_batch_render_message(z, field_cv, field_z, patches, mip, dst_cv,
+                              dst_zm, batch):
+  content = {
+      "type": "batch_render_task",
+      "z": z,
+      "field_cv": field_cv.serialize(),
+      "field_z": field_z,
+      "patches": [p.serialize() for p in patches],
+      #"patches": patches.serialize(),
+      "mip": mip,
+      "dst_cv": dst_cv.serialize(),
+      "dst_z": dst_z,
+      "batch": batch,
+  }
+  return json.dumps(content)
+
 def make_render_low_mip_task_message(z, field_cv, field_z, patches, image_mip, vector_mip, dst_cv, dst_z):
   content = {
       "type": "render_task_low_mip",
