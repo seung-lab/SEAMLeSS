@@ -1,0 +1,1 @@
+./train.py start test_one_slice_lr0_0005_** --training_set /usr/people/bnehoran/training_data/cf_masks_minnie_mip2_cleaned.h5 --seed 455 --lr 0.0005
