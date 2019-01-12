@@ -108,7 +108,7 @@ def main():
         archive.preprocessor,
         stack_dataset.RandomRotateAndScale(),
         stack_dataset.RandomFlip(),
-        stack_dataset.Split(),
+        # stack_dataset.Split(),
     ])
     train_dataset = stack_dataset.compile_dataset(
         state_vars.training_set_path, transform=train_transform)
@@ -125,7 +125,7 @@ def main():
             archive.preprocessor,
             stack_dataset.RandomRotateAndScale(),
             stack_dataset.RandomFlip(),
-            stack_dataset.Split(),
+            # stack_dataset.Split(),
         ])
         validation_dataset = stack_dataset.compile_dataset(
             state_vars.validation_set_path, transform=val_transform)
@@ -194,7 +194,6 @@ def train(train_loader, archive, epoch):
     init_submodule(submodule)
     print('training levels: {}'
           .format(list(range(state_vars.height))[state_vars.levels]))
-    max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
     start_iter = 0 if state_vars.iteration is None else state_vars.iteration
@@ -207,12 +206,9 @@ def train(train_loader, archive, epoch):
         data_time.update(time.time() - start_time)
 
         # compute output and loss
-        src, tgt, truth = prepare_input(sample, max_displacement=max_disp)
-        prediction = submodule(src, tgt)
-        if truth is not None:
-            loss = archive.loss(prediction=prediction, truth=truth)
-        else:
-            loss = archive.loss(src, tgt, prediction=prediction)
+        src, cracks, folds = prepare_input(sample)
+        prediction = submodule(src)
+        loss = archive.loss(prediction=prediction, cracks=cracks, folds=folds)
         loss = loss.mean()  # average across a batch if present
 
         # compute gradient and do optimizer step
@@ -251,7 +247,7 @@ def train(train_loader, archive, epoch):
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses))
         if state_vars.vis_time and i % state_vars.vis_time == 0:
-            create_debug_outputs(archive, src, tgt, prediction, truth)
+            create_debug_outputs(archive, src, cracks, folds, prediction)
 
         start_time = time.time()
     return losses.avg
@@ -354,21 +350,12 @@ def init_submodule(submodule):
 @torch.no_grad()
 def prepare_input(sample, supervised=None, max_displacement=2):
     """
-    Formats the input received from the data loader and produces a
-    ground truth vector field if supervised.
-    If `supervised` is None, it uses the value specified in state_vars
+    Formats the input received from the data loader.
     """
-    if supervised is None:
-        supervised = state_vars.supervised
-    if supervised:
-        src = sample['src'].cuda()
-        truth_field = random_field(src.shape, max_displacement=max_displacement)
-        tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
-    else:
-        src = sample['src'].cuda()
-        tgt = sample['tgt'].cuda()
-        truth_field = None
-    return src, tgt, truth_field
+    src = sample[:, 0:1].cuda()
+    cracks = sample[:, 1:2].cuda()
+    folds = sample[:, 2:3].cuda()
+    return src, cracks, folds
 
 
 @torch.no_grad()
@@ -396,7 +383,7 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
 
 
 @torch.no_grad()
-def create_debug_outputs(archive, src, tgt, prediction, truth):
+def create_debug_outputs(archive, src, cracks, folds, prediction):
     """
     Creates a subdirectory exports any debugging outputs to that directory.
     """
@@ -404,26 +391,17 @@ def create_debug_outputs(archive, src, tgt, prediction, truth):
         debug_dir = archive.new_debug_directory()
         stack_dir = debug_dir / 'stack'
         stack_dir.mkdir()
+        archive.visualize_loss('Training Loss', 'Validation Loss')
         save_chunk(src[0:1, ...], str(debug_dir / 'src'))
         save_chunk(src[0:1, ...], str(stack_dir / 'src'))
-        save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt'))
-        save_chunk(tgt[0:1, ...], str(stack_dir / 'tgt'))
-        warped_src = gridsample_residual(
-            src[0:1, ...],
-            prediction[0:1, ...].detach().to(src.device),
-            padding_mode='zeros')
-        save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
-        save_chunk(warped_src[0:1, ...], str(stack_dir / 'warped_src'))
-        archive.visualize_loss('Training Loss', 'Validation Loss')
-        save_vectors(prediction[0:1, ...].detach(),
-                     str(debug_dir / 'prediction'))
-        if truth is not None:
-            save_vectors(truth[0:1, ...].detach(),
-                         str(debug_dir / 'ground_truth'))
-        masks = archive._objective.gen_masks(src, tgt, prediction)
-        for k, v in masks.items():
-            if v is not None and len(v) > 0:
-                save_chunk(v[0][0:1, ...], str(debug_dir / k))
+        save_chunk(cracks[0:1, ...], str(debug_dir / 'cracks'))
+        save_chunk(cracks[0:1, ...], str(stack_dir / 'cracks'))
+        save_chunk(folds[0:1, ...], str(debug_dir / 'folds'))
+        save_chunk(folds[0:1, ...], str(stack_dir / 'folds'))
+        save_chunk(prediction[0:1, 0:1, ...], str(debug_dir / 'crack_prediction'))
+        save_chunk(prediction[0:1, 0:1, ...], str(stack_dir / 'crack_prediction'))
+        save_chunk(prediction[0:1, 1:2, ...], str(debug_dir / 'fold_prediction'))
+        save_chunk(prediction[0:1, 1:2, ...], str(stack_dir / 'fold_prediction'))
     except Exception as e:
         # Don't raise the exception, since visualization issues
         # should not stop training. Just warn the user and go on.

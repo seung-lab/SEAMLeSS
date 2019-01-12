@@ -98,20 +98,13 @@ class StackDataset(Dataset):
 
     def __init__(self, stack, transform=None):
         self.stack = stack
-        self.N = len(stack) - 1
         self.transform = transform
 
     def __len__(self):
-        # 2*(len(stack)-1) consecutive image pairs
-        return 2*self.N
+        return 1
 
     def __getitem__(self, k):
-        # match i -> i+1 if k < N, else match i -> i-1
-        i = k % self.N
-        X = self.stack[i:i+2]
-        if k >= self.N:
-            X = np.flip(X, 0)
-        X = X.copy()  # prevent modifying the dataset
+        X = self.stack.copy()  # prevent modifying the dataset
         if self.transform:
             X = self.transform(X)
         return X

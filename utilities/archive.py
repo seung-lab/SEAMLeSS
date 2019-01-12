@@ -205,6 +205,7 @@ class ModelArchive(object):
         cp(git_root/'training'/'architecture.py', self.paths['architecture'])
         cp(git_root/'training'/'objective.py', self.paths['objective'])
         cp(git_root/'training'/'preprocessor.py', self.paths['preprocessor'])
+        # cp(git_root/'training'/'defect_net'/'basil_defect_unet18070201.pth', self.paths['weights'])
 
         # record the status of the git repository
         with self.paths['commit'].open(mode='wb') as f:
@@ -383,8 +384,10 @@ class ModelArchive(object):
         self._loss = self._objective.Objective(*args, **kwargs)
         self._val_loss = self._objective.ValidationObjective(*args, **kwargs)
         if not self.readonly:
-            self._loss = torch.nn.DataParallel(self._loss.cuda())
-            self._val_loss = torch.nn.DataParallel(self._val_loss.cuda())
+            # self._loss = torch.nn.DataParallel(self._loss.cuda())
+            # self._val_loss = torch.nn.DataParallel(self._val_loss.cuda())
+            self._loss = self._loss.cuda()
+            self._val_loss = self._val_loss.cuda()
         return self._objective
 
     def _load_preprocessor(self, *args, **kwargs):
