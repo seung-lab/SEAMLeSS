@@ -7,6 +7,4 @@ if __name__ == '__main__':
   args = parse_args(parser) 
   a = get_aligner(args)
   bbox = get_bbox(args)
-  a.total_bbox = bbox
-  a.zs = src_z
-  a.compute_section_pair_residuals(src_z, tgt_z, bbox)
+  a.compute_section_pair_residuals(args.src_z, args.tgt_z, bbox)

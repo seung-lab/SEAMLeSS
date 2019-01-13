@@ -35,7 +35,7 @@ from task_handler import TaskHandler, make_residual_task_message, \
         make_downsample_task_message, make_compose_task_message, \
         make_prepare_task_message, make_vector_vote_task_message, \
         make_regularize_task_message, make_render_low_mip_task_message, \
-        make_invert_field_task_message
+        make_invert_field_task_message, make_render_cv_task_message
 
 class Aligner:
   """
@@ -105,8 +105,9 @@ class Aligner:
     src_cv = self.src['src_img'][0]
     print("source_patch is", src_path)
     print("tgt_patch is", tgt_path)
-    info = DstDir.create_info_batch(src_cv, mip_range, max_displacement, 2,
-                                    256, self.process_low_mip)
+    # info = DstDir.create_info_batch(src_cv, mip_range, max_displacement, 2,
+    #                                 256, self.process_low_mip)
+    info = DstDir.create_info(src_cv, mip_range, max_displacement)
     self.dst = {}
     self.tgt_radius = tgt_radius
     self.tgt_range = range(-tgt_radius, tgt_radius+1)
@@ -493,6 +494,7 @@ class Aligner:
        bbox: BoundingBox, the region of interest over which to vote
        mip: int, the data MIP level
        inverse: bool, indicates the direction of composition to use 
+       T: float for temperature of the softmin used for vector pair differences
     """
     fields = []
     #for z_offset in range(1, self.tgt_radius+1):
@@ -1206,6 +1208,7 @@ class Aligner:
 
   def render_section_all_mips(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
     self.render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
+    # self.render_grid_cv(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
     self.downsample(dst_cv, dst_z, bbox, self.render_low_mip, self.render_high_mip)
   
   def render_to_low_mip(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
@@ -1342,17 +1345,24 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def multi_match(self, z, render=True, ignore_wait=False):
+  def multi_match(self, z, forward_match, reverse_match, render=True, ignore_wait=False):
     """Match Z to all sections within TGT_RADIUS
 
     Args:
-       render: bool indicating whether to render section
+        z: int for section index
+        forward_match: bool indicating whether to match z to z-i
+        reverse_match: bool indicating whether to match z to z+i
+        render: bool indicating whether to render section
+        ignore_wait: (only for distributed) ignore the wait for each section
     """
     bbox = self.total_bbox
     mip = self.process_low_mip
-    #for z_offset in self.tgt_range:
-    for z_offset in range(self.tgt_range[-1], 0, -1):
-    # for z_offset in range(self.tgt_range[0], 0, 1):
+    tgt_range = []
+    if forward_match:
+      tgt_range.extend(range(self.tgt_range[-1], 0, -1)) 
+    if reverse_match:
+      tgt_range.extend(range(self.tgt_range[0], 0, 1)) 
+    for z_offset in tgt_range:
       if z_offset != 0:
         src_z = z
         tgt_z = src_z - z_offset
@@ -1362,15 +1372,22 @@ class Aligner:
           dst_cv = self.dst[z_offset].for_write('dst_img')
           self.render_section_all_mips(src_z, field_cv, src_z, dst_cv, tgt_z, bbox, mip)
 
-  def generate_pairwise(self, z_range, bbox, render_match=False, batch_size=1):
+  def generate_pairwise(self, z_range, bbox, forward_match, reverse_match, 
+                              render_match=False, batch_size=1):
     """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in TGT_RADIUS
   
     Args:
         z_range: list of z indices to be matches 
         bbox: BoundingBox object for bounds of 2D region
+        forward_match: bool indicating whether to match from z to z-i
+          for i in range(tgt_radius)
+        reverse_match: bool indicating whether to match from z to z+i
+          for i in range(tgt_radius)
         render_match: bool indicating whether to separately render out
-            each aligned section before compiling vector fields with voting
-            (useful for debugging)
+          each aligned section before compiling vector fields with voting
+          (useful for debugging)
+        batch_size: (for distributed only) int describing how many sections to issue 
+          multi-match tasks for, before waiting for all tasks to complete
     """
     self.total_bbox = bbox
     mip = self.process_low_mip
@@ -1379,7 +1396,8 @@ class Aligner:
     for z in z_range:
       start = time()
       batch_count += 1 
-      self.multi_match(z, render=render_match, ignore_wait=True)
+      self.multi_match(z, forward_match=forward_match, reverse_match=reverse_match, 
+                       render=render_match, ignore_wait=True)
       if batch_count == batch_size and self.distributed:
         print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
         self.task_handler.wait_until_ready()
@@ -1713,7 +1731,7 @@ class Aligner:
       patch_bbox = deserialize_bbox(message['patch_bbox'])
       mip = message['mip']
       sigma = message['sigma']
-      z_range = range(z_start, z_end)
+      z_range = range(z_start, z_end+1)
       self.regularize_z(z_range, compose_start, patch_bbox, mip, sigma=sigma)
 
   def handle_invert(self, message):

@@ -20,7 +20,7 @@ if __name__ == '__main__':
   z_stop = args.bbox_stop[2]
 
   # dst_cv = a.dst[0].for_write('dst_img')
-  dst_k = 'image_regularized{0}'.format(args.dir_suffix)
+  dst_k = 'image_regularized_{0}'.format(args.dir_suffix)
   path = join(args.dst_path, dst_k) 
   a.dst[0].add_path(dst_k, path, data_type='uint8', num_channels=1)
   a.dst[0].create_cv(dst_k)

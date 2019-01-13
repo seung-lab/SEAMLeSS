@@ -51,7 +51,8 @@ if __name__ == '__main__':
   # align with vector voting
   for z in composed_range:
       print('generate pairwise with vector voting z={0}'.format(z))
-      a.generate_pairwise([z], bbox, render_match=False)
+      a.generate_pairwise([z], bbox, forward_match=True, reverse_match=False, 
+                          render_match=False)
       print('compose pairwise with vector voting z={0}'.format(z))
       a.compose_pairwise([z], args.bbox_start[2], bbox, mip, forward_compose=True,
                          inverse_compose=False)
