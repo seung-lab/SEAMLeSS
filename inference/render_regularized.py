@@ -33,5 +33,5 @@ if __name__ == '__main__':
     reg_range = range(block_start, block_start + args.block_size)
     print('Rendering for z_range {0}'.format(reg_range))
     for z in reg_range:
-      a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip)
+      a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip, wait=False)
 

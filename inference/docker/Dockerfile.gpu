@@ -2,7 +2,12 @@ FROM nvidia/cuda:9.0-cudnn7-runtime-ubuntu16.04
 
 RUN apt-get update -y 
 RUN apt-get upgrade -y
-RUN apt-get install -y python3-pip vim screen tmux htop
+RUN apt-get install -y python3-pip \
+                       vim \
+                       screen \
+                       tmux \
+                       htop \
+                       libgtk2.0-dev
 RUN pip3 install pip --upgrade 
 RUN pip3 install numpy
 
@@ -11,6 +16,8 @@ RUN pwd
 
 RUN apt-get install -y git
 RUN pwd
+ENV LANG en_US.UTF-8
+ENV LC_ALL C.UTF-8
 COPY requirements.txt .
 RUN pip3 install -r requirements.txt
 
