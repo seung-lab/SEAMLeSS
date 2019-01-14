@@ -6,7 +6,7 @@ setup(
     description='SEAMLeSS alignment',
     packages=find_packages(),
     scripts=[
-        'inference/client.py',
+        'inference/worker.py',
         'training/train.py',
     ],
     url="https://github.com/seung-lab/SEAMLeSS",
