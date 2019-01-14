@@ -35,7 +35,8 @@ from task_handler import TaskHandler, make_residual_task_message, \
         make_downsample_task_message, make_compose_task_message, \
         make_prepare_task_message, make_vector_vote_task_message, \
         make_regularize_task_message, make_render_low_mip_task_message, \
-        make_invert_field_task_message, make_render_cv_task_message
+        make_invert_field_task_message, make_render_cv_task_message, \
+        make_batch_render_message
 
 class Aligner:
   """
@@ -1051,7 +1052,7 @@ class Aligner:
                 task_patches.append(chunks[j])
             render_task_batch = make_batch_render_message(src_z, field_cv, field_z, task_patches,
                                                    mip, dst_cv, dst_z, batch)
-            self.task_handler.send_message(render_task)
+            self.task_handler.send_message(render_task_batch)
         self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):

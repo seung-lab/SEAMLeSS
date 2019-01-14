@@ -112,7 +112,7 @@ def make_render_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
   return json.dumps(content)
 
 def make_batch_render_message(z, field_cv, field_z, patches, mip, dst_cv,
-                              dst_zm, batch):
+                              dst_z, batch):
   content = {
       "type": "batch_render_task",
       "z": z,
