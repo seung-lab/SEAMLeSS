@@ -29,5 +29,12 @@ if __name__ == '__main__':
   vector_mip = args.mip
   image_mip = args.render_low_mip
   for z in z_range:
-    a.render_to_low_mip(z, field_cv, z, dst_cv, z, bbox, image_mip, vector_mip)
+    a.low_mip_render(z, field_cv, z, dst_cv, z, bbox, image_mip, vector_mip)
+  if a.distributed:
+    a.task_handler.wait_until_ready()
+  for m in range(a.render_low_mip, a.render_high_mip):
+    for z in reg_range:
+      a.downsample(dst_cv, z, bbox, m, m+1, wait=False)
+    if a.distributed:
+      a.task_handler.wait_until_ready()
 
