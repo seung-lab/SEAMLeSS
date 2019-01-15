@@ -1,11 +1,13 @@
 import cloudvolume as cv
 import numpy as np
+from utilities.helpers import timeout, TimeoutError
 
 class Sampler(object):
     def __init__(self, source='gs://neuroglancer/pinky40_v11/image', mip=5, dim=1152, height=2, zs=1, ze=1000, test_fraction=0.2):
         # import httplib2shim
         # httplib2shim.patch()
         self.source = source
+        self.mip = mip
         self.vol = cv.CloudVolume(source, mip=mip)
         self.dim = dim
         self.vol_info = self.vol.info['scales'][0]
@@ -26,9 +28,17 @@ class Sampler(object):
         z, z_ = xyz[2], xyz_[2]
         squeezed = None
         try:
-            squeezed = np.squeeze(self.vol[x:x_, y:y_, z:z_])
+            @timeout(10)
+            def download_CV():
+                data = self.vol[x:x_, y:y_, z:z_]
+                return np.squeeze(data)
+            squeezed = download_CV()
+            print('min:', squeezed.min(), 'max:', squeezed.max())
+            if squeezed.max() == 0:
+                squeezed = None
+                raise Exception('All zeros')
         except Exception as e:
-            print('Exception {}'.format(e))
+            print('Exception {}: {}'.format(e.__class__.__name__, e))
         if squeezed is not None:
             print('Chunk shape {}'.format(squeezed.shape))
         return squeezed
