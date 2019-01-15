@@ -1,6 +1,6 @@
 import cloudvolume as cv
 import numpy as np
-from utilities.helpers import timeout, TimeoutError
+
 
 class Sampler(object):
     def __init__(self, source='gs://neuroglancer/pinky40_v11/image', mip=5, dim=1152, height=2, zs=1, ze=1000, test_fraction=0.2):
@@ -8,7 +8,7 @@ class Sampler(object):
         # httplib2shim.patch()
         self.source = source
         self.mip = mip
-        self.vol = cv.CloudVolume(source, mip=mip)
+        self.vol = cv.CloudVolume(source, mip=mip, fill_missing=True, bounded=False)
         self.dim = dim
         self.vol_info = self.vol.info['scales'][0]
         self.vol_size = self.vol_info['size']
@@ -22,26 +22,17 @@ class Sampler(object):
     def chunk_at_global_coords(self, xyz, xyz_):
         assert xyz[2] >= self.zs
         assert xyz_[2] <= self.ze
-        factor = 2 ** self.vol.mip
+        factor = 2 ** self.vol.mip  # TODO: use CloudVolume's downsample_ratio
         x, x_ = xyz[0]//factor, xyz_[0]//factor
         y, y_ = xyz[1]//factor, xyz_[1]//factor
         z, z_ = xyz[2], xyz_[2]
-        squeezed = None
-        try:
-            @timeout(10)
-            def download_CV():
-                data = self.vol[x:x_, y:y_, z:z_]
-                return np.squeeze(data)
-            squeezed = download_CV()
-            print('min:', squeezed.min(), 'max:', squeezed.max())
-            if squeezed.max() == 0:
-                squeezed = None
-                raise Exception('All zeros')
-        except Exception as e:
-            print('Exception {}: {}'.format(e.__class__.__name__, e))
-        if squeezed is not None:
-            print('Chunk shape {}'.format(squeezed.shape))
-        return squeezed
+        data = self.vol[x:x_, y:y_, z:z_].squeeze()
+        print('min:', data.min(), 'max:', data.max())
+        if data.min(1).max() == 0:
+            data = None
+        else:
+            print('Chunk shape {}'.format(data.shape))
+        return data
 
     def random_sample(self, train=True, offsets=None, size=None, split=True):
         if offsets is None:
