@@ -9,11 +9,14 @@ retry = tenacity.retry(
   wait=tenacity.wait_full_jitter(0.5, 60.0),
 )
 
-def make_residual_task_message(source_z, target_z, patch_bbox, mip):
-  content = {
+def make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip):
+  content = {                   
       "type": "residual_task",
-      "source_z": source_z,
-      "target_z": target_z,
+      "src_z": src_z,
+      "src_cv": src_cv.serialize(),
+      "tgt_z": tgt_z,
+      "tgt_cv": tgt_cv.serialize(),
+      "field_cv": field_cv.serialize(),
       "patch_bbox": patch_bbox.serialize(),
       "mip": mip,
   }
@@ -43,7 +46,8 @@ def make_regularize_task_message(z_start, z_end, compose_start, patch_bbox, mip,
   }
   return json.dumps(content)
 
-def make_vector_vote_task_message(z_range, read_F_cv, write_F_cv, patch_bbox, mip, inverse, T):
+def make_vector_vote_task_message(z_range, read_F_cv, write_F_cv, patch_bbox, mip,
+                                  inverse, T, negative_offsets, serial_operation):
   content = {
       "type": "vector_vote_task",
       "z_start": z_range[0],
@@ -54,6 +58,8 @@ def make_vector_vote_task_message(z_range, read_F_cv, write_F_cv, patch_bbox, mi
       "mip": mip,
       "inverse": inverse,
       "T": T,
+      "negative_offsets": negative_offsets,
+      "serial_operation": serial_operation,
   }
   return json.dumps(content)
 

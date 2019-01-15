@@ -6,7 +6,7 @@ metadata:
     run: seamless
   name: seamless
 spec:
-  replicas: 16 
+  replicas: 30
   selector:
     matchLabels:
       run: seamless
@@ -38,7 +38,7 @@ spec:
                 name: awssecret
                 key: region
         command: ["/bin/sh"]
-        args: ["-c", "python3 inference/worker.py --model_path ../models/sergiy_trans_minnie_v1_m8m10 --src_path gs://seunglab2/minnie_v1/raw_image --src_mask_path gs://seunglab2/minnie_v1/raw_image/resin_mask --src_mask_mip 8 --src_mask_val 1 --tgt_mask_path gs://seunglab2/minnie_v1/raw_image/resin_mask --tgt_mask_mip 8 --tgt_mask_val 1 --dst_path gs://seunglab2/minnie_v1/alignment/m8m10/pairwise_tmacrina_v1 --mip 6 --max_mip 8 --render_low_mip 6 --render_high_mip 8 --bbox_start 80000 80000 19900 --bbox_stop 430000 360000 21929 --bbox_mip 0 --should_contrast --max_displacement 4096 --size 8 --disable_flip_average --old_vectors --tgt_radius 3 --dir_suffix v6_inverter_distributed_ --inverter_path ../models/inverter_v7 --queue_name deepalign0"]
+        args: ["-c", "python3 inference/worker.py --model_path ../models/sergiy_trans_minnie_v1_m8m10_trainedforvv --src_path gs://seunglab2/minnie_v1/raw_image --src_mask_path gs://seunglab2/minnie_v1/alignment/net_masks/resin_mask_v3 --src_mask_mip 8 --src_mask_val 250 --tgt_mask_path gs://seunglab2/minnie_v1/alignment/net_masks/resin_mask_v3 --tgt_mask_mip 8 --tgt_mask_val 250 --dst_path gs://seunglab2/minnie_v1/alignment/coarse/tmacrina_minnie10_serial --mip 6 --max_mip 8 --render_low_mip 6 --render_high_mip 8 --bbox_start 80000 80000 20823 --bbox_stop 430000 360000 20827 --bbox_mip 0 --should_contrast --max_displacement 4096 --size 8 --disable_flip_average --old_vectors --tgt_radius 3 --queue_name deepalign0"]
         resources: 
           limits:
             nvidia.com/gpu: 1
