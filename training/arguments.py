@@ -70,6 +70,12 @@ def _parse_args(args=None):
         default=False,
         action='store_true',
     )
+    start_parser.add_argument(
+        '--downsamples',
+        help='the number of times to downsample the images before passing '
+        'them to the net',
+        type=int, default=0, metavar='D',
+    )
 
     param_group = start_parser.add_argument_group('training parameters')
     param_group.add_argument(

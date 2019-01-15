@@ -196,6 +196,10 @@ def train(train_loader, archive, epoch):
           .format(list(range(state_vars.height))[state_vars.levels]))
     max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
+    down = downsample(state_vars.downsamples)  # TODO: refactor
+    up = upsample(state_vars.downsamples)
+    upfield = lambda field: up(field.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+
     start_time = time.time()
     start_iter = 0 if state_vars.iteration is None else state_vars.iteration
     for i, sample in retry_enumerate(train_loader, start_iter):
@@ -208,7 +212,8 @@ def train(train_loader, archive, epoch):
 
         # compute output and loss
         src, tgt, truth = prepare_input(sample, max_displacement=max_disp)
-        prediction = submodule(src, tgt)
+        prediction = submodule(down(src), down(tgt))
+        prediction = upfield(prediction)
         if truth is not None:
             loss = archive.loss(prediction=prediction, truth=truth)
         else:
@@ -457,6 +462,7 @@ def load_archive(args):
             'name': args.name,
             'height': args.height,
             'feature_maps': args.feature_maps,
+            'downsamples': args.downsamples,
             'start_lr': args.lr,
             'lr': args.lr,
             'wd': args.wd,
