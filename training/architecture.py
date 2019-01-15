@@ -52,6 +52,26 @@ class Model(nn.Module):
     def height(self):
         return len(self.feature_maps)
 
+    def train_level(self, level=slice(None)):
+        """
+        Set only a specific level of the net to training mode and
+        freeze all the other weights.
+
+        Currently, this does nothing when called on the full net.
+        """
+        return self
+
+    def init_level(self, level='lowest'):
+        """
+        Initialize the last level of the net by copying the trained
+        weights of the next to last level.
+        Whether the last level is the lowest or highest level is determined
+        by the `level` argument.
+
+        Currently, this does nothing when called on the full net.
+        """
+        return self
+
     def submodule(self, index):
         """
         Returns a submodule as indexed by `index`.

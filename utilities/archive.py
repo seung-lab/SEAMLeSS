@@ -563,6 +563,8 @@ class ModelArchive(object):
         epoch = self._state_vars.epoch
         gamma = self._state_vars.gamma
         gamma_step = self._state_vars.gamma_step
+        if gamma == 1:
+            return
         self._state_vars.lr = (self._state_vars.start_lr
                                * (gamma ** (epoch // gamma_step)))
         for param_group in self._optimizer.param_groups:

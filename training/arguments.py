@@ -57,7 +57,7 @@ def _parse_args(args=None):
     start_parser.add_argument(
         '--height',
         help='the number of mip levels to train',
-        type=int, default=7, metavar='H',
+        type=int, default=5, metavar='H',
     )
     start_parser.add_argument(
         '--feature_maps', '--feature_list', '--fm',
@@ -83,7 +83,7 @@ def _parse_args(args=None):
         metavar='LR', help='initial learning rate',
     )
     param_group.add_argument(
-        '--gamma', '--learning_rate_decay', default=0.1, type=float,
+        '--gamma', '--learning_rate_decay', default=1, type=float,
         metavar='DR', help='rate by which the learning rate decays',
     )
     param_group.add_argument(
