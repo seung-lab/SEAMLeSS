@@ -1,0 +1,43 @@
+695315cc3acc29dc30c0dda168641fa7cc3368dd
+bn_defect_net
+diff --git a/training/stack_dataset.py b/training/stack_dataset.py
+index 4b019c2..1acb39b 100644
+--- a/training/stack_dataset.py
++++ b/training/stack_dataset.py
+@@ -12,8 +12,9 @@ def compile_dataset(*h5_paths, transform=None):
+     for h5_path in h5_paths:
+         h5f = h5py.File(h5_path, 'r')
+         for series in h5f.values():
+-            ds = [StackDataset(v, transform=transform) for v in series]
++            ds = [StackDataset(series[37], transform=transform) for v in series]
+             datasets.extend(ds)
++            break
+     return ConcatDataset(datasets)
+ 
+ 
+diff --git a/training/train.py b/training/train.py
+index 2167ca9..b8f57bb 100755
+--- a/training/train.py
++++ b/training/train.py
+@@ -106,8 +106,8 @@ def main():
+     train_transform = transforms.Compose([
+         stack_dataset.ToFloatTensor(),
+         archive.preprocessor,
+-        stack_dataset.RandomRotateAndScale(),
+-        stack_dataset.RandomFlip(),
++        # stack_dataset.RandomRotateAndScale(),
++        # stack_dataset.RandomFlip(),
+         # stack_dataset.Split(),
+     ])
+     train_dataset = stack_dataset.compile_dataset(
+@@ -123,8 +123,8 @@ def main():
+         val_transform = transforms.Compose([
+             stack_dataset.ToFloatTensor(),
+             archive.preprocessor,
+-            stack_dataset.RandomRotateAndScale(),
+-            stack_dataset.RandomFlip(),
++            # stack_dataset.RandomRotateAndScale(),
++            # stack_dataset.RandomFlip(),
+             # stack_dataset.Split(),
+         ])
+         validation_dataset = stack_dataset.compile_dataset(
