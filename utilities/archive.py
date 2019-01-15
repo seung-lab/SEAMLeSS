@@ -7,6 +7,7 @@ import numpy as np
 import yaml
 import datetime
 from pathlib import Path
+import filecmp
 import importlib
 import pandas as pd
 
@@ -94,6 +95,7 @@ class ModelArchive(object):
         self.directory = models_location / self._name
         self.intermediate_models = self.directory / 'intermediate_models/'
         self.debug_outputs = self.directory / 'debug_outputs/'
+        self.last_training_record = self.directory / '.last_training_record'
         self.paths = {
             # the model's trained weights
             'weights': self.directory / 'weights.pt',
@@ -187,6 +189,7 @@ class ModelArchive(object):
         self.directory.mkdir()
         self.intermediate_models.mkdir()
         self.debug_outputs.mkdir()
+        self.last_training_record.mkdir()
 
         # create archive files
         for filename in [
@@ -486,6 +489,42 @@ class ModelArchive(object):
         cp(self.paths['prand'], check_dir)
         cp(self.paths['state_vars'], check_dir)
         cp(self.paths['plot'], check_dir)
+
+    def record_training_session(self):
+        """
+        Records a new training session with the updated parameters.
+        """
+        if self.readonly:
+            raise ReadOnlyError(self._name)
+        tracked = [
+            'architecture.py',
+            'objective.py',
+            'preprocessor.py',
+            'state_vars.yaml'
+        ]
+        _, changed, error = filecmp.cmpfiles(
+            str(self.last_training_record), str(self.directory), tracked)
+        if len(changed + error) == 0:
+            return
+        with self.paths['plan'].open(mode='a') as f:
+            f.writelines('\nAt epoch {}, iteration {}:\n'.format(
+                self.state_vars.epoch, self.state_vars.iteration))
+            f.writelines('Time: {}\n'.format(datetime.datetime.now()))
+            f.writelines('Commit: {}\n'.format(self.commit))
+            f.writelines(' '.join(sys.argv) + '\n')
+        with self.paths['plan'].open(mode='ab') as f:
+            for filename in changed + error:
+                if filename in changed:
+                    subprocess.call(
+                        'git diff --no-index {} {}'.format(
+                            self.last_training_record.expanduser(),
+                            self.paths[filename.split('.')[0]].expanduser()
+                        ).split(), stdout=f)
+        for filename in tracked:
+            if (self.last_training_record / filename).is_file():
+                (self.last_training_record / filename).unlink()
+            cp(self.paths[filename.split('.')[0]],
+               self.last_training_record / filename)
 
     def new_debug_directory(self):
         """

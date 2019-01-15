@@ -507,6 +507,9 @@ def load_archive(args):
         archive = ModelArchive(args.name, readonly=False)
         archive.state_vars['gpus'] = args.gpu_ids
 
+    # record a training session
+    archive.record_training_session()
+
     # redirect output through the archive
     sys.stdout = archive.out
     sys.stderr = archive.err
