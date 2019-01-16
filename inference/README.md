@@ -37,14 +37,16 @@ for instructions on obtaining them, and storing them in JSON format.
 ### Setting up Kubernetes  
 * Install [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) 
 on your local workstation.
-* Create a GPU cluster. We recommend the following parameters:  
+* Create a GPU cluster. We recommend the following parameters (based on the `GPU Accelerated Computing` template in GKE):
 
 ```
 Master version >= 1.10.9-gke.5 (default) 
 Two node pools:
-1. micro pool (single node)
+1. micro pool
+   Number of nodes: 3
    Machine type: f1-micro
-2. gpu pool (as many nodes as desired)
+2. gpu pool
+   Number of nodes: as many as you like
    Container-Optimized OS (cos) (default)
    Cores: 1 vCPU
    Memory: 3.75 GB
@@ -52,6 +54,10 @@ Two node pools:
    GPU type: NVIDIA Tesla K80
    Boot disk size: 16 GB
    Access scopes: 'Allow full access to all Cloud APIs'
+   Enable preemptible nodes: True
+
+Advanced options
+* VPC-native, Enable VPC-native: True
 ```
 
 * Connect to your cluster.  
