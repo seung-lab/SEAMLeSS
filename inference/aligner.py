@@ -109,6 +109,7 @@ class Aligner:
     # info = DstDir.create_info_batch(src_cv, mip_range, max_displacement, 2,
     #                                 256, self.process_low_mip)
     info = DstDir.create_info(src_cv, mip_range, max_displacement)
+    #info = src_cv.info
     self.dst = {}
     self.tgt_radius = tgt_radius
     self.tgt_range = range(-tgt_radius, tgt_radius+1)
@@ -676,18 +677,26 @@ class Aligner:
     cid = ((in_y_range[0] - calign_y_range[0]) // in_y_len) * line_bbox_num + (in_x_range[0] - calign_x_range[0]) // in_x_len
     return cid
 
+  def avg_field(self, field):
+      favg = field.sum() / torch.nonzero(field).size(0)
+      return favg
+
   def profile_field(self, field):
-      min_x = math.floor(np.min(field[...,0]))
-      min_y = math.floor(np.min(field[...,1]))
-      return np.float32([min_x, min_y])
+     # print(f.shape)
+     # min_x = math.floor(np.min(field[...,0]))
+     # min_y = math.floor(np.min(field[...,1]))
+     # return np.float32([min_x, min_y])
+      avg_x = self.avg_field(field[0,...,0])
+      avg_y = self.avg_field(field[0,...,1])
+      return torch.from_numpy(np.float32([avg_x, avg_y]))
 
   def adjust_bbox(self, bbox, dis):
       influence_bbox = deepcopy(bbox)
       x_range = influence_bbox.x_range(mip=0)
       y_range = influence_bbox.y_range(mip=0)
       #print("x_range is", x_range, "y_range is", y_range)
-      new_bbox = BoundingBox(x_range[0] - dis[0], x_range[1] - dis[0],
-                                   y_range[0] - dis[1], y_range[1] - dis[1],
+      new_bbox = BoundingBox(x_range[0] + dis[0], x_range[1] + dis[0],
+                                   y_range[0] + dis[1], y_range[1] + dis[1],
                                    mip=0)
       #print(new_bbox.x_range(mip=0), new_bbox.y_range(mip=0))
       return new_bbox
@@ -697,7 +706,7 @@ class Aligner:
                           to_tensor=True) 
       x_range = bbox.x_range(mip=0)
       y_range = bbox.y_range(mip=0)
-      if torch.min(field) == 0 and torch.max(field) == 0:
+      if torch.min(f) == 0 and torch.max(f) == 0:
           image = self.get_image(image_cv, z, bbox, mip,
                                  adjust_contrast=False, to_tensor=True)
           return image
