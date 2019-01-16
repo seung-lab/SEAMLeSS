@@ -66,7 +66,7 @@ class SupervisedLoss(nn.Module):
 
     def forward(self, prediction, truth):  # TODO: use masks
         truth = truth.to(prediction.device)
-        return ((prediction - truth) ** 2).mean()
+        return ((prediction - truth) ** 2).mean() * 25000
 
 
 class SelfSupervisedLoss(nn.Module):
@@ -133,7 +133,7 @@ class SelfSupervisedLoss(nn.Module):
         else:
             field_loss = field_loss_map.mean()
 
-        loss = (mse_loss + self.lambda1 * field_loss) / 25000
+        loss = (mse_loss + self.lambda1 * field_loss)
         return loss
 
 
