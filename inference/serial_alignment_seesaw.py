@@ -53,7 +53,9 @@ if __name__ == '__main__':
     a.render(nz, field_cv, nz, dst_cv, nz, bbox, a.render_low_mip)
     print('aligning with vector voting z={0}'.format(pz))
     a.render(pz, field_cv, pz, dst_cv, pz, bbox, a.render_low_mip)
+    a.downsample_range(dst_cv, [nz], bbox, a.render_low_mip, a.render_high_mip-2)
+    a.downsample_range(dst_cv, [pz], bbox, a.render_low_mip, a.render_high_mip-2)
 
-  a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
+  a.downsample_range(dst_cv, z_range, bbox, a.render_high_mip-2, a.render_high_mip)
 
 

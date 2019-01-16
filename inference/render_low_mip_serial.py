@@ -48,5 +48,5 @@ if __name__ == '__main__':
         a.low_mip_render(z, field_cv, z, dst_cv, z, bbox, image_mip, vector_mip)
       if a.distributed:
         a.task_handler.wait_until_ready()
-      a.downsample_range(dst_cv, z_pair, bbox, a.render_low_mip, a.render_high_mip)
+      # a.downsample_range(dst_cv, z_pair, bbox, a.render_low_mip, a.render_high_mip)
 
