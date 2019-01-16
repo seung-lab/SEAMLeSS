@@ -192,17 +192,18 @@ class TaskHandler:
   def send_message(self, message_body):
     attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
     threshold = 100000
-    while(True):
-        response = self.sqs.get_queue_attributes(QueueUrl=self.queue_url,
-                                                 AttributeNames=attribute_names)
-        Message_num = int(response['Attributes']['ApproximateNumberOfMessages'])
-        if Message_num > threshold:
-            print("Message number is", Message_num, "sleep")
-            time.sleep(3)
-        else: 
-            self.sqs.send_message(QueueUrl=self.queue_url, 
-                                  MessageBody=message_body)
-            break
+    # while(True):
+    #     response = self.sqs.get_queue_attributes(QueueUrl=self.queue_url,
+    #                                              AttributeNames=attribute_names)
+    #     Message_num = int(response['Attributes']['ApproximateNumberOfMessages'])
+    #     if Message_num > threshold:
+    #         print("Message number is", Message_num, "sleep")
+    #         time.sleep(3)
+    #     else: 
+    #         self.sqs.send_message(QueueUrl=self.queue_url, 
+    #                               MessageBody=message_body)
+    #         break
+    self.sqs.send_message(QueueUrl=self.queue_url, MessageBody=message_body)
 
   @retry
   def get_message(self, processing_time=90):
