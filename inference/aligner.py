@@ -695,15 +695,15 @@ class Aligner:
       x_range = influence_bbox.x_range(mip=0)
       y_range = influence_bbox.y_range(mip=0)
       #print("x_range is", x_range, "y_range is", y_range)
-      new_bbox = BoundingBox(x_range[0] + dis[0], x_range[1] + dis[0],
-                                   y_range[0] + dis[1], y_range[1] + dis[1],
+      new_bbox = BoundingBox(x_range[0] + dis[1], x_range[1] + dis[1],
+                                   y_range[0] + dis[0], y_range[1] + dis[0],
                                    mip=0)
       #print(new_bbox.x_range(mip=0), new_bbox.y_range(mip=0))
       return new_bbox
 
   def gridsample_cv(self, image_cv, field_cv, bbox, z, mip):
       f =  self.get_field(field_cv, z, bbox, mip, relative=False,
-                          to_tensor=True) 
+                          to_tensor=True)
       x_range = bbox.x_range(mip=0)
       y_range = bbox.y_range(mip=0)
       if torch.min(f) == 0 and torch.max(f) == 0:
@@ -724,7 +724,6 @@ class Aligner:
           f = f - distance.to(device = self.device)
           #f = f - distance
           res = self.abs_to_rel_residual(f, bbox, mip)
-          #res = torch.from_numpy(res)
           field = res.to(device = self.device)
           #print("field shape is", field.shape)
           image = self.get_image(image_cv, z, new_bbox, mip,
