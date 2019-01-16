@@ -4,7 +4,7 @@ import copy
 from utilities.helpers import gridsample_residual, upsample, downsample, load_model_from_dict
 from .alignermodule import Aligner
 from .rollback_pyramid import RollbackPyramid
-
+from masker import Masker
 
 class Model(nn.Module):
     """
@@ -19,21 +19,33 @@ class Model(nn.Module):
         super().__init__()
         self.height = height
         self.mips = mips
-        self.encode = None
         self.align = RollbackPyramid()
         self.aligndict = {}
         self.lighter = None
+        self.lighter_mip = 9
+        self.downsampler = torch.nn.AvgPool2d((2, 2))
+        self.upsampler = torch.nn.functional.interpolate
 
     def __getitem__(self, index):
         return self.submodule(index)
 
     def forward(self, src, tgt, in_field=None, plastic_mask=None, mip_in=6,
-                encodings=False, **kwargs):
-        src_lightened = src + self.lighter(src)
-        tgt_lightened = tgt + self.lighter(src)
-        if encodings:
-            src_lightened, tgt_lightened = self.encode(src_lightened, tgt_lightened)
-        stack = torch.cat((src_lightened, tgt_lightened), 1)
+                **kwargs):
+        src_lighter_in = src
+        tgt_lighter_in = tgt
+        for _ in range(mip_in, self.lighter_mip):
+            src_lighter_in = self.downsampler(src_lighter_in)
+            tgt_lighter_in = self.downsampler(tgt_lighter_in)
+
+        src_light = self.lighter(src_lighter_in)
+        tgt_light = self.lighter(tgt_lighter_in)
+        for _ in range(mip_in, self.lighter_mip):
+            src_light = self.upsampler(src_light, scale_factor=2)
+            tgt_light = self.upsampler(tgt_light, scale_factor=2)
+
+        src_final = src + src_light
+        tgt_final = tgt + tgt_light
+        stack = torch.cat((src_final, tgt_final), 1)
         # stack_t = stack.transpose(2, 3)
         # field_t = self.align(stack_t, plastic_mask=None, mip_in=mip_in)
         # field_t = field_t * 2 / src.shape[-2]
