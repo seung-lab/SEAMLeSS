@@ -5,8 +5,6 @@ from os.path import join
 
 if __name__ == '__main__':
   parser = get_argparser()
-  parser.add_argument('--align_start', 
-    help='align without vector voting the 2nd & 3rd sections, otherwise copy them', action='store_true')
   parser.add_argument('--compose_start', 
     help='the earliest section to use in the composition',
     type=int) 
@@ -32,9 +30,5 @@ if __name__ == '__main__':
     a.low_mip_render(z, field_cv, z, dst_cv, z, bbox, image_mip, vector_mip)
   if a.distributed:
     a.task_handler.wait_until_ready()
-  for m in range(a.render_low_mip, a.render_high_mip):
-    for z in reg_range:
-      a.downsample(dst_cv, z, bbox, m, m+1, wait=False)
-    if a.distributed:
-      a.task_handler.wait_until_ready()
+  a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
 
