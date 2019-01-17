@@ -11,7 +11,7 @@ def get_argparser():
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
   parser.add_argument('--crop', type=int, default=384)
-  parser.add_argument('--mip', type=int)
+  # parser.add_argument('--mip', type=int)
   parser.add_argument('--src_path', type=str,
     help='CloudVolume path of images to be warped')
   parser.add_argument('--tgt_path', type=str,
@@ -82,6 +82,12 @@ def get_argparser():
     help='suffix to attach for composed directories')
   parser.add_argument('--inverter_path', type=str, default='',
     help='path to the inverse net; default is None')
+  parser.add_argument('--field_chunk_dim', type=int,
+    help='dimension of square output field chunk')
+  parser.add_argument('--field_mip', type=int, default=0,
+    help='MIP level at which residuals will be computed and stored')
+  parser.add_argument('--image_mip', type=int, 
+    help='MIP level of the source & target image')
   return parser
 
 def parse_args(parser, arg_string=''):
@@ -91,7 +97,7 @@ def parse_args(parser, arg_string=''):
     args = parser.parse_args()
   
   args.tgt_path = args.tgt_path if args.tgt_path else args.src_path
-  args.mip_range = (args.mip, args.mip)
+  # args.mip_range = (args.mip, args.mip)
   args.high_mip_chunk = (1024, 1024)
   args.top_skip = 0
   return args
@@ -116,7 +122,7 @@ def get_aligner(args):
   print('src_path: {0}'.format(args.src_path))
   print('dst_path: {0}'.format(args.dst_path))
   print('Coordinates:', args.bbox_start, args.bbox_stop)
-  print('Mip:', args.mip)
+  # print('Mip:', args.mip)
   print('Contrast:', args.should_contrast)
   print('Max mip:', args.max_mip)
   # print('NG link:', ng_link('dst', 'precomputed://' + args.dst_path +'/image', 'src', 'precomputed://' + args.src_path, (args.bbox_start[0]+args.bbox_stop[0])//2, (args.bbox_start[1]+args.bbox_stop[2])//2, args.bbox_start[2]))

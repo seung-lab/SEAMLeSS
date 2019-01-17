@@ -59,6 +59,9 @@ class DstDir():
                   num_channels=2, fill_missing=True)
     self.suffix = suffix
     self.create_paths()
+
+  def __repr__(self):
+    return self.root
   
   def for_read(self, k):
     return self.read[k]

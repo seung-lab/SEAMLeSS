@@ -9,7 +9,8 @@ retry = tenacity.retry(
   wait=tenacity.wait_full_jitter(0.5, 60.0),
 )
 
-def make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip):
+def make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, 
+                               input_mip, output_mip):
   content = {                   
       "type": "residual_task",
       "src_z": src_z,
@@ -18,7 +19,8 @@ def make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbo
       "tgt_cv": tgt_cv.serialize(),
       "field_cv": field_cv.serialize(),
       "patch_bbox": patch_bbox.serialize(),
-      "mip": mip,
+      "input_mip": input_mip,
+      "output_mip": output_mip,
   }
   return json.dumps(content)
 

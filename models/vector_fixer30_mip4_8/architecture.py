@@ -524,9 +524,9 @@ class EPyramid(nn.Module):
                     field_so_far.permute(0, 3, 1, 2), rfield,
                     padding_mode='border').permute(0, 2, 3, 1)
                 field_so_far = rfield + resampled_field_so_far
-            if i != target_level:
-                field_so_far = self.up(
-                    field_so_far.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+                if i != self.skip:
+                    field_so_far = self.up(
+                        field_so_far.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
         return field_so_far, residuals
 
 

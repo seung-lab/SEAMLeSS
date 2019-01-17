@@ -16,7 +16,7 @@
   "num_epochs": 1000000000,
   "penalty": "lap",
   "skip": 2,
-  "topskips": 1, 
+  "topskips": 0, 
   "start_lr": 0.0005,
   "supervised": false,
   "training_set_path": "/usr/people/bnehoran/training_data/mip2_mixed.h5",
