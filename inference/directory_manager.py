@@ -34,9 +34,10 @@ class DstDir():
   distinguished by the different sets of kwargs that are used for the CloudVolume.
   All CloudVolumes are MiplessCloudVolumes. 
   """
-  def __init__(self, dst_path, info, provenance, suffix=''):
+  def __init__(self, dst_path, info, provenance, suffix='', distributed=False):
     print('Creating DstDir for {0}'.format(dst_path))
     self.root = dst_path
+    self.distributed = distributed
     self.info = info
     self.provenance = provenance
     self.paths = {} 
@@ -184,7 +185,7 @@ class DstDir():
     info['data_type'] = data_type
     info['num_channels'] = channels
     self.read[k] = CV(path, mkdir=False, info=info, provenance=provenance, fill_missing=fill_missing, **self.read_kwargs)
-    self.write[k] = CV(path, mkdir=True, info=info, provenance=provenance, fill_missing=fill_missing, **self.write_kwargs)
+    self.write[k] = CV(path, mkdir=not self.distributed, info=info, provenance=provenance, fill_missing=fill_missing, **self.write_kwargs)
 
   def add_path(self, k, path, data_type='uint8', num_channels=1, fill_missing=True):
     self.paths[k] = (path, data_type, num_channels, fill_missing)

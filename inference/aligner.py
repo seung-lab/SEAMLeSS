@@ -108,6 +108,7 @@ class Aligner:
     # info = DstDir.create_info_batch(src_cv, mip_range, max_displacement, 2,
     #                                 256, self.process_low_mip)
     info = DstDir.create_info(src_cv, mip_range, max_displacement)
+                              
     self.dst = {}
     self.tgt_radius = tgt_radius
     self.tgt_range = range(-tgt_radius, tgt_radius+1)
@@ -118,7 +119,8 @@ class Aligner:
         path = '{0}/z_{1}i'.format(dst_path, abs(i))
       else: 
         path = dst_path
-      self.dst[i] = DstDir(path, info, provenance, suffix=dir_suffix)
+      self.dst[i] = DstDir(path, info, provenance, suffix=dir_suffix, 
+                           distributed=self.distributed)
 
     self.net = Process(archive, mip_range[0], is_Xmas=is_Xmas, cuda=True, 
                        dim=high_mip_chunk[0]+crop*2, skip=skip, 
