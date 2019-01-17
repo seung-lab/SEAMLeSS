@@ -512,15 +512,17 @@ class Aligner:
     print('invert_field shape: {0}'.format(f.shape))
     start = time()
     if optimizer: 
-      invf = invert(f)[:,crop:-crop, crop:-crop,:]    
+      invf = invert(f)
     else:
-      invf = self.inverter(f)[:,crop:-crop, crop:-crop,:]
+      invf = self.inverter(f)
+    invf = self.rel_to_abs_residual(invf)
+    invf = invf[:,crop:-crop, crop:-crop,:]    
     print('invf shape: {0}'.format(invf.shape))
     end = time()
     print (": {} sec".format(end - start))
     # assert(torch.all(torch.isnan(invf)))
     invf = invf.data.cpu().numpy() 
-    self.save_residual_patch(dst_cv, z, invf, out_bbox, mip) 
+    self.save_vector_patch(dst_cv, z, invf, out_bbox, mip) 
 
   def compute_residual_patch(self, src_z, src_cv, tgt_z, tgt_cv, field_cv, bbox, mip):
     """Predict vector field that will warp section at SOURCE_Z to section at TARGET_Z
