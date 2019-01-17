@@ -213,17 +213,17 @@ class TaskHandler:
       MessageAttributeNames=[
           'All'
       ],
-      VisibilityTimeout=0
+      VisibilityTimeout=processing_time
     )
 
     if 'Messages' in response.keys() and len(response['Messages']) > 0:
       message = response['Messages'][0]
       receipt_handle = message['ReceiptHandle']
-      self.sqs.change_message_visibility(
-              QueueUrl=self.queue_url,
-              ReceiptHandle=receipt_handle,
-              VisibilityTimeout=processing_time
-      )
+      # self.sqs.change_message_visibility(
+      #         QueueUrl=self.queue_url,
+      #         ReceiptHandle=receipt_handle,
+      #         VisibilityTimeout=processing_time
+      # )
       return message
     else:
       return None
