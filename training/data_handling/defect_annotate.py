@@ -26,8 +26,9 @@ def run_net_chunked(net, image, chunks=(2, 2)):
     for row in chunks:
         crack_row, fold_row = [], []
         for c in row:
-            c = c.cuda().unsqueeze(0).unsqueeze(0)
-            c_c, c_f = net(c)[0].cpu()
+            c = c.unsqueeze(0).unsqueeze(0)
+            c = net.preprocessor(c)
+            c_c, c_f = net.model(c.cuda()).cpu()[0]
             crack_row.append(c_c), fold_row.append(c_f)
         cracks.append(crack_row), folds.append(fold_row)
     cracks = [torch.cat(crack_row, 1) for crack_row in cracks]
@@ -44,7 +45,7 @@ def main(src_fn, dst_fn, defect_net_name='minnie_mip2_defect_v03'):
     * src_fn: path to H5 to be processed
     * dst_fn: path where the new H5 will be written
     """
-    defect_net = ModelArchive(defect_net_name).model
+    defect_net = ModelArchive(defect_net_name)
     down = downsample(2)
     print('Processing H5 {0}'.format(src_fn))
     with h5py.File(src_fn, 'r') as src, h5py.File(dst_fn, 'w') as dst:
