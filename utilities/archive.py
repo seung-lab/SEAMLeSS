@@ -516,10 +516,16 @@ class ModelArchive(object):
             for filename in changed + error:
                 if filename in changed:
                     subprocess.call(
-                        'git diff --no-index {} {}'.format(
-                            self.last_training_record.expanduser(),
-                            self.paths[filename.split('.')[0]].expanduser()
-                        ).split(), stdout=f)
+                        'diff -u'
+                        ' -I \\s*\"*epoch\"*:\\s'
+                        ' -I \\s*\"*iteration\"*:\\s'
+                        ' -I \\s*\"*initialized_list\"*:\\s'
+                        ' -I \\s*\"*levels\"*:\\s'.split()
+                        + [
+                            str(self.last_training_record.expanduser()),
+                            str(self.paths[filename.split('.')[0]]
+                                .expanduser())
+                        ], stdout=f)
         for filename in tracked:
             if (self.last_training_record / filename).is_file():
                 (self.last_training_record / filename).unlink()
