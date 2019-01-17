@@ -22,13 +22,49 @@ class Model(nn.Module):
         self.encode = None
         self.invert = None
         self.aligndict = {}
+        self.upsampler = torch.nn.UpsamplingBilinear2d(scale_factor=2)
+        self.downsampler = torch.nn.AvgPool2d(2, count_include_pad=False)
 
     def __getitem__(self, index):
         return self.submodule(index)
 
+    def upsample_residual(self, res):
+        result = self.upsampler(res.permute(
+                                0, 3, 1, 2)).permute(0, 2, 3, 1)
+        result *= 2
+        return result
+
+    def downsample_residual(self, res):
+        result = self.downsampler(res.permute(
+                                0, 3, 1, 2)).permute(0, 2, 3, 1)
+        result /= 2
+        return result
+
     def forward(self, field, **kwargs):
-        inv_field = self.invert(field)
+        field_pixres = field * src.shape[-2] / 2
+
+        field_pixres_downs = field_pixres
+        for _ in range(6, 8):
+            field_pixres_downs = self.downsample_residual(field_pixres_downs)
+
+        inv_field_pixres_downs = self.invert(field_pixres_downs)
+
+        inv_field_pixres = inv_field_pixres_downs
+        for _ in range(6, 8):
+            inv_field_pixres = self.downsample_residual(inv_field_pixres)
+
+        inv_field = inv_field_pixres * 2 / src.shape[-2]
+        print (loss(field, inv_field))
         return inv_field
+
+    def loss(self, pred_res, inv_res):
+        f = combine_residuals(pred_res, inv_res)
+	g = combine_residuals(inv_res, pred_res)
+	if is_pix_res:
+	    f = 2 * f / (f.shape[-2])
+	    g = 2 * g / (g.shape[-2])
+	loss = 0.5 * torch.mean(f**2) + 0.5 * torch.mean(g**2)
+	return loss
 
     def load(self, path):
         """
