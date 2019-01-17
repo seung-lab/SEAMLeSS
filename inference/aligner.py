@@ -35,7 +35,8 @@ from task_handler import TaskHandler, make_residual_task_message, \
         make_downsample_task_message, make_compose_task_message, \
         make_prepare_task_message, make_vector_vote_task_message, \
         make_regularize_task_message, make_render_low_mip_task_message, \
-        make_invert_field_task_message, make_render_cv_task_message
+        make_invert_field_task_message, make_render_cv_task_message, \
+        make_batch_render_message
 
 class Aligner:
   """
@@ -687,18 +688,26 @@ class Aligner:
     cid = ((in_y_range[0] - calign_y_range[0]) // in_y_len) * line_bbox_num + (in_x_range[0] - calign_x_range[0]) // in_x_len
     return cid
 
+  def avg_field(self, field):
+      favg = field.sum() / torch.nonzero(field).size(0)
+      return favg
+
   def profile_field(self, field):
-      min_x = math.floor(np.min(field[...,0]))
-      min_y = math.floor(np.min(field[...,1]))
-      return np.float32([min_x, min_y])
+     # print(f.shape)
+     # min_x = math.floor(np.min(field[...,0]))
+     # min_y = math.floor(np.min(field[...,1]))
+     # return np.float32([min_x, min_y])
+      avg_x = self.avg_field(field[0,...,0])
+      avg_y = self.avg_field(field[0,...,1])
+      return torch.from_numpy(np.float32([avg_x, avg_y]))
 
   def adjust_bbox(self, bbox, dis):
       influence_bbox = deepcopy(bbox)
       x_range = influence_bbox.x_range(mip=0)
       y_range = influence_bbox.y_range(mip=0)
       #print("x_range is", x_range, "y_range is", y_range)
-      new_bbox = BoundingBox(x_range[0] - dis[0], x_range[1] - dis[0],
-                                   y_range[0] - dis[1], y_range[1] - dis[1],
+      new_bbox = BoundingBox(x_range[0] + dis[1], x_range[1] + dis[1],
+                                   y_range[0] + dis[0], y_range[1] + dis[0],
                                    mip=0)
       #print(new_bbox.x_range(mip=0), new_bbox.y_range(mip=0))
       return new_bbox
@@ -741,7 +750,6 @@ class Aligner:
           f = f - distance.to(device = self.device)
           #f = f - distance
           res = self.abs_to_rel_residual(f, bbox, mip)
-          #res = torch.from_numpy(res)
           field = res.to(device = self.device)
           if field_mip != image_mip:
             field = self.upsample_field(field, field_mip, image_mip)
