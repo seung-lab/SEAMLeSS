@@ -89,8 +89,11 @@ class SelfSupervisedLoss(nn.Module):
         self.field_penalty = smoothness_penalty(penalty)
         self.lambda1 = lambda1
 
-    def forward(self, src, tgt, prediction):
-        masks = gen_masks(src, tgt, prediction)
+    def forward(self, src, tgt, prediction, masks=None):
+        if masks is None or masks.nelement() == 0:
+            masks = gen_masks(src, tgt, prediction)
+        else:
+            masks = prepare_masks(masks)
         src_masks = masks['src_masks']
         tgt_masks = masks['tgt_masks']
         src_field_masks = masks['src_field_masks']
@@ -155,6 +158,33 @@ def gen_masks(src, tgt, prediction=None, threshold=10):
     src_mask[src_mask_zero], tgt_mask[tgt_mask_zero] = 0, 0
 
     src_field_mask, tgt_field_mask = torch.ones_like(src), torch.ones_like(tgt)
+    src_field_mask[src_mask_zero], tgt_field_mask[tgt_mask_zero] = 0, 0
+
+    return {'src_masks': [src_mask.float()],
+            'tgt_masks': [tgt_mask.float()],
+            'src_field_masks': [src_field_mask.float()],
+            'tgt_field_masks': [tgt_field_mask.float()]}
+
+
+@torch.no_grad()
+def prepare_masks(masks, threshold=0.7):
+    """
+    Formats masks in a way that can be used by the loss calculation
+    """
+    masks = masks.cuda()
+
+    src_mask = torch.ones_like(masks[:, 0:1])
+    tgt_mask = torch.ones_like(masks[:, 1:2])
+
+    src_mask_zero = masks[:, 2:3] > threshold
+    tgt_mask_zero = masks[:, 3:4] > threshold
+    src_mask_five = masklib.dilate(src_mask_zero, radius=20)
+    tgt_mask_five = masklib.dilate(tgt_mask_zero, radius=20)
+    src_mask[src_mask_five], tgt_mask[tgt_mask_five] = 5, 5
+    src_mask[src_mask_zero], tgt_mask[tgt_mask_zero] = 0, 0
+
+    src_field_mask = torch.ones_like(masks[:, 0:1])
+    tgt_field_mask = torch.ones_like(masks[:, 1:2])
     src_field_mask[src_mask_zero], tgt_field_mask[tgt_mask_zero] = 0, 0
 
     return {'src_masks': [src_mask.float()],

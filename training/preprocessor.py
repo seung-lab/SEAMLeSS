@@ -19,7 +19,7 @@ class Preprocessor(nn.Module):
                                      tileGridSize=tileGridSize)
 
     def forward(self, X, *args, **kwargs):
-        for i in range(X.shape[-3]):
+        for i in range(2):
             mask = self.gen_mask(X[..., i, :, :])
             X[..., i, :, :] = self.normalize(X[..., i, :, :], mask=mask)
             X[..., i, :, :] = self.contrast(X[..., i, :, :], mask=mask)
@@ -30,7 +30,7 @@ class Preprocessor(nn.Module):
         Performs Contrast Limited Adaptive Histogram Equalization
         """
         Xb = (X * 255).to(torch.uint8)[mask].squeeze()
-        eq = torch.from_numpy(self.clahe.apply(Xb.numpy()))
+        eq = torch.from_numpy(self.clahe.apply(Xb.cpu().numpy()))
         X[mask] = eq.unsqueeze(0).to(torch.float) / 255
         X[..., Xb == 0] = 0
         return X

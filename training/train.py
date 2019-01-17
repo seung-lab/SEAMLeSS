@@ -108,7 +108,6 @@ def main():
         archive.preprocessor,
         stack_dataset.RandomRotateAndScale(),
         stack_dataset.RandomFlip(),
-        stack_dataset.Split(),
     ])
     train_dataset = stack_dataset.compile_dataset(
         state_vars.training_set_path, transform=train_transform)
@@ -125,7 +124,6 @@ def main():
             archive.preprocessor,
             stack_dataset.RandomRotateAndScale(),
             stack_dataset.RandomFlip(),
-            stack_dataset.Split(),
         ])
         validation_dataset = stack_dataset.compile_dataset(
             state_vars.validation_set_path, transform=val_transform)
@@ -207,12 +205,12 @@ def train(train_loader, archive, epoch):
         data_time.update(time.time() - start_time)
 
         # compute output and loss
-        src, tgt, truth = prepare_input(sample, max_displacement=max_disp)
+        src, tgt, rest = prepare_input(sample, max_displacement=max_disp)
         prediction = submodule(src, tgt)
-        if truth is not None:
-            loss = archive.loss(prediction=prediction, truth=truth)
+        if state_vars.supervised:
+            loss = archive.loss(prediction=prediction, truth=rest)
         else:
-            loss = archive.loss(src, tgt, prediction=prediction)
+            loss = archive.loss(src, tgt, prediction=prediction, masks=rest)
         loss = loss.mean()  # average across a batch if present
 
         # compute gradient and do optimizer step
@@ -251,7 +249,7 @@ def train(train_loader, archive, epoch):
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses))
         if state_vars.vis_time and i % state_vars.vis_time == 0:
-            create_debug_outputs(archive, src, tgt, prediction, truth)
+            create_debug_outputs(archive, src, tgt, prediction, truth=None, masks=rest)
 
         start_time = time.time()
     return losses.avg
@@ -361,14 +359,15 @@ def prepare_input(sample, supervised=None, max_displacement=2):
     if supervised is None:
         supervised = state_vars.supervised
     if supervised:
-        src = sample['src'].cuda()
+        src = sample[0, 0:1].cuda()
         truth_field = random_field(src.shape, max_displacement=max_displacement)
         tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
+        return src, tgt, truth_field
     else:
-        src = sample['src'].cuda()
-        tgt = sample['tgt'].cuda()
-        truth_field = None
-    return src, tgt, truth_field
+        src = sample[:, 0:1].cuda()
+        tgt = sample[:, 1:2].cuda()
+        masks = sample[:, 2:]
+        return src, tgt, masks
 
 
 @torch.no_grad()
@@ -396,7 +395,7 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
 
 
 @torch.no_grad()
-def create_debug_outputs(archive, src, tgt, prediction, truth):
+def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
     """
     Creates a subdirectory exports any debugging outputs to that directory.
     """
@@ -420,7 +419,10 @@ def create_debug_outputs(archive, src, tgt, prediction, truth):
         if truth is not None:
             save_vectors(truth[0:1, ...].detach(),
                          str(debug_dir / 'ground_truth'))
-        masks = archive._objective.gen_masks(src, tgt, prediction)
+        if masks is not None:
+            masks = archive._objective.prepare_masks(masks)
+        else:
+            masks = archive._objective.gen_masks(src, tgt, prediction)
         for k, v in masks.items():
             if v is not None and len(v) > 0:
                 save_chunk(v[0][0:1, ...], str(debug_dir / k))

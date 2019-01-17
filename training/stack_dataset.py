@@ -11,9 +11,8 @@ def compile_dataset(*h5_paths, transform=None):
     datasets = []
     for h5_path in h5_paths:
         h5f = h5py.File(h5_path, 'r')
-        for series in h5f.values():
-            ds = [StackDataset(v, transform=transform) for v in series]
-            datasets.extend(ds)
+        ds = [StackDataset(v, transform=transform) for v in h5f.values()]
+        datasets.extend(ds)
     return ConcatDataset(datasets)
 
 
@@ -98,7 +97,7 @@ class StackDataset(Dataset):
 
     def __init__(self, stack, transform=None):
         self.stack = stack
-        self.N = len(stack) - 1
+        self.N = len(stack)
         self.transform = transform
 
     def __len__(self):
@@ -107,11 +106,10 @@ class StackDataset(Dataset):
 
     def __getitem__(self, k):
         # match i -> i+1 if k < N, else match i -> i-1
-        i = k % self.N
-        X = self.stack[i:i+2]
-        if k >= self.N:
-            X = np.flip(X, 0)
-        X = X.copy()  # prevent modifying the dataset
+        X = self.stack[k % self.N].copy()  # prevent modifying the dataset
+        if k >= self.N:  # flip source and target
+            s, t, sc, tc, sf, tf = X.copy()
+            X[0:6] = t, s, tc, sc, tf, sf
         if self.transform:
             X = self.transform(X)
         return X
