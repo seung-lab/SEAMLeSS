@@ -200,7 +200,7 @@ class Aligner:
     
   def get_composed_field(self, src_z, tgt_z, F_cv, bbox, mip,
                                inverse=False, relative=False, to_tensor=True,
-                               field_cache = {}):
+                               field_cache = {}, from_int=False):
     """Compose a pairwise field at src_z with a previously composed field at tgt_z
 
     Args:
@@ -224,14 +224,14 @@ class Aligner:
       f_z, F_z = src_z, src_z 
     else:
       f_z, F_z = src_z, tgt_z
-    f = self.get_field(f_cv, f_z, bbox, mip, relative=True, to_tensor=to_tensor)
+    f = self.get_field(f_cv, f_z, bbox, mip, relative=True, to_tensor=to_tensor, from_int)
     tmp_key = self.create_key(bbox, F_z)
     if tmp_key in field_cache:
         print("{0} in FIELD_CACHE".format(tmp_key))
         F = field_cache[tmp_key]
     else:
         print("{0} NOT in FIELD_CACHE".format(tmp_key))
-        F = self.get_field(F_cv, F_z, bbox, mip, relative=True, to_tensor=to_tensor)
+        F = self.get_field(F_cv, F_z, bbox, mip, relative=True, to_tensor=to_tensor, from_int)
     if inverse:
       F = self.compose_fields(f, F)
     else:
@@ -254,7 +254,7 @@ class Aligner:
     field = torch.cat([regular_part_x,regular_part_y],-1)
     return field.to(device=self.device)
 
-  def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True):
+  def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True, from_int=False):
     """Retrieve vector field from CloudVolume.
 
     Args
@@ -279,6 +279,8 @@ class Aligner:
                                  z=z, mip=mip, path=cv.path))
     field = cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     field = np.transpose(field, (2,0,1,3))
+    if from_int:
+      field = np.float32(field) / 8
     if relative:
       field = self.abs_to_rel_residual(field, bbox, mip)
     if to_tensor:
@@ -287,7 +289,7 @@ class Aligner:
     else:
       return field 
 
-  def save_vector_patch(self, cv, z, field, bbox, mip):
+  def save_vector_patch(self, cv, z, field, bbox, mip, to_int=False):
     """Save vector field to CloudVolume.
 
     Args
@@ -305,12 +307,14 @@ class Aligner:
     field = np.transpose(field, (1,2,0,3))
     print('save_vector_patch at {bbox}, z={z}, MIP{mip} to {path}'.format(bbox=bbox,
                                  z=z, mip=mip, path=cv.path))
+    if to_int:
+        field = np.int16(field * 8)
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
 
-  def save_residual_patch(self, cv, z, res, bbox, mip):
+  def save_residual_patch(self, cv, z, res, bbox, mip, to_int=False):
     print ("Saving residual patch {} at MIP {}".format(bbox.__str__(mip=0), mip))
     v = res * (res.shape[-2] / 2) * (2**mip)
-    self.save_vector_patch(cv, z, v, bbox, mip)
+    self.save_vector_patch(cv, z, v, bbox, mip, to_int)
 
   def break_into_chunks(self, bbox, chunk_size, offset, mip, render=False):
     chunks = []
@@ -432,12 +436,13 @@ class Aligner:
             src_z, tgt_z = tgt_z, src_z
           if self.serial_operation:
             f_cv = self.dst[z_offset].for_read('field')
-            F = self.get_field(f_cv, src_z, bbox, mip, relative=False, to_tensor=True)
+            F = self.get_field(f_cv, src_z, bbox, mip, relative=False, to_tensor=True, 
+                               from_int=True)
           else:
             F = self.get_composed_field(src_z, tgt_z, read_F_cv, bbox, mip,
                                         inverse=inverse, relative=False,
                                         to_tensor=True,
-                                        field_cache=field_cache)
+                                        field_cache=field_cache, from_int=True)
           fields.append(F)
 
         field = vector_vote(fields, T=T)
@@ -451,7 +456,7 @@ class Aligner:
         # Note: field_cache stores RELATIVE fields
         field_cache[tmp_key] = self.abs_to_rel_residual(field, bbox, mip)
         field = field.data.cpu().numpy() 
-        self.save_vector_patch(write_F_cv, z, field, bbox, mip)
+        self.save_vector_patch(write_F_cv, z, field, bbox, mip, to_int=True)
 
   # def vector_vote_single_section(self, z, read_F_cv, write_F_cv, bbox, mip, inverse, T=1):
   #   """Compute consensus vector field using pairwise vector fields with earlier sections. 
@@ -553,7 +558,7 @@ class Aligner:
     z_offset = src_z - tgt_z
     field_cv = self.dst[z_offset].for_write('field')
     field = field.data.cpu().numpy() 
-    self.save_vector_patch(field_cv, src_z, field, out_patch_bbox, mip)
+    self.save_vector_patch(field_cv, src_z, field, out_patch_bbox, mip, to_int=True)
 
     # if self.write_intermediaries and residuals is not None and cum_residuals is not None:
     #   mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
@@ -720,7 +725,7 @@ class Aligner:
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
     field = self.get_field(field_cv, field_z, influence_bbox, mip,
-                           relative=True, to_tensor=True)
+                           relative=True, to_tensor=True, from_int=True)
     mip_disp = int(self.max_displacement / 2**mip)
     src_cv = self.src['src_img']
     image = self.get_image(src_cv, src_z, influence_bbox, mip,
@@ -760,7 +765,8 @@ class Aligner:
     print("z range in warp_patch_batch", src_z, src_z + batch)
     for z in range(src_z, src_z + batch):
         field = self.get_field(field_cv, z, influence_bbox, mip,
-                               relative=True, to_tensor=True)
+                               relative=True, to_tensor=True, 
+                               from_int=True)
         mip_disp = int(self.max_displacement / 2**mip)
         src_cv = self.src['src_img']
         image = self.get_image(src_cv, z, influence_bbox, mip,
@@ -796,7 +802,7 @@ class Aligner:
     start = time()
     #print("image_mip is", image_mip, "vector_mip is", vector_mip) 
     field = self.get_field(field_cv, field_z, influence_bbox, vector_mip,
-                           relative=True, to_tensor=True)
+                           relative=True, to_tensor=True, from_int=True)
 
     #print("field shape",field.shape)
     field_new = upsample(vector_mip - image_mip)(field.permute(0,3,1,2))

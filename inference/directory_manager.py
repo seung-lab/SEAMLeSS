@@ -55,7 +55,9 @@ class DstDir():
                   'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
     self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1, fill_missing=True)
     self.add_path('dst_img_high_res', join(self.root, 'image_high_res'), data_type='uint8', num_channels=1)
-    self.add_path('field', join(self.root, 'field'), data_type='float32',
+    #self.add_path('field', join(self.root, 'field'), data_type='float32',
+    #              num_channels=2, fill_missing=True)
+    self.add_path('field', join(self.root, 'field'), data_type='uint16',
                   num_channels=2, fill_missing=True)
     self.suffix = suffix
     self.create_paths()
@@ -218,6 +220,7 @@ class DstDir():
     """
     k = self.get_composed_key(compose_start, inverse)
     path = join(self.root, 'composed', self.get_composed_key(compose_start, inverse))
-    self.add_path(k, path, data_type='float32', num_channels=2)
+    #self.add_path(k, path, data_type='float32', num_channels=2)
+    self.add_path(k, path, data_type='uint16', num_channels=2)
     self.create_cv(k)
 
