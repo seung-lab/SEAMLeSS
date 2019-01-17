@@ -21,6 +21,7 @@ ENV LC_ALL C.UTF-8
 COPY requirements.txt .
 RUN pip3 install -r requirements.txt
 
+RUN pwd
 ADD . ./SEAMLeSS
 WORKDIR SEAMLeSS
 RUN pip3 install --no-cache-dir --upgrade setuptools
