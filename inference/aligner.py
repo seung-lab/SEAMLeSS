@@ -788,6 +788,46 @@ class Aligner:
     # print('warp_image image3.shape: {0}'.format(image.shape))
     return image
 
+  def avg_warp_patch(self, src_z, field_cv, field_cv_inverse, field_z, bbox, mip):
+    """Non-chunk warping
+
+    From BBOX at MIP, warp image at SRC_Z in CloudVolume SRC_CV using
+    field at FIELD_Z in CloudVolume FIELD_CV.
+    """
+    influence_bbox = deepcopy(bbox)
+    influence_bbox.uncrop(self.max_displacement, mip=0)
+    start = time()
+    field = self.get_field(field_cv, field_z, influence_bbox, mip,
+                           relative=True, to_tensor=True)
+    ifield = self.get_field(field_cv_inverse, field_z, influence_bbox, mip,
+                           relative=True, to_tensor=True)
+    mip_disp = int(self.max_displacement / 2**mip)
+    src_cv = self.src['src_img']
+    image = self.get_image(src_cv, src_z, influence_bbox, mip,
+                           adjust_contrast=False, to_tensor=True)
+    field = (field + ifield) / 2
+    if 'src_mask' in self.src:
+      mask_cv = self.src['src_mask']
+      mask = self.get_mask(mask_cv, src_z, influence_bbox, 
+                           src_mip=self.src.src_mask_mip,
+                           dst_mip=mip, valid_val=self.src.src_mask_val)
+      image = image.masked_fill_(mask, 0)
+
+    # print('warp_patch shape {0}'.format(image.shape))
+    # no need to warp if flow is identity since warp introduces noise
+    if torch.min(field) != 0 or torch.max(field) != 0:
+      image = gridsample_residual(image, field, padding_mode='zeros')
+      print("warped")
+    else:
+      print ("not warping")
+    # print('warp_image image1.shape: {0}'.format(image.shape))
+    if self.disable_cuda:
+      image = image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+    else:
+      image = image.cpu().numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
+    # print('warp_image image3.shape: {0}'.format(image.shape))
+    return image
+
   def warp_patch_batch(self, src_z, field_cv, field_z, bbox, mip, batch):
     """Non-chunk warping
 
@@ -1004,6 +1044,37 @@ class Aligner:
           self.save_image_patch(dst_cv, dst_z, raw_patch, patch_bbox, mip)
         self.pool.map(chunkwise, chunks)
 
+    end = time()
+    print (": {} sec".format(end - start))
+
+  def render_avg(self, src_z, field_cv, field_cv_inverse, field_z, dst_cv, dst_z, bbox, mip):
+    """Chunkwise render
+
+    Warp the image in BBOX at MIP and SRC_Z in CloudVolume dir at SRC_Z_OFFSET, 
+    using the field at FIELD_Z in CloudVolume dir at FIELD_Z_OFFSET, and write 
+    the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX 
+    appropriately.
+    """
+    self.total_bbox = bbox
+    print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
+    start = time()
+    chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
+                                    self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
+    if self.distributed:
+        for i in range(0, len(chunks), self.threads):
+            task_patches = []
+            for j in range(i, min(len(chunks), i + self.threads)):
+                task_patches.append(chunks[j])
+            render_task = make_render_task_message(src_z, field_cv, field_z, task_patches, 
+                                                   mip, dst_cv, dst_z)
+            self.task_handler.send_message(render_task)
+        self.task_handler.wait_until_ready()
+    else:
+        def chunkwise(patch_bbox):
+          warped_patch = self.avg_warp_patch(src_z, field_cv, field_cv_inverse, field_z, patch_bbox, mip)
+          # print('warp_image render.shape: {0}'.format(warped_patch.shape))
+          self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+        self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
 

@@ -115,7 +115,7 @@ def get_aligner(args):
   print('Mip:', args.mip)
   print('Contrast:', args.should_contrast)
   print('Max mip:', args.max_mip)
-  # print('NG link:', ng_link('dst', 'precomputed://' + args.dst_path +'/image', 'src', 'precomputed://' + args.src_path, (args.bbox_start[0]+args.bbox_stop[0])//2, (args.bbox_start[1]+args.bbox_stop[2])//2, args.bbox_start[2]))
+  #print('NG link:', ng_link('dst', 'precomputed://' + args.dst_path +'/image', 'src', 'precomputed://' + args.src_path, (args.bbox_start[0]+args.bbox_stop[0])//2, (args.bbox_start[1]+args.bbox_stop[2])//2, args.bbox_start[2]))
   return Aligner(archive, **vars(args))
 
 def get_bbox(args):
