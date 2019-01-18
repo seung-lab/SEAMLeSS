@@ -55,7 +55,7 @@ class DstDir():
     self.write_kwargs = {'bounded': False, 'progress': False, 
                   'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
     self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1, fill_missing=True)
-    self.add_path('dst_img_high_res', join(self.root, 'image_high_res'), data_type='uint8', num_channels=1)
+    self.add_path('dst_img_high_res', join(self.root, 'upsampled_image'), data_type='uint8', num_channels=1)
     self.add_path('field', join(self.root, 'field'), data_type='float32',
                   num_channels=2, fill_missing=True)
     self.suffix = suffix
