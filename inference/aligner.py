@@ -515,7 +515,7 @@ class Aligner:
       invf = invert(f)
     else:
       invf = self.inverter(f)
-    invf = self.rel_to_abs_residual(invf)
+    invf = self.rel_to_abs_residual(invf, mip=mip)
     invf = invf[:,crop:-crop, crop:-crop,:]    
     print('invf shape: {0}'.format(invf.shape))
     end = time()
