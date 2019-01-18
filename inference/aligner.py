@@ -285,7 +285,7 @@ class Aligner:
     field = cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     field = np.transpose(field, (2,0,1,3))
     if from_int:
-      field = np.float32(field) / 8
+      field = np.float32(field) / 4
     if relative:
       field = self.abs_to_rel_residual(field, bbox, mip)
     if to_tensor:
@@ -313,7 +313,9 @@ class Aligner:
     print('save_vector_patch at {bbox}, z={z}, MIP{mip} to {path}'.format(bbox=bbox,
                                  z=z, mip=mip, path=cv.path))
     if to_int:
-        field = np.int16(field * 8)
+        if(np.max(field) > 8192 or np.min(field) < -8191):
+            print('The value in field is out of range of int16 max: {}, min: {}'.format(np.max(field),np.min(field)), flush=True)
+        field = np.int16(field * 4)
     #print("**********field shape is ", field.shape, type(field[0,0,0,0]))
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
 
