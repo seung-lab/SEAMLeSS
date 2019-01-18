@@ -78,6 +78,7 @@ def get_argparser():
     help='suffix to attach for composed directories')
   parser.add_argument('--inverter_path', type=str, default='',
     help='path to the inverse net; default is None')
+  parser.add_argument('--int_field', help='store vector field as int16', action='store_true')
   return parser
 
 def parse_args(parser, arg_string=''):
