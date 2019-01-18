@@ -64,13 +64,15 @@ class Aligner:
                upsample_residuals=False, old_upsample=False, old_vectors=False,
                ignore_field_init=False, z=0, tgt_radius=1, serial_operation=False,
                queue_name=None, p_render=False, dir_suffix='', inverter=None,
-               **kwargs):
+               int_field=False, **kwargs):
     if queue_name != None:
         self.task_handler = TaskHandler(queue_name)
         self.distributed  = True
     else:
         self.task_handler = None
         self.distributed  = False
+    
+    self.int_field =  int_field
     self.p_render = p_render
     self.process_high_mip = mip_range[1]
     self.process_low_mip  = mip_range[0]
@@ -123,7 +125,8 @@ class Aligner:
         path = '{0}/z_{1}i'.format(dst_path, abs(i))
       else: 
         path = dst_path
-      self.dst[i] = DstDir(path, info, provenance, suffix=dir_suffix)
+      self.dst[i] = DstDir(path, info, provenance, suffix=dir_suffix,
+                           use_int=self.int_field)
 
     self.net = Process(archive, mip_range[0], is_Xmas=is_Xmas, cuda=True, 
                        dim=high_mip_chunk[0]+crop*2, skip=skip, 
@@ -224,14 +227,16 @@ class Aligner:
       f_z, F_z = src_z, src_z 
     else:
       f_z, F_z = src_z, tgt_z
-    f = self.get_field(f_cv, f_z, bbox, mip, relative=True, to_tensor=to_tensor, from_int)
+    f = self.get_field(f_cv, f_z, bbox, mip, relative=True,
+                       to_tensor=to_tensor, from_int=from_int)
     tmp_key = self.create_key(bbox, F_z)
     if tmp_key in field_cache:
         print("{0} in FIELD_CACHE".format(tmp_key))
         F = field_cache[tmp_key]
     else:
         print("{0} NOT in FIELD_CACHE".format(tmp_key))
-        F = self.get_field(F_cv, F_z, bbox, mip, relative=True, to_tensor=to_tensor, from_int)
+        F = self.get_field(F_cv, F_z, bbox, mip, relative=True,
+                           to_tensor=to_tensor, from_int=from_int)
     if inverse:
       F = self.compose_fields(f, F)
     else:
@@ -309,12 +314,13 @@ class Aligner:
                                  z=z, mip=mip, path=cv.path))
     if to_int:
         field = np.int16(field * 8)
+    #print("**********field shape is ", field.shape, type(field[0,0,0,0]))
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
 
   def save_residual_patch(self, cv, z, res, bbox, mip, to_int=False):
     print ("Saving residual patch {} at MIP {}".format(bbox.__str__(mip=0), mip))
     v = res * (res.shape[-2] / 2) * (2**mip)
-    self.save_vector_patch(cv, z, v, bbox, mip, to_int)
+    self.save_vector_patch(cv, z, v, bbox, mip, to_int=to_int)
 
   def break_into_chunks(self, bbox, chunk_size, offset, mip, render=False):
     chunks = []
@@ -436,13 +442,14 @@ class Aligner:
             src_z, tgt_z = tgt_z, src_z
           if self.serial_operation:
             f_cv = self.dst[z_offset].for_read('field')
-            F = self.get_field(f_cv, src_z, bbox, mip, relative=False, to_tensor=True, 
-                               from_int=True)
+            F = self.get_field(f_cv, src_z, bbox, mip, relative=False, to_tensor=True,
+                               from_int=self.int_field)
           else:
             F = self.get_composed_field(src_z, tgt_z, read_F_cv, bbox, mip,
                                         inverse=inverse, relative=False,
                                         to_tensor=True,
-                                        field_cache=field_cache, from_int=True)
+                                        field_cache=field_cache,
+                                        from_int=self.int_field)
           fields.append(F)
 
         field = vector_vote(fields, T=T)
@@ -456,7 +463,8 @@ class Aligner:
         # Note: field_cache stores RELATIVE fields
         field_cache[tmp_key] = self.abs_to_rel_residual(field, bbox, mip)
         field = field.data.cpu().numpy() 
-        self.save_vector_patch(write_F_cv, z, field, bbox, mip, to_int=True)
+        self.save_vector_patch(write_F_cv, z, field, bbox, mip,
+                               to_int=self.int_field)
 
   # def vector_vote_single_section(self, z, read_F_cv, write_F_cv, bbox, mip, inverse, T=1):
   #   """Compute consensus vector field using pairwise vector fields with earlier sections. 
@@ -501,7 +509,7 @@ class Aligner:
     precrop_bbox = deepcopy(out_bbox)
     precrop_bbox.uncrop(crop, mip=mip)
     f = self.get_field(src_cv, z, precrop_bbox, mip,
-                           relative=True, to_tensor=True)
+                       relative=True, to_tensor=True, from_int=self.int_field)
     print('invert_field shape: {0}'.format(f.shape))
     start = time()
     if optimizer: 
@@ -513,7 +521,8 @@ class Aligner:
     print (": {} sec".format(end - start))
     # assert(torch.all(torch.isnan(invf)))
     invf = invf.data.cpu().numpy() 
-    self.save_residual_patch(dst_cv, z, invf, out_bbox, mip) 
+    self.save_residual_patch(dst_cv, z, invf, out_bbox, mip, to_int=
+                             self.int_field) 
 
   def compute_residual_patch(self, src_z, tgt_z, out_patch_bbox, mip):
     """Predict vector field that will warp section at SOURCE_Z to section at TARGET_Z
@@ -558,7 +567,8 @@ class Aligner:
     z_offset = src_z - tgt_z
     field_cv = self.dst[z_offset].for_write('field')
     field = field.data.cpu().numpy() 
-    self.save_vector_patch(field_cv, src_z, field, out_patch_bbox, mip, to_int=True)
+    self.save_vector_patch(field_cv, src_z, field, out_patch_bbox, mip,
+                           to_int=self.int_field)
 
     # if self.write_intermediaries and residuals is not None and cum_residuals is not None:
     #   mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
@@ -667,7 +677,7 @@ class Aligner:
 
   def gridsample_cv(self, image_cv, field_cv, bbox, z, mip):
       f =  self.get_field(field_cv, z, bbox, mip, relative=False,
-                          to_tensor=True)
+                          to_tensor=True, from_int=self.int_field)
       x_range = bbox.x_range(mip=0)
       y_range = bbox.y_range(mip=0)
       if torch.min(f) == 0 and torch.max(f) == 0:
@@ -725,7 +735,8 @@ class Aligner:
     influence_bbox.uncrop(self.max_displacement, mip=0)
     start = time()
     field = self.get_field(field_cv, field_z, influence_bbox, mip,
-                           relative=True, to_tensor=True, from_int=True)
+                           relative=True, to_tensor=True,
+                           from_int=self.int_field)
     mip_disp = int(self.max_displacement / 2**mip)
     src_cv = self.src['src_img']
     image = self.get_image(src_cv, src_z, influence_bbox, mip,
@@ -766,7 +777,7 @@ class Aligner:
     for z in range(src_z, src_z + batch):
         field = self.get_field(field_cv, z, influence_bbox, mip,
                                relative=True, to_tensor=True, 
-                               from_int=True)
+                               from_int=self.int_field)
         mip_disp = int(self.max_displacement / 2**mip)
         src_cv = self.src['src_img']
         image = self.get_image(src_cv, z, influence_bbox, mip,
@@ -802,8 +813,8 @@ class Aligner:
     start = time()
     #print("image_mip is", image_mip, "vector_mip is", vector_mip) 
     field = self.get_field(field_cv, field_z, influence_bbox, vector_mip,
-                           relative=True, to_tensor=True, from_int=True)
-
+                           relative=True, to_tensor=True,
+                           from_int=self.int_field)
     #print("field shape",field.shape)
     field_new = upsample(vector_mip - image_mip)(field.permute(0,3,1,2))
     mip_field = field_new.permute(0,2,3,1)
@@ -838,7 +849,7 @@ class Aligner:
       # f = mip_field.cpu().numpy()[:,mip_disp:-mip_disp,mip_disp:-mip_disp,:]
     # print('warp_image image3.shape: {0}'.format(image.shape))
     
-    return image 
+    return image
 
   def downsample_patch(self, cv, z, bbox, mip):
     data = self.get_image(cv, z, bbox, mip, adjust_contrast=False, to_tensor=True)
@@ -1406,9 +1417,11 @@ class Aligner:
     T = 2**mip
     print('softmin temp: {0}'.format(T))
     if forward_compose:
-      self.dst[0].add_composed_cv(compose_start, inverse=False)
-    if inverse_compose: 
-      self.dst[0].add_composed_cv(compose_start, inverse=True)
+      self.dst[0].add_composed_cv(compose_start, inverse=False,
+                                  use_int=self.int_field)
+    if inverse_compose:
+      self.dst[0].add_composed_cv(compose_start, inverse=True,
+                                  use_int=self.int_field)
     # for z in z_range:
     #     write_F_k = self.dst[0].get_composed_key(compose_start, inverse=False)
     #     write_invF_k = self.dst[0].get_composed_key(compose_start, inverse=True)
@@ -1449,7 +1462,8 @@ class Aligner:
     fields = []
     z_range = [z+z_offset for z_offset in range(self.tgt_radius + 1)]
     for k, tgt_z in enumerate(z_range):
-      F = self.get_field(F_cv, tgt_z, bbox, mip, relative=True, to_tensor=True)
+      F = self.get_field(F_cv, tgt_z, bbox, mip, relative=True, to_tensor=True,
+                        from_int=self.int_field)
       fields.append(F)
     return torch.cat(fields, 0)
  
@@ -1464,7 +1478,8 @@ class Aligner:
        mip: int for data resolution of the field
     """
     next_z = z + self.tgt_radius + 1
-    next_F = self.get_field(F_cv, next_z, bbox, mip, relative=True, to_tensor=True)
+    next_F = self.get_field(F_cv, next_z, bbox, mip, relative=True,
+                            to_tensor=True, from_int=self.int_field)
     if keep_first:
       return torch.cat((Fs, next_F), 0)
     else:
@@ -1488,9 +1503,12 @@ class Aligner:
     overlap = self.tgt_radius
     curr_block = z_range[0]
     next_block = curr_block + block_size
-    self.dst[0].add_composed_cv(curr_block, inverse=False)
-    self.dst[0].add_composed_cv(curr_block, inverse=True)
-    self.dst[0].add_composed_cv(next_block, inverse=False)
+    self.dst[0].add_composed_cv(curr_block, inverse=False,
+                                use_int=self.int_field)
+    self.dst[0].add_composed_cv(curr_block, inverse=True,
+                                use_int=self.int_field)
+    self.dst[0].add_composed_cv(next_block, inverse=False,
+                                use_int=self.int_field)
     F_cv = self.dst[0].get_composed_cv(curr_block, inverse=False, for_read=True)
     invF_cv = self.dst[0].get_composed_cv(curr_block, inverse=True, for_read=True)
     next_cv = self.dst[0].get_composed_cv(next_block, inverse=False, for_read=False)
@@ -1507,11 +1525,13 @@ class Aligner:
       print(z)
       print(bump.shape)
       print(invFs.shape)
-      F = self.get_field(F_cv, z, bbox, mip, relative=True, to_tensor=True)
+      F = self.get_field(F_cv, z, bbox, mip, relative=True, to_tensor=True,
+                         from_int=self.int_field)
       avg_invF = torch.sum(torch.mul(bump, invFs), dim=0, keepdim=True)
       regF = self.compose_fields(avg_invF, F)
       regF = regF.data.cpu().numpy() 
-      self.save_residual_patch(next_cv, z, regF, bbox, mip)
+      self.save_residual_patch(next_cv, z, regF, bbox, mip,
+                               to_int=self.int_field)
       if z != z_range[-1]:
         invFs = self.shift_neighborhood(invFs, z, invF_cv, bbox, mip, 
                                         keep_first=bump_z > 0)

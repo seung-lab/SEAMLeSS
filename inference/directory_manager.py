@@ -34,7 +34,7 @@ class DstDir():
   distinguished by the different sets of kwargs that are used for the CloudVolume.
   All CloudVolumes are MiplessCloudVolumes. 
   """
-  def __init__(self, dst_path, info, provenance, suffix=''):
+  def __init__(self, dst_path, info, provenance, suffix='', use_int=False):
     print('Creating DstDir for {0}'.format(dst_path))
     self.root = dst_path
     self.info = info
@@ -55,10 +55,12 @@ class DstDir():
                   'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
     self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1, fill_missing=True)
     self.add_path('dst_img_high_res', join(self.root, 'image_high_res'), data_type='uint8', num_channels=1)
-    #self.add_path('field', join(self.root, 'field'), data_type='float32',
-    #              num_channels=2, fill_missing=True)
-    self.add_path('field', join(self.root, 'field'), data_type='uint16',
-                  num_channels=2, fill_missing=True)
+    if use_int:
+        self.add_path('field', join(self.root, 'field'), data_type='int16',
+                      num_channels=2, fill_missing=True)
+    else:
+        self.add_path('field', join(self.root, 'field'), data_type='float32',
+                      num_channels=2, fill_missing=True)
     self.suffix = suffix
     self.create_paths()
   
@@ -210,7 +212,7 @@ class DstDir():
     #return '{0}_{1:04d}'.format(k, compose_start)
     return '{0}{1:04d}'.format(k, compose_start)
 
-  def add_composed_cv(self, compose_start, inverse):
+  def add_composed_cv(self, compose_start, inverse, use_int=False):
     """Create CloudVolume for storing composed vector fields
 
     Args
@@ -220,7 +222,9 @@ class DstDir():
     """
     k = self.get_composed_key(compose_start, inverse)
     path = join(self.root, 'composed', self.get_composed_key(compose_start, inverse))
-    #self.add_path(k, path, data_type='float32', num_channels=2)
-    self.add_path(k, path, data_type='uint16', num_channels=2)
+    if use_int:
+        self.add_path(k, path, data_type='int16', num_channels=2)
+    else:
+        self.add_path(k, path, data_type='float32', num_channels=2)
     self.create_cv(k)
 
