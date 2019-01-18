@@ -1119,7 +1119,7 @@ class Aligner:
                                                            task_patches, image_mip, 
                                                            vector_mip, dst_cv, dst_z))
         self.pool.map(self.task_handler.send_message, tasks)
-        self.task_handler.wait_until_ready()
+        # self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, patch_bbox, image_mip, vector_mip)

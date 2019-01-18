@@ -5,10 +5,12 @@ import csv
 from itertools import zip_longest
 from collections import OrderedDict
 from os.path import join
+import time
 
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--order_path', type=str)
+  parser.add_argument('--sections_before_wait', type=int, default=10)
   args = parse_args(parser)
   args.tgt_path = join(args.dst_path, 'image')
   # only compute matches to previous sections
@@ -35,6 +37,7 @@ if __name__ == '__main__':
            range_list[compose_idx] = []
          range_list[compose_idx].append(range(z_start, z_stop+inc, inc))
 
+  t = 0
   for compose_idx, ranges in range_list.items():
     z_pairs = zip_longest(*ranges)
     a.dst[0].add_composed_cv(compose_idx, inverse=False)
@@ -46,7 +49,12 @@ if __name__ == '__main__':
       print((z_pair, compose_idx))
       for z in z_pair:  
         a.low_mip_render(z, field_cv, z, dst_cv, z, bbox, image_mip, vector_mip)
-      if a.distributed:
-        a.task_handler.wait_until_ready()
+      # if a.distributed:
+      #   a.task_handler.wait_until_ready()
       # a.downsample_range(dst_cv, z_pair, bbox, a.render_low_mip, a.render_high_mip)
+
+    t += 1
+    if t > args.sections_before_wait:
+      time.sleep(60)
+      t = 0
 
