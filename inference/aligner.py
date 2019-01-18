@@ -42,7 +42,7 @@ class Aligner:
   """
   Destination directory structure
   * z_3:  pairwise fields that align z to z-3 and write to z
-  * z_2  
+  * z_2
   * z_1
   * z_1i: pairwise fields that align z to z+1 and write to z
   * z_2i
