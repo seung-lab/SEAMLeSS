@@ -4,6 +4,7 @@ from args import get_argparser, parse_args, get_aligner, get_bbox
 from os.path import join
 from itertools import zip_longest, chain
 import numpy as np
+import time
 
 if __name__ == '__main__':
   parser = get_argparser()
@@ -37,10 +38,10 @@ if __name__ == '__main__':
       pz = positive_range[-1]
     print('generate pairwise with vector voting z={0}'.format(nz))
     a.generate_pairwise([nz], bbox, forward_match=False, 
-                        reverse_match=True, render_match=False)
+                        reverse_match=True, render_match=False, batch_size=1)
     print('generate pairwise with vector voting z={0}'.format(pz))
     a.generate_pairwise([pz], bbox, forward_match=True, 
-                        reverse_match=False, render_match=False)
+                        reverse_match=False, render_match=False, batch_size=1)
     print('compose pairwise with vector voting z={0}'.format(nz))
     a.compose_pairwise([nz], args.bbox_start[2], bbox, mip, forward_compose=True,
                        inverse_compose=False, negative_offsets=True,
@@ -50,9 +51,11 @@ if __name__ == '__main__':
                        inverse_compose=False, negative_offsets=False,
                        serial_operation=True)
     print('aligning with vector voting z={0}'.format(nz))
-    a.render(nz, field_cv, nz, dst_cv, nz, bbox, a.render_low_mip)
+    a.render(nz, field_cv, nz, dst_cv, nz, bbox, a.render_low_mip, wait=True)
     print('aligning with vector voting z={0}'.format(pz))
-    a.render(pz, field_cv, pz, dst_cv, pz, bbox, a.render_low_mip)
+    a.render(pz, field_cv, pz, dst_cv, pz, bbox, a.render_low_mip, wait=True)
+    # a.downsample_range(dst_cv, [nz], bbox, a.render_low_mip, a.render_high_mip-2)
+    # a.downsample_range(dst_cv, [pz], bbox, a.render_low_mip, a.render_high_mip-2)
 
   a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
 
