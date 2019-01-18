@@ -4,7 +4,7 @@ import skimage
 from skimage import feature
 from scipy.ndimage.measurements import label
 
-from .residuals import res_warp_img
+from residuals import res_warp_img
 
 
 def get_mse_and_smoothness_masks(src_var, tgt_var, pred_res_var, pred_tgt_var, masks, white_threshold):
