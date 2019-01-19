@@ -195,7 +195,44 @@ class Aligner:
     """    
     g = g.permute(0,3,1,2)
     return f + gridsample_residual(g, f, padding_mode='border').permute(0,2,3,1)
+
+  def upsample_field(self, f, src_mip, dst_mip):
+    """Upsample vector field from src_mip to dst_mip
+    """
+    return upsample(src_mip-dst_mip)(f.permute(0,3,1,2)).permute(0,2,3,1)
     
+  def compose_cloudvolumes(self, z, f_cv, g_cv, bbox, f_mip, g_mip):
+    """Compose chunk of two field cloudvolumes, such that f(g(x)) at min(f_mip, g_mip)
+
+    Args:
+       z: int section index
+       f_cv: MiplessCloudVolume of left-hand vector field
+       g_cv: MiplessCloudVolume of right-hand vector field
+       bbox: BoundingBox for region to process
+       f_mip: MIP of left-hand vector field
+       g_mip: MIP of right-hand vector field
+
+    Returns:
+       the composed vector field at MIP min(f_mip, g_mip) in absolute space
+    """
+    min_mip = min(f_mip, g_mip)
+    influence_bbox = deepcopy(bbox)
+    influence_bbox.uncrop(self.max_displacement, mip=0)
+    crop = int(self.max_displacement / 2**min_mip)
+    f = self.get_field(f_cv, z, influence_bbox, f_mip, relative=True, to_tensor=True)
+    g = self.get_field(g_cv, z, influence_bbox, g_mip, relative=True, to_tensor=True)
+    if f_mip < g_mip:
+      g = self.upsample_field(g, g_mip, f_mip)
+    elif g_mip < f_mip:
+      f = self.upsample_field(f, f_mip, g_mip)
+    h = self.compose_fields(f, g)
+    h = self.rel_to_abs_residual(h, min_mip)
+    if self.disable_cuda:
+      h = h.numpy()[:,crop:-crop,crop:-crop,:]
+    else:
+      h = h.cpu().numpy()[:,crop:-crop,crop:-crop,:]
+    return h
+
   def get_composed_field(self, src_z, tgt_z, F_cv, bbox, mip,
                                inverse=False, relative=False, to_tensor=True,
                                field_cache = {}):
@@ -805,8 +842,9 @@ class Aligner:
                            relative=True, to_tensor=True)
 
     #print("field shape",field.shape)
-    field_new = upsample(vector_mip - image_mip)(field.permute(0,3,1,2))
-    mip_field = field_new.permute(0,2,3,1)
+    # field_new = upsample(vector_mip - image_mip)(field.permute(0,3,1,2))
+    # mip_field = field_new.permute(0,2,3,1)
+    mip_field = self.upsample_field(field, vector_mip, image_mip)
     mip_disp = int(self.max_displacement / 2**image_mip)
     #print("mip_field shape", mip_field.shape)
     #print("image_mip",image_mip, "vector_mip", vector_mip, "mip_dis is ", mip_disp)
@@ -1598,6 +1636,43 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
+  def compose_chunkwise(self, z, coarse_cv, fine_cv, dst_cv, bbox, coarse_mip, fine_mip):
+    """Chunked-processing to compose two vector fields 
+    
+    Args:
+       z: int of section index to process
+       coarse_cv: MiplessCloudVolume of coarse vector field
+       fine_cv: MiplessCloudVolume of fine vector field
+       dst_cv: MiplessCloudVolume of composed vector field (stored at fine_mip)
+       bbox: BoundingBox of region to process
+       coarse_mip: MIP of coarse vector field
+       fine_mip: MIP of fine vector field
+    """
+    start = time()
+    # self.dst[0].add_composed_cv(compose_start, inverse=False)
+    # self.dst[0].add_composed_cv(compose_start, inverse=True)
+    chunks = self.break_into_chunks(bbox, self.dst[0].vec_chunk_sizes[fine_mip],
+                                    self.dst[0].vec_voxel_offsets[fine_mip], 
+                                    mip=fine_mip)
+    print("Composing fields z={0} @ MIP{1} ({2} chunks)".
+           format(z, fine_mip, len(chunks)), flush=True)
+    if self.distributed:
+        tasks = []
+        for patch_bbox in chunks:
+            tasks.append(make_compose_task_message(z, coarse_cv, fine_cv, dst_cv,
+                                                   patch_bbox, coarse_mip, fine_mip))
+        self.pool.map(self.task_handler.send_message, tasks)
+        self.task_handler.wait_until_ready()
+    else:
+        #for patch_bbox in chunks:
+        def chunkwise(patch_bbox):
+          h = self.compose_cloudvolumes(z, fine_cv, coarse_cv, patch_bbox, 
+                                        fine_mip, coarse_mip)        
+          self.save_vector_patch(dst_cv, z, h, patch_bbox, fine_mip)
+        self.pool.map(chunkwise, chunks)
+    end = time()
+    print (": {} sec".format(end - start))
+
   def handle_residual_task(self, message):
     src_z = message['src_z']
     src_cv = DCV(message['src_cv']) 
@@ -1693,15 +1768,14 @@ class Aligner:
 
   def handle_compose_task(self, message):
     z = message['z']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    mip = message['mip']
-    start_z = message['start_z']
-    def chunkwise(patch_bbox):
-      print ("composing {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-              end='', flush=True) 
-      self.compose_field_task(z ,patch_bbox, (mip, self.process_high_mip), mip, start_z)
-    self.pool.map(chunkwise, patches)
-
+    coarse_cv = DCV(message['coarse_cv'])
+    fine_cv = DCV(message['fine_cv'])
+    dst_cv = DCV(message['dst_cv'])
+    bbox = deserialize_bbox(message['bbox'])
+    coarse_mip = message['coarse_mip']
+    fine_mip = message['fine_mip']
+    h = self.compose_cloudvolumes(z, fine_cv, coarse_cv, bbox, fine_mip, coarse_mip)        
+    self.save_vector_patch(dst_cv, z, h, bbox, fine_mip)
 
   def handle_copy_task(self, message):
     z = message['z']
