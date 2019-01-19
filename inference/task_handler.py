@@ -147,13 +147,17 @@ def make_render_low_mip_task_message(z, field_cv, field_z, patches, image_mip, v
   }
   return json.dumps(content)
 
-def make_compose_task_message(z, patches, mip, start_z):
+            
+def make_compose_task_message(z, coarse_cv, fine_cv, dst_cv, bbox, coarse_mip, fine_mip):
   content = {
       "type": "compose_task",
       "z": z,
-      "patches": [p.serialize() for p in patches],
-      "mip": mip,
-      "start_z": start_z,
+      "coarse_cv": coarse_cv.serialize(),
+      "fine_cv": fine_cv.serialize(),
+      "dst_cv": dst_cv.serialize(),
+      "bbox": bbox.serialize(),
+      "coarse_mip": coarse_mip,
+      "fine_mip": fine_mip,
   }
   return json.dumps(content)
 
@@ -253,6 +257,7 @@ class TaskHandler:
     self.sqs.purge_queue(QueueUrl=self.queue_url)
 
   def wait_until_ready(self):
+    time.sleep(20)
     while not self.is_empty():
       time.sleep(5)
 
