@@ -740,7 +740,7 @@ class Aligner:
           #im_off = 10240
           #f += im_off
           distance = self.profile_field(f)
-          distance = (distance//(2**mip)) * 2**mip
+          distance = (distance//(2**field_mip)) * 2**field_mip
           #print("x_range is", x_range, "y_range is", y_range)
           #new_bbox = BoundingBox(x_range[0] - im_off, x_range[1] - im_off,
           #                       y_range[0] - im_off, y_range[1] - im_off, mip=0)
@@ -749,12 +749,12 @@ class Aligner:
           print("distance is", distance)
           f = f - distance.to(device = self.device)
           #f = f - distance
-          res = self.abs_to_rel_residual(f, bbox, mip)
+          res = self.abs_to_rel_residual(f, bbox, field_mip)
           field = res.to(device = self.device)
           if field_mip != image_mip:
             field = self.upsample_field(field, field_mip, image_mip)
           #print("field shape is", field.shape)
-          image = self.get_image(image_cv, z, new_bbox, mip,
+          image = self.get_image(image_cv, z, new_bbox, image_mip,
                                  adjust_contrast=False, to_tensor=True)
           #print("image shape is", image.shape)
           if 'src_mask' in self.src:
