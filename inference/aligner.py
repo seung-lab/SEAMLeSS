@@ -63,7 +63,7 @@ class Aligner:
                upsample_residuals=False, old_upsample=False, old_vectors=False,
                ignore_field_init=False, z=0, tgt_radius=1, 
                queue_name=None, p_render=False, dir_suffix='', inverter=None,
-               task_batch_size=1, **kwargs):
+               task_batch_size=1, info_chunk_dims=[-1,-1,-1], **kwargs):
     if queue_name != None:
         self.task_handler = TaskHandler(queue_name)
         self.distributed  = True
@@ -105,10 +105,11 @@ class Aligner:
     src_cv = self.src['src_img'][0]
     print("source_patch is", src_path)
     print("tgt_patch is", tgt_path)
-    # info = DstDir.create_info_batch(src_cv, mip_range, max_displacement, 2,
-    #                                 256, self.process_low_mip)
     info = DstDir.create_info(src_cv, mip_range, max_displacement)
-                              
+    if all(i > 0 for i in info_chunk_dims):
+      info = DstDir.create_info_batch(src_cv, mip_range, max_displacement, 
+                                      info_chunk_dims[2], info_chunk_dims[0], 
+                                      self.render_low_mip)
     self.dst = {}
     self.tgt_radius = tgt_radius
     self.tgt_range = range(-tgt_radius, tgt_radius+1)
@@ -702,13 +703,28 @@ class Aligner:
       #print(new_bbox.x_range(mip=0), new_bbox.y_range(mip=0))
       return new_bbox
 
-  def gridsample_cv(self, image_cv, field_cv, bbox, z, mip):
-      f =  self.get_field(field_cv, z, bbox, mip, relative=False,
+  def gridsample_cv(self, image_cv, field_cv, bbox, z, image_mip, field_mip=-1):
+      """Wrapper for torch.nn.functional.gridsample for CloudVolume objects
+
+      Args:
+         image_cv: MiplessCloudVolume storing the image
+         field_cv: MiplessCloudVolume storing the vector field
+         bbox: BoundingBox for output region to be warped
+         z: int for section index to warp
+         image_mip: int for MIP of the image
+         field_mip: int for MIP of the vector field 
+
+      Returns:
+         warped image
+      """
+      if field_mip < 0:
+        field_mip = image_mip
+      f =  self.get_field(field_cv, z, bbox, field_mip, relative=False,
                           to_tensor=True) 
       x_range = bbox.x_range(mip=0)
       y_range = bbox.y_range(mip=0)
-      if torch.min(field) == 0 and torch.max(field) == 0:
-          image = self.get_image(image_cv, z, bbox, mip,
+      if torch.min(f) == 0 and torch.max(f) == 0:
+          image = self.get_image(image_cv, z, bbox, image_mip,
                                  adjust_contrast=False, to_tensor=True)
           return image
       else:
@@ -727,6 +743,8 @@ class Aligner:
           res = self.abs_to_rel_residual(f, bbox, mip)
           #res = torch.from_numpy(res)
           field = res.to(device = self.device)
+          if field_mip != image_mip:
+            field = self.upsample_field(field, field_mip, image_mip)
           #print("field shape is", field.shape)
           image = self.get_image(image_cv, z, new_bbox, mip,
                                  adjust_contrast=False, to_tensor=True)
@@ -740,11 +758,10 @@ class Aligner:
           image = gridsample_residual(image, field, padding_mode='zeros')
           return image
 
-  def warp_using_gridsample_cv(self, src_z, field_cv, field_z, bbox, mip):
+  def warp_using_gridsample_cv(self, src_z, src_cv, field_z, field_cv, bbox, mip):
       influence_bbox = deepcopy(bbox)
       influence_bbox.uncrop(self.max_displacement, mip=0)
       mip_disp = int(self.max_displacement / 2**mip)
-      src_cv = self.src['src_img']
       image = self.gridsample_cv(src_cv, field_cv, influence_bbox, field_z, mip)
       if self.disable_cuda:
         image = image.numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
@@ -789,6 +806,38 @@ class Aligner:
       image = image.cpu().numpy()[:,:,mip_disp:-mip_disp,mip_disp:-mip_disp]
     # print('warp_image image3.shape: {0}'.format(image.shape))
     return image
+
+  def warp_gridsample_cv_batch(self, z_range, image_cv, field_cv, bbox, 
+                                     image_mip, field_mip):
+    """Warp a batch of sections using CloudVolume gridsampler
+   
+    Args:
+       z_range: list of ints for section indices to process
+       image_cv: MiplessCloudVolume of source image
+       field_cv: MiplesscloudVolume of vector field
+       bbox: BoundingBox of output region
+       image_mip: int for MIP of the source image
+       field_mip: int for MIP of the vector field
+
+    Returns:
+      an ndarray of all the warped images 
+    """
+    influence_bbox = deepcopy(bbox)
+    influence_bbox.uncrop(self.max_displacement, mip=0)
+    crop = int(self.max_displacement / 2**image_mip)
+    start = time()
+    image_batch = []
+    print("warp_gridsample_cv_batch for z_range={0}".format(z_range))
+    for z in z_range: 
+      image = self.gridsample_cv(image_cv, field_cv, influence_bbox, z, image_mip, 
+                                 field_mip=field_mip)
+      print('image.shape {0}'.format(image.shape))
+      if self.disable_cuda:
+        image = image.numpy()[:,:,crop:-crop,crop:-crop]
+      else:
+        image = image.cpu().numpy()[:,:,crop:-crop,crop:-crop]
+      image_batch.append(image)
+    return np.concatenate(image_batch, axis=0)
 
   def warp_patch_batch(self, src_z, field_cv, field_z, bbox, mip, batch):
     """Non-chunk warping
@@ -897,7 +946,8 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     print("type of float_patch", type(float_patch), "shape", float_patch.shape)
-    patch = np.transpose(float_patch, (2,1,0))[..., np.newaxis]
+    patch = np.transpose(float_patch, (2,3,0,1))
+    # patch = np.transpose(float_patch, (2,1,0))[..., np.newaxis]
     if to_uint8:
         patch = (np.multiply(patch, 255)).astype(np.uint8)
     print("patch shape", patch.shape)
@@ -1669,6 +1719,48 @@ class Aligner:
           h = self.compose_cloudvolumes(z, fine_cv, coarse_cv, patch_bbox, 
                                         fine_mip, coarse_mip)        
           self.save_vector_patch(dst_cv, z, h, patch_bbox, fine_mip)
+        self.pool.map(chunkwise, chunks)
+    end = time()
+    print (": {} sec".format(end - start))
+
+  def upsample_render_rechunk(self, z_range, src_cv, field_cv, dst_cv, bbox, 
+                                    image_mip, field_mip):
+    """Chunked-processing to upsample a vector field & render a rechunked image 
+    
+    Args:
+       z_range: list of ints for section indices to process
+       src_cv: MiplessCloudVolume of source image 
+       field_cv: MiplessCloudVolume of vector field
+       dst_cv: MiplessCloudVolume of rendered image 
+       bbox: BoundingBox of region to process
+       image_mip: MIP of source & rendered image 
+       field_mip: MIP of vector field
+    """
+    self.total_bbox = bbox
+    print('Rendering z={0} @ MIP{1}'.format(z_range, image_mip), flush=True)
+    print("chunk_size: ", self.dst[0].dst_chunk_sizes[image_mip], 
+                          self.dst[0].dst_voxel_offsets[image_mip])
+    start = time()
+    chunks = self.break_into_chunks_v2(bbox, self.dst[0].dst_chunk_sizes[image_mip],
+                                       self.dst[0].dst_voxel_offsets[image_mip], 
+                                       mip=image_mip, render=True)
+    if self.distributed:
+        tasks = []
+        for i in range(0, len(chunks), self.task_batch_size):
+            task_patches = []
+            for j in range(i, min(len(chunks), i + self.task_batch_size)):
+                task_patches.append(chunks[j])
+            tasks.append(make_batch_render_message(z_range, src_cv, field_cv, dst_cv, 
+                                                   task_patches, image_mip, field_mip))
+        self.pool.map(self.task_handler.send_message, tasks)
+        self.task_handler.wait_until_ready()
+    else:
+        def chunkwise(patch_bbox):
+          warped_patch = self.warp_gridsample_cv_batch(z_range, src_cv, field_cv, 
+                                                       patch_bbox, image_mip, field_mip)
+          print('warped_patch.shape {0}'.format(warped_patch.shape))
+          self.save_image_patch_batch(dst_cv, (z_range[0], z_range[-1]+1), warped_patch, 
+                                      patch_bbox, image_mip)
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))

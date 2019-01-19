@@ -82,6 +82,9 @@ def get_argparser():
     help='suffix to attach for composed directories')
   parser.add_argument('--inverter_path', type=str, default='',
     help='path to the inverse net; default is None')
+  parser.add_argument('--info_chunk_dims', nargs=3, type=int,
+    default=[-1,-1,-1],
+    help='output chunk shape at MIP, 3-element int list')
   return parser
 
 def parse_args(parser, arg_string=''):
