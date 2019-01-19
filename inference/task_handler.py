@@ -19,6 +19,18 @@ def make_residual_task_message(source_z, target_z, patch_bbox, mip):
   }
   return json.dumps(content)
 
+def make_res_and_compose_message(z, forward, reverse, patch_bbox, mip, w_cv):
+  content = {
+      "type": "res_and_compose",
+      "z": z,
+      "forward": forward,
+      "reverse": reverse,
+      "patch_bbox": patch_bbox.serialize(),
+      "mip": mip,
+      "w_cv": w_cv.serialize(),
+  }
+  return json.dumps(content)
+
 def make_invert_field_task_message(z, src_cv, dst_cv, patch_bbox, mip, optimizer):
   content = {
       "type": "invert_task",
@@ -236,10 +248,12 @@ class TaskHandler:
     for i in range(2):
       response = self.sqs.get_queue_attributes(QueueUrl=self.queue_url,
                                                AttributeNames=attribute_names)
+      print(response)
       for a in attribute_names:
         if int(response['Attributes'][a]) > 0:
           return False
       time.sleep(5)
+    print("donot wait since it")
     return True
   
   def purge_queue(self):
