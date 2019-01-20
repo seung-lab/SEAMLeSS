@@ -983,6 +983,28 @@ class Aligner:
     return self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
                              adjust_contrast=adjust_contrast, to_tensor=to_tensor)
 
+  def get_composite_image(self, cv, z_list, bbox, mip, adjust_contrast=False, to_tensor=True):
+    """Collapse 3D image into a 2D image, replacing black pixels in the first 
+        z slice with the nearest nonzero pixel in other slices.
+    
+    Args:
+       cv: MiplessCloudVolume where images are stored
+       z_list: list of ints that will be processed in order 
+       bbox: BoundingBox defining data range
+       mip: int MIP level of the data to process
+       adjust_contrast: output will be normalized
+       to_tensor: output will be torch.tensor
+    """
+    z_start = np.min(z_range)
+    z_stop = np.max(z_range)+1
+    z_range = range(z_start, z_stop) 
+    img = self.get_data_range(cv, z_range, bbox, src_mip=mip, dst_mip=mip)
+    z = z_list[0]
+    o = img[z-z_start, ...]
+    for z in z_list[1:]:
+      o[o <= 1] = img[z-z_start, ...][o <= 1]
+    return o
+
   def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
                      adjust_contrast=False, to_tensor=True):
     """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
@@ -1029,6 +1051,36 @@ class Aligner:
           data = data.type('torch.cuda.ByteTensor')
       if not to_tensor:
         data = data.cpu().numpy()
+    
+    return data
+  
+  def get_data_range(self, cv, z_range, bbox, src_mip, dst_mip, to_tensor=True):
+    """Retrieve CloudVolume data. Returns 4D tensor, BxCxWxH
+    
+    Args:
+       cv_key: string to lookup CloudVolume
+       bbox: BoundingBox defining data range
+       src_mip: mip of the CloudVolume data
+       dst_mip: mip of the output mask (dictates whether to up/downsample)
+    """
+    x_range = bbox.x_range(mip=src_mip)
+    y_range = bbox.y_range(mip=src_mip)
+    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range]
+    data = np.transpose(data, (2,3,0,1))
+    if isinstance(data, np.ndarray):
+      data = torch.from_numpy(data)
+    data = data.to(device=self.device)
+    if src_mip != dst_mip:
+      # k = 2**(src_mip - dst_mip)
+      size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
+      if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
+        data = interpolate(data, size=size, mode='bilinear')
+      else:
+        data = data.type('torch.cuda.DoubleTensor')
+        data = interpolate(data, size=size, mode='nearest')
+        data = data.type('torch.cuda.ByteTensor')
+    if not to_tensor:
+      data = data.cpu().numpy()
     
     return data
 
