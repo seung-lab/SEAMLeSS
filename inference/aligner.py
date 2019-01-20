@@ -1347,7 +1347,7 @@ class Aligner:
                                                              negative_offsets, 
                                                              serial_operation))
         self.pool.map(self.task_handler.send_message, tasks)
-        self.task_handler.wait_until_ready()
+        # self.task_handler.wait_until_ready()
     #for patch_bbox in chunks:
     else:
         def chunkwise(patch_bbox):
@@ -1389,7 +1389,7 @@ class Aligner:
           self.render_section_all_mips(src_z, field_cv, src_z, dst_cv, tgt_z, bbox, mip)
 
   def generate_pairwise(self, z_range, bbox, forward_match, reverse_match, 
-                              render_match=False, batch_size=1):
+                              render_match=False, batch_size=1, wait=True):
     """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in TGT_RADIUS
   
     Args:
@@ -1404,6 +1404,8 @@ class Aligner:
           (useful for debugging)
         batch_size: (for distributed only) int describing how many sections to issue 
           multi-match tasks for, before waiting for all tasks to complete
+        wait: (for distributed only) bool to wait after batch_size for all tasks
+          to finish
     """
     self.total_bbox = bbox
     mip = self.process_low_mip
@@ -1414,18 +1416,18 @@ class Aligner:
       batch_count += 1 
       self.multi_match(z, forward_match=forward_match, reverse_match=reverse_match, 
                        render=render_match)
-      if batch_count == batch_size and self.distributed:
+      if batch_count == batch_size and self.distributed and wait:
         print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
         self.task_handler.wait_until_ready()
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
     # report on remaining sections after batch 
-    if batch_count > 0 and self.distributed: 
+    if batch_count > 0 and self.distributed and wait:
       print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
       self.task_handler.wait_until_ready()
-      end = time()
-      print (": {} sec".format(end - start))
+    end = time()
+    print (": {} sec".format(end - start))
     #if self.p_render:
     #    self.task_handler.wait_until_ready()
  
