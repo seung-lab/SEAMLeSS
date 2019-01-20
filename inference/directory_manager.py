@@ -79,8 +79,8 @@ class DstDir():
     m = len(src_info['scales'])
     each_factor = Vec(2,2,1)
     factor = Vec(2**m,2**m,1)
-    print("mip_range ", mip_range)
-    for _ in mip_range:
+    max_mip = mip_range[-1]
+    for k in range(m, max_mip+1):
       src_cv.add_scale(factor)
       factor *= each_factor
       chunksize = src_info['scales'][-2]['chunk_sizes'][0] // each_factor

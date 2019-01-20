@@ -17,6 +17,7 @@ from normalizer import Normalizer
 from vector_vote import vector_vote, get_diffs, weight_diffs, \
                         compile_field_weights, weighted_sum_fields
 from temporal_regularization import create_field_bump
+from cpc import cpc 
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
                               np_downsample, invert
 
@@ -104,8 +105,8 @@ class Aligner:
                       src_mask_mip, tgt_mask_mip, 
                       src_mask_val, tgt_mask_val)
     src_cv = self.src['src_img'][0]
-    print("source_patch is", src_path)
-    print("tgt_patch is", tgt_path)
+    print("src_path is", src_path)
+    print("tgt_path is", tgt_path)
     info = DstDir.create_info(src_cv, mip_range, max_displacement)
     if all(i > 0 for i in info_chunk_dims):
       info = DstDir.create_info_batch(src_cv, mip_range, max_displacement, 
@@ -1084,6 +1085,34 @@ class Aligner:
     
     return data
 
+  def cpc(self, src_z, tgt_z, src_cv, tgt_cv, bbox, src_mip, dst_mip):
+    """Calculate the chunked pearson r between two chunks
+
+    Args:
+       src_z: int z index of one section to compare
+       tgt_z: int z index of other section to compare
+       src_cv: MiplessCloudVolume of source image
+       tgt_cv: MiplessCloudVolume of target image
+       bbox: BoundingBox of region to process
+       src_mip: int MIP level of input src & tgt images
+       dst_mip: int MIP level of output image, will dictate the size of the chunks
+        used for the pearson r
+
+    Returns:
+       img for bbox at dst_mip containing pearson r at each pixel for the chunks
+       in src & tgt images at src_mip
+    """
+    print('Compute CPC for {4} at MIP{0} to MIP{1}, {2}<-({2},{3})'.format(src_mip, 
+                                                                   dst_mip, src_z, 
+                                                                   tgt_z, 
+                                                                   bbox.__str__(mip=0)))
+    scale_factor = 2**(dst_mip - src_mip)
+    src = self.get_image(src_cv, src_z, bbox, src_mip, adjust_contrast=False, 
+                         to_tensor=True)
+    tgt = self.get_image(tgt_cv, tgt_z, bbox, src_mip, adjust_contrast=False, 
+                         to_tensor=True)
+    return cpc(src, tgt, scale_factor, device=self.device)
+
   ## High level services
   def copy_section(self, z, dst_cv, dst_z, bbox, mip):
     print ("moving section {} mip {} to dest".format(z, mip), end='', flush=True)
@@ -1118,6 +1147,46 @@ class Aligner:
           self.save_image_patch(dst_cv, dst_z, raw_patch, patch_bbox, mip)
         self.pool.map(chunkwise, chunks)
 
+    end = time()
+    print (": {} sec".format(end - start))
+
+  def cpc_chunkwise(self, src_z, tgt_z, src_cv, tgt_cv, dst_cv, bbox, src_mip, dst_mip):
+    """Chunkwise CPC 
+
+    Args:
+       src_z: int z index of one section to compare
+       tgt_z: int z index of other section to compare
+       src_cv: MiplessCloudVolume of source image
+       tgt_cv: MiplessCloudVolume of target image
+       dst_cv: MiplessCloudVolume of destination image
+       bbox: BoundingBox of region to process
+       src_mip: int MIP level of input src & tgt images
+       dst_mip: int MIP level of output image, will dictate the size of the chunks
+        used for the pearson r
+    """
+    self.total_bbox = bbox
+    print('Compute CPC of MIP{0} at MIP{1}, {2}<-({2},{3})'.format(src_mip, dst_mip, 
+                                                                   src_z, tgt_z))
+    start = time()
+    chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[dst_mip],
+                                    self.dst[0].dst_voxel_offsets[dst_mip], mip=dst_mip, 
+                                    render=True)
+    if self.distributed:
+        tasks = []
+        for i in range(0, len(chunks), self.task_batch_size):
+            task_patches = []
+            for j in range(i, min(len(chunks), i + self.task_batch_size)):
+                task_patches.append(chunks[j])
+            # tasks.append(make_cpc_task_message(src_z, field_cv, field_z, task_patches, 
+            #                                        mip, dst_cv, dst_z))
+        self.pool.map(self.task_handler.send_message, tasks)
+    else:
+        def chunkwise(patch_bbox):
+          r = self.cpc(src_z, tgt_z, src_cv, tgt_cv, patch_bbox, src_mip, dst_mip)
+          r = r.cpu().numpy()
+          # print('warp_image render.shape: {0}'.format(warped_patch.shape))
+          self.save_image_patch(dst_cv, src_z, r, patch_bbox, dst_mip)
+        self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
 
