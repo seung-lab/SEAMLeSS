@@ -1,6 +1,8 @@
 import sys
 import torch
 from os.path import join
+import numpy as np
+from itertools import zip_longest, chain
 from args import get_argparser, parse_args, get_aligner, get_bbox 
 
 if __name__ == '__main__':
@@ -14,6 +16,7 @@ if __name__ == '__main__':
     help='CloudVolume path of composed field')
   parser.add_argument('--coarse_mip', type=int)
   parser.add_argument('--fine_mip', type=int)
+  parser.add_argument('--batch_size', type=int, default=100)
   args = parse_args(parser) 
   a = get_aligner(args)
   bbox = get_bbox(args)
@@ -33,6 +36,15 @@ if __name__ == '__main__':
   dst_field_cv = a.dst[0].for_write('dst_field')
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
 
+  mip = args.mip
+
+  k = 0  
   for z in z_range:
     a.compose_chunkwise(z, coarse_cv, fine_cv, dst_field_cv, bbox,
                         args.coarse_mip, args.fine_mip) 
+
+    if k >= args.batch_size and a.distributed:
+      print('wait')
+      k = 0
+      a.task_handler.wait_until_ready()
+      
