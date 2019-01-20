@@ -178,14 +178,16 @@ class DstDir():
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
 
-  def create_cv(self, k):
+  def create_cv(self, k, ignore_info=False):
     path, data_type, channels, fill_missing = self.paths[k]
     provenance = self.provenance 
     info = deepcopy(self.info)
     info['data_type'] = data_type
     info['num_channels'] = channels
+    if ignore_info:
+      info = None
     self.read[k] = CV(path, mkdir=False, info=info, provenance=provenance, fill_missing=fill_missing, **self.read_kwargs)
-    self.write[k] = CV(path, mkdir=not self.distributed, info=info, provenance=provenance, fill_missing=fill_missing, **self.write_kwargs)
+    self.write[k] = CV(path, mkdir=not ignore_info, info=info, provenance=provenance, fill_missing=fill_missing, **self.write_kwargs)
 
   def add_path(self, k, path, data_type='uint8', num_channels=1, fill_missing=True):
     self.paths[k] = (path, data_type, num_channels, fill_missing)

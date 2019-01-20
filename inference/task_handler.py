@@ -117,8 +117,24 @@ def make_render_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
   }
   return json.dumps(content)
 
+def make_upsample_render_rechunk_task(z_range, src_cv, field_cv, dst_cv, 
+                                      patches, image_mip, field_mip):
+  content = {
+      "type": "upsample_render_rechunk_task",
+      "z_start": z_range[0],
+      "z_end": z_range[-1],
+      "src_cv": src_cv.serialize(),
+      "field_cv": field_cv.serialize(),
+      "dst_cv": dst_cv.serialize(),
+      "patches": [p.serialize() for p in patches],
+      "image_mip": image_mip,
+      "field_mip": field_mip,
+  }
+  return json.dumps(content)
+
+
 def make_batch_render_message(z, field_cv, field_z, patches, mip, dst_cv,
-                              dst_zm, batch):
+                              dst_z, batch):
   content = {
       "type": "batch_render_task",
       "z": z,
