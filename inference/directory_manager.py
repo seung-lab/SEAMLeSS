@@ -34,9 +34,11 @@ class DstDir():
   distinguished by the different sets of kwargs that are used for the CloudVolume.
   All CloudVolumes are MiplessCloudVolumes. 
   """
-  def __init__(self, dst_path, info, provenance, suffix='', use_int=False):
+  def __init__(self, dst_path, info, provenance, suffix='', distributed=False, 
+                     use_int=False):
     print('Creating DstDir for {0}'.format(dst_path))
     self.root = dst_path
+    self.distributed = distributed
     self.info = info
     self.provenance = provenance
     self.paths = {} 
@@ -54,13 +56,13 @@ class DstDir():
     self.write_kwargs = {'bounded': False, 'progress': False, 
                   'autocrop': True, 'non_aligned_writes': False, 'cdn_cache': False}
     self.add_path('dst_img', join(self.root, 'image'), data_type='uint8', num_channels=1, fill_missing=True)
-    self.add_path('dst_img_high_res', join(self.root, 'image_high_res'), data_type='uint8', num_channels=1)
     if use_int:
         self.add_path('field', join(self.root, 'field'), data_type='int16',
                       num_channels=2, fill_missing=True)
     else:
         self.add_path('field', join(self.root, 'field'), data_type='float32',
                       num_channels=2, fill_missing=True)
+    self.add_path('dst_img_high_res', join(self.root, 'upsampled_image'), data_type='uint8', num_channels=1)
     self.suffix = suffix
     self.create_paths()
   
@@ -82,8 +84,8 @@ class DstDir():
     m = len(src_info['scales'])
     each_factor = Vec(2,2,1)
     factor = Vec(2**m,2**m,1)
-    print("mip_range ", mip_range)
-    for _ in mip_range:
+    max_mip = mip_range[-1]
+    for k in range(m, max_mip+1):
       src_cv.add_scale(factor)
       factor *= each_factor
       chunksize = src_info['scales'][-2]['chunk_sizes'][0] // each_factor
@@ -181,14 +183,16 @@ class DstDir():
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
 
-  def create_cv(self, k):
+  def create_cv(self, k, ignore_info=False):
     path, data_type, channels, fill_missing = self.paths[k]
     provenance = self.provenance 
     info = deepcopy(self.info)
     info['data_type'] = data_type
     info['num_channels'] = channels
+    if ignore_info:
+      info = None
     self.read[k] = CV(path, mkdir=False, info=info, provenance=provenance, fill_missing=fill_missing, **self.read_kwargs)
-    self.write[k] = CV(path, mkdir=True, info=info, provenance=provenance, fill_missing=fill_missing, **self.write_kwargs)
+    self.write[k] = CV(path, mkdir=not ignore_info, info=info, provenance=provenance, fill_missing=fill_missing, **self.write_kwargs)
 
   def add_path(self, k, path, data_type='uint8', num_channels=1, fill_missing=True):
     self.paths[k] = (path, data_type, num_channels, fill_missing)

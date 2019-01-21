@@ -6,11 +6,15 @@ metadata:
     run: seamless
   name: seamless
 spec:
-  replicas: 16 
+  replicas: 2 
   selector:
     matchLabels:
       run: seamless
-  strategy: {}
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 100%
+    type: RollingUpdate
   template:
     metadata:
       creationTimestamp: null

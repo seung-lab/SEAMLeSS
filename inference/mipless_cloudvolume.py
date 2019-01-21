@@ -1,10 +1,15 @@
 from cloudvolume import CloudVolume, Storage
 import json
 
-def deserialize_miplessCV(s):
-    contents = json.loads(s)
-    return MiplessCloudVolume(contents['path'],mkdir = contents['mkdir'],
-                              **contents['kwargs'])
+def deserialize_miplessCV(s, cache={}):
+    if s in cache:
+      return cache[s]
+    else:
+      contents = json.loads(s)
+      mcv = MiplessCloudVolume(contents['path'], mkdir=contents['mkdir'],
+                               **contents['kwargs'])
+      cache[s] = mcv
+      return mcv
 
 class MiplessCloudVolume():
   """Multi-mip access to CloudVolumes using the same path

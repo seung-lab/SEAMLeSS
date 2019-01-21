@@ -65,9 +65,5 @@ if __name__ == '__main__':
         a.render(z, field_cv, z, dst_cv, z, bbox, a.render_low_mip, wait=False)
       if a.distributed:
         a.task_handler.wait_until_ready()
-      for m in range(a.render_low_mip, a.render_high_mip):
-        for z in reg_range:
-          a.downsample(dst_cv, z, bbox, m, m+1, wait=False)
-        if a.distributed:
-          a.task_handler.wait_until_ready()
+      a.downsample_range(dst_cv, reg_range, bbox, a.render_low_mip, a.render_high_mip)
 

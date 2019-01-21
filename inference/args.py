@@ -65,6 +65,10 @@ def get_argparser():
     action='store_true')
   parser.add_argument('--p_render', help='parallel rendering among all slices', action='store_true')
   parser.add_argument('--queue_name', type=str, default=None)
+  parser.add_argument('--threads', type=int, default=1,
+     help='no. of threads to use in scheduling chunks (locally & distributed)')
+  parser.add_argument('--task_batch_size', type=int, default=1,
+     help='no. of tasks to group together for a single worker')
   #parser.add_argument('--inverse_compose', 
   #  help='compute and store the inverse composition (aligning COMPOSE_START to Z)', 
   #  action='store_true')
@@ -79,6 +83,9 @@ def get_argparser():
   parser.add_argument('--inverter_path', type=str, default='',
     help='path to the inverse net; default is None')
   parser.add_argument('--int_field', help='store vector field as int16', action='store_true')
+  parser.add_argument('--info_chunk_dims', nargs=3, type=int,
+    default=[-1,-1,-1],
+    help='output chunk shape at MIP, 3-element int list')
   return parser
 
 def parse_args(parser, arg_string=''):

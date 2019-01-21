@@ -9,11 +9,14 @@ retry = tenacity.retry(
   wait=tenacity.wait_full_jitter(0.5, 60.0),
 )
 
-def make_residual_task_message(source_z, target_z, patch_bbox, mip):
-  content = {
+def make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip):
+  content = {                   
       "type": "residual_task",
-      "source_z": source_z,
-      "target_z": target_z,
+      "src_z": src_z,
+      "src_cv": src_cv.serialize(),
+      "tgt_z": tgt_z,
+      "tgt_cv": tgt_cv.serialize(),
+      "field_cv": field_cv.serialize(),
       "patch_bbox": patch_bbox.serialize(),
       "mip": mip,
   }
@@ -43,7 +46,8 @@ def make_regularize_task_message(z_start, z_end, compose_start, patch_bbox, mip,
   }
   return json.dumps(content)
 
-def make_vector_vote_task_message(z_range, read_F_cv, write_F_cv, patch_bbox, mip, inverse, T):
+def make_vector_vote_task_message(z_range, read_F_cv, write_F_cv, patch_bbox, mip,
+                                  inverse, T, negative_offsets, serial_operation):
   content = {
       "type": "vector_vote_task",
       "z_start": z_range[0],
@@ -54,6 +58,8 @@ def make_vector_vote_task_message(z_range, read_F_cv, write_F_cv, patch_bbox, mi
       "mip": mip,
       "inverse": inverse,
       "T": T,
+      "negative_offsets": negative_offsets,
+      "serial_operation": serial_operation,
   }
   return json.dumps(content)
 
@@ -111,6 +117,22 @@ def make_render_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
   }
   return json.dumps(content)
 
+def make_upsample_render_rechunk_task(z_range, src_cv, field_cv, dst_cv, 
+                                      patches, image_mip, field_mip):
+  content = {
+      "type": "upsample_render_rechunk_task",
+      "z_start": z_range[0],
+      "z_end": z_range[-1],
+      "src_cv": src_cv.serialize(),
+      "field_cv": field_cv.serialize(),
+      "dst_cv": dst_cv.serialize(),
+      "patches": [p.serialize() for p in patches],
+      "image_mip": image_mip,
+      "field_mip": field_mip,
+  }
+  return json.dumps(content)
+
+
 def make_batch_render_message(z, field_cv, field_z, patches, mip, dst_cv,
                               dst_z, batch):
   content = {
@@ -141,13 +163,17 @@ def make_render_low_mip_task_message(z, field_cv, field_z, patches, image_mip, v
   }
   return json.dumps(content)
 
-def make_compose_task_message(z, patches, mip, start_z):
+            
+def make_compose_task_message(z, coarse_cv, fine_cv, dst_cv, bbox, coarse_mip, fine_mip):
   content = {
       "type": "compose_task",
       "z": z,
-      "patches": [p.serialize() for p in patches],
-      "mip": mip,
-      "start_z": start_z,
+      "coarse_cv": coarse_cv.serialize(),
+      "fine_cv": fine_cv.serialize(),
+      "dst_cv": dst_cv.serialize(),
+      "bbox": bbox.serialize(),
+      "coarse_mip": coarse_mip,
+      "fine_mip": fine_mip,
   }
   return json.dumps(content)
 
@@ -186,17 +212,18 @@ class TaskHandler:
   def send_message(self, message_body):
     attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
     threshold = 100000
-    while(True):
-        response = self.sqs.get_queue_attributes(QueueUrl=self.queue_url,
-                                                 AttributeNames=attribute_names)
-        Message_num = int(response['Attributes']['ApproximateNumberOfMessages'])
-        if Message_num > threshold:
-            print("Message number is", Message_num, "sleep")
-            time.sleep(3)
-        else: 
-            self.sqs.send_message(QueueUrl=self.queue_url, 
-                                  MessageBody=message_body)
-            break
+    # while(True):
+    #     response = self.sqs.get_queue_attributes(QueueUrl=self.queue_url,
+    #                                              AttributeNames=attribute_names)
+    #     Message_num = int(response['Attributes']['ApproximateNumberOfMessages'])
+    #     if Message_num > threshold:
+    #         print("Message number is", Message_num, "sleep")
+    #         time.sleep(3)
+    #     else: 
+    #         self.sqs.send_message(QueueUrl=self.queue_url, 
+    #                               MessageBody=message_body)
+    #         break
+    self.sqs.send_message(QueueUrl=self.queue_url, MessageBody=message_body)
 
   @retry
   def get_message(self, processing_time=90):
@@ -206,17 +233,17 @@ class TaskHandler:
       MessageAttributeNames=[
           'All'
       ],
-      VisibilityTimeout=0
+      VisibilityTimeout=processing_time
     )
 
     if 'Messages' in response.keys() and len(response['Messages']) > 0:
       message = response['Messages'][0]
       receipt_handle = message['ReceiptHandle']
-      self.sqs.change_message_visibility(
-              QueueUrl=self.queue_url,
-              ReceiptHandle=receipt_handle,
-              VisibilityTimeout=processing_time
-      )
+      # self.sqs.change_message_visibility(
+      #         QueueUrl=self.queue_url,
+      #         ReceiptHandle=receipt_handle,
+      #         VisibilityTimeout=processing_time
+      # )
       return message
     else:
       return None
@@ -246,6 +273,7 @@ class TaskHandler:
     self.sqs.purge_queue(QueueUrl=self.queue_url)
 
   def wait_until_ready(self):
+    time.sleep(20)
     while not self.is_empty():
       time.sleep(5)
 
