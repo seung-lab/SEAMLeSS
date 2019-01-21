@@ -622,7 +622,7 @@ class Aligner:
 
     # save the final vector field for warping
     field = field.data.cpu().numpy() 
-    self.save_vector_patch(field_cv, src_z, field, out_patch_bbox, mip,
+    self.save_vector_patch(field_cv, src_z, field, bbox, mip,
                            to_int=self.int_field)
 
     # if self.write_intermediaries and residuals is not None and cum_residuals is not None:
@@ -778,7 +778,7 @@ class Aligner:
       return new_bbox
 
   def gridsample_cv(self, image_cv, field_cv, bbox, z, image_mip, field_mip=-1,
-                          from_int=self.int_field):
+                          from_int=True):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume objects
 
       Args:
@@ -1642,7 +1642,7 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def multi_match(self, z, forward_match, reverse_match, render=True):
+  def multi_match(self, z, forward_match, reverse_match, render=False):
     """Match z to all sections within tgt_radius
 
     Args:
