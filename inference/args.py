@@ -7,8 +7,8 @@ from utilities.archive import ModelArchive
 def get_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument('--model_path', type=str)
-  parser.add_argument('--max_displacement', 
-    help='the size of the largest displacement expected; should be 2^high_mip', 
+  parser.add_argument('--max_displacement',
+    help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
   parser.add_argument('--crop', type=int, default=384)
   parser.add_argument('--mip', type=int)
@@ -45,23 +45,23 @@ def get_argparser():
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--tgt_radius', type=int, default=1,
     help='Radius of z sections to include in multi-match')
-  parser.add_argument('--disable_flip_average', 
-    help='disable flip averaging', 
+  parser.add_argument('--disable_flip_average',
+    help='disable flip averaging',
     action='store_true')
-  parser.add_argument('--old_upsample', 
+  parser.add_argument('--old_upsample',
     help='revert to the old pytorch upsampling (using align_corners=True)',
     action='store_true')
-  parser.add_argument('--old_vectors', 
+  parser.add_argument('--old_vectors',
     help='vectors in old convention, -1 & 1 refer border pixel centers instead of image edges.',
     action='store_true')
-  parser.add_argument('--ignore_field_init', 
+  parser.add_argument('--ignore_field_init',
     help='do not initialize the field cloudvolume (already exists)',
     action='store_true')
-  parser.add_argument('--write_intermediaries', 
-    help='write encodings, residuals, & cumulative residuals to cloudvolumes', 
+  parser.add_argument('--write_intermediaries',
+    help='write encodings, residuals, & cumulative residuals to cloudvolumes',
     action='store_true')
-  parser.add_argument('--upsample_residuals', 
-    help='upsample residuals & cum_residuals when writing intermediaries; requires --write_intermediaries flag', 
+  parser.add_argument('--upsample_residuals',
+    help='upsample residuals & cum_residuals when writing intermediaries; requires --write_intermediaries flag',
     action='store_true')
   parser.add_argument('--p_render', help='parallel rendering among all slices', action='store_true')
   parser.add_argument('--queue_name', type=str, default=None)
@@ -69,14 +69,14 @@ def get_argparser():
      help='no. of threads to use in scheduling chunks (locally & distributed)')
   parser.add_argument('--task_batch_size', type=int, default=1,
      help='no. of tasks to group together for a single worker')
-  #parser.add_argument('--inverse_compose', 
-  #  help='compute and store the inverse composition (aligning COMPOSE_START to Z)', 
+  #parser.add_argument('--inverse_compose',
+  #  help='compute and store the inverse composition (aligning COMPOSE_START to Z)',
   #  action='store_true')
-  #parser.add_argument('--forward_compose', 
-  #  help='compute and store the forward composition (aligning Z to COMPOSE_START)', 
+  #parser.add_argument('--forward_compose',
+  #  help='compute and store the forward composition (aligning Z to COMPOSE_START)',
   #  action='store_true')
-  # parser.add_argument('--forward_matches_only', 
-  #   help='compute the forward matches only (aligning Z to z-1, z-2, ..., not z+1, z+2)', 
+  # parser.add_argument('--forward_matches_only',
+  #   help='compute the forward matches only (aligning Z to z-1, z-2, ..., not z+1, z+2)',
   #   action='store_true')
   parser.add_argument('--dir_suffix', type=str, default='',
     help='suffix to attach for composed directories')
@@ -89,7 +89,7 @@ def parse_args(parser, arg_string=''):
     args = parser.parse_args(arg_string)
   else:
     args = parser.parse_args()
-  
+
   args.tgt_path = args.tgt_path if args.tgt_path else args.src_path
   args.mip_range = (args.mip, args.mip)
   args.high_mip_chunk = (1024, 1024)
@@ -104,6 +104,7 @@ def get_aligner(args):
   archive = ModelArchive(model_name, height=args.size)
   args.inverter = None
   if args.inverter_path:
+    print (args.inverter_path)
     args.inverter = ModelArchive(Path(args.inverter_path).stem).model
   # out_cv = 'gs://neuroglancer/seamless/{}_{}_{}_{}'.format(
   #     model_name,

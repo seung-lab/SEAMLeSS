@@ -1,0 +1,6 @@
+#!/bin/bash
+python3 multi_match.py --model_path ../models/vector_fixer30 --dst_path gs://seunglab2/minnie_v1/alignment/fine/sergiy_pairwise --tgt_path gs://seunglab2/minnie_v1/alignment/coarse/tmacrina_minnie10_serial/upsampled_image --src_path gs://seunglab2/minnie_v1/alignment/coarse/tmacrina_minnie10_serial/upsampled_image --mip 2 --max_mip 8 --render_low_mip 2 --render_high_mip 8 --bbox_start 160000 300000 19900 --bbox_stop 180000 320000 19950 --bbox_mip 0
+--should_contrast --max_displacement 2048 --size 8 --disable_flip_average --old_vectors --tgt_radius 3 --batch_size 10 --forward_match --queue_name deepalign-pairwise-debug
+
+python3 compose_invert_regularize.py --model_path ../models/vector_fixer30 --src_path gs://seunglab2/minnie_v1/alignment/coarse/tmacrina_minnie10_serial/upsampled_image --dst_path gs://seunglab2/minnie_v1/alignment/fine/sergiy_pairwise --mip 2 --max_mip 8 --render_low_mip 2 --render_high_mip 8 --bbox_start 160000 300000 19900 --bbox_stop 180000 320000 19950 --bbox_mip 0 --should_contrast --max_displacement 2048 --size 8 --disable_flip_average --old_vectors --tgt_radius 3 --sigma 1.4
+--block_size 20 --dir_suffix sergiy_pairwise_block20_try1_ --inverter_path ../models/inverter_v7 --queue_name deepalign-pairwise-debug --concurrent_render

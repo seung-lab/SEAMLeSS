@@ -25,5 +25,5 @@ RUN pwd
 ADD . ./SEAMLeSS
 WORKDIR SEAMLeSS
 RUN pip3 install --no-cache-dir --upgrade setuptools
-RUN python3 setup.py develop
+RUN python3 setup.py install 
 RUN python3 -c "import imageio; imageio.plugins.ffmpeg.download();"
