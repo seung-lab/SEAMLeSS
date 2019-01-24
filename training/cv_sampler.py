@@ -69,10 +69,12 @@ if __name__ == "__main__":
     ze = zs + args.stack_height
     print (xs, ys, zs)
     print (xe, ye, ze)
-    import pdb; pdb.set_trace()
     dataset = np.empty((1, args.stack_height, args.xy_dim, args.xy_dim))
-
-    sampler = Sampler(source=('gs://' + args.source), dim=args.xy_dim,
+    if '//' in args.source:
+        source_name = args.source
+    else:
+        source_name = 'gs://' + args.source
+    sampler = Sampler(source=source_name, dim=args.xy_dim,
                       mip=args.mip, height=args.stack_height, zs=zs,
                       ze=ze)
     chunk = sampler.chunk_at_global_coords((xs, ys, zs), (xe, ye, ze))
