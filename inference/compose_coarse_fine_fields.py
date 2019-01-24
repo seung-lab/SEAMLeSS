@@ -40,8 +40,8 @@ if __name__ == '__main__':
 
   k = 0  
   for z in z_range:
-    a.compose_chunkwise(z, coarse_cv, fine_cv, dst_field_cv, bbox,
-                        args.coarse_mip, args.fine_mip) 
+    a.compose_chunkwise(z, z, z, fine_cv, coarse_cv, dst_field_cv, bbox,
+                        args.coarse_mip, args.fine_mip, args.fine_mip) 
 
     if k >= args.batch_size and a.distributed:
       print('wait')
