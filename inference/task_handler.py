@@ -22,6 +22,18 @@ def make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbo
   }
   return json.dumps(content)
 
+def make_res_and_compose_message(z, forward, reverse, patch_bbox, mip, w_cv):
+  content = {
+      "type": "res_and_compose",
+      "z": z,
+      "forward": forward,
+      "reverse": reverse,
+      "patch_bbox": patch_bbox.serialize(),
+      "mip": mip,
+      "w_cv": w_cv.serialize(),
+  }
+  return json.dumps(content)
+
 def make_invert_field_task_message(z, src_cv, dst_cv, patch_bbox, mip, optimizer):
   content = {
       "type": "invert_task",
@@ -117,8 +129,24 @@ def make_render_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
   }
   return json.dumps(content)
 
+def make_upsample_render_rechunk_task(z_range, src_cv, field_cv, dst_cv, 
+                                      patches, image_mip, field_mip):
+  content = {
+      "type": "upsample_render_rechunk_task",
+      "z_start": z_range[0],
+      "z_end": z_range[-1],
+      "src_cv": src_cv.serialize(),
+      "field_cv": field_cv.serialize(),
+      "dst_cv": dst_cv.serialize(),
+      "patches": [p.serialize() for p in patches],
+      "image_mip": image_mip,
+      "field_mip": field_mip,
+  }
+  return json.dumps(content)
+
+
 def make_batch_render_message(z, field_cv, field_z, patches, mip, dst_cv,
-                              dst_zm, batch):
+                              dst_z, batch):
   content = {
       "type": "batch_render_task",
       "z": z,
@@ -147,13 +175,17 @@ def make_render_low_mip_task_message(z, field_cv, field_z, patches, image_mip, v
   }
   return json.dumps(content)
 
-def make_compose_task_message(z, patches, mip, start_z):
+            
+def make_compose_task_message(z, coarse_cv, fine_cv, dst_cv, bbox, coarse_mip, fine_mip):
   content = {
       "type": "compose_task",
       "z": z,
-      "patches": [p.serialize() for p in patches],
-      "mip": mip,
-      "start_z": start_z,
+      "coarse_cv": coarse_cv.serialize(),
+      "fine_cv": fine_cv.serialize(),
+      "dst_cv": dst_cv.serialize(),
+      "bbox": bbox.serialize(),
+      "coarse_mip": coarse_mip,
+      "fine_mip": fine_mip,
   }
   return json.dumps(content)
 
@@ -243,16 +275,19 @@ class TaskHandler:
     for i in range(2):
       response = self.sqs.get_queue_attributes(QueueUrl=self.queue_url,
                                                AttributeNames=attribute_names)
+      print(response)
       for a in attribute_names:
         if int(response['Attributes'][a]) > 0:
           return False
       time.sleep(5)
+    print("donot wait since it")
     return True
   
   def purge_queue(self):
     self.sqs.purge_queue(QueueUrl=self.queue_url)
 
   def wait_until_ready(self):
+    time.sleep(20)
     while not self.is_empty():
       time.sleep(5)
 
