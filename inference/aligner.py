@@ -38,6 +38,8 @@ from task_handler import TaskHandler, make_residual_task_message, \
         make_invert_field_task_message, make_render_cv_task_message, \
         make_batch_render_message, make_res_and_compose_message 
 
+from cloudvolume import Storage
+
 class Aligner:
   """
   Destination directory structure
@@ -467,6 +469,9 @@ class Aligner:
         field = field.data.cpu().numpy() 
         self.save_vector_patch(write_F_cv, z, field, bbox, mip,
                                to_int=self.int_field)
+        if self.distributed:
+            with Storage(write_F_cv.path) as stor:
+                stor.put_file('vv_done/'+str(mip)+'_'+str(z_range[0])+'_'+str(z_range[-1])+'/'+str(z)+bbox.__str__(), '')
 
   # def vector_vote_single_section(self, z, read_F_cv, write_F_cv, bbox, mip, inverse, T=1):
   #   """Compute consensus vector field using pairwise vector fields with earlier sections. 
@@ -629,6 +634,7 @@ class Aligner:
 
     src_cv = self.src['src_img']
     tgt_cv = self.src['tgt_img']
+    print("target image", tgt_cv)
     src_patch = self.get_image(src_cv, src_z, precrop_patch_bbox, mip,
                                 adjust_contrast=True, to_tensor=True)
     tgt_patch = self.get_image(tgt_cv, tgt_z, precrop_patch_bbox, mip,
@@ -1009,7 +1015,8 @@ class Aligner:
                 task_patches.append(chunks[j])
             copy_task = make_copy_task_message(z, dst_cv, dst_z, task_patches, mip=mip)
             self.task_handler.send_message(copy_task)
-        self.task_handler.wait_until_ready()
+        self.wait_for_queue_empty(dst_cv.path, 'copy_done/'+str(mip)+'_'+str(dst_z), len(chunks))
+        #self.task_handler.wait_until_ready()
     else: 
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -1031,6 +1038,42 @@ class Aligner:
 
     end = time()
     print (": {} sec".format(end - start))
+
+  def wait_for_queue_empty(self, path, prefix, chunks_len):
+      sleep_time = 3.0
+      while(True):
+          with Storage(path) as stor:
+              lst = stor.list_files(prefix=prefix)
+          i = 0
+          for _ in lst:
+              i += 1
+          if i == chunks_len:
+              print("don't wait since i is", i, "number of chunks is",
+                    chunks_len)
+              break;
+          else:
+              if i > 0.5 * chunks_len:
+                  sleep(sleep_time * i/chunks_len)
+              else:
+                  sleep(sleep_time)
+
+  def wait_for_queue_empty_range(self, path, prefix, z_range, chunks_len):
+      sleep_time = 3.0
+      while(True):
+          i = 0
+          with Storage(path) as stor:
+              for z in z_range:
+                  lst = stor.list_files(prefix=prefix+str(z))
+                  i += sum(1 for _ in lst)
+          if i == chunks_len:
+              print("don't wait since i is", i, "number of chunks is",
+                    chunks_len)
+              break;
+          else:
+              if i > 0.5 * chunks_len:
+                  sleep(sleep_time * i/chunks_len)
+              else:
+                  sleep(sleep_time)
 
   def render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip, wait=True):
     """Chunkwise render
@@ -1054,7 +1097,8 @@ class Aligner:
                                                    mip, dst_cv, dst_z)
             self.task_handler.send_message(render_task)
         if wait:
-          self.task_handler.wait_until_ready()
+          self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
+          #self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
@@ -1087,7 +1131,8 @@ class Aligner:
             render_task_batch = make_batch_render_message(src_z, field_cv, field_z, task_patches,
                                                    mip, dst_cv, dst_z, batch)
             self.task_handler.send_message(render_task_batch)
-        self.task_handler.wait_until_ready()
+        self.wait_for_queue_empty(dst_cv.path,'render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/',len(chunks))
+        #self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch_batch(src_z, field_cv, field_z,
@@ -1121,7 +1166,8 @@ class Aligner:
             render_task_cv = make_render_cv_task_message(src_z, field_cv, field_z, task_patches,
                                                       mip, dst_cv, dst_z)
             self.task_handler.send_message(render_task_cv)
-        self.task_handler.wait_until_ready()
+        self.wait_for_queue_empty(dst_cv.path, 'render_cv/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
+        #self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_using_gridsample_cv(src_z, field_cv,
@@ -1174,7 +1220,9 @@ class Aligner:
                                                            task_patches, image_mip, 
                                                            vector_mip, dst_cv, dst_z)
             self.task_handler.send_message(render_task)
-        self.task_handler.wait_until_ready()
+        self.wait_for_queue_empty(dst_cv.path, 'render_low_mip/'+str(image_mip)+'_'+str(dst_z)+'/',
+                                 len(chunks))
+        #self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, patch_bbox, image_mip, vector_mip)
@@ -1205,7 +1253,9 @@ class Aligner:
               downsample_task = make_downsample_task_message(cv, z, task_patches, mip=m)
               self.task_handler.send_message(downsample_task)
           if wait:
-            self.task_handler.wait_until_ready()
+            self.wait_for_queue_empty(cv.path, 'downsample_done/'+str(m)+'_'+str(z)+'/',
+                                      len(chunks))
+            #self.task_handler.wait_until_ready()
       else:
           def chunkwise(patch_bbox):
             print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
@@ -1258,6 +1308,7 @@ class Aligner:
     section Z in region BBOX at MIP. Chunk BBOX appropriately and save the result
     to DST_IMG.
     """
+    cv_path = self.dst[0].root
     for m in range(self.process_high_mip,  self.process_low_mip - 1, -1):
       start = time()
       chunks = self.break_into_chunks(bbox, self.dst[0].vec_chunk_sizes[m],
@@ -1270,7 +1321,9 @@ class Aligner:
           self.task_handler.send_message(residual_task)
         #if not self.p_render:
         if not ignore_wait:
-          self.task_handler.wait_until_ready()
+          #self.task_handler.wait_until_ready()
+          self.wait_for_queue_empty(cv_path,
+                                    'residual_done'+str(m)+'/'+str(src_z)+'_'+str(tgt_z), len(chunks))
       else:
       #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -1372,7 +1425,10 @@ class Aligner:
             vector_vote_task = make_vector_vote_task_message(z_range, read_F_cv, write_F_cv,
                                                         patch_bbox, mip, inverse, T)
             self.task_handler.send_message(vector_vote_task)
-        self.task_handler.wait_until_ready()
+        self.wait_for_queue_empty(write_F_cv.path,
+                                  'vv_done/'+str(mip)+'_'+str(z_range[0])+'_'+str(z_range[-1])+'/',
+                                 (z_range[-1]-z_range[0]+1)*len(chunks))
+        #self.task_handler.wait_until_ready()
     #for patch_bbox in chunks:
     else:
         def chunkwise(patch_bbox):
@@ -1411,6 +1467,7 @@ class Aligner:
   def res_and_compose(self, z, forward_match, reverse_match, bbox, mip, write_F_cv):
       tgt_range = []
       T = 2**mip
+      print("res_and_compose message:", z, forward_match, reverse_match, mip)
       if forward_match:
         tgt_range.extend(range(self.tgt_range[-1], 0, -1)) 
       if reverse_match:
@@ -1420,7 +1477,7 @@ class Aligner:
           if z_offset != 0:
             src_z = z
             tgt_z = src_z - z_offset
-            #print("------------------zoffset is", z_offset)
+            print("src is", src_z, "------------------zoffset is", z_offset)
             f = self.get_residual(src_z, tgt_z, bbox, mip)
             fields.append(f) 
       field = vector_vote(fields, T=T)
@@ -1436,8 +1493,7 @@ class Aligner:
     Args:
         z_range: list of z indices to be matches 
         bbox: BoundingBox object for bounds of 2D region
-        forward_match: bool indicating whether to match from z to z-i
-          for i in range(tgt_radius)
+        forward_match: bool indicating whether to match from z to z-i for i in range(tgt_radius)
         reverse_match: bool indicating whether to match from z to z+i
           for i in range(tgt_radius)
         batch_size: (for distributed only) int describing how many sections to issue 
@@ -1472,13 +1528,6 @@ class Aligner:
                                                           patch_bbox, mip,
                                                           write_F_cv)
               self.task_handler.send_message(r_and_c_task)
-              #i +=1
-              #print("send a message", i)
-              #attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
-              #response = self.task_handler.sqs.get_queue_attributes(QueueUrl=self.task_handler.queue_url,
-              #                                         AttributeNames=attribute_names)
-              #print(response)
-
       else:
           def chunkwise(patch_bbox):
               self.res_and_compose(z, forward_match, reverse_match, patch_bbox,
@@ -1487,14 +1536,22 @@ class Aligner:
       if batch_count == batch_size and self.distributed:
         print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
         print('batch_count is {}'.format(batch_count), flush = True)
-        self.task_handler.wait_until_ready()
+        self.wait_for_queue_empty_range(write_F_cv.path,
+                                 'res_and_compose/'+str(mip)+'/',
+                                  range(z-batch_count+1, z+1),
+                                  len(chunks)*batch_count)
+        #self.task_handler.wait_until_ready()
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
     # report on remaining sections after batch 
     if batch_count > 0 and self.distributed:
       print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
-      self.task_handler.wait_until_ready()
+      self.wait_for_queue_empty_range(write_F_cv.path,
+                               'res_and_compose/'+str(mip)+'/',
+                                range(z-batch_count+1, z+1),
+                                len(chunks)*batch_count)
+      #self.task_handler.wait_until_ready()
       end = time()
       print (": {} sec".format(end - start))
 
@@ -1516,25 +1573,37 @@ class Aligner:
         batch_size: (for distributed only) int describing how many sections to issue 
           multi-match tasks for, before waiting for all tasks to complete
     """
-    self.total_bbox = bbox
+    self.total_bbox = bbox 
     mip = self.process_low_mip
+    chunks = self.break_into_chunks(bbox, self.dst[0].vec_chunk_sizes[mip],
+                                    self.dst[0].vec_voxel_offsets[mip], mip=mip)
     batch_count = 0
     start = 0
+    cv_path = self.dst[0].root
     for z in z_range:
       start = time()
       batch_count += 1 
-      self.multi_match(z, forward_match=forward_match, reverse_match=reverse_match, 
+      self.multi_match(z, forward_match=forward_match, reverse_match=reverse_match,
                        render=render_match, ignore_wait=True)
       if batch_count == batch_size and self.distributed:
         print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
-        self.task_handler.wait_until_ready()
+        self.wait_for_queue_empty_range(cv_path,
+                                        'residual_done'+str(mip)+'/',
+                                        range(z-batch_count+1, z+1),
+                                        len(chunks)*self.tgt_radius*batch_count)
+        #self.task_handler.wait_until_ready()
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
     # report on remaining sections after batch 
     if batch_count > 0 and self.distributed: 
       print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
-      self.task_handler.wait_until_ready()
+      #self.task_handler.wait_until_ready()
+      new_range =range(z_range[-1]+1-batch_count, z_range[-1]+1)
+      self.wait_for_queue_empty_range(cv_path,
+                                      'residual_done'+str(mip)+'/',
+                                      new_range,
+                                      len(chunks)*self.tgt_radius*batch_count)
       end = time()
       print (": {} sec".format(end - start))
     #if self.p_render:
@@ -1714,7 +1783,11 @@ class Aligner:
     target_z = message['target_z']
     patch_bbox = deserialize_bbox(message['patch_bbox'])
     mip = message['mip']
-    self.compute_residual_patch(source_z, target_z, patch_bbox, mip)
+    self.compute_residual_patch(source_z, target_z, patch_bbox, mip) 
+    z_offset = source_z - target_z
+    dst_cv = self.dst[0]
+    with Storage(dst_cv.root) as stor:
+        stor.put_file('residual_done'+str(mip)+'/'+str(source_z)+'_'+str(target_z)+'_'+patch_bbox.__str__(), '')
 
   def handle_res_and_compose(self, message):
     z = message['z']
@@ -1724,6 +1797,8 @@ class Aligner:
     mip = message['mip']
     w_cv = DCV(message['w_cv'])
     self.res_and_compose(z, forward, reverse, patch_bbox, mip, w_cv)
+    with Storage(w_cv.path) as stor:
+        stor.put_file('res_and_compose/'+str(mip)+'/'+str(z)+'/'+patch_bbox.__str__(), '')
 
   def handle_render_task_cv(self, message):
     src_z = message['z']
@@ -1739,6 +1814,8 @@ class Aligner:
               end='', flush=True)
       warped_patch = self.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
       self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+      with Storage(dst_cv.path) as stor:
+          stor.put_file('render_cv/'+str(mip)+'_'+str(dst_z)+'/'+ patch_bbox.__str__(), '')
     self.pool.map(chunkwise, patches)
 
   def handle_batch_render_task(self, message):
@@ -1757,6 +1834,8 @@ class Aligner:
                                            patch_bbox, mip, batch)
       self.save_image_patch_batch(dst_cv, (dst_z, dst_z + batch),
                                   warped_patch, patch_bbox, mip)
+      with Storage(dst_cv.path) as stor:
+          stor.put_file('render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/'+ patch_bbox.__str__(), '')
     self.pool.map(chunkwise, patches)
 
   def handle_render_task(self, message):
@@ -1773,6 +1852,8 @@ class Aligner:
               end='', flush=True)
       warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
       self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+      with Storage(dst_cv.path) as stor:
+          stor.put_file('render_done/'+str(mip)+'_'+str(dst_z)+'/'+patch_bbox.__str__(), '')
     self.pool.map(chunkwise, patches)
     #warped_patch = self.warp_patch(src_z, field_cv, field_z, patches, mip)
     #self.save_image_patch(dst_cv, dst_z, warped_patch, patches, mip)
@@ -1792,6 +1873,8 @@ class Aligner:
       warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, 
                                                 patch_bbox, image_mip, vector_mip)
       self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, image_mip)
+      with Storage(dst_cv.path) as stor:
+          stor.put_file('render_low_mip/'+str(image_mip)+'_'+str(dst_z)+'/'+ patch_bbox.__str__(), '')
     self.pool.map(chunkwise, patches)
 
   def handle_prepare_task(self, message):
@@ -1841,6 +1924,8 @@ class Aligner:
         raw_patch = self.get_image(src_cv, z, patch_bbox, mip,
                                     adjust_contrast=False, to_tensor=False)
       self.save_image_patch(dst_cv, dst_z, raw_patch, patch_bbox, mip)
+      with Storage(dst_cv.path) as stor:
+          stor.put_file('copy_done/'+str(mip)+'_'+str(dst_z)+'/'+patch_bbox.__str__(), '')
     self.pool.map(chunkwise, patches)
 
   def handle_downsample_task(self, message):
@@ -1854,6 +1939,8 @@ class Aligner:
     def chunkwise(patch_bbox):
       downsampled_patch = self.downsample_patch(cv, z, patch_bbox, mip - 1)
       self.save_image_patch(cv, z, downsampled_patch, patch_bbox, mip)
+      with Storage(cv.path) as stor:
+          stor.put_file('downsample_done/'+str(mip)+'_'+str(z)+'/'+patch_bbox.__str__(), '')
     self.pool.map(chunkwise, patches)
 
   # def handle_vector_vote(self, message):
@@ -1952,13 +2039,13 @@ class Aligner:
       #                                         AttributeNames=attribute_names)
       #print(response)
       if message != None:
-        print ("Got a job")
         s = time()
+        print ("Got a job at", s)
         #self.task_handler.purge_queue()
         self.handle_task_message(message)
         self.task_handler.delete_message(message)
         e = time()
-        print ("Done: {} sec".format(e - s))
+        print ("Done: {} sec at {}".format(e - s, e))
       else:
         sleep(3)
         print ("Waiting for jobs...") 
