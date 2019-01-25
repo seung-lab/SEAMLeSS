@@ -8,18 +8,13 @@ from utilities.helpers import save_chunk
 
 class Process(object):
     """docstring for Process."""
-    def __init__(self, archive, mip, cuda=True, is_Xmas=False, dim=1280, 
-                      skip=0, topskip=0, size=7, 
-                      flip_average=True, old_upsample=False):
+    def __init__(self, archive, mip, dim=1280, size=7, flip_average=True):
         super(Process, self).__init__()
-        self.cuda = cuda
         self.height = size
         self.archive = archive
         self.model = self.archive.model
-        # self.model = PyramidTransformer.load(archive_path=path, height=self.height, skips=skip, topskips=topskip, cuda=cuda, dim=dim, old_upsample=old_upsample)
         self.mip = mip
         self.dim = dim
-
         self.flip_average = flip_average
 
     @torch.no_grad()

@@ -19,8 +19,7 @@ from vector_vote import vector_vote, get_diffs, weight_diffs, \
 from temporal_regularization import create_field_bump
 from cpc import cpc 
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
-                              np_downsample, invert
-
+                              np_downsample, invert, compose_fields, upsample_field
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum 
 from boundingbox import BoundingBox, deserialize_bbox
@@ -41,33 +40,9 @@ from task_handler import TaskHandler, make_residual_task_message, \
         make_res_and_compose_message 
 
 class Aligner:
-  """
-  Destination directory structure
-  * z_3:  pairwise fields that align z to z-3 and write to z
-  * z_2
-  * z_1
-  * z_1i: pairwise fields that align z to z+1 and write to z
-  * z_2i
-  * z_3i
-  * vector_vote
-    * F_START:    composed fields from vector voting that align to START
-    * Fi_START:   composed inverse fields from vector voting that align to START
-  * reg_field: the final, regularized field
-  """
-  def __init__(self, archive, max_displacement, crop,
-               mip_range, high_mip_chunk, src_path, tgt_path, dst_path, 
-               src_mask_path='', src_mask_mip=0, src_mask_val=1, 
-               tgt_mask_path='', tgt_mask_mip=0, tgt_mask_val=1,
-               align_across_z=1, disable_cuda=False, max_mip=12,
-               render_low_mip=2, render_high_mip=9, is_Xmas=False, threads=1,
-               max_chunk=(1024, 1024), max_render_chunk=(2048*2, 2048*2),
-               skip=0, topskip=0, size=7, should_contrast=True, 
-               disable_flip_average=False, write_intermediaries=False,
-               upsample_residuals=False, old_upsample=False, old_vectors=False,
-               ignore_field_init=False, z=0, tgt_radius=1, 
-               queue_name=None, p_render=False, dir_suffix='', inverter=None,
-               int_field=False, task_batch_size=1, 
-               info_chunk_dims=[-1,-1,-1], **kwargs):
+  def __init__(self, threads=1, max_chunk=(1024, 1024), 
+               max_render_chunk=(2048*2, 2048*2),
+               queue_name=None, task_batch_size=1, **kwargs):
     if queue_name != None:
         self.task_handler = TaskHandler(queue_name)
         self.distributed  = True
@@ -75,229 +50,146 @@ class Aligner:
         self.task_handler = None
         self.distributed  = False
     
-    self.int_field =  int_field
-    self.p_render = p_render
-    self.process_high_mip = mip_range[1]
-    self.process_low_mip  = mip_range[0]
-    self.render_low_mip   = render_low_mip
-    self.render_high_mip  = render_high_mip
-    # self.high_mip         = max(self.render_high_mip, self.process_high_mip)
-    self.high_mip_chunk   = high_mip_chunk
     self.max_chunk        = max_chunk
     self.max_render_chunk = max_render_chunk
-    self.max_mip          = max_mip
-    self.size = size
-    self.old_vectors = old_vectors
-    self.ignore_field_init = ignore_field_init
-    self.write_intermediaries = write_intermediaries
+    self.device = torch.device('cuda')
 
-    self.max_displacement = max_displacement
-    self.crop_amount      = crop
-    self.disable_cuda = disable_cuda
-    self.device = torch.device('cpu') if disable_cuda else torch.device('cuda')
+    self.models = {}
     
-    provenance = {}
-    provenance['project'] = 'seamless'
-    provenance['src_path'] = src_path
-    provenance['tgt_path'] = tgt_path
-    provenance['model'] = archive.name
-    provenance['max_displacement'] = max_displacement
-    provenance['crop'] = crop
-
-    self.src = SrcDir(src_path, tgt_path, 
-                      src_mask_path, tgt_mask_path, 
-                      src_mask_mip, tgt_mask_mip, 
-                      src_mask_val, tgt_mask_val)
-    src_cv = self.src['src_img'][0]
-    print("src_path is", src_path)
-    print("tgt_path is", tgt_path)
-    info = DstDir.create_info(src_cv, mip_range, max_displacement)
-    if all(i > 0 for i in info_chunk_dims):
-      info = DstDir.create_info_batch(src_cv, mip_range, max_displacement, 
-                                      info_chunk_dims[2], info_chunk_dims[0], 
-                                      self.render_low_mip)
-    self.dst = {}
-    self.tgt_radius = tgt_radius
-    self.tgt_range = range(-tgt_radius, tgt_radius+1)
-    for i in self.tgt_range:
-      if i > 0:
-        path = '{0}/z_{1}'.format(dst_path, abs(i))
-      elif i < 0:
-        path = '{0}/z_{1}i'.format(dst_path, abs(i))
-      else: 
-        path = dst_path
-      self.dst[i] = DstDir(path, info, provenance, suffix=dir_suffix, 
-                           use_int=self.int_field)
-
-    self.net = Process(archive, mip_range[0], is_Xmas=is_Xmas, cuda=True, 
-                       dim=high_mip_chunk[0]+crop*2, skip=skip, 
-                       topskip=topskip, size=size, 
-                       flip_average=not disable_flip_average, old_upsample=old_upsample)
-
-    self.normalizer = archive.preprocessor
-    self.upsample_residuals = upsample_residuals
-    self.inverter = inverter 
     self.pool = ThreadPool(threads)
     self.threads = threads
     self.task_batch_size = task_batch_size
 
-  def Gaussian_filter(self, kernel_size, sigma):
-    x_cord = torch.arange(kernel_size)
-    x_grid = x_cord.repeat(kernel_size).view(kernel_size, kernel_size)
-    y_grid = x_grid.t()
-    xy_grid = torch.stack([x_grid, y_grid], dim=-1)
-    channels =1
-    mean = (kernel_size - 1)/2.
-    variance = sigma**2.
-    gaussian_kernel = (1./(2.*math.pi*variance)) *np.exp(
-        -torch.sum((xy_grid - mean)**2., dim=-1) /\
-        (2*variance))
-    gaussian_kernel = gaussian_kernel / torch.sum(gaussian_kernel)
-    gaussian_kernel = gaussian_kernel.view(1, 1, kernel_size, kernel_size)
-    gaussian_kernel = gaussian_kernel.repeat(channels, 1, 1, 1)
-    gaussian_filter = nn.Conv2d(in_channels=channels, out_channels=channels,kernel_size=kernel_size, padding = (kernel_size -1)//2, bias=False)
-    gaussian_filter.weight.data = gaussian_kernel.type(torch.float32)
-    gaussian_filter.weight.requires_grad = False
-    return gaussian_filter
+  ##############
+  # IO methods #
+  ##############
 
-  def set_chunk_size(self, chunk_size):
-    self.high_mip_chunk = chunk_size
+  def get_model(self, model_path):
+    """Load a model stored in the repo with its relative path
 
-  def get_upchunked_bbox(self, bbox, chunk_size, offset, mip):
-    raw_x_range = bbox.x_range(mip=mip)
-    raw_y_range = bbox.y_range(mip=mip)
+    TODO: evict old models from self.models
 
-    x_chunk = chunk_size[0]
-    y_chunk = chunk_size[1]
+    Args:
+       model_path: str for relative path to model directory
 
-    x_offset = offset[0]
-    y_offset = offset[1]
-
-    x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
-    y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
-
-    x_delta = 0
-    y_delta = 0
-    if x_remainder != 0:
-      x_delta =  x_chunk - x_remainder
-    if y_remainder != 0:
-      y_delta =  y_chunk - y_remainder
-
-    calign_x_range = [raw_x_range[0] + x_delta, raw_x_range[1]]
-    calign_y_range = [raw_y_range[0] + y_delta, raw_y_range[1]]
-
-    x_start = calign_x_range[0] - x_chunk
-    y_start = calign_y_range[0] - y_chunk
-
-    x_start_m0 = x_start * 2**mip
-    y_start_m0 = y_start * 2**mip
-
-    result = BoundingBox(x_start_m0, x_start_m0 + bbox.x_size(mip=0),
-                         y_start_m0, y_start_m0 + bbox.y_size(mip=0),
-                         mip=0, max_mip=self.max_mip) #self.process_high_mip)
-    return result
-
-  def compose_fields(self, f, g):
-    """Compose two fields f & g, for f(g(x))
-    """    
-    g = g.permute(0,3,1,2)
-    return f + gridsample_residual(g, f, padding_mode='border').permute(0,2,3,1)
-
-  def upsample_field(self, f, src_mip, dst_mip):
-    """Upsample vector field from src_mip to dst_mip
+    Returns:
+       the ModelArchive at that model_path
     """
-    return upsample(src_mip-dst_mip)(f.permute(0,3,1,2)).permute(0,2,3,1)
+    if model_path in self.models:
+      return self.models[model_path]
+    else:
+      model_path = Path(model_path)
+      model_name = model_path.stem
+      archive = ModelArchive(model_name, height=args.size)
+      self.models[model_path] = archive
+      return archive
+
+  def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True):
+    data = self.get_data(cv, z, bbox, src_mip=src_mip, dst_mip=dst_mip, 
+                             to_float=False, adjust_contrast=False, 
+                             to_tensor=to_tensor)
+    return data == valid_val
+
+  def get_image(self, cv, z, bbox, mip, adjust_contrast=False, to_tensor=True):
+    return self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
+                             adjust_contrast=adjust_contrast, to_tensor=to_tensor)
+
+  def get_composite_image(self, cv, z_list, bbox, mip, adjust_contrast=False, to_tensor=True):
+    """Collapse 3D image into a 2D image, replacing black pixels in the first 
+        z slice with the nearest nonzero pixel in other slices.
     
-  def compose_cloudvolumes(self, f_z, g_z, f_cv, g_cv, bbox, f_mip, g_mip, dst_mip):
-    """Compose chunk of two field cloudvolumes, such that f(g(x)) at dst_mip
-
     Args:
-       f_z: int section index of the f CloudVolume
-       g_z: int section index of the g CloudVolume
-       f_cv: MiplessCloudVolume of left-hand vector field
-       g_cv: MiplessCloudVolume of right-hand vector field
-       bbox: BoundingBox for region to process
-       f_mip: MIP of left-hand vector field
-       g_mip: MIP of right-hand vector field
-       dst_mip: MIP of the output vector field, such that min(f_mip, g_mip) >= dst_mip
+       cv: MiplessCloudVolume where images are stored
+       z_list: list of ints that will be processed in order 
+       bbox: BoundingBox defining data range
+       mip: int MIP level of the data to process
+       adjust_contrast: output will be normalized
+       to_tensor: output will be torch.tensor
+    """
+    z_start = np.min(z_range)
+    z_stop = np.max(z_range)+1
+    z_range = range(z_start, z_stop) 
+    img = self.get_data_range(cv, z_range, bbox, src_mip=mip, dst_mip=mip)
+    z = z_list[0]
+    o = img[z-z_start, ...]
+    for z in z_list[1:]:
+      o[o <= 1] = img[z-z_start, ...][o <= 1]
+    return o
+
+  def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
+                     adjust_contrast=False, to_tensor=True):
+    """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
+    
+    Args:
+       cv_key: string to lookup CloudVolume
+       bbox: BoundingBox defining data range
+       src_mip: mip of the CloudVolume data
+       dst_mip: mip of the output mask (dictates whether to up/downsample)
+       to_float: output should be float32
+       adjust_contrast: output will be normalized
+       to_tensor: output will be torch.tensor
 
     Returns:
-       the composed vector field at MIP min(f_mip, g_mip) in absolute space
+       image from CloudVolume in region bbox at dst_mip, with contrast adjusted,
+       if specified, and as a uint8 or float32 torch tensor or numpy, as specified
     """
-    influence_bbox = deepcopy(bbox)
-    influence_bbox.uncrop(self.max_displacement, mip=0)
-    crop = int(self.max_displacement / 2**dst_mip)
-    f = self.get_field(f_cv, f_z, influence_bbox, f_mip, relative=True, to_tensor=True)
-    g = self.get_field(g_cv, g_z, influence_bbox, g_mip, relative=True, to_tensor=True)
-    if dst_mip < g_mip:
-      g = self.upsample_field(g, g_mip, dst_mip)
-    elif dst_mip < f_mip:
-      f = self.upsample_field(f, f_mip, dst_mip)
-    h = self.compose_fields(f, g)
-    h = self.rel_to_abs_residual(h, dst_mip)
-    if self.disable_cuda:
-      h = h.numpy()[:,crop:-crop,crop:-crop,:]
-    else:
-      h = h.cpu().numpy()[:,crop:-crop,crop:-crop,:]
-    return h
-
-  def get_composed_field(self, src_z, tgt_z, F_cv, bbox, mip,
-                               inverse=False, relative=False, to_tensor=True,
-                               field_cache = {}, from_int=False):
-    """Compose a pairwise field at src_z with a previously composed field at tgt_z
-
+    x_range = bbox.x_range(mip=src_mip)
+    y_range = bbox.y_range(mip=src_mip)
+    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
+    data = np.transpose(data, (2,3,0,1))
+    if to_float:
+      data = np.divide(data, float(255.0), dtype=np.float32)
+    if adjust_contrast:
+      if self.normalizer is not None:
+        data = self.normalizer(data).reshape(data.shape)
+    # convert to tensor if requested, or if up/downsampling required
+    if to_tensor | (src_mip != dst_mip):
+      if isinstance(data, np.ndarray):
+        data = torch.from_numpy(data)
+      data = data.to(device=self.device)
+      if src_mip != dst_mip:
+        # k = 2**(src_mip - dst_mip)
+        size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
+        if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
+          data = interpolate(data, size=size, mode='bilinear')
+        else:
+          data = data.type('torch.cuda.DoubleTensor')
+          data = interpolate(data, size=size, mode='nearest')
+          data = data.type('torch.cuda.ByteTensor')
+      if not to_tensor:
+        data = data.cpu().numpy()
+    
+    return data
+  
+  def get_data_range(self, cv, z_range, bbox, src_mip, dst_mip, to_tensor=True):
+    """Retrieve CloudVolume data. Returns 4D tensor, BxCxWxH
+    
     Args:
-       src_z: int of source section index
-       tgt_z: int of source section index
-       F_cv: MiplessCloudVolume for the composed field
-       bbox: BoundingBox for operation
-       mip: int for MIP level
-       inverse: bool indicating whether to left-compose the next field in the list
-       relative: bool indicating whether returned field should be in relative space
-       to_tensor: bool indicating whether return object should be a Tensor
-       field_cache: dict storing previously composed fields; fields are stored as
-         Tensors in relative space
-
-    Returns:
-       a field object, as specified by relative & to_tensor
+       cv_key: string to lookup CloudVolume
+       bbox: BoundingBox defining data range
+       src_mip: mip of the CloudVolume data
+       dst_mip: mip of the output mask (dictates whether to up/downsample)
     """
-    z_offset = src_z - tgt_z
-    f_cv = self.dst[z_offset].for_read('field')
-    if inverse:
-      f_z, F_z = src_z, src_z 
-    else:
-      f_z, F_z = src_z, tgt_z
-    f = self.get_field(f_cv, f_z, bbox, mip, relative=True,
-                       to_tensor=to_tensor, from_int=from_int)
-    tmp_key = self.create_key(bbox, F_z)
-    if tmp_key in field_cache:
-        print("{0} in FIELD_CACHE".format(tmp_key))
-        F = field_cache[tmp_key]
-    else:
-        print("{0} NOT in FIELD_CACHE".format(tmp_key))
-        F = self.get_field(F_cv, F_z, bbox, mip, relative=True,
-                           to_tensor=to_tensor, from_int=from_int)
-    if inverse:
-      F = self.compose_fields(f, F)
-    else:
-      F = self.compose_fields(F, f)
-
-    if not relative:
-      F = self.rel_to_abs_residual(F, mip)
-    return F 
-
-  def blur_field(self, field, std=128):
-    """Apply Gaussian with std to a vector field
-    """
-    print('blur_field')
-    regular_part_x = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field[...,0]), std)).unsqueeze(-1)
-    regular_part_y = torch.from_numpy(scipy.ndimage.filters.gaussian_filter((field[...,1]), std)).unsqueeze(-1)
-    #regular_part = self.gauss_filter(field.permute(3,0,1,2))
-    #regular_part = torch.from_numpy(self.reg_field) 
-    #field = decay_factor * field + (1 - decay_factor) * regular_part.permute(1,2,3,0) 
-    #field = regular_part.permute(1,2,3,0) 
-    field = torch.cat([regular_part_x,regular_part_y],-1)
-    return field.to(device=self.device)
+    x_range = bbox.x_range(mip=src_mip)
+    y_range = bbox.y_range(mip=src_mip)
+    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range]
+    data = np.transpose(data, (2,3,0,1))
+    if isinstance(data, np.ndarray):
+      data = torch.from_numpy(data)
+    data = data.to(device=self.device)
+    if src_mip != dst_mip:
+      # k = 2**(src_mip - dst_mip)
+      size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
+      if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
+        data = interpolate(data, size=size, mode='bilinear')
+      else:
+        data = data.type('torch.cuda.DoubleTensor')
+        data = interpolate(data, size=size, mode='nearest')
+        data = data.type('torch.cuda.ByteTensor')
+    if not to_tensor:
+      data = data.cpu().numpy()
+    
+    return data
 
   def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True, from_int=False):
     """Retrieve vector field from CloudVolume.
@@ -354,7 +246,8 @@ class Aligner:
                                  z=z, mip=mip, path=cv.path))
     if to_int:
         if(np.max(field) > 8192 or np.min(field) < -8191):
-            print('The value in field is out of range of int16 max: {}, min: {}'.format(np.max(field),np.min(field)), flush=True)
+            print('The value in field is out of range of int16 max: {}, min: {}'.format(
+                                                 np.max(field),np.min(field)), flush=True)
         field = np.int16(field * 4)
     #print("**********field shape is ", field.shape, type(field[0,0,0,0]))
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
@@ -363,6 +256,88 @@ class Aligner:
     print ("Saving residual patch {} at MIP {}".format(bbox.__str__(mip=0), mip))
     v = res * (res.shape[-2] / 2) * (2**mip)
     self.save_vector_patch(cv, z, v, bbox, mip, to_int=to_int)
+
+  #######################
+  # CloudVolume methods #
+  #######################
+
+  def compose_cloudvolumes(self, f_z, g_z, f_cv, g_cv, bbox, f_mip, g_mip, dst_mip,
+                                 pad):
+    """Compose chunk of two field cloudvolumes, such that f(g(x)) at dst_mip
+
+    Args:
+       f_z: int section index of the f CloudVolume
+       g_z: int section index of the g CloudVolume
+       f_cv: MiplessCloudVolume of left-hand vector field
+       g_cv: MiplessCloudVolume of right-hand vector field
+       bbox: BoundingBox for region to process
+       f_mip: MIP of left-hand vector field
+       g_mip: MIP of right-hand vector field
+       dst_mip: MIP of the output vector field, such that min(f_mip, g_mip) >= dst_mip
+       pad: int for amount of MIP0 padding to use before processing
+
+    Returns:
+       the composed vector field at MIP min(f_mip, g_mip) in absolute space for size
+       of bbox
+    """
+    influence_bbox = deepcopy(bbox)
+    influence_bbox.uncrop(pad, mip=0)
+    crop = int(pad / 2**dst_mip)
+    f = self.get_field(f_cv, f_z, influence_bbox, f_mip, relative=True, to_tensor=True)
+    g = self.get_field(g_cv, g_z, influence_bbox, g_mip, relative=True, to_tensor=True)
+    if dst_mip < g_mip:
+      g = upsample_field(g, g_mip, dst_mip)
+    elif dst_mip < f_mip:
+      f = upsample_field(f, f_mip, dst_mip)
+    h = compose_fields(f, g)
+    h = self.rel_to_abs_residual(h, dst_mip)
+    h = h.cpu().numpy()[:,crop:-crop,crop:-crop,:]
+    return h
+
+  def get_composed_field(self, src_z, tgt_z, f_cv, F_cv, bbox, mip,
+                               inverse=False, relative=False, to_tensor=True,
+                               field_cache = {}, from_int=False):
+    """Compose a pairwise field at src_z with a previously composed field at tgt_z
+
+    Args:
+       src_z: int of source section index
+       tgt_z: int of source section index
+       F_cv: MiplessCloudVolume for the composed field
+       bbox: BoundingBox for operation
+       mip: int for MIP level
+       inverse: bool indicating whether to left-compose the next field in the list
+       relative: bool indicating whether returned field should be in relative space
+       to_tensor: bool indicating whether return object should be a Tensor
+       field_cache: dict storing previously composed fields; fields are stored as
+         Tensors in relative space
+
+    Returns:
+       a field object, as specified by relative & to_tensor
+    """
+    z_offset = src_z - tgt_z
+    f_cv = self.dst[z_offset].for_read('field')
+    if inverse:
+      f_z, F_z = src_z, src_z 
+    else:
+      f_z, F_z = src_z, tgt_z
+    f = self.get_field(f_cv, f_z, bbox, mip, relative=True,
+                       to_tensor=to_tensor, from_int=from_int)
+    tmp_key = bbox.stringify(F_z)
+    if tmp_key in field_cache:
+        print("{0} in FIELD_CACHE".format(tmp_key))
+        F = field_cache[tmp_key]
+    else:
+        print("{0} NOT in FIELD_CACHE".format(tmp_key))
+        F = self.get_field(F_cv, F_z, bbox, mip, relative=True,
+                           to_tensor=to_tensor, from_int=from_int)
+    if inverse:
+      F = compose_fields(f, F)
+    else:
+      F = compose_fields(F, f)
+
+    if not relative:
+      F = self.rel_to_abs_residual(F, mip)
+    return F 
 
   def break_into_chunks(self, bbox, chunk_size, offset, mip, render=False):
     chunks = []
@@ -453,11 +428,6 @@ class Aligner:
 
     return chunks
 
-  def create_key(self, bbox, z):
-    """Create string for cache key from BBOX & Z
-    """
-    return '{0}, {1}'.format(str(bbox.__str__(mip=0)), str(z))
-
   def vector_vote(self, z_range, read_F_cv, write_F_cv, bbox, mip, inverse, T=1,
                         negative_offsets=False, serial_operation=False):
     """Compute consensus vector field using pairwise vector fields with earlier sections. 
@@ -510,53 +480,17 @@ class Aligner:
 
         field = vector_vote(fields, T=T)
         delete_z = z - oldest_z_offset
-        delete_key = self.create_key(bbox, delete_z)
+        delete_key = bbox.stringify(delete_z)
         if delete_key in field_cache:
             del field_cache[delete_key]
             print("DELETE {0} from FIELD_CACHE".format(delete_key))
-        tmp_key = self.create_key(bbox, z)
+        tmp_key = bbox.stringify(z)
         print("PUT {0} in FIELD_CACHE".format(tmp_key))
         # Note: field_cache stores RELATIVE fields
         field_cache[tmp_key] = self.abs_to_rel_residual(field, bbox, mip)
         field = field.data.cpu().numpy() 
         self.save_vector_patch(write_F_cv, z, field, bbox, mip,
                                to_int=self.int_field)
-
-  # def vector_vote_single_section(self, z, read_F_cv, write_F_cv, bbox, mip, inverse, T=1):
-  #   """Compute consensus vector field using pairwise vector fields with earlier sections. 
-
-  #   Vector voting requires that vector fields be composed to a common section
-  #   before comparison: inverse=False means that the comparison will be based on 
-  #   composed vector fields F_{z,compose_start}, while inverse=True will be
-  #   F_{compose_start,z}.
-
-  #   Args:
-  #      z: int, section whose pairwise vector fields will be used
-  #      compose_start: int, the first pairwise vector field to use in calculating
-  #        any composed vector fields
-  #      bbox: BoundingBox, the region of interest over which to vote
-  #      mip: int, the data MIP level
-  #      inverse: bool, indicates the direction of composition to use 
-  #      T: float for temperature of the softmin used for vector pair differences
-  #   """
-  #   fields = []
-  #   for z_offset in range(self.tgt_radius, 0, -1):
-  #     src_z = z
-  #     tgt_z = src_z - z_offset
-  #     if inverse:
-  #       src_z, tgt_z = tgt_z, src_z
-  #     if self.serial_operation:
-  #       f_cv = self.dst[z_offset].for_read('field')
-  #       F = self.get_field(f_cv, src_z, bbox, mip, relative=False, to_tensor=True)
-  #     else:
-  #       F = self.get_composed_field(src_z, tgt_z, read_F_cv, bbox, mip,
-  #                                   inverse=inverse, relative=False,
-  #                                   to_tensor=True)
-  #     fields.append(F)
-
-  #   field = vector_vote(fields, T=T)
-  #   field = field.data.cpu().numpy() 
-  #   self.save_vector_patch(write_F_cv, z, field, bbox, mip)
 
   def invert_field(self, z, src_cv, dst_cv, out_bbox, mip, optimizer=False):
     """Compute the inverse vector field for a given OUT_BBOX
@@ -581,24 +515,34 @@ class Aligner:
     invf = invf.data.cpu().numpy() 
     self.save_residual_patch(dst_cv, z, invf, out_bbox, mip, to_int=self.int_field) 
 
-  def compute_residual_patch(self, src_z, src_cv, tgt_z, tgt_cv, field_cv, bbox, mip):
-    """Predict vector field that will warp section at SOURCE_Z to section at TARGET_Z
-    within OUT_PATCH_BBOX at MIP. Vector field will be stored at SOURCE_Z, using DST at
-    SOURCE_Z - TARGET_Z. 
+  def compute_residual_patch(self, model_path, src_z, src_cv, tgt_z, tgt_cv, field_cv, 
+                                   bbox, mip, pad, mask_cv=None, mask_mip=0, mask_val=0):
+    """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
-    Args
+    Args:
+      model_path: str for relative path to model directory
       src_z: int of section to be warped
       src_cv: MiplessCloudVolume with source image      
       tgt_z: int of section to be warped to
       tgt_cv: MiplessCloudVolume with target image
       field_cv: MiplessCloudVolume of where to write the output field
       bbox: BoundingBox for region of both sections to process
-      mip: int of MIP level to use for OUT_PATCH_BBOX 
+      mip: int of MIP level to use for bbox 
+      crop: int for amount of padding to add to the bbox before processing
+      mask_cv: MiplessCloudVolume with mask to be used for both src & tgt image
+      
+
+    Returns:
+      field to the size of bbox
     """
+    net = Process(archive, mip_range[0], dim=high_mip_chunk[0]+crop*2, size=size, 
+                  flip_average=not disable_flip_average)
+
+    normalizer = archive.preprocessor
     print ("Computing residual for region {0}, {1} <-- {2}.".format(bbox.__str__(mip=0),
                                                               tgt_z, src_z), flush=True)
     precrop_patch_bbox = deepcopy(bbox)
-    precrop_patch_bbox.uncrop(self.crop_amount, mip=mip)
+    precrop_patch_bbox.uncrop(pad, mip=mip)
 
     src_patch = self.get_image(src_cv, src_z, precrop_patch_bbox, mip,
                                 adjust_contrast=True, to_tensor=True)
@@ -625,45 +569,6 @@ class Aligner:
     field = field.data.cpu().numpy() 
     self.save_vector_patch(field_cv, src_z, field, bbox, mip,
                            to_int=self.int_field)
-
-    # if self.write_intermediaries and residuals is not None and cum_residuals is not None:
-    #   mip_range = range(self.process_low_mip+self.size-1, self.process_low_mip-1, -1)
-    #   for res_mip, res, cumres in zip(mip_range, residuals[1:], cum_residuals[1:]):
-    #       crop = self.crop_amount // 2**(res_mip - self.process_low_mip)   
-    #       self.save_residual_patch('res', src_z, src_z_offset, res, crop, bbox, res_mip)
-    #       self.save_residual_patch('cumres', src_z, src_z_offset, cumres, crop, bbox, res_mip)
-    #       if self.upsample_residuals:
-    #         crop = self.crop_amount   
-    #         res = self.scale_residuals(res, res_mip, self.process_low_mip)
-    #         self.save_residual_patch('resup', src_z, z_offset, res, crop, bbox, 
-    #                                  self.process_low_mip)
-    #         cumres = self.scale_residuals(cumres, res_mip, self.process_low_mip)
-    #         self.save_residual_patch('cumresup', src_z, z_offset, cumres, crop, 
-    #                                  bbox, self.process_low_mip)
-
-    #   print('encoding size: {0}'.format(len(encodings)))
-    #   for k, enc in enumerate(encodings):
-    #       mip = self.process_low_mip + k
-    #       # print('encoding shape @ idx={0}, mip={1}: {2}'.format(k, mip, enc.shape))
-    #       crop = self.crop_amount // 2**k
-    #       enc = enc[:,:,crop:-crop, crop:-crop].permute(2,3,0,1)
-    #       enc = enc.data.cpu().numpy()
-    #       
-    #       def write_encodings(j_slice, z):
-    #         x_range = bbox.x_range(mip=mip)
-    #         y_range = bbox.y_range(mip=mip)
-    #         patch = enc[:, :, :, j_slice]
-    #         # uint_patch = (np.multiply(patch, 255)).astype(np.uint8)
-    #         cv(self.paths['enc'][mip], 
-    #             mip=mip, bounded=False, 
-    #             fill_missing=True, autocrop=True, 
-    #             progress=False, provenance={})[x_range[0]:x_range[1],
-    #                             y_range[0]:y_range[1], z, j_slice] = patch 
-  
-    #       # src_image encodings
-    #       write_encodings(slice(0, enc.shape[-1] // 2), src_z)
-    #       # dst_image_encodings
-    #       write_encodings(slice(enc.shape[-1] // 2, enc.shape[-1]), tgt_z)
 
   def get_residual(self, src_z, tgt_z, out_patch_bbox, mip):
     """Predict vector field that will warp section at SOURCE_Z to section at TARGET_Z
@@ -819,7 +724,7 @@ class Aligner:
           res = self.abs_to_rel_residual(f, bbox, field_mip)
           field = res.to(device = self.device)
           if field_mip != image_mip:
-            field = self.upsample_field(field, field_mip, image_mip)
+            field = upsample_field(field, field_mip, image_mip)
           #print("field shape is", field.shape)
           image = self.get_image(image_cv, z, new_bbox, image_mip,
                                  adjust_contrast=False, to_tensor=True)
@@ -970,7 +875,7 @@ class Aligner:
     #print("field shape",field.shape)
     # field_new = upsample(vector_mip - image_mip)(field.permute(0,3,1,2))
     # mip_field = field_new.permute(0,2,3,1)
-    mip_field = self.upsample_field(field, vector_mip, image_mip)
+    mip_field = upsample_field(field, vector_mip, image_mip)
     mip_disp = int(self.max_displacement / 2**image_mip)
     #print("mip_field shape", mip_field.shape)
     #print("image_mip",image_mip, "vector_mip", vector_mip, "mip_dis is ", mip_disp)
@@ -1042,117 +947,6 @@ class Aligner:
   def dilate_mask(self, mask, radius=5):
     return skmaximum(np.squeeze(mask).astype(np.uint8), skdisk(radius)).reshape(mask.shape).astype(np.bool)
     
-  def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True):
-    data = self.get_data(cv, z, bbox, src_mip=src_mip, dst_mip=dst_mip, 
-                             to_float=False, adjust_contrast=False, 
-                             to_tensor=to_tensor)
-    return data == valid_val
-
-  def get_image(self, cv, z, bbox, mip, adjust_contrast=False, to_tensor=True):
-    return self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
-                             adjust_contrast=adjust_contrast, to_tensor=to_tensor)
-
-  def get_composite_image(self, cv, z_list, bbox, mip, adjust_contrast=False, to_tensor=True):
-    """Collapse 3D image into a 2D image, replacing black pixels in the first 
-        z slice with the nearest nonzero pixel in other slices.
-    
-    Args:
-       cv: MiplessCloudVolume where images are stored
-       z_list: list of ints that will be processed in order 
-       bbox: BoundingBox defining data range
-       mip: int MIP level of the data to process
-       adjust_contrast: output will be normalized
-       to_tensor: output will be torch.tensor
-    """
-    z_start = np.min(z_range)
-    z_stop = np.max(z_range)+1
-    z_range = range(z_start, z_stop) 
-    img = self.get_data_range(cv, z_range, bbox, src_mip=mip, dst_mip=mip)
-    z = z_list[0]
-    o = img[z-z_start, ...]
-    for z in z_list[1:]:
-      o[o <= 1] = img[z-z_start, ...][o <= 1]
-    return o
-
-  def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
-                     adjust_contrast=False, to_tensor=True):
-    """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
-    
-    Args:
-       cv_key: string to lookup CloudVolume
-       bbox: BoundingBox defining data range
-       src_mip: mip of the CloudVolume data
-       dst_mip: mip of the output mask (dictates whether to up/downsample)
-       to_float: output should be float32
-       adjust_contrast: output will be normalized
-       to_tensor: output will be torch.tensor
-    """
-    x_range = bbox.x_range(mip=src_mip)
-    y_range = bbox.y_range(mip=src_mip)
-    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
-    #data = None
-    #while data is None:
-    #  try:
-    #    data_ = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
-    #    data = data_
-    #  except AttributeError as e:
-    #    pass 
-    #
-    data = np.transpose(data, (2,3,0,1))
-    if to_float:
-      data = np.divide(data, float(255.0), dtype=np.float32)
-    if adjust_contrast:
-      if self.normalizer is not None:
-        data = self.normalizer(data).reshape(data.shape)
-    # convert to tensor if requested, or if up/downsampling required
-    if to_tensor | (src_mip != dst_mip):
-      if isinstance(data, np.ndarray):
-        data = torch.from_numpy(data)
-      data = data.to(device=self.device)
-      if src_mip != dst_mip:
-        # k = 2**(src_mip - dst_mip)
-        size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
-        if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
-          data = interpolate(data, size=size, mode='bilinear')
-        else:
-          data = data.type('torch.cuda.DoubleTensor')
-          data = interpolate(data, size=size, mode='nearest')
-          data = data.type('torch.cuda.ByteTensor')
-      if not to_tensor:
-        data = data.cpu().numpy()
-    
-    return data
-  
-  def get_data_range(self, cv, z_range, bbox, src_mip, dst_mip, to_tensor=True):
-    """Retrieve CloudVolume data. Returns 4D tensor, BxCxWxH
-    
-    Args:
-       cv_key: string to lookup CloudVolume
-       bbox: BoundingBox defining data range
-       src_mip: mip of the CloudVolume data
-       dst_mip: mip of the output mask (dictates whether to up/downsample)
-    """
-    x_range = bbox.x_range(mip=src_mip)
-    y_range = bbox.y_range(mip=src_mip)
-    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range]
-    data = np.transpose(data, (2,3,0,1))
-    if isinstance(data, np.ndarray):
-      data = torch.from_numpy(data)
-    data = data.to(device=self.device)
-    if src_mip != dst_mip:
-      # k = 2**(src_mip - dst_mip)
-      size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
-      if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
-        data = interpolate(data, size=size, mode='bilinear')
-      else:
-        data = data.type('torch.cuda.DoubleTensor')
-        data = interpolate(data, size=size, mode='nearest')
-        data = data.type('torch.cuda.ByteTensor')
-    if not to_tensor:
-      data = data.cpu().numpy()
-    
-    return data
-
   def cpc(self, src_z, tgt_z, src_cv, tgt_cv, bbox, src_mip, dst_mip):
     """Calculate the chunked pearson r between two chunks
 
@@ -1943,7 +1737,7 @@ class Aligner:
       F = self.get_field(F_cv, z, bbox, mip, relative=True, to_tensor=True,
                          from_int=self.int_field)
       avg_invF = torch.sum(torch.mul(bump, invFs), dim=0, keepdim=True)
-      regF = self.compose_fields(avg_invF, F)
+      regF = compose_fields(avg_invF, F)
       regF = regF.data.cpu().numpy() 
       self.save_residual_patch(next_cv, z, regF, bbox, mip,
                                to_int=self.int_field)
