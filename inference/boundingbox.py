@@ -141,3 +141,7 @@ class BoundingBox:
 
   def __str__(self, mip=0):
     return "{}, {}".format(self.x_range(mip), self.y_range(mip))
+
+  def stringify(self, z, mip=0):
+    return '{0}, {1}'.format(self.__str__(mip=0), str(z))
+    
