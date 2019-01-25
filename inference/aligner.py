@@ -127,7 +127,7 @@ class Aligner:
       else: 
         path = dst_path
       self.dst[i] = DstDir(path, info, provenance, suffix=dir_suffix, 
-                           distributed=False, use_int=self.int_field)
+                           use_int=self.int_field)
 
     self.net = Process(archive, mip_range[0], is_Xmas=is_Xmas, cuda=True, 
                        dim=high_mip_chunk[0]+crop*2, skip=skip, 

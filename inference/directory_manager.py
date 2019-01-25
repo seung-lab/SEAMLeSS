@@ -34,11 +34,9 @@ class DstDir():
   distinguished by the different sets of kwargs that are used for the CloudVolume.
   All CloudVolumes are MiplessCloudVolumes. 
   """
-  def __init__(self, dst_path, info, provenance, suffix='', distributed=False, 
-                     use_int=False):
+  def __init__(self, dst_path, info, provenance, suffix='', use_int=False):
     print('Creating DstDir for {0}'.format(dst_path))
     self.root = dst_path
-    self.distributed = distributed
     self.info = info
     self.provenance = provenance
     self.paths = {} 
@@ -183,6 +181,20 @@ class DstDir():
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
 
+  def create(self, path, data_type, num_channels, fill_missing, ignore_info=False, 
+                   get_read=True):
+    """Create a MiplessCloudVolume based on params & details from DstDir
+
+    Helper function that combines add_path, create_cv, and the getters.
+    """
+    self.add_path(path, path, data_type=data_type, num_channels=num_channels, 
+                  fill_missing=fill_missing)
+    self.create_cv(path, ignore_info=ignore_info)
+    if get_read:
+      return self.read[path] 
+    else:
+      return self.write[path] 
+
   def create_cv(self, k, ignore_info=False):
     path, data_type, channels, fill_missing = self.paths[k]
     provenance = self.provenance 
@@ -190,6 +202,7 @@ class DstDir():
     info['data_type'] = data_type
     info['num_channels'] = channels
     if ignore_info:
+      print('Write will use existing info file for MiplessCloudVolume at {0}'.format(path))
       info = None
     self.read[k] = CV(path, mkdir=False, info=info, provenance=provenance, fill_missing=fill_missing, **self.read_kwargs)
     self.write[k] = CV(path, mkdir=not ignore_info, info=info, provenance=provenance, fill_missing=fill_missing, **self.write_kwargs)
