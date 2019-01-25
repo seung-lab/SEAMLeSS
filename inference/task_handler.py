@@ -252,7 +252,7 @@ class TaskHandler:
       for a in attribute_names:
         if int(response['Attributes'][a]) > 0:
           return False
-      time.sleep(5)
+      #time.sleep(5)
     print("donot wait since it")
     return True
   
@@ -260,6 +260,7 @@ class TaskHandler:
     self.sqs.purge_queue(QueueUrl=self.queue_url)
 
   def wait_until_ready(self):
+    time.sleep(20)
     while not self.is_empty():
       time.sleep(5)
 
