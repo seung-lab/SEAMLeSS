@@ -1257,6 +1257,20 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
+  def wait_for_queue_empty(self, path, prefix, chunks_len):
+      with Storage(path) as stor:
+          lst = stor.list_files(prefix=prefix)
+      i = sum(1 for _ in lst)
+      return i == chunks_len
+
+  def wait_for_queue_empty_range(self, path, prefix, z_range, chunks_len):
+      i = 0
+      with Storage(path) as stor:
+          for z in z_range:
+              lst = stor.list_files(prefix=prefix+str(z))
+              i += sum(1 for _ in lst)
+      return i == chunks_len
+
   def render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip, wait=True):
     """Chunkwise render
 
@@ -1280,7 +1294,9 @@ class Aligner:
                                                    mip, dst_cv, dst_z))
         self.pool.map(self.task_handler.send_message, tasks)
         if wait:
-          self.task_handler.wait_until_ready()
+            def stop_fn():
+                return self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
+            #self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
@@ -1314,7 +1330,9 @@ class Aligner:
             tasks.append(make_batch_render_message(src_z, field_cv, field_z, task_patches,
                                                    mip, dst_cv, dst_z, batch))
         self.pool.map(self.task_handler.send_message, tasks)
-        self.task_handler.wait_until_ready()
+        #self.task_handler.wait_until_ready()
+        def stop_fn():
+            return self.wait_for_queue_empty(dst_cv.path,'render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch_batch(src_z, field_cv, field_z,
@@ -1349,7 +1367,9 @@ class Aligner:
             tasks.append(make_render_cv_task_message(src_z, field_cv, field_z, task_patches,
                                                       mip, dst_cv, dst_z))
         self.pool.map(self.task_handler.send_message, tasks)
-        self.task_handler.wait_until_ready()
+        #self.task_handler.wait_until_ready()
+        def stop_fn():
+            self.wait_for_queue_empty(dst_cv.path, 'render_cv/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_using_gridsample_cv(src_z, field_cv,
@@ -1360,33 +1380,6 @@ class Aligner:
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
-
-#  def render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip):
-#    """Chunkwise render
-#
-#    Warp the image in BBOX at MIP and SRC_Z in CloudVolume dir at SRC_Z_OFFSET, 
-#    using the field at FIELD_Z in CloudVolume dir at FIELD_Z_OFFSET, and write 
-#    the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX 
-#    appropriately.
-#    """
-#    print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
-#    start = time()
-#    chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
-#                                    self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
-#    if self.distributed:
-#        for patch in chunks:
-#            render_task = make_render_task_message(src_z, field_cv, field_z, patch, 
-#                                                   mip, dst_cv, dst_z)
-#            self.task_handler.send_message(render_task)
-#        self.task_handler.wait_until_ready()
-#    else:
-#        def chunkwise(patch_bbox):
-#          warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
-#          # print('warp_image render.shape: {0}'.format(warped_patch.shape))
-#          self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
-#        self.pool.map(chunkwise, chunks)
-#    end = time()
-#    print (": {} sec".format(end - start))
 
   def low_mip_render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
     start = time()
