@@ -945,7 +945,9 @@ class Aligner:
                                       dst_z, patch_bbox, f_mip, g_mip, dst_mip))
         self.pool.map(self.task_handler.send_message, tasks)
         if wait:
-          self.task_handler.wait_until_ready()
+            def stop_fn():
+                return self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
+            #self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
           # h = self.cloudsample_compose(f_cv, g_cv, f_z, g_z, patch_bbox, 
@@ -988,6 +990,9 @@ class Aligner:
             # tasks.append(make_cpc_task_message(src_z, field_cv, field_z, task_patches, 
             #                                        mip, dst_cv, dst_z))
         self.pool.map(self.task_handler.send_message, tasks)
+        #self.task_handler.wait_until_ready()
+        def stop_fn():
+            return self.wait_for_queue_empty(dst_cv.path,'render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           r = self.cpc(src_z, tgt_z, src_cv, tgt_cv, patch_bbox, src_mip, dst_mip)
@@ -1021,7 +1026,9 @@ class Aligner:
             tasks.append(make_batch_render_message(src_z, field_cv, field_z, task_patches,
                                                    mip, dst_cv, dst_z, batch))
         self.pool.map(self.task_handler.send_message, tasks)
-        self.task_handler.wait_until_ready()
+        #self.task_handler.wait_until_ready()
+        def stop_fn():
+            self.wait_for_queue_empty(dst_cv.path, 'render_cv/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.cloudsample_image_batch(src_z, field_cv, field_z,
@@ -1674,3 +1681,18 @@ class Aligner:
       else:
         sleep(3)
         print ("Waiting for jobs...") 
+
+  def wait_for_queue_empty(self, path, prefix, chunks_len):
+      with Storage(path) as stor:
+          lst = stor.list_files(prefix=prefix)
+      i = sum(1 for _ in lst)
+      return i == chunks_len
+
+  def wait_for_queue_empty_range(self, path, prefix, z_range, chunks_len):
+      i = 0
+      with Storage(path) as stor:
+          for z in z_range:
+              lst = stor.list_files(prefix=prefix+str(z))
+              i += sum(1 for _ in lst)
+      return i == chunks_len
+
