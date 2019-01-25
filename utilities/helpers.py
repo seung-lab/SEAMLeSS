@@ -438,6 +438,18 @@ def retry_enumerate(iterable, start=0):
             continue
         return iterator
 
+ def compose_fields(f, g):
+   """Compose two fields f & g, for f(g(x))
+   """    
+   g = g.permute(0,3,1,2)
+   return f + gridsample_residual(g, f, padding_mode='border').permute(0,2,3,1)
+
+def upsample_field(f, src_mip, dst_mip):
+  """Upsample vector field from src_mip to dst_mip
+  """
+  return upsample(src_mip-dst_mip)(f.permute(0,3,1,2)).permute(0,2,3,1)
+    
+
 def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   """Compute the inverse vector field of residual field U by optimization
 
@@ -464,8 +476,8 @@ def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   print('Optimizing inverse field')
   for t in range(max_iter):
     currt = t
-    f = compose(U, V) 
-    g = compose(V, U)
+    f = compose_fields(U, V) 
+    g = compose_fields(V, U)
     L = 0.5*torch.mean(f**2) + 0.5*torch.mean(g**2)
     costs.append(L)
     L.backward()
