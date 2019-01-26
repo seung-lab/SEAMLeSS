@@ -2061,7 +2061,7 @@ class Aligner:
           tq.insert(task)
 
     if self.threads == 1:
-      multiprocess_upload(ptasks)
+      multiprocess_upload(tasks)
     else:
       tasks = list(scatter(tasks, self.threads))
 
