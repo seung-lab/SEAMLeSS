@@ -31,6 +31,9 @@ from threading import Lock
 import torch.nn as nn
 from directory_manager import SrcDir, DstDir
 
+from taskqueue import TaskQueue
+import alignment_tasks
+
 
 class Aligner:
   """
@@ -62,7 +65,8 @@ class Aligner:
                info_chunk_dims=[-1,-1,-1], **kwargs):
     
     self.distributed = (queue_name != None)
-    
+    self.queue_name = queue_name
+
     self.int_field =  int_field
     self.p_render = p_render
     self.process_high_mip = mip_range[1]
@@ -1180,8 +1184,9 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size * 4)):
                 task_patches.append(chunks[j])
-            tasks.append(make_copy_task_message(z, dst_cv, dst_z, task_patches, mip=mip))
-        self.pool.map(self.task_handler.send_message, tasks)
+            tasks.append(alignment_tasks.CopyTask(z, dst_cv, dst_z, task_patches, mip=mip))
+
+        self.upload_tasks(tasks)
         self.task_handler.wait_until_ready()
     else: 
         #for patch_bbox in chunks:
@@ -1278,9 +1283,9 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(make_render_task_message(src_z, field_cv, field_z, task_patches, 
+            tasks.append(alignment_tasks.RenderTask(src_z, field_cv, field_z, task_patches, 
                                                    mip, dst_cv, dst_z))
-        self.pool.map(self.task_handler.send_message, tasks)
+        self.upload_tasks(tasks)
         if wait:
             def stop_fn():
                 return self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
@@ -1315,9 +1320,11 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(make_batch_render_message(src_z, field_cv, field_z, task_patches,
-                                                   mip, dst_cv, dst_z, batch))
-        self.pool.map(self.task_handler.send_message, tasks)
+            tasks.append(alignment_tasks.BatchRenderTask(
+              src_z, field_cv, field_z, task_patches,
+              mip, dst_cv, dst_z, batch
+            ))
+        self.upload_tasks(tasks)
         #self.task_handler.wait_until_ready()
         def stop_fn():
             return self.wait_for_queue_empty(dst_cv.path,'render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/', len(chunks))
@@ -1352,9 +1359,9 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(make_render_cv_task_message(src_z, field_cv, field_z, task_patches,
+            tasks.append(alignment_tasks.RenderCVTask(src_z, field_cv, field_z, task_patches,
                                                       mip, dst_cv, dst_z))
-        self.pool.map(self.task_handler.send_message, tasks)
+        self.upload_tasks(tasks)
         #self.task_handler.wait_until_ready()
         def stop_fn():
             self.wait_for_queue_empty(dst_cv.path, 'render_cv/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
@@ -1380,10 +1387,10 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(make_render_low_mip_task_message(src_z, field_cv, field_z, 
+            tasks.append(alignment_tasks.RenderLowMipTask(src_z, field_cv, field_z, 
                                                            task_patches, image_mip, 
                                                            vector_mip, dst_cv, dst_z))
-        self.pool.map(self.task_handler.send_message, tasks)
+        self.upload_tasks(tasks)
         # self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
@@ -1431,8 +1438,8 @@ class Aligner:
               task_patches = []
               for j in range(i, min(len(chunks), i + self.task_batch_size * 4)):
                   task_patches.append(chunks[j])
-              tasks.append(make_downsample_task_message(cv, z, task_patches, mip=m))
-          self.pool.map(self.task_handler.send_message, tasks)
+              tasks.append(alignment_tasks.DownsampleTask(cv, z, task_patches, mip=m))
+          self.upload_tasks(tasks)
           if wait:
             self.task_handler.wait_until_ready()
       else:
@@ -1457,9 +1464,10 @@ class Aligner:
 #          print("Distributed downsampling to mip", m, len(chunks)," chunks")
 #          #for c in chunks:
 #          #  print ("distributed Downsampling {} to mip {}".format(c.__str__(mip=0), m))
+#          tasks = []
 #          for c in chunks:
-#              downsample_task = make_downsample_task_message(cv, z, c, mip=m)
-#              self.task_handler.send_message(downsample_task) 
+#              tasks.append(alignment_tasks.DownsampleTask(cv, z, c, mip=m))
+#          self.upload_tasks(tasks)
 #          self.task_handler.wait_until_ready()
 #      else:
 #          #for c in chunks:
@@ -1502,9 +1510,9 @@ class Aligner:
     if self.distributed:
       tasks = []
       for patch_bbox in chunks:
-        tasks.append(make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, 
+        tasks.append(alignment_tasks.ResidualTask(src_z, src_cv, tgt_z, tgt_cv, 
                                                    field_cv, patch_bbox, mip))
-      self.pool.map(self.task_handler.send_message, tasks)
+      self.upload_tasks(tasks)
     else:
       def chunkwise(patch_bbox):
       #FIXME Torch runs out of memory
@@ -1541,9 +1549,9 @@ class Aligner:
     if self.distributed:
         tasks = []
         for patch_bbox in chunks:
-          tasks.append(make_invert_field_task_message(z, src_cv, dst_cv, patch_bbox, 
+          tasks.append(alignment_tasks.InvertFieldTask(z, src_cv, dst_cv, patch_bbox, 
                                                       mip, optimizer))
-        self.pool.map(self.task_handler.send_message, tasks)
+        self.upload_tasks(tasks)
     else: 
     #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -1607,11 +1615,11 @@ class Aligner:
     if self.distributed:
         tasks = []
         for patch_bbox in chunks:
-            tasks.append(make_vector_vote_task_message(z_range, read_F_cv, write_F_cv,
+            tasks.append(alignment_tasks.VectorVoteTask(z_range, read_F_cv, write_F_cv,
                                                              patch_bbox, mip, inverse, T, 
                                                              negative_offsets, 
                                                              serial_operation))
-        self.pool.map(self.task_handler.send_message, tasks)
+        self.upload_tasks(tasks)
         # self.task_handler.wait_until_ready()
     #for patch_bbox in chunks:
     else:
@@ -1711,12 +1719,13 @@ class Aligner:
       i = 0
       if self.distributed:
           print("chunks size is", len(chunks))
+          tasks = []
           for patch_bbox in chunks:
-              r_and_c_task = make_res_and_compose_message(z, forward_match,
+              tasks.append(alignment_tasks.ResAndComposeTask(z, forward_match,
                                                           reverse_match,
                                                           patch_bbox, mip,
                                                           write_F_cv)
-              self.task_handler.send_message(r_and_c_task)
+          self.upload_tasks(tasks)
               #i +=1
               #print("send a message", i)
               #attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
@@ -1952,10 +1961,10 @@ class Aligner:
     if self.distributed:
         tasks = []
         for patch_bbox in chunks:
-            tasks.append(make_regularize_task_message(z_range[0], z_range[-1],
+            tasks.append(alignment_tasks.RegularizeTask(z_range[0], z_range[-1],
                                                       dir_z, patch_bbox,
                                                       mip, sigma))
-        self.pool.map(self.task_handler.send_message, tasks)
+        self.upload_tasks(tasks)
         self.task_handler.wait_until_ready()
     else:
         #for patch_bbox in chunks:
@@ -1988,9 +1997,9 @@ class Aligner:
     if self.distributed:
         tasks = []
         for patch_bbox in chunks:
-            tasks.append(make_compose_task_message(z, coarse_cv, fine_cv, dst_cv,
+            tasks.append(alignment_tasks.ComposeTask(z, coarse_cv, fine_cv, dst_cv,
                                                    patch_bbox, coarse_mip, fine_mip))
-        self.pool.map(self.task_handler.send_message, tasks)
+        self.upload_tasks(tasks)
         # self.task_handler.wait_until_ready()
     else:
         #for patch_bbox in chunks:
@@ -2029,11 +2038,14 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(make_upsample_render_rechunk_task(z_range, src_cv, 
-                                                           field_cv, dst_cv, 
-                                                           task_patches, image_mip, 
-                                                           field_mip))
-        self.pool.map(self.task_handler.send_message, tasks)
+            tasks.append(alignment_tasks.UpsampleRenderRechunkTask(
+                z_range, src_cv, 
+                field_cv, dst_cv, 
+                task_patches, image_mip, 
+                field_mip
+            ))
+
+        self.upload_tasks(tasks)
         # self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
@@ -2045,3 +2057,11 @@ class Aligner:
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
+
+  def upload_tasks(self, tasks):
+    with TaskQueue(queue_name=self.queue_name) as tq:
+      for task in tasks:
+        tq.insert(task)
+
+      if len(tasks):
+        tq.wait("Uploading " + str(tasks[0]))
