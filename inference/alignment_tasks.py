@@ -231,7 +231,7 @@ class RenderLowMipTask(RegisteredTask):
       aligner.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, image_mip)
     aligner.pool.map(chunkwise, patches)
 
-def ResidualTask(RegisteredTask):
+class ResidualTask(RegisteredTask):
   def __init__(self, src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip):
     super().__init__(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip)
 
@@ -247,7 +247,7 @@ def ResidualTask(RegisteredTask):
       field_cv, patch_bbox, mip
     )
 
-def ResAndComposeTask(RegisteredTask):
+class ResAndComposeTask(RegisteredTask):
   def __init__(self, z, forward, reverse, patch_bbox, mip, w_cv):
     super().__init__(z, forward, reverse, patch_bbox, mip, w_cv)
 
