@@ -11,6 +11,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from skimage.transform import rescale
+from skimage.morphology import disk as skdisk
+from skimage.filters.rank import maximum as skmaximum 
 from functools import reduce
 import matplotlib
 matplotlib.use('Agg')
@@ -438,17 +440,24 @@ def retry_enumerate(iterable, start=0):
             continue
         return iterator
 
- def compose_fields(f, g):
-   """Compose two fields f & g, for f(g(x))
-   """    
-   g = g.permute(0,3,1,2)
-   return f + gridsample_residual(g, f, padding_mode='border').permute(0,2,3,1)
+def dilate_mask(mask, radius=5):
+  return skmaximum(np.squeeze(mask).astype(np.uint8), skdisk(radius)).reshape(mask.shape).astype(np.bool)
+    
+def compose_fields(f, g):
+  """Compose two fields f & g, for f(g(x))
+  """    
+  g = g.permute(0,3,1,2)
+  return f + gridsample_residual(g, f, padding_mode='border').permute(0,2,3,1)
 
 def upsample_field(f, src_mip, dst_mip):
   """Upsample vector field from src_mip to dst_mip
   """
   return upsample(src_mip-dst_mip)(f.permute(0,3,1,2)).permute(0,2,3,1)
-    
+
+def is_identity(field):    
+  """Check if field is the identity
+  """
+  return torch.min(field) == 0 and torch.max(field) == 0
 
 def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   """Compute the inverse vector field of residual field U by optimization
