@@ -3,7 +3,7 @@ import time
 import json
 import tenacity
 
-from .boundingbox import BoundingBox, deserialize_bbox
+from boundingbox import BoundingBox, deserialize_bbox
 
 from taskqueue import RegisteredTask
 

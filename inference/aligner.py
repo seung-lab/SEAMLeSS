@@ -1,19 +1,27 @@
-from process import Process
+
 import concurrent.futures
-from mipless_cloudvolume import MiplessCloudVolume as CV 
-from mipless_cloudvolume import deserialize_miplessCV as DCV
-from cloudvolume.lib import Vec, scatter
-import torch
-from torch.nn.functional import interpolate
-import numpy as np
-import os
-from os.path import join
+from copy import deepcopy, copy
+from functools import partial
 import json
 import math
+import os
+from os.path import join
 from time import time, sleep
-from copy import deepcopy, copy
+
+from pathos.multiprocessing import ProcessPool, ThreadPool
+from threading import Lock
+
+from cloudvolume.lib import Vec, scatter
+import numpy as np
 import scipy
 import scipy.ndimage
+from skimage.morphology import disk as skdisk
+from skimage.filters.rank import maximum as skmaximum 
+from taskqueue import TaskQueue
+import torch
+from torch.nn.functional import interpolate
+import torch.nn as nn
+
 from normalizer import Normalizer
 from vector_vote import vector_vote, get_diffs, weight_diffs, \
                         compile_field_weights, weighted_sum_fields
@@ -22,19 +30,12 @@ from cpc import cpc
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
                               np_downsample, invert
 
-from skimage.morphology import disk as skdisk
-from skimage.filters.rank import maximum as skmaximum 
-from boundingbox import BoundingBox, deserialize_bbox
-
-from pathos.multiprocessing import ProcessPool, ThreadPool
-from threading import Lock
-
-import torch.nn as nn
-from directory_manager import SrcDir, DstDir
-
-from taskqueue import TaskQueue
 import alignment_tasks
-
+from boundingbox import BoundingBox, deserialize_bbox
+from directory_manager import SrcDir, DstDir
+from mipless_cloudvolume import MiplessCloudVolume as CV 
+from mipless_cloudvolume import deserialize_miplessCV as DCV
+from process import Process
 
 class Aligner:
   """
@@ -1719,26 +1720,19 @@ class Aligner:
       batch_count += 1
       i = 0
       if self.distributed:
-          print("chunks size is", len(chunks))
-          tasks = []
-          for patch_bbox in chunks:
-              tasks.append(alignment_tasks.ResAndComposeTask(z, forward_match,
-                                                          reverse_match,
-                                                          patch_bbox, mip,
-                                                          write_F_cv)
-          self.upload_tasks(tasks)
-              #i +=1
-              #print("send a message", i)
-              #attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
-              #response = self.task_handler.sqs.get_queue_attributes(QueueUrl=self.task_handler.queue_url,
-              #                                         AttributeNames=attribute_names)
-              #print(response)
-
+        print("chunks size is", len(chunks))
+        tasks = []
+        for patch_bbox in chunks:
+            tasks.append(alignment_tasks.ResAndComposeTask(z, forward_match,
+                                                        reverse_match,
+                                                        patch_bbox, mip,
+                                                        write_F_cv))
+        self.upload_tasks(tasks)
       else:
-          def chunkwise(patch_bbox):
-              self.res_and_compose(z, forward_match, reverse_match, patch_bbox,
-                                  mip, write_F_cv)
-          self.pool.map(chunkwise, chunks)
+        def chunkwise(patch_bbox):
+            self.res_and_compose(z, forward_match, reverse_match, patch_bbox,
+                                mip, write_F_cv)
+        self.pool.map(chunkwise, chunks)
       if batch_count == batch_size and self.distributed:
         print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
         print('batch_count is {}'.format(batch_count), flush = True)
