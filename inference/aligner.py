@@ -1,7 +1,8 @@
 from process import Process
+import concurrent.futures
 from mipless_cloudvolume import MiplessCloudVolume as CV 
 from mipless_cloudvolume import deserialize_miplessCV as DCV
-from cloudvolume.lib import Vec
+from cloudvolume.lib import Vec, scatter
 import torch
 from torch.nn.functional import interpolate
 import numpy as np
@@ -2059,9 +2060,16 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def upload_tasks(self, tasks):
-    with TaskQueue(queue_name=self.queue_name) as tq:
-      for task in tasks:
-        tq.insert(task)
 
-      if len(tasks):
-        tq.wait("Uploading " + str(tasks[0]))
+    def multiprocess_upload(ptasks):
+      with TaskQueue(queue_name=self.queue_name) as tq:
+        for task in ptasks:
+          tq.insert(task)
+
+    if self.threads == 1:
+      multiprocess_upload(ptasks)
+    else:
+      tasks = list(scatter(tasks, self.threads))
+
+      with concurrent.futures.ProcessPoolExecutor(max_workers=parallel) as executor:
+        executor.map(multiprocess_upload, tasks)
