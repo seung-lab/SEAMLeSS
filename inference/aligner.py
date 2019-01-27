@@ -10,6 +10,7 @@ from time import time, sleep
 from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
 
+from cloudvolume import Storage
 from cloudvolume.lib import Vec, scatter
 import numpy as np
 import scipy
@@ -899,7 +900,7 @@ class Aligner:
         for patch_bbox in chunks:
             tasks.append(alignment_tasks.VectorVoteTask(pairwise_cvs, vvote_cv, z, bbox, 
                                   mip, inverse, softmin_temp, serial))
-        self.pool.map(self.task_handler.send_message, tasks)
+        self.upload_tasks(tasks)
         if wait:
           self.task_handler.wait_until_ready()
     else:
