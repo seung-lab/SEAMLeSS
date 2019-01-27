@@ -1,5 +1,6 @@
 from mipless_cloudvolume import MiplessCloudVolume as CV 
 from copy import deepcopy, copy
+from cloudvolume import CloudVolume
 from cloudvolume.lib import Vec
 from os.path import join
 
@@ -9,30 +10,28 @@ class CloudManager():
   Manage CloudVolumes used for reading & CloudVolumes used for writing. Read & write
   distinguished by the different sets of kwargs that are used for the CloudVolume.
   All CloudVolumes are MiplessCloudVolumes. 
+
+  Args:
+     cv_path: str for path to existing CloudVolume to use as template for new
+      CloudVolumes that will be created
+     max_mip: int for the maximum MIP level that will be required for processing
+     max_displacement: int for the maximum MIP0 padding required for processing
+     provenance: dict to be saved as json file with each new directory created
   """
-  def __init__(self, info, provenance):
-    self.info = info
+  def __init__(self, cv_path, max_mip, max_displacement, provenance):
+    self.info = self.create_info(CloudVolume(cv_path), max_mip, max_displacement)
     self.provenance = provenance
-    self.num_scales = len(info['scales'])
+    self.num_scales = len(self.info['scales'])
     self.dst_chunk_sizes = []
     self.dst_voxel_offsets = []
     self.vec_chunk_sizes = [] 
     self.vec_voxel_offsets = []
     self.vec_total_sizes = []
     self.compile_scales()
-    # self.read = {}
-    # self.write = {}
     self.cvs = {}
-    # self.read_kwargs = {'bounded': False, 'progress': False}
     self.kwargs = {'bounded': False, 'progress': False, 
                    'autocrop': True, 'non_aligned_writes': False, 
                    'cdn_cache': False}
-  
-  # def for_read(self, k):
-  #   return self.read[k]
-
-  # def for_write(self, k):
-  #   return self.write[k]
   
   def __getitem__(self, k):
     return self.cvs[k]
@@ -154,10 +153,7 @@ class CloudManager():
       print('Use existing info file for MiplessCloudVolume at {0}'.format(path))
       info = None
       provenance = None
-    # self.read[path] = CV(path, mkdir=False, info=info, provenance=provenance, 
-    #                   fill_missing=fill_missing, **self.read_kwargs)
     self.cvs[path] = CV(path, mkdir=overwrite, info=info, provenance=provenance, 
                        fill_missing=fill_missing, **self.kwargs)
-    # return {'read': self.read[path], 'write': self.write[path]}
     return self.cvs[path]
 
