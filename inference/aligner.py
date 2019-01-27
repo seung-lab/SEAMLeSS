@@ -68,6 +68,7 @@ class Aligner:
     
     self.distributed = (queue_name != None)
     self.queue_name = queue_name
+    self.task_queue = TaskQueue(queue_name, n_threads=0)
 
     self.int_field =  int_field
     self.p_render = p_render
@@ -1189,7 +1190,7 @@ class Aligner:
             tasks.append(alignment_tasks.CopyTask(z, dst_cv, dst_z, task_patches, mip=mip))
 
         self.upload_tasks(tasks)
-        self.task_handler.wait_until_ready()
+        self.task_queue.block_until_empty()
     else: 
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -1253,10 +1254,13 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
+    empty = False
+    while not empty:
       with Storage(path) as stor:
           lst = stor.list_files(prefix=prefix)
       i = sum(1 for _ in lst)
-      return i == chunks_len
+      empty = (i == chunks_len)
+      sleep(1.75)
 
   def wait_for_queue_empty_range(self, path, prefix, z_range, chunks_len):
       i = 0
@@ -1289,9 +1293,7 @@ class Aligner:
                                                    mip, dst_cv, dst_z))
         self.upload_tasks(tasks)
         if wait:
-            def stop_fn():
-                return self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
-            #self.task_handler.wait_until_ready()
+          self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
@@ -1327,9 +1329,7 @@ class Aligner:
               mip, dst_cv, dst_z, batch
             ))
         self.upload_tasks(tasks)
-        #self.task_handler.wait_until_ready()
-        def stop_fn():
-            return self.wait_for_queue_empty(dst_cv.path,'render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/', len(chunks))
+        self.wait_for_queue_empty(dst_cv.path,'render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch_batch(src_z, field_cv, field_z,
@@ -1364,9 +1364,7 @@ class Aligner:
             tasks.append(alignment_tasks.RenderCVTask(src_z, field_cv, field_z, task_patches,
                                                       mip, dst_cv, dst_z))
         self.upload_tasks(tasks)
-        #self.task_handler.wait_until_ready()
-        def stop_fn():
-            self.wait_for_queue_empty(dst_cv.path, 'render_cv/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
+        self.wait_for_queue_empty(dst_cv.path, 'render_cv/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_using_gridsample_cv(src_z, field_cv,
@@ -1393,7 +1391,7 @@ class Aligner:
                                                            task_patches, image_mip, 
                                                            vector_mip, dst_cv, dst_z))
         self.upload_tasks(tasks)
-        # self.task_handler.wait_until_ready()
+        self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, patch_bbox, image_mip, vector_mip)
@@ -1420,7 +1418,7 @@ class Aligner:
       for z in z_range:
         self.downsample(cv, z, bbox, mip, mip+1, wait=False)
       if self.distributed:
-        self.task_handler.wait_until_ready()
+        self.task_queue.block_until_empty()
     
   def downsample(self, cv, z, bbox, source_mip, target_mip, wait=True):
     """Chunkwise downsample
@@ -1443,7 +1441,7 @@ class Aligner:
               tasks.append(alignment_tasks.DownsampleTask(cv, z, task_patches, mip=m))
           self.upload_tasks(tasks)
           if wait:
-            self.task_handler.wait_until_ready()
+            self.task_queue.block_until_empty()
       else:
           def chunkwise(patch_bbox):
             print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
@@ -1470,7 +1468,7 @@ class Aligner:
 #          for c in chunks:
 #              tasks.append(alignment_tasks.DownsampleTask(cv, z, c, mip=m))
 #          self.upload_tasks(tasks)
-#          self.task_handler.wait_until_ready()
+#          self.task_queue.block_until_empty()
 #      else:
 #          #for c in chunks:
 #          #  print ("Downsampling {} to mip {}".format(c.__str__(mip=0), m))
@@ -1584,7 +1582,7 @@ class Aligner:
   #           vector_vote_task = make_vector_vote_task_message(z, read_F_cv, write_F_cv,
   #                                                            patch_bbox, mip, inverse, T) 
   #           self.task_handler.send_message(vector_vote_task)
-  #       self.task_handler.wait_until_ready()
+  #       self.task_queue.block_until_empty()
   #   #for patch_bbox in chunks:
   #   else:
   #       def chunkwise(patch_bbox):
@@ -1622,7 +1620,7 @@ class Aligner:
                                                              negative_offsets, 
                                                              serial_operation))
         self.upload_tasks(tasks)
-        # self.task_handler.wait_until_ready()
+        self.task_queue.block_until_empty()
     #for patch_bbox in chunks:
     else:
         def chunkwise(patch_bbox):
@@ -1736,14 +1734,14 @@ class Aligner:
       if batch_count == batch_size and self.distributed:
         print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
         print('batch_count is {}'.format(batch_count), flush = True)
-        self.task_handler.wait_until_ready()
+        self.task_queue.block_until_empty()
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
     # report on remaining sections after batch 
     if batch_count > 0 and self.distributed:
       print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
-      self.task_handler.wait_until_ready()
+      self.task_queue.block_until_empty()
       end = time()
       print (": {} sec".format(end - start))
 
@@ -1778,18 +1776,18 @@ class Aligner:
                        render=render_match)
       if batch_count == batch_size and self.distributed and wait:
         print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
-        self.task_handler.wait_until_ready()
+        self.task_queue.block_until_empty()
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
     # report on remaining sections after batch 
     if batch_count > 0 and self.distributed and wait:
       print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
-      self.task_handler.wait_until_ready()
+      self.task_queue.block_until_empty()
     end = time()
     print (": {} sec".format(end - start))
     #if self.p_render:
-    #    self.task_handler.wait_until_ready()
+    #    self.task_queue.block_until_empty()
  
   def compose_pairwise(self, z_range, compose_start, bbox, mip,
                              forward_compose=True, inverse_compose=True, 
@@ -1960,7 +1958,7 @@ class Aligner:
                                                       dir_z, patch_bbox,
                                                       mip, sigma))
         self.upload_tasks(tasks)
-        self.task_handler.wait_until_ready()
+        self.task_queue.block_until_empty()
     else:
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -1995,7 +1993,7 @@ class Aligner:
             tasks.append(alignment_tasks.ComposeTask(z, coarse_cv, fine_cv, dst_cv,
                                                    patch_bbox, coarse_mip, fine_mip))
         self.upload_tasks(tasks)
-        # self.task_handler.wait_until_ready()
+        self.task_queue.block_until_empty()
     else:
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -2041,7 +2039,7 @@ class Aligner:
             ))
 
         self.upload_tasks(tasks)
-        # self.task_handler.wait_until_ready()
+        self.task_queue.block_until_empty()
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_gridsample_cv_batch(z_range, src_cv, field_cv, 
