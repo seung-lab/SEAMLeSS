@@ -20,24 +20,25 @@ class CloudManager():
     self.vec_voxel_offsets = []
     self.vec_total_sizes = []
     self.compile_scales()
-    self.read = {}
-    self.write = {}
-    self.read_kwargs = {'bounded': False, 'progress': False}
-    self.write_kwargs = {'bounded': False, 'progress': False, 
-                         'autocrop': True, 'non_aligned_writes': False, 
-                         'cdn_cache': False}
+    # self.read = {}
+    # self.write = {}
+    self.cvs = {}
+    # self.read_kwargs = {'bounded': False, 'progress': False}
+    self.kwargs = {'bounded': False, 'progress': False, 
+                   'autocrop': True, 'non_aligned_writes': False, 
+                   'cdn_cache': False}
   
-  def for_read(self, k):
-    return self.read[k]
-
-  def for_write(self, k):
-    return self.write[k]
-  
-  # def __getitem__(self, k):
+  # def for_read(self, k):
   #   return self.read[k]
 
-  # def __contains__(self, k):
-  #   return k in self.read
+  # def for_write(self, k):
+  #   return self.write[k]
+  
+  def __getitem__(self, k):
+    return self.cvs[k]
+
+  def __contains__(self, k):
+    return k in self.cvs
 
   @classmethod
   def create_info(cls, src_cv, max_mip, max_offset, 
@@ -153,9 +154,10 @@ class CloudManager():
       print('Use existing info file for MiplessCloudVolume at {0}'.format(path))
       info = None
       provenance = None
-    self.read[path] = CV(path, mkdir=False, info=info, provenance=provenance, 
-                      fill_missing=fill_missing, **self.read_kwargs)
-    self.write[path] = CV(path, mkdir=overwrite, info=info, provenance=provenance, 
-                       fill_missing=fill_missing, **self.write_kwargs)
-    return {'read': self.read[path], 'write': self.write[path]}
+    # self.read[path] = CV(path, mkdir=False, info=info, provenance=provenance, 
+    #                   fill_missing=fill_missing, **self.read_kwargs)
+    self.cvs[path] = CV(path, mkdir=overwrite, info=info, provenance=provenance, 
+                       fill_missing=fill_missing, **self.kwargs)
+    # return {'read': self.read[path], 'write': self.write[path]}
+    return self.cvs[path]
 
