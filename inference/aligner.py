@@ -25,6 +25,7 @@ from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
+from pathlib import Path
 from utilities.archive import ModelArchive
 
 import torch.nn as nn
@@ -126,11 +127,13 @@ class Aligner:
        the ModelArchive at that model_path
     """
     if model_path in self.model_archives:
+      print('Loading model {0} from cache'.format(model_path))
       return self.model_archives[model_path]
     else:
-      model_path = Path(model_path)
-      model_name = model_path.stem
-      archive = ModelArchive(model_name, height=args.size)
+      print('Adding model {0} to the cache'.format(model_path))
+      path = Path(model_path)
+      model_name = path.stem
+      archive = ModelArchive(model_name)
       self.model_archives[model_path] = archive
       return archive
 
@@ -144,6 +147,7 @@ class Aligner:
     return data == valid_val
 
   def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None):
+    print('get_image for {0}'.format(bbox.stringify(z)))
     return self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
                              to_tensor=to_tensor, normalizer=normalizer)
 
@@ -154,6 +158,7 @@ class Aligner:
     image = self.get_image(image_cv, z, bbox, image_mip,
                            to_tensor=to_tensor, normalizer=normalizer)
     if mask_cv is not None:
+      print('masking image')
       mask = self.get_mask(mask_cv, z, bbox, 
                            src_mip=mask_mip,
                            dst_mip=image_mip, valid_val=mask_val)
@@ -260,7 +265,7 @@ class Aligner:
     
     return data
 
-  def save_image(self, cv, z, float_patch, bbox, mip, to_uint8=True):
+  def save_image(self, float_patch, cv, z, bbox, mip, to_uint8=True):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = np.transpose(float_patch, (2,3,0,1))
@@ -285,7 +290,7 @@ class Aligner:
   # Field IO + handlers #
   #######################
 
-  def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True, as_int16=False):
+  def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True, as_int16=True):
     """Retrieve vector field from CloudVolume.
 
     Args
@@ -355,15 +360,15 @@ class Aligner:
     h = h.cpu().numpy()[:,crop:-crop,crop:-crop,:]
     return h
 
-  def save_field(self, cv, z, field, bbox, mip, relative, as_int16=False):
+  def save_field(self, field, cv, z, bbox, mip, relative, as_int16=True):
     """Save vector field to CloudVolume.
 
     Args
-      cv: MiplessCloudVolume to store vector field as MIP0 residuals in X,Y,Z,2 order
-      z: int for section index
       field: ndarray vector field with dimensions of bbox at mip with absolute MIP0 
         residuals, using grid_sample convention of (Z,Y,X,2), where the components in 
         the final dimension are (x,y).
+      cv: MiplessCloudVolume to store vector field as MIP0 residuals in X,Y,Z,2 order
+      z: int for section index
       bbox: BoundingBox for X & Y extent of the field to be stored
       mip: int for resolution at which to store the vector field
       relative: bool indicating whether to convert MIP0 residuals to relative residuals
@@ -376,8 +381,8 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     field = np.transpose(field, (1,2,0,3))
-    print('save_field at {bbox}, z={z}, MIP{mip} to {path}'.format(bbox=bbox,
-                                 z=z, mip=mip, path=cv.path))
+    print('save_field for {0} at MIP{1} to {2}'.format(bbox.stringify(z),
+                                                       mip, cv.path))
     if as_int16:
       if(np.max(field) > 8192 or np.min(field) < -8191):
         print('Value in field is out of range of int16 max: {}, min: {}'.format(
@@ -410,14 +415,13 @@ class Aligner:
     avg_y = self.avg_field(field[0,...,1])
     return torch.from_numpy(np.float32([avg_x, avg_y]))
 
-  #######################
-  # CloudVolume methods #
-  #######################
+  #############################
+  # CloudVolume chunk methods #
+  #############################
 
-  def compute_field(self, model_path, src_z, src_cv, tgt_z, tgt_cv, field_cv, 
-                                   bbox, mip, pad, as_int16=True,
-                                   src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
-                                   tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0):
+  def compute_field_chunk(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad, 
+                          src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
+                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
     Args:
@@ -426,42 +430,39 @@ class Aligner:
       src_cv: MiplessCloudVolume with source image      
       tgt_z: int of section to be warped to
       tgt_cv: MiplessCloudVolume with target image
-      field_cv: MiplessCloudVolume of where to write the output field
       bbox: BoundingBox for region of both sections to process
       mip: int of MIP level to use for bbox 
       pad: int for amount of padding to add to the bbox before processing
       mask_cv: MiplessCloudVolume with mask to be used for both src & tgt image
       
     Returns:
-      field to the size of bbox
+      field with MIP0 residuals with the shape of bbox at MIP mip
     """
     archive = self.get_model_archive(model_path)
     model = archive.model
     normalizer = archive.preprocessor
-    print ("Computing residual for region {0}, {1} <-- {2}.".format(bbox.__str__(mip=0),
-                                                              tgt_z, src_z), flush=True)
+    print('compute_field for {0} to {1}'.format(bbox.stringify(src_z),
+                                                bbox.stringify(tgt_z)))
     padded_bbox = deepcopy(bbox)
     padded_bbox.uncrop(pad, mip=mip)
 
     src_patch = self.get_masked_image(src_cv, src_z, padded_bbox, mip,
                                 mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                 mask_val=src_mask_val,
-                                to_tensor=True, noramlizer=normalizer)
+                                to_tensor=True, normalizer=normalizer)
     tgt_patch = self.get_masked_image(tgt_cv, tgt_z, padded_bbox, mip,
                                 mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
                                 mask_val=tgt_mask_val,
-                                to_tensor=True, noramlizer=normalizer)
+                                to_tensor=True, normalizer=normalizer)
 
     # model produces field in relative coordinates
     field = model(src_patch, tgt_patch)
     field = self.rel_to_abs_residual(field, mip)
+    field = field[:,pad:-pad,pad:-pad,:]
+    return field
 
-    field = field.data.cpu().numpy()[:,pad:-pad,pad:-pad,:]
-    self.save_field(field_cv, src_z, field, bbox, mip, relative=False, as_int16=as_int16)
-
-  def vector_vote(self, z, z_offset_list, f_cv_dict, read_F_cv, write_F_cv, bbox, mip, 
-                        serial_operation=True, inverse=False, softmin_temp=1, 
-                        pad=1024, as_int16=True):
+  def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
+                        inverse=False, softmin_temp=-1, serial=True):
     """Compute consensus vector field using pairwise vector fields with earlier sections. 
 
     Vector voting requires that vector fields be composed to a common section
@@ -473,44 +474,33 @@ class Aligner:
        Reimplement field_cache
 
     Args:
-       z: int for section index to be processed
-       # z_range: list of ints, indicating sections that will be sequentially processed
-       tgt_range: list of ints, indicating the set of offsets of composed fields to use
-        in the comparison
-       read_F_cv: MiplessCloudVolume where the composed fields will be read
-       write_F_cv: MiplessCloudVolume where the composed fields will be written
-       bbox: BoundingBox, the region of interest over which to vote
-       mip: int, the data MIP level
-       serial_operation: bool indicating to if a previously composed field is 
+       pairwise_cvs: dict of MiplessCloudVolumes, indexed by their z_offset
+       vvote_cv: MiplessCloudVolume where vector-voted field will be stored 
+       z: int for section index to be vector voted 
+       bbox: BoundingBox for region where all fields will be loaded/written
+       mip: int for MIP level of fields
+       softmin_temp: softmin temperature (default will be 2**mip)
+       inverse: bool indicating if pairwise fields are to be treated as inverse fields 
+       serial: bool indicating to if a previously composed field is 
         not necessary
-       inverse: bool, indicates the direction of composition to use (only used if
-        serial_operation=False)
-       softmin_temp: float for the temperature of the softmin used during comparison
     """
     fields = []
-    for z_offset in z_offsets:
-      if serial_operation:
-        f_cv = f_cv_dict[z_offset] 
-        F = self.get_field(f_cv, z, bbox, mip, relative=False, to_tensor=True,
-                           as_int16=as_int16)
+    for z_offset, f_cv in pairwise_cvs.items():
+      if serial:
+        F = self.get_field(f_cv, z, bbox, mip, relative=False, to_tensor=True)
       else:
+        G_cv = vvote_cv
         if inverse:
-          f_z = z-z_offset
-          f_cv = f_cv_dict[-z_offset] 
-          G_z = z-z_offset
-          F = self.compose_field_chunks(f_z, G_z, f_cv, G_cv, bbox, mip, mip, mip,
-                                        pad, as_int16=as_int16)
+          f_z = z+z_offset
+          G_z = z+z_offset
+          F = self.cloudsample_compose_chunk(f_z, G_z, f_cv, G_cv, bbox, mip, mip, mip)
         else:
           f_z = z
-          f_cv = f_cv_dict[z_offset] 
-          G_z = z-z_offset
-          F = self.compose_field_chunks(G_z, f_z, G_cv, f_cv, bbox, mip, mip, mip,
-                                        pad, as_int16=as_int16)
-
-    fields.append(F)
-    field = vector_vote(fields, T=softmin_temp)
-    field = field.data.cpu().numpy() 
-    self.save_field(write_F_cv, z, field, bbox, mip, relative=False, as_int16=as_int16)
+          G_z = z+z_offset
+          F = self.cloudsample_compose_chunk(G_z, f_z, G_cv, f_cv, bbox, mip, mip, mip)
+      print(type(F))
+      fields.append(F)
+    return vector_vote(fields, T=softmin_temp)
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
     """Compute the inverse vector field for a given bbox 
@@ -545,8 +535,8 @@ class Aligner:
     invf = invf.data.cpu().numpy() 
     self.save_field(dst_cv, z, invf, bbox, mip, relative=True, as_int16=as_int16) 
 
-  def cloudsample_image(self, image_z, field_z, image_cv, field_cv, 
-                              bbox, image_mip, field_mip,
+  def cloudsample_image_chunk(self, image_cv, field_cv, image_z, field_z, 
+                              bbox, image_mip, field_mip, 
                               mask_cv=None, mask_mip=0, mask_val=0,
                               as_int16=True):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
@@ -557,18 +547,23 @@ class Aligner:
          field_cv: MiplessCloudVolume storing the vector field
          bbox: BoundingBox for output region to be warped
          image_mip: int for MIP of the image
-         field_mip: int for MIP of the vector field 
+         field_mip: int for MIP of the vector field; must be >= image_mip.
+          If field_mip > image_mip, the field will be upsampled.
 
       Returns:
-         warped image
+         warped image with shape of bbox at MIP image_mip
       """
-      f =  self.get_field(field_cv, field_z, bbox, field_mip, relative=False,
-                          to_tensor=True, as_int16=as_int16) 
+      assert(field_mip >= image_mip)
+      pad = 2**(image_mip+1)
+      padded_bbox = deepcopy(bbox)
+      padded_bbox.uncrop(pad, mip=image_mip)
+      f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
+                          to_tensor=True)
       x_range = bbox.x_range(mip=0)
       y_range = bbox.y_range(mip=0)
       if is_identity(f):
         image = self.get_image(image_cv, image_z, bbox, image_mip,
-                               adjust_contrast=False, to_tensor=True)
+                               to_tensor=True, normalize=None)
         if mask_cv is not None:
           mask = self.get_mask(mask_cv, image_z, bbox, 
                                src_mip=mask_mip,
@@ -578,22 +573,22 @@ class Aligner:
       else:
         distance = self.profile_field(f)
         distance = (distance//(2**field_mip)) * 2**field_mip
-        new_bbox = self.adjust_bbox(bbox, distance)
+        new_bbox = self.adjust_bbox(padded_bbox, distance)
         print("distance is", distance)
         f = f - distance.to(device = self.device)
-        res = self.abs_to_rel_residual(f, bbox, field_mip)
+        res = self.abs_to_rel_residual(f, padded_bbox, field_mip)
         field = res.to(device = self.device)
-        if field_mip != image_mip:
+        if field_mip > image_mip:
           field = upsample_field(field, field_mip, image_mip)
-        image = self.get_masked_image(image_cv, image_z, padded_bbox, mip,
+        image = self.get_masked_image(image_cv, image_z, new_bbox, image_mip,
                                 mask_cv=mask_cv, mask_mip=mask_mip,
                                 mask_val=mask_val,
-                                to_tensor=True, noramlizer=None)
+                                to_tensor=True, normalizer=None)
         image = gridsample_residual(image, field, padding_mode='zeros')
+        image = image[:,:,pad:-pad,pad:-pad]
         return image
 
-  def cloudsample_compose(self, f_z, g_z, f_cv, g_cv, bbox, f_mip, g_mip, dst_mip,
-                              as_int16=True):
+  def cloudsample_compose_chunk(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip, dst_mip):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume field objects.
 
       Gridsampling a field is a composition, such that f(g(x)).
@@ -700,25 +695,28 @@ class Aligner:
                          to_tensor=True)
     return cpc(src, tgt, scale_factor, device=self.device)
 
-  ########################
-  # Chunkwise operations #
-  ########################
+  ######################
+  # Dataset operations #
+  ######################
 
-  def copy_chunkwise(self, cm, src_z, dst_z, src_cv, dst_cv, bbox, mip, 
-                           mask_cv=None, mask_mip=0, mask_val=0):
-    """Chunkwise copying of a section 
+  def copy(self, cm, src_z, dst_z, src_cv, dst_cv, bbox, mip, 
+                           mask_cv=None, mask_mip=0, mask_val=0, wait=True):
+    """Copy a section 
 
     Args:
        cm: CloudManager that corresponds to the src_cv, tgt_cv, and field_cv
        model_path: str for relative path to ModelArchive
        src_z: int for section index of source image
-       tgt_z: int for section index of target image
-       src_cv: MiplessCloudVolume where source image to be loaded
-       tgt_cv: MiplessCloudVolume where target image to be loaded
-       field_cv: MiplessCloudVolume where output vector field will be written
+       dst_z: int for section index of destination image
+       src_cv: MiplessCloudVolume where source image is stored 
+       dst_cv: MiplessCloudVolume where destination image will be stored 
        bbox: BoundingBox for region where source and target image will be loaded,
         and where the resulting vector field will be written
        mip: int for MIP level images will be loaded and field will be stored at
+       mask_cv: MiplessCloudVolume where source mask is stored
+       mask_mip: int for MIP level at which source mask is stored
+       mask_val: int for pixel value in the mask that should be zero-filled
+       wait: bool indicating whether to wait for all tasks must finish before proceeding
     """
     # print ("moving section {} mip {} to dest".format(z, mip), end='', flush=True)
     start = time()
@@ -733,18 +731,155 @@ class Aligner:
                 task_patches.append(chunks[j])
             tasks.append(make_copy_task_message(z, dst_cv, dst_z, task_patches, mip=mip))
         self.pool.map(self.task_handler.send_message, tasks)
-        self.task_handler.wait_until_ready()
+        if wait:
+          self.task_handler.wait_until_ready()
     else: 
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
           image = self.get_masked_image(src_cv, src_z, patch_bbox, mip,
                                   mask_cv=mask_cv, mask_mip=mask_mip,
                                   mask_val=mask_val,
-                                  to_tensor=True, normalizer=None)
-          image = image.cpu().numpy()
-          self.save_image(dst_cv, dst_z, image, patch_bbox, mip)
+                                  to_tensor=False, normalizer=None)
+          self.save_image(image, dst_cv, dst_z, patch_bbox, mip)
         self.pool.map(chunkwise, chunks)
 
+    end = time()
+    print (": {} sec".format(end - start))
+
+  def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv, 
+  				  src_z, tgt_z, bbox, mip, pad, wait=True):
+    """Compute field to warp src section to tgt section 
+  
+    Args:
+       cm: CloudManager that corresponds to the src_cv, tgt_cv, and field_cv
+       model_path: str for relative path to ModelArchive
+       src_cv: MiplessCloudVolume where source image to be loaded
+       tgt_cv: MiplessCloudVolume where target image to be loaded
+       field_cv: MiplessCloudVolume where output vector field will be written
+       src_z: int for section index of source image
+       tgt_z: int for section index of target image
+       bbox: BoundingBox for region where source and target image will be loaded,
+        and where the resulting vector field will be written
+       mip: int for MIP level images will be loaded and field will be stored at
+       pad: int for amount of padding to add to bbox before processing
+    """
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+  				  cm.dst_voxel_offsets[mip], mip=mip, 
+  				  max_mip=cm.num_scales)
+    print ("compute residuals between {} to slice {} at mip {} ({} chunks)".
+  	 format(src_z, tgt_z, mip, len(chunks)), flush=True)
+    if self.distributed:
+      tasks = []
+      for patch_bbox in chunks:
+        tasks.append(make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, 
+  						 field_cv, patch_bbox, mip))
+      self.pool.map(self.task_handler.send_message, tasks)
+      if wait:
+        self.task_handler.wait_until_ready()
+    else:
+      def chunkwise(patch_bbox):
+        field = self.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z, 
+  				 patch_bbox, mip, pad)
+        field = field.data.cpu().numpy()
+        self.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
+      self.pool.map(chunkwise, chunks)
+    end = time()
+    print (": {} sec".format(end - start))
+  
+  def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
+                   bbox, src_mip, field_mip, 
+	           mask_cv=None, mask_mip=0, mask_val=0, wait=True):
+    """Warp image in src_cv by field in field_cv and save result to dst_cv
+
+    Args:
+       cm: CloudManager that corresponds to the src_cv, field_cv, & dst_cv
+       src_cv: MiplessCloudVolume where source image is stored 
+       field_cv: MiplessCloudVolume where vector field is stored 
+       dst_cv: MiplessCloudVolume where destination image will be written 
+       src_z: int for section index of source image
+       field_z: int for section index of vector field 
+       dst_z: int for section index of destination image
+       bbox: BoundingBox for region where source and target image will be loaded,
+        and where the resulting vector field will be written
+       src_mip: int for MIP level of src images 
+       field_mip: int for MIP level of vector field; field_mip >= src_mip
+       mask_cv: MiplessCloudVolume where source mask is stored
+       mask_mip: int for MIP level at which source mask is stored
+       mask_val: int for pixel value in the mask that should be zero-filled
+       wait: bool indicating whether to wait for all tasks must finish before proceeding
+    """
+    print('Rendering to {0}'.format(bbox.stringify(dst_z)))
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[src_mip],
+                                    cm.dst_voxel_offsets[src_mip], mip=src_mip, 
+                                    max_mip=cm.num_scales)
+    if self.distributed:
+        tasks = []
+        for i in range(0, len(chunks), self.task_batch_size):
+            task_patches = []
+            for j in range(i, min(len(chunks), i + self.task_batch_size)):
+                task_patches.append(chunks[j])
+            tasks.append(make_render_task_message(src_z, field_cv, field_z, task_patches, 
+                                                   mip, dst_cv, dst_z))
+        self.pool.map(self.task_handler.send_message, tasks)
+        if wait:
+          self.task_handler.wait_until_ready()
+    else:
+        def chunkwise(patch_bbox):
+          image = self.cloudsample_image_chunk(src_cv, field_cv, src_z, field_z, 
+                                               patch_bbox, src_mip, field_mip, 
+                                               mask_cv=mask_cv, mask_mip=mask_mip,
+                                               mask_val=mask_val)
+          image = image.cpu().numpy()
+          self.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
+        self.pool.map(chunkwise, chunks)
+    end = time()
+    print (": {} sec".format(end - start))
+
+  def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip, 
+                        inverse=False, softmin_temp=-1, serial=False, 
+                        wait=True):
+    """Compute consensus field from a set of vector fields
+
+    Note: 
+       tgt_z = src_z + z_offset
+
+    Args:
+       cm: CloudManager that corresponds to the src_cv, field_cv, & dst_cv
+       pairwise_cvs: dict of MiplessCloudVolumes, indexed by their z_offset
+       vvote_cv: MiplessCloudVolume where vector-voted field will be stored 
+       z: int for section index to be vector voted 
+       bbox: BoundingBox for region where all fields will be loaded/written
+       mip: int for MIP level of fields
+       softmin_temp: softmin temperature (default will be 2**mip)
+       inverse: bool indicating if pairwise fields are to be treated as inverse fields 
+       serial: bool indicating to if a previously composed field is 
+        not necessary
+       wait: bool indicating whether to wait for all tasks must finish before proceeding
+    """
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[mip],
+                                    cm.vec_voxel_offsets[mip], mip=mip)
+    if self.distributed:
+        tasks = []
+        for patch_bbox in chunks:
+            tasks.append(make_vector_vote_task_message(z_range, read_F_cv, write_F_cv,
+                                                             patch_bbox, mip, inverse, T, 
+                                                             negative_offsets, 
+                                                             serial_operation))
+        self.pool.map(self.task_handler.send_message, tasks)
+        if wait:
+          self.task_handler.wait_until_ready()
+    else:
+        def chunkwise(patch_bbox):
+            field = self.vector_vote_chunk(pairwise_cvs, vvote_cv, z, patch_bbox, mip, 
+                             inverse=inverse, softmin_temp=softmin_temp, 
+                             serial=serial)
+            field = field.data.cpu().numpy()
+            self.save_field(field, vvote_cv, z, patch_bbox, mip, relative=False)
+
+        self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
 
@@ -762,7 +897,7 @@ class Aligner:
        dst_mip: int MIP level of output image, will dictate the size of the chunks
         used for the pearson r
     """
-    self.total_bbox = bbox
+    
     print('Compute CPC of MIP{0} at MIP{1}, {2}<-({2},{3})'.format(src_mip, dst_mip, 
                                                                    src_z, tgt_z))
     start = time()
@@ -787,39 +922,6 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def render_chunkwise(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip, wait=True):
-    """Chunkwise render
-
-    Warp the image in BBOX at MIP and SRC_Z in CloudVolume dir at SRC_Z_OFFSET, 
-    using the field at FIELD_Z in CloudVolume dir at FIELD_Z_OFFSET, and write 
-    the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX 
-    appropriately.
-    """
-    self.total_bbox = bbox
-    print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
-    start = time()
-    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
-                                    cm.dst_voxel_offsets[mip], mip=mip, render=True)
-    if self.distributed:
-        tasks = []
-        for i in range(0, len(chunks), self.task_batch_size):
-            task_patches = []
-            for j in range(i, min(len(chunks), i + self.task_batch_size)):
-                task_patches.append(chunks[j])
-            tasks.append(make_render_task_message(src_z, field_cv, field_z, task_patches, 
-                                                   mip, dst_cv, dst_z))
-        self.pool.map(self.task_handler.send_message, tasks)
-        if wait:
-          self.task_handler.wait_until_ready()
-    else:
-        def chunkwise(patch_bbox):
-          warped_patch = self.cloudsample_image(src_z, field_z, src_cv, field_cv, 
-                                                patch_bbox, image_mip, field_mip)
-          self.save_image(dst_cv, dst_z, warped_patch, patch_bbox, mip)
-        self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
-
   def render_batch_chunkwise(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip,
                    batch):
     """Chunkwise render
@@ -829,7 +931,7 @@ class Aligner:
     the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX 
     appropriately.
     """
-    self.total_bbox = bbox
+    
     print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
     start = time()
     print("chunk_size: ", cm.dst_chunk_sizes[mip], cm.dst_voxel_offsets[mip])
@@ -883,42 +985,6 @@ class Aligner:
             self.save_image(cv, z, downsampled_patch, patch_bbox, m)
           self.pool.map(chunkwise, chunks)
 
-  def compute_field_chunkwise(self, cm, model_path, src_z, tgt_z, src_cv, tgt_cv, field_cv,
-                                           bbox, mip):
-    """Chunkwise vector field inference for section pair
-
-    Args:
-       cm: CloudManager that corresponds to the src_cv, tgt_cv, and field_cv
-       model_path: str for relative path to ModelArchive
-       src_z: int for section index of source image
-       tgt_z: int for section index of target image
-       src_cv: MiplessCloudVolume where source image to be loaded
-       tgt_cv: MiplessCloudVolume where target image to be loaded
-       field_cv: MiplessCloudVolume where output vector field will be written
-       bbox: BoundingBox for region where source and target image will be loaded,
-        and where the resulting vector field will be written
-       mip: int for MIP level images will be loaded and field will be stored at
-    """
-    start = time()
-    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
-                                    cm.dst_voxel_offsets[mip], mip=mip, 
-                                    max_mip=cm.num_scales)
-    print ("compute residuals between {} to slice {} at mip {} ({} chunks)".
-           format(src_z, tgt_z, mip, len(chunks)), flush=True)
-    if self.distributed:
-      tasks = []
-      for patch_bbox in chunks:
-        tasks.append(make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, 
-                                                   field_cv, patch_bbox, mip))
-      self.pool.map(self.task_handler.send_message, tasks)
-    else:
-      def chunkwise(patch_bbox):
-        self.compute_field(model_path, src_z, tgt_z, src_cv, tgt_cv, 
-                           field_cv, patch_bbox, mip)
-      self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
-    
   def invert_field_chunkwise(self, z, src_cv, dst_cv, bbox, mip, optimizer=False):
     """Chunked-processing of vector field inversion 
     
@@ -945,46 +1011,6 @@ class Aligner:
     #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
           self.invert_field(z, src_cv, dst_cv, patch_bbox, mip)
-        self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
-
-  def vector_vote_chunkwise(self, z_range, read_F_cv, write_F_cv, bbox, mip, inverse, 
-                                  softmin_temp=-1, serial_operation=False):
-    """Chunked-processing of vector voting
-
-    Args:
-       z: list of ints for sections to be vector voted
-       read_F_cv: CloudVolume with the vectors to compose against
-       write_F_cv: CloudVolume where the resulting vectors will be written 
-       bbox: boundingbox of region to process
-       mip: field MIP level
-       T: softmin temperature (default will be 2**mip)
-       negative_offsets: bool indicating whether to use offsets less than 0 (z-i <-- z)
-       serial_operation: bool indicating to if a previously composed field is 
-        not necessary
-    """
-    start = time()
-    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[mip],
-                                    cm.vec_voxel_offsets[mip], mip=mip)
-    print("Vector voting for slices {0} @ MIP{1} {2} ({3} chunks)".
-           format(z_range, mip, 'INVERSE' if inverse else 'FORWARD', len(chunks)), flush=True)
-
-    if self.distributed:
-        tasks = []
-        for patch_bbox in chunks:
-            tasks.append(make_vector_vote_task_message(z_range, read_F_cv, write_F_cv,
-                                                             patch_bbox, mip, inverse, T, 
-                                                             negative_offsets, 
-                                                             serial_operation))
-        self.pool.map(self.task_handler.send_message, tasks)
-        # self.task_handler.wait_until_ready()
-    #for patch_bbox in chunks:
-    else:
-        def chunkwise(patch_bbox):
-            self.vector_vote(z_range, read_F_cv, write_F_cv, patch_bbox, mip, 
-                             inverse=inverse, T=T, negative_offsets=negative_offsets,
-                             serial_operation=serial_operation)
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
@@ -1041,7 +1067,7 @@ class Aligner:
         batch_size: (for distributed only) int describing how many sections to issue 
           multi-match tasks for, before waiting for all tasks to complete
     """
-    self.total_bbox = bbox
+    
     m = mip
     batch_count = 0
     start = 0
@@ -1116,7 +1142,7 @@ class Aligner:
         wait: (for distributed only) bool to wait after batch_size for all tasks
           to finish
     """
-    self.total_bbox = bbox
+    
     mip = self.process_low_mip
     batch_count = 0
     start = 0
@@ -1157,7 +1183,7 @@ class Aligner:
        serial_operation: bool indicating to if a previously composed field is 
         not necessary
     """
-    self.total_bbox = bbox
+    
     T = 2**mip
     print('softmin temp: {0}'.format(T))
     if forward_compose:
