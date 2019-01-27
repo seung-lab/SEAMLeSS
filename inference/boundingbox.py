@@ -143,5 +143,9 @@ class BoundingBox:
     return "{}, {}".format(self.x_range(mip), self.y_range(mip))
 
   def stringify(self, z, mip=0):
-    return '{0}, {1}'.format(self.__str__(mip=0), str(z))
+    x_start = self.x_range(mip)[0]    
+    x_stop = self.x_range(mip)[1]    
+    y_start = self.y_range(mip)[0]    
+    y_stop = self.y_range(mip)[1]    
+    return '[{0},{1},{2}], [{3},{4},{5}]'.format(x_start, y_start, z, x_stop, y_stop, z+1)
     
