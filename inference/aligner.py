@@ -11,6 +11,7 @@ from time import time, sleep
 from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
 
+from cloudvolume import Storage
 from cloudvolume.lib import Vec, scatter
 import numpy as np
 import scipy
@@ -1289,8 +1290,10 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(alignment_tasks.RenderTask(src_z, field_cv, field_z, task_patches, 
-                                                   mip, dst_cv, dst_z))
+            tasks.append(alignment_tasks.RenderTask(
+              src_z, field_cv, field_z, task_patches, 
+              mip, dst_cv, dst_z
+            ))
         self.upload_tasks(tasks)
         if wait:
           self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
