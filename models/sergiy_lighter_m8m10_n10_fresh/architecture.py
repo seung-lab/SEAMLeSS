@@ -62,7 +62,7 @@ class Model(nn.Module):
         for m in self.mips:
             fms = 24
             self.aligndict[m] = Aligner(fms=[2, fms, fms, fms, fms, 2], k=7).cuda()
-            with (path/'12_21_n10_fresh_s1007_mip_10_8_module{}.pth.tar'.format(m)).open('rb') as f:
+            with (path/'01_25_n10_fresh_mip_10_8_module{}.pth.tar'.format(m)).open('rb') as f:
                 self.aligndict[m].load_state_dict(torch.load(f))
             self.align.set_mip_processor(self.aligndict[m], m)
         self.lighter = Masker(fms=[1, fms, fms, fms, fms, fms, 1], k=7).cuda()
