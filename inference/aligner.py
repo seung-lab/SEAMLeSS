@@ -745,7 +745,7 @@ class Aligner:
                                                 mask_val))
 
         self.upload_tasks(tasks)
-        self.task_queue.block_until_empty()
+        self.wait_for_queue_empty(dst_cv.path, 'copy_done/'+str(mip)+'_'+str(dst_z), len(chunks))
     else: 
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
