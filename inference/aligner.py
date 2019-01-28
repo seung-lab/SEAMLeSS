@@ -49,7 +49,7 @@ class Aligner:
     self.queue_name = queue_name
     self.task_queue = None
     if queue_name:
-      self.task_queue = TaskQueue(queue_name, n_threads=0)
+      self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
     
     self.chunk_size = (1024, 1024)
     self.device = torch.device('cuda')
