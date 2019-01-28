@@ -602,7 +602,7 @@ class Aligner:
       Returns:
          composed field
       """
-      pad = 2**(dst_mip+1)
+      pad = 2**(dst_mip+3)
       padded_bbox = deepcopy(bbox)
       padded_bbox.uncrop(pad, mip=dst_mip)
       f = self.get_field(f_cv, f_z, padded_bbox, f_mip, relative=False,
