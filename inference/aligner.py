@@ -1397,6 +1397,9 @@ class Aligner:
                                                            vector_mip, dst_cv, dst_z))
         self.pool.map(self.task_handler.send_message, tasks)
         # self.task_handler.wait_until_ready()
+        def stop_fn():
+            return self.wait_for_queue_empty(dst_cv.path, 'render_low_mip/'+str(image_mip)+'_'+str(dst_z)+'/',
+                                             len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, patch_bbox, image_mip, vector_mip)
@@ -1446,42 +1449,16 @@ class Aligner:
               tasks.append(make_downsample_task_message(cv, z, task_patches, mip=m))
           self.pool.map(self.task_handler.send_message, tasks)
           if wait:
-            self.task_handler.wait_until_ready()
+            #self.task_handler.wait_until_ready()
+            def stop_fn():
+                return self.wait_for_queue_empty(cv.path, 'downsample_done/'+str(m)+'_'+str(z)+'/',
+                                                 len(chunks))
       else:
           def chunkwise(patch_bbox):
             print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
             downsampled_patch = self.downsample_patch(cv, z, patch_bbox, m-1)
             self.save_image_patch(cv, z, downsampled_patch, patch_bbox, m)
           self.pool.map(chunkwise, chunks)
-
-#  def downsample(self, cv, z, bbox, source_mip, target_mip):
-#    """Chunkwise downsample
-#
-#    For the CloudVolume dirs at Z_OFFSET, warp the SRC_IMG using the FIELD for
-#    section Z in region BBOX at MIP. Chunk BBOX appropriately and save the result
-#    to DST_IMG.
-#    """
-#    print ("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
-#    for m in range(source_mip+1, target_mip + 1):
-#      chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[m],
-#                                      self.dst[0].dst_voxel_offsets[m], mip=m, render=True)
-#      if self.distributed and len(chunks) > self.task_batch_size * 4:
-#          print("Distributed downsampling to mip", m, len(chunks)," chunks")
-#          #for c in chunks:
-#          #  print ("distributed Downsampling {} to mip {}".format(c.__str__(mip=0), m))
-#          for c in chunks:
-#              downsample_task = make_downsample_task_message(cv, z, c, mip=m)
-#              self.task_handler.send_message(downsample_task) 
-#          self.task_handler.wait_until_ready()
-#      else:
-#          #for c in chunks:
-#          #  print ("Downsampling {} to mip {}".format(c.__str__(mip=0), m))
-#          def chunkwise(patch_bbox):
-#            print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
-#            downsampled_patch = self.downsample_patch(cv, z, patch_bbox, m-1)
-#            self.save_image_patch(cv, z, downsampled_patch, patch_bbox, m)
-#          self.pool.map(chunkwise, chunks)
-
 
   def render_section_all_mips(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip, wait=True):
     self.render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip, wait=wait)
@@ -1493,7 +1470,7 @@ class Aligner:
       self.downsample(dst_cv, dst_z, bbox, image_mip, self.render_high_mip)
 
   def compute_section_pair_residuals(self, src_z, src_cv, tgt_z, tgt_cv, field_cv,
-                                           bbox, mip):
+                                     bbox, mip):
     """Chunkwise vector field inference for section pair
 
     Args:
@@ -1625,6 +1602,10 @@ class Aligner:
                                                              serial_operation))
         self.pool.map(self.task_handler.send_message, tasks)
         # self.task_handler.wait_until_ready()
+        def stop_fn():
+            self.wait_for_queue_empty(write_F_cv.path,
+                                      'vv_done/'+str(mip)+'_'+str(z_range[0])+'_'+str(z_range[-1])+'/',
+                                      (z_range[-1]-z_range[0]+1)*len(chunks))
     #for patch_bbox in chunks:
     else:
         def chunkwise(patch_bbox):
@@ -1744,14 +1725,25 @@ class Aligner:
       if batch_count == batch_size and self.distributed:
         print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
         print('batch_count is {}'.format(batch_count), flush = True)
-        self.task_handler.wait_until_ready()
+        def stop_fn():
+            self.wait_for_queue_empty_range(write_F_cv.path,
+                                            'res_and_compose/'+str(mip)+'/',
+                                            range(z-batch_count+1, z+1),
+                                            len(chunks)*batch_count)
+
+        #self.task_handler.wait_until_ready()
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
     # report on remaining sections after batch 
     if batch_count > 0 and self.distributed:
       print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
-      self.task_handler.wait_until_ready()
+      #self.task_handler.wait_until_ready()
+      def stop_fn():
+          self.wait_for_queue_empty_range(write_F_cv.path,
+                                          'res_and_compose/'+str(mip)+'/',
+                                          range(z-batch_count+1, z+1),
+                                          len(chunks)*batch_count)
       end = time()
       print (": {} sec".format(end - start))
 
@@ -1786,14 +1778,26 @@ class Aligner:
                        render=render_match)
       if batch_count == batch_size and self.distributed and wait:
         print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
-        self.task_handler.wait_until_ready()
+        #self.task_handler.wait_until_ready()
+        def stop_fn():
+            self.wait_for_queue_empty_range(cv_path,
+                                            'residual_done'+str(mip)+'/',
+                                            range(z-batch_count+1, z+1),
+                                            len(chunks)*self.tgt_radius*batch_count)
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
     # report on remaining sections after batch 
     if batch_count > 0 and self.distributed and wait:
       print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
-      self.task_handler.wait_until_ready()
+      #self.task_handler.wait_until_ready()
+      def stop_fn():
+          new_range =range(z_range[-1]+1-batch_count, z_range[-1]+1)
+          self.wait_for_queue_empty_range(cv_path,
+                                          'residual_done'+str(mip)+'/',
+                                          new_range,
+                                          len(chunks)*self.tgt_radius*batch_count)
+
     end = time()
     print (": {} sec".format(end - start))
     #if self.p_render:
