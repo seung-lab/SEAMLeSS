@@ -1,4 +1,3 @@
-from process import Process
 from mipless_cloudvolume import MiplessCloudVolume as CV 
 from mipless_cloudvolume import deserialize_miplessCV as DCV
 from cloudvolume.lib import Vec
@@ -493,12 +492,11 @@ class Aligner:
         if inverse:
           f_z = z+z_offset
           G_z = z+z_offset
-          F = self.cloudsample_compose_chunk(f_z, G_z, f_cv, G_cv, bbox, mip, mip, mip)
+          F = self.cloudsample_compose(f_cv, G_cv, f_z, G_z, bbox, mip, mip, mip)
         else:
           f_z = z
           G_z = z+z_offset
-          F = self.cloudsample_compose_chunk(G_z, f_z, G_cv, f_cv, bbox, mip, mip, mip)
-      print(type(F))
+          F = self.cloudsample_compose(G_cv, f_cv, G_z, f_z, bbox, mip, mip, mip)
       fields.append(F)
     return vector_vote(fields, T=softmin_temp)
 
@@ -535,7 +533,7 @@ class Aligner:
     invf = invf.data.cpu().numpy() 
     self.save_field(dst_cv, z, invf, bbox, mip, relative=True, as_int16=as_int16) 
 
-  def cloudsample_image_chunk(self, image_cv, field_cv, image_z, field_z, 
+  def cloudsample_image(self, image_cv, field_cv, image_z, field_z, 
                               bbox, image_mip, field_mip, 
                               mask_cv=None, mask_mip=0, mask_val=0,
                               as_int16=True):
@@ -563,7 +561,7 @@ class Aligner:
       y_range = bbox.y_range(mip=0)
       if is_identity(f):
         image = self.get_image(image_cv, image_z, bbox, image_mip,
-                               to_tensor=True, normalize=None)
+                               to_tensor=True, normalizer=None)
         if mask_cv is not None:
           mask = self.get_mask(mask_cv, image_z, bbox, 
                                src_mip=mask_mip,
@@ -574,7 +572,6 @@ class Aligner:
         distance = self.profile_field(f)
         distance = (distance//(2**field_mip)) * 2**field_mip
         new_bbox = self.adjust_bbox(padded_bbox, distance)
-        print("distance is", distance)
         f = f - distance.to(device = self.device)
         res = self.abs_to_rel_residual(f, padded_bbox, field_mip)
         field = res.to(device = self.device)
@@ -588,7 +585,7 @@ class Aligner:
         image = image[:,:,pad:-pad,pad:-pad]
         return image
 
-  def cloudsample_compose_chunk(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip, dst_mip):
+  def cloudsample_compose(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip, dst_mip):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume field objects.
 
       Gridsampling a field is a composition, such that f(g(x)).
@@ -605,24 +602,26 @@ class Aligner:
       Returns:
          composed field
       """
-      f = self.get_field(f_cv, f_z, bbox, f_mip, relative=False,
-                          to_tensor=True, as_int16=as_int16) 
+      pad = 2**(dst_mip+1)
+      padded_bbox = deepcopy(bbox)
+      padded_bbox.uncrop(pad, mip=dst_mip)
+      f = self.get_field(f_cv, f_z, padded_bbox, f_mip, relative=False,
+                          to_tensor=True)
       x_range = bbox.x_range(mip=0)
       y_range = bbox.y_range(mip=0)
       if is_identity(f):
         h = self.get_field(g_cv, g_z, bbox, g_mip, relative=False,
-                            to_tensor=True, as_int16=as_int16) 
+                            to_tensor=True)
         return h 
       else:
         distance = self.profile_field(f)
         distance = (distance//(2**f_mip)) * 2**f_mip
-        new_bbox = self.adjust_bbox(bbox, distance)
-        print("distance is", distance)
+        new_bbox = self.adjust_bbox(padded_bbox, distance)
         g = self.get_field(g_cv, g_z, new_bbox, g_mip, relative=True,
-                            to_tensor=True, as_int16=as_int16) 
+                            to_tensor=True)
 
         f = f - distance.to(device = self.device)
-        f = self.abs_to_rel_residual(f, bbox, f_mip)
+        f = self.abs_to_rel_residual(f, padded_bbox, f_mip)
         f = f.to(device = self.device)
 
         if dst_mip < g_mip:
@@ -632,6 +631,7 @@ class Aligner:
 
         h = compose_fields(f, g)
         h = self.rel_to_abs_residual(h, dst_mip)
+        h = h[:,pad:-pad,pad:-pad,:]
         return h
 
   def cloudsample_image_batch(self, z_range, image_cv, field_cv, 
@@ -699,9 +699,9 @@ class Aligner:
   # Dataset operations #
   ######################
 
-  def copy(self, cm, src_z, dst_z, src_cv, dst_cv, bbox, mip, 
-                           mask_cv=None, mask_mip=0, mask_val=0, wait=True):
-    """Copy a section 
+  def copy(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, is_field=False,
+                     mask_cv=None, mask_mip=0, mask_val=0, wait=True):
+    """Copy one CloudVolume to another
 
     Args:
        cm: CloudManager that corresponds to the src_cv, tgt_cv, and field_cv
@@ -713,12 +713,13 @@ class Aligner:
        bbox: BoundingBox for region where source and target image will be loaded,
         and where the resulting vector field will be written
        mip: int for MIP level images will be loaded and field will be stored at
+       field: bool indicating whether this is a field CloudVolume to copy
        mask_cv: MiplessCloudVolume where source mask is stored
        mask_mip: int for MIP level at which source mask is stored
        mask_val: int for pixel value in the mask that should be zero-filled
        wait: bool indicating whether to wait for all tasks must finish before proceeding
     """
-    # print ("moving section {} mip {} to dest".format(z, mip), end='', flush=True)
+    print ("\nCopying {0} to {1}, for z={2} to z={3}".format(src_cv, dst_cv, src_z, dst_z))
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 
@@ -736,11 +737,16 @@ class Aligner:
     else: 
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
-          image = self.get_masked_image(src_cv, src_z, patch_bbox, mip,
-                                  mask_cv=mask_cv, mask_mip=mask_mip,
-                                  mask_val=mask_val,
-                                  to_tensor=False, normalizer=None)
-          self.save_image(image, dst_cv, dst_z, patch_bbox, mip)
+          if is_field:
+            field =  self.get_field(src_cv, src_z, patch_bbox, mip, relative=False,
+                                    to_tensor=False)
+            self.save_field(field, dst_cv, dst_z, patch_bbox, mip, relative=False)
+          else:
+            image = self.get_masked_image(src_cv, src_z, patch_bbox, mip,
+                                    mask_cv=mask_cv, mask_mip=mask_mip,
+                                    mask_val=mask_val,
+                                    to_tensor=False, normalizer=None)
+            self.save_image(image, dst_cv, dst_z, patch_bbox, mip)
         self.pool.map(chunkwise, chunks)
 
     end = time()
@@ -809,7 +815,7 @@ class Aligner:
        mask_val: int for pixel value in the mask that should be zero-filled
        wait: bool indicating whether to wait for all tasks must finish before proceeding
     """
-    print('Rendering to {0}'.format(bbox.stringify(dst_z)))
+    print('\nRendering to z={0}'.format(dst_z))
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[src_mip],
                                     cm.dst_voxel_offsets[src_mip], mip=src_mip, 
@@ -827,10 +833,10 @@ class Aligner:
           self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
-          image = self.cloudsample_image_chunk(src_cv, field_cv, src_z, field_z, 
-                                               patch_bbox, src_mip, field_mip, 
-                                               mask_cv=mask_cv, mask_mip=mask_mip,
-                                               mask_val=mask_val)
+          image = self.cloudsample_image(src_cv, field_cv, src_z, field_z, 
+                                         patch_bbox, src_mip, field_mip, 
+                                         mask_cv=mask_cv, mask_mip=mask_mip,
+                                         mask_val=mask_val)
           image = image.cpu().numpy()
           self.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
         self.pool.map(chunkwise, chunks)
@@ -879,6 +885,50 @@ class Aligner:
             field = field.data.cpu().numpy()
             self.save_field(field, vvote_cv, z, patch_bbox, mip, relative=False)
 
+        self.pool.map(chunkwise, chunks)
+    end = time()
+    print (": {} sec".format(end - start))
+
+  def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 
+                    f_mip, g_mip, dst_mip, wait=True):
+    """Compose two vector field CloudVolumes
+
+    For coarse + fine composition:
+      f = fine 
+      g = coarse 
+    
+    Args:
+       f_cv: MiplessCloudVolume of vector field f
+       g_cv: MiplessCloudVolume of vector field g
+       dst_cv: MiplessCloudVolume of composed vector field
+       f_z: int of section index to process
+       g_z: int of section index to process
+       dst_z: int of section index to process
+       bbox: BoundingBox of region to process
+       f_mip: MIP of vector field f
+       g_mip: MIP of vector field g
+       dst_mip: MIP of composed vector field
+       wait: bool indicating whether to wait for all tasks must finish before proceeding
+    """
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
+                                    cm.vec_voxel_offsets[dst_mip], 
+                                    mip=dst_mip)
+    print('\nComposing fields f(g(x)), f_z={0}, g_z={1}'.format(f_z, g_z))
+    if self.distributed:
+        tasks = []
+        for patch_bbox in chunks:
+            tasks.append(make_compose_task_message(f_z, g_z, dst_z, f_cv, g_cv, dst_cv,
+                                                   patch_bbox, coarse_mip, fine_mip))
+        self.pool.map(self.task_handler.send_message, tasks)
+        if wait:
+          self.task_handler.wait_until_ready()
+    else:
+        def chunkwise(patch_bbox):
+          h = self.cloudsample_compose(f_cv, g_cv, f_z, g_z, patch_bbox, 
+                                       f_mip, g_mip, dst_mip)
+          h = h.data.cpu().numpy()
+          self.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
@@ -1325,49 +1375,6 @@ class Aligner:
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
           self.regularize_z(z_range, dir_z, patch_bbox, mip, sigma=sigma)
-        self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
-
-  def compose_chunkwise(self, f_z, g_z, dst_z, f_cv, g_cv, dst_cv, bbox, 
-                              f_mip, g_mip, dst_mip):
-    """Chunked-processing to compose two vector fields 
-
-    For coarse + fine composition:
-      f = fine 
-      g = coarse 
-    
-    Args:
-       z: int of section index to process
-       f_cv: MiplessCloudVolume of vector field f
-       g_cv: MiplessCloudVolume of vector field g
-       dst_cv: MiplessCloudVolume of composed vector field
-       bbox: BoundingBox of region to process
-       f_mip: MIP of vector field f
-       g_mip: MIP of vector field g
-       dst_mip: MIP of composed vector field
-    """
-    start = time()
-    # cm.add_composed_cv(compose_start, inverse=False)
-    # cm.add_composed_cv(compose_start, inverse=True)
-    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
-                                    cm.vec_voxel_offsets[dst_mip], 
-                                    mip=dst_mip)
-    print('Composing fields f_z={0}, g_z={1} to dst_z={2} @ f_MIP{3}, g_MIP{4} to dst_MIP(5)'.
-           format(f_z, g_z, dst_z, f_mip, g_mip, dst_mip, flush=True))
-    if self.distributed:
-        tasks = []
-        for patch_bbox in chunks:
-            tasks.append(make_compose_task_message(f_z, g_z, dst_z, f_cv, g_cv, dst_cv,
-                                                   patch_bbox, coarse_mip, fine_mip))
-        self.pool.map(self.task_handler.send_message, tasks)
-        # self.task_handler.wait_until_ready()
-    else:
-        #for patch_bbox in chunks:
-        def chunkwise(patch_bbox):
-          h = self.compose_cloudvolumes(f_z, g_z, f_cv, g_cv, patch_bbox, 
-                                        f_mip, g_mip, dst_mip)
-          self.save_field(dst_cv, dst_z, h, patch_bbox, dst_mip, relative=False, as_int16=as_int16)
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
