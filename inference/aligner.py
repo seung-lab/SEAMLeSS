@@ -1059,7 +1059,10 @@ class Aligner:
               tasks.append(make_downsample_task_message(cv, z, task_patches, mip=m))
           self.pool.map(self.task_handler.send_message, tasks)
           if wait:
-            self.task_handler.wait_until_ready()
+            #self.task_handler.wait_until_ready()
+            def stop_fn():
+                return self.wait_for_queue_empty(cv.path, 'downsample_done/'+str(m)+'_'+str(z)+'/',
+                                                 len(chunks))
       else:
           def chunkwise(patch_bbox):
             print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
@@ -1193,14 +1196,25 @@ class Aligner:
       if batch_count == batch_size and self.distributed:
         print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
         print('batch_count is {}'.format(batch_count), flush = True)
-        self.task_handler.wait_until_ready()
+        def stop_fn():
+            self.wait_for_queue_empty_range(write_F_cv.path,
+                                            'res_and_compose/'+str(mip)+'/',
+                                            range(z-batch_count+1, z+1),
+                                            len(chunks)*batch_count)
+
+        #self.task_handler.wait_until_ready()
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
     # report on remaining sections after batch 
     if batch_count > 0 and self.distributed:
       print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
-      self.task_handler.wait_until_ready()
+      #self.task_handler.wait_until_ready()
+      def stop_fn():
+          self.wait_for_queue_empty_range(write_F_cv.path,
+                                          'res_and_compose/'+str(mip)+'/',
+                                          range(z-batch_count+1, z+1),
+                                          len(chunks)*batch_count)
       end = time()
       print (": {} sec".format(end - start))
 
@@ -1235,14 +1249,26 @@ class Aligner:
                        render=render_match)
       if batch_count == batch_size and self.distributed and wait:
         print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
-        self.task_handler.wait_until_ready()
+        #self.task_handler.wait_until_ready()
+        def stop_fn():
+            self.wait_for_queue_empty_range(cv_path,
+                                            'residual_done'+str(mip)+'/',
+                                            range(z-batch_count+1, z+1),
+                                            len(chunks)*self.tgt_radius*batch_count)
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
     # report on remaining sections after batch 
     if batch_count > 0 and self.distributed and wait:
       print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
-      self.task_handler.wait_until_ready()
+      #self.task_handler.wait_until_ready()
+      def stop_fn():
+          new_range =range(z_range[-1]+1-batch_count, z_range[-1]+1)
+          self.wait_for_queue_empty_range(cv_path,
+                                          'residual_done'+str(mip)+'/',
+                                          new_range,
+                                          len(chunks)*self.tgt_radius*batch_count)
+
     end = time()
     print (": {} sec".format(end - start))
     #if self.p_render:
