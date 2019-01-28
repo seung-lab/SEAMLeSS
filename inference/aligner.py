@@ -39,7 +39,7 @@ from utilities.archive import ModelArchive
 
 import torch.nn as nn
 from taskqueue import TaskQueue
-import alignment_tasks
+import tasks
 
 class Aligner:
   def __init__(self, threads=1, queue_name=None, task_batch_size=1, **kwargs):
@@ -734,12 +734,12 @@ class Aligner:
           "MIP{4}\n"
           "{5} chunks\n".format(src_cv, dst_cv, src_z, dst_z, mip, len(chunks)), flush=True)
     if self.distributed and len(chunks) > self.task_batch_size * 4:
-        tasks = []
+        batch = []
         for i in range(0, len(chunks), self.task_batch_size * 4):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size * 4)):
                 task_patches.append(chunks[j].serialize())
-            tasks.append(alignment_tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, 
+            batch.append(tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, 
                                                 task_patches, 
                                                 mip, is_field, mask_cv, mask_mip, 
                                                 mask_val))
@@ -795,9 +795,9 @@ class Aligner:
           "{} chunks\n".format(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
                                mip, len(chunks)), flush=True)
     if self.distributed:
-      tasks = []
+      batch = []
       for patch_bbox in chunks:
-        tasks.append(alignment_tasks.ResidualTask(model_path, src_cv, tgt_cv,
+        batch.append(tasks.ResidualTask(model_path, src_cv, tgt_cv,
                                                      field_cv, src_z, tgt_z, patch_bbox, 
                                                      mip, pad)) 
       self.pool.map(self.task_handler.send_message, tasks)
@@ -848,12 +848,12 @@ class Aligner:
           "{7} chunks\n".format(src_cv, field_cv, dst_cv, 
                               src_z, dst_z, field_mip, src_mip, len(chunks)), flush=True)
     if self.distributed:
-        tasks = []
+        batch = []
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j].serialize())
-            tasks.append(alignment_tasks.RenderTask(src_cv, field_cv, dst_cv, src_z, 
+            batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z, 
                              field_z, dst_z, patches, src_mip, field_mip, mask_cv, 
                              mask_mip, mask_val))
         self.pool.map(self.task_handler.send_message, tasks)
@@ -896,9 +896,9 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[mip],
                                     cm.vec_voxel_offsets[mip], mip=mip)
     if self.distributed:
-        tasks = []
+        batch = []
         for patch_bbox in chunks:
-            tasks.append(alignment_tasks.VectorVoteTask(pairwise_cvs, vvote_cv, z, bbox, 
+            batch.append(tasks.VectorVoteTask(pairwise_cvs, vvote_cv, z, bbox, 
                                   mip, inverse, softmin_temp, serial))
         self.upload_tasks(tasks)
         if wait:
@@ -942,12 +942,12 @@ class Aligner:
                                     mip=dst_mip)
     print('\nComposing fields f(g(x)), f_z={0}, g_z={1}'.format(f_z, g_z))
     if self.distributed:
-        tasks = []
+        batch = []
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j].serialize())
-            tasks.append(alignment_tasks.ComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
+            batch.append(tasks.ComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
                                       dst_z, patch_bbox, f_mip, g_mip, dst_mip))
         self.upload_tasks(tasks)
         if wait:
@@ -986,12 +986,12 @@ class Aligner:
                                     cm.dst_voxel_offsets[dst_mip], mip=dst_mip, 
                                     render=True)
     if self.distributed:
-        tasks = []
+        batch = []
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j].serialize())
-            tasks.append(alignment_tasks.RenderCVTask(src_z, field_cv, field_z, task_patches,
+            batch.append(tasks.RenderCVTask(src_z, field_cv, field_z, task_patches,
                                                       mip, dst_cv, dst_z))
         self.upload_tasks(tasks)
         self.wait_for_queue_empty(dst_cv.path,'render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/', len(chunks))
@@ -1020,12 +1020,12 @@ class Aligner:
     chunks = self.break_into_chunks_v2(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, render=True)
     if self.distributed:
-        tasks = []
+        batch = []
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j].serialize())
-            tasks.append(alignment_tasks.RenderLowMipTask(src_z, field_cv, field_z, 
+            batch.append(tasks.RenderLowMipTask(src_z, field_cv, field_z, 
                                                            task_patches, image_mip, 
                                                            vector_mip, dst_cv, dst_z))
             self.upload_tasks(tasks)
@@ -1051,13 +1051,13 @@ class Aligner:
       chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[m],
                                       cm.dst_voxel_offsets[m], mip=m, render=True)
       if self.distributed and len(chunks) > self.task_batch_size * 4:
-          tasks = []
+          batch = []
           print("Distributed downsampling to mip", m, len(chunks)," chunks")
           for i in range(0, len(chunks), self.task_batch_size * 4):
               task_patches = []
               for j in range(i, min(len(chunks), i + self.task_batch_size * 4)):
                   task_patches.append(chunks[j].serialize())
-              tasks.append(alignment_tasks.DownsampleTask(cv, z, task_patches, mip=m))
+              batch.append(tasks.DownsampleTask(cv, z, task_patches, mip=m))
           self.upload_tasks(tasks)
           if wait:
             self.task_queue.block_until_empty()
@@ -1098,9 +1098,9 @@ class Aligner:
            format(src_z, tgt_z, mip, len(chunks)), flush=True)
     if self.distributed:
       cv_path = self.dst[0].root
-      tasks = []
+      batch = []
       for patch_bbox in chunks:
-        tasks.append(alignment_tasks.ResidualTask(src_z, src_cv, tgt_z, tgt_cv,
+        batch.append(tasks.ResidualTask(src_z, src_cv, tgt_z, tgt_cv,
                                                   field_cv, patch_bbox, mip,
                                                   cv_path))
       self.upload_tasks(tasks)
@@ -1138,9 +1138,9 @@ class Aligner:
     print("Vector field inversion for slice {0} @ MIP{1} ({2} chunks)".
            format(z, mip, len(chunks)), flush=True)
     if self.distributed:
-        tasks = []
+        batch = []
         for patch_bbox in chunks:
-          tasks.append(alignment_tasks.InvertFieldTask(z, src_cv, dst_cv, patch_bbox, 
+          batch.append(tasks.InvertFieldTask(z, src_cv, dst_cv, patch_bbox, 
                                                       mip, optimizer))
         self.upload_tasks(tasks)
     else: 
@@ -1226,9 +1226,9 @@ class Aligner:
       i = 0
       if self.distributed:
         print("chunks size is", len(chunks))
-        tasks = []
+        batch = []
         for patch_bbox in chunks:
-            tasks.append(alignment_tasks.ResAndComposeTask(z, forward_match,
+            batch.append(tasks.ResAndComposeTask(z, forward_match,
                                                         reverse_match,
                                                         patch_bbox, mip,
                                                         write_F_cv))
@@ -1444,9 +1444,9 @@ class Aligner:
     print("Regularizing slice range {0} @ MIP{1} ({2} chunks)".
            format(z_range, mip, len(chunks)), flush=True)
     if self.distributed:
-        tasks = []
+        batch = []
         for patch_bbox in chunks:
-            tasks.append(alignment_tasks.RegularizeTask(z_range[0], z_range[-1],
+            batch.append(tasks.RegularizeTask(z_range[0], z_range[-1],
                                                       dir_z, patch_bbox,
                                                       mip, sigma))
         self.upload_tasks(tasks)
@@ -1480,9 +1480,9 @@ class Aligner:
     print("Composing fields z={0} @ MIP{1} ({2} chunks)".
            format(z, fine_mip, len(chunks)), flush=True)
     if self.distributed:
-        tasks = []
+        batch = []
         for patch_bbox in chunks:
-            tasks.append(alignment_tasks.ComposeTask(z, coarse_cv, fine_cv, dst_cv,
+            batch.append(tasks.ComposeTask(z, coarse_cv, fine_cv, dst_cv,
                                                    patch_bbox, coarse_mip, fine_mip))
         self.upload_tasks(tasks)
         self.task_queue.block_until_empty()
@@ -1531,12 +1531,12 @@ class Aligner:
                                        self.dst[0].dst_voxel_offsets[image_mip], 
                                        mip=image_mip, render=True)
     if self.distributed:
-        tasks = []
+        batch = []
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j].serialize())
-            tasks.append(alignment_tasks.UpsampleRenderRechunkTask(
+            batch.append(tasks.UpsampleRenderRechunkTask(
                 z_range, src_cv,
                 field_cv, dst_cv,
                 task_patches, image_mip,
