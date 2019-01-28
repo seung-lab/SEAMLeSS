@@ -6,77 +6,150 @@ Each block's serial alignment will proceed as follows:
 3. Serially align the first section to the second section without vector voting
 4. Serially align the fourth section through the end of the block using
    vector voting.
-"""
 
+Neighboring blocks will overlap by three sections. The last section of one block will be
+the fixed (copied) section of the next block. The vector field from the last section
+in the first block will be broadcast composed through the vector fields in the second
+block, from the third section through to the final section.
+"""
 import sys
 import torch
-from args import get_argparser, parse_args, get_aligner, get_bbox
+import json
+from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
+from cloudmanager import CloudManager
 
 if __name__ == '__main__':
   parser = get_argparser()
+  parser.add_argument('--model_path', type=str,
+    help='relative path to the ModelArchive to use for computing fields')
+  parser.add_argument('--src_path', type=str)
+  parser.add_argument('--src_mask_path', type=str, default='',
+    help='CloudVolume path of mask to use with src images; default None')
+  parser.add_argument('--src_mask_mip', type=int, default=8,
+    help='MIP of source mask')
+  parser.add_argument('--src_mask_val', type=int, default=1,
+    help='Value of of mask that indicates DO NOT mask')
+  parser.add_argument('--dst_path', type=str)
+  parser.add_argument('--mip', type=int)
+  parser.add_argument('--bbox_start', nargs=3, type=int,
+    help='bbox origin, 3-element int list')
+  parser.add_argument('--bbox_stop', nargs=3, type=int,
+    help='bbox origin+shape, 3-element int list')
+  parser.add_argument('--bbox_mip', type=int, default=0,
+    help='MIP level at which bbox_start & bbox_stop are specified')
+  parser.add_argument('--max_mip', type=int, default=9)
+  parser.add_argument('--max_displacement', 
+    help='the size of the largest displacement expected; should be 2^high_mip', 
+    type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   args = parse_args(parser)
-  args.tgt_path = join(args.dst_path, 'image')
-  # only compute matches to previous sections
+  # Only compute matches to previous sections
   args.serial_operation = True
   a = get_aligner(args)
   bbox = get_bbox(args)
-
+  provenance = get_provenance(args)
+  
+  # Simplify var names
   mip = args.mip
-  block_range = range(args.bbox_stop[2] // args.block_size)
-  # create dict of dst cloudvolumes for each block
-  dst_cv_dict = {}
-  field_cv_dict = {}
-  for block_start in block_range:
-    dst_cv = a.dst[0].create(join(args.dst_path, 'serial_image', block_start), 
-                             data_type='uint8', num_channels=1, fill_missing=True,
-                             ignore_info=False, get_read=False)
-    dst_cv_dict[block_start] = dst_cv
+  max_mip = args.max_mip
+  pad = args.max_displacement
 
-    field_cv = a.dst[0].create(join(args.dst_path, 'composed', block_start), 
-                             data_type='uint8', num_channels=1, fill_missing=True,
-                             ignore_info=False, get_read=False)
-    field_cv_dict[block_start] = field_cv
+  # Compile ranges
+  block_range = range(args.bbox_start[2], args.bbox_stop[2], args.block_size)
+  overlap = 3
+  full_range = range(args.block_size + overlap)
 
-  full_range = range(args.block_size)
   copy_range = full_range[2:3]
-  pair_range = full_range[:2][::-1]
-  vvote_range = full_range[3:-1]
-  final_match = z_range[-1:]
+  no_vvote_range = full_range[:2][::-1]
+  vvote_range = full_range[3:]
 
-  for offset in copy_range:
-    for block_start in block_range:
-      dst_cv = dst_cv_dict[block_start]
-      z = block_start + offset
-      a.copy_section(z, dst_cv, z, bbox, mip)
+  no_vvote_offsets = [1]
+  vvote_offsets = [-3,-2,-1]
 
-  # align without vector voting in the reverse direction
-  a.tgt_radius = 1
-  a.tgt_range = range(-a.tgt_radius, a.tgt_radius+1)
-  for offset in pair_range:
+  # Create CloudVolume Manager
+  cm = CloudManager(args.src_path, max_mip, pad, provenance)
+
+  # Create src CloudVolumes
+  src = cm.create(args.src_path, data_type='uint8', num_channels=1,
+                     fill_missing=True, overwrite=False)
+  src_mask_cv = None
+  tgt_mask_cv = None
+  if args.src_mask_path:
+    src_mask_cv = cm.create(args.src_mask_path, data_type='uint8', num_channels=1,
+                               fill_missing=True, overwrite=True)
+    tgt_mask_cv = src_mask_cv
+
+  # Create dst CloudVolumes for each block, since blocks will overlap by 3 sections
+  dsts = {}
+  for block_start in block_range:
+    dst = cm.create(join(args.dst_path, 'image_blocks', str(block_start)), 
+                    data_type='uint8', num_channels=1, fill_missing=True, 
+                    overwrite=True)
+    dsts[block_start] = dst 
+
+  # Create field CloudVolumes
+  no_vvote_field = cm.create(join(args.dst_path, 'field', str(1)), 
+                                  data_type='int16', num_channels=2,
+                                  fill_missing=True, overwrite=True)
+  pair_fields = {}
+  for z_offset in vvote_offsets:
+    pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
+                                      data_type='int16', num_channels=2,
+                                      fill_missing=True, overwrite=True)
+  vvote_field = cm.create(join(args.dst_path, 'field', 'vvote'), 
+                          data_type='int16', num_channels=2,
+                          fill_missing=True, overwrite=True)
+
+  # Copy first section
+  for block_offset in copy_range:
     for block_start in block_range:
-      dst_cv = dst_cv_dict[block_start]
-      field_cv = a.dst[-1].for_read('field')
-      z = block_start + offset
+      dst = dsts[block_start]
+      z = block_start + block_offset 
+      print('copying z={0}'.format(z))
+      a.copy(cm, z, z, src, dst, bbox, mip, is_field=False, wait=False)
+
+  # a.task_handler.wait()
+
+  # Align without vector voting
+  for block_offset in no_vvote_range:
+    z_offset = 1
+    for block_start in block_range:
+      dst = dsts[block_start]
+      z = block_start + block_offset 
       print('compute residuals without vector voting z={0}'.format(z))
-      a.generate_pairwise([z], bbox, forward_match=False, reverse_match=True, 
-                          render_match=False, batch_size=1)
-      a.render(z, field_cv, z, dst_cv, z, bbox, a.render_low_mip)
-
-  # align without vector voting in the reverse direction
-  a.tgt_radius = args.tgt_radius
-  a.tgt_range = range(-a.tgt_radius, a.tgt_radius+1)
-  for offset in vvote_range:
+      a.compute_field(cm, args.model_path, src, dst, no_vvote_field, 
+                          z, z+z_offset, bbox, mip, pad, wait=False)
+    # a.task_handler.wait()
     for block_start in block_range:
-      dst_cv = dst_cv_dict[block_start]
-      field_cv = field_cv_dict[block_start]
-      z = block_start + offset
-      print('generate pairwise with vector voting z={0}'.format(z))
-      a.generate_pairwise_and_compose([z], args.bbox_start[2], bbox, mip, 
-                                      forward_match=True, reverse_match=False)
-      a.render(z, field_cv, z, dst_cv, z, bbox, a.render_low_mip)
+      dst = dsts[block_start]
+      z = block_start + block_offset 
+      print('render section without vector voting z={0}'.format(z))
+      a.render(cm, src, no_vvote_field, dst, src_z=z, field_z=z, dst_z=z, 
+                   bbox=bbox, src_mip=mip, field_mip=mip, wait=True)
 
-  a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
+  # Align with vector voting
+  for block_offset in vvote_range:
+    for block_start in block_range:
+      dst = dsts[block_start]
+      z = block_start + block_offset 
+      for z_offset in vvote_offsets:
+        field = pair_fields[z_offset]
+        a.compute_field(cm, args.model_path, src, dst, field, 
+                            z, z+z_offset, bbox, mip, pad, wait=False)
+    # a.task_handler.wait()
+    for block_start in block_range:
+      dst = dsts[block_start]
+      z = block_start + block_offset 
+      a.vector_vote(cm, pair_fields, vvote_field, z, bbox, mip, 
+                        inverse=False, softmin_temp=-1, serial=True, wait=False)
+    # a.task_handler.wait()
+    for block_start in block_range:
+      dst = dsts[block_start]
+      z = block_start + block_offset 
+      a.render(cm, src, vvote_field, dst, 
+                   src_z=z, field_z=z, dst_z=z, 
+                   bbox=bbox, src_mip=mip, field_mip=mip, wait=False)
+    # a.task_handler.wait()
 
-
+  # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
