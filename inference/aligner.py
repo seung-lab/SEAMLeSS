@@ -1,18 +1,28 @@
-from process import Process
-from mipless_cloudvolume import MiplessCloudVolume as CV 
-from mipless_cloudvolume import deserialize_miplessCV as DCV
-from cloudvolume.lib import Vec
-import torch
-from torch.nn.functional import interpolate
-import numpy as np
-import os
-from os.path import join
+
+import concurrent.futures
+from copy import deepcopy, copy
+from functools import partial
 import json
 import math
+import os
+from os.path import join
 from time import time, sleep
-from copy import deepcopy, copy
+
+from pathos.multiprocessing import ProcessPool, ThreadPool
+from threading import Lock
+
+from cloudvolume import Storage
+from cloudvolume.lib import Vec, scatter
+import numpy as np
 import scipy
 import scipy.ndimage
+from skimage.morphology import disk as skdisk
+from skimage.filters.rank import maximum as skmaximum 
+from taskqueue import TaskQueue
+import torch
+from torch.nn.functional import interpolate
+import torch.nn as nn
+
 from normalizer import Normalizer
 from vector_vote import vector_vote, get_diffs, weight_diffs, \
                         compile_field_weights, weighted_sum_fields
@@ -21,24 +31,12 @@ from cpc import cpc
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
                               np_downsample, invert
 
-from skimage.morphology import disk as skdisk
-from skimage.filters.rank import maximum as skmaximum 
+import alignment_tasks
 from boundingbox import BoundingBox, deserialize_bbox
-
-from pathos.multiprocessing import ProcessPool, ThreadPool
-from threading import Lock
-
-import torch.nn as nn
 from directory_manager import SrcDir, DstDir
-
-from task_handler import TaskHandler, make_residual_task_message, \
-        make_render_task_message, make_copy_task_message, \
-        make_downsample_task_message, make_compose_task_message, \
-        make_prepare_task_message, make_vector_vote_task_message, \
-        make_regularize_task_message, make_render_low_mip_task_message, \
-        make_invert_field_task_message, make_render_cv_task_message, \
-        make_batch_render_message, make_upsample_render_rechunk_task, \
-        make_res_and_compose_message 
+from mipless_cloudvolume import MiplessCloudVolume as CV 
+from mipless_cloudvolume import deserialize_miplessCV as DCV
+from process import Process
 
 class Aligner:
   """
@@ -68,13 +66,11 @@ class Aligner:
                queue_name=None, p_render=False, dir_suffix='', inverter=None,
                int_field=False, task_batch_size=1, 
                info_chunk_dims=[-1,-1,-1], **kwargs):
-    if queue_name != None:
-        self.task_handler = TaskHandler(queue_name)
-        self.distributed  = True
-    else:
-        self.task_handler = None
-        self.distributed  = False
     
+    self.distributed = (queue_name != None)
+    self.queue_name = queue_name
+    self.task_queue = TaskQueue(queue_name, n_threads=0)
+
     self.int_field =  int_field
     self.p_render = p_render
     self.process_high_mip = mip_range[1]
@@ -1192,9 +1188,9 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size * 4)):
                 task_patches.append(chunks[j])
-            tasks.append(make_copy_task_message(z, dst_cv, dst_z, task_patches, mip=mip))
-        self.pool.map(self.task_handler.send_message, tasks)
-        self.task_handler.wait_until_ready()
+            tasks.append(alignment_tasks.CopyTask(z, dst_cv, dst_z, task_patches, mip=mip))
+        self.upload_tasks(tasks)
+        self.task_queue.block_until_empty()
     else: 
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -1258,10 +1254,13 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
+    empty = False
+    while not empty:
       with Storage(path) as stor:
           lst = stor.list_files(prefix=prefix)
       i = sum(1 for _ in lst)
-      return i == chunks_len
+      empty = (i == chunks_len)
+      sleep(1.75)
 
   def wait_for_queue_empty_range(self, path, prefix, z_range, chunks_len):
       i = 0
@@ -1290,13 +1289,13 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(make_render_task_message(src_z, field_cv, field_z, task_patches, 
-                                                   mip, dst_cv, dst_z))
-        self.pool.map(self.task_handler.send_message, tasks)
+            tasks.append(alignment_tasks.RenderTask(
+              src_z, field_cv, field_z, task_patches, 
+              mip, dst_cv, dst_z
+            ))
+        self.upload_tasks(tasks)
         if wait:
-            def stop_fn():
-                return self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
-            #self.task_handler.wait_until_ready()
+          self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
@@ -1327,12 +1326,12 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(make_batch_render_message(src_z, field_cv, field_z, task_patches,
-                                                   mip, dst_cv, dst_z, batch))
-        self.pool.map(self.task_handler.send_message, tasks)
-        #self.task_handler.wait_until_ready()
-        def stop_fn():
-            return self.wait_for_queue_empty(dst_cv.path,'render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/', len(chunks))
+            tasks.append(alignment_tasks.BatchRenderTask(
+              src_z, field_cv, field_z, task_patches,
+              mip, dst_cv, dst_z, batch
+            ))
+        self.upload_tasks(tasks)
+        self.wait_for_queue_empty(dst_cv.path,'render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch_batch(src_z, field_cv, field_z,
@@ -1364,12 +1363,10 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(make_render_cv_task_message(src_z, field_cv, field_z, task_patches,
+            tasks.append(alignment_tasks.RenderCVTask(src_z, field_cv, field_z, task_patches,
                                                       mip, dst_cv, dst_z))
-        self.pool.map(self.task_handler.send_message, tasks)
-        #self.task_handler.wait_until_ready()
-        def stop_fn():
-            self.wait_for_queue_empty(dst_cv.path, 'render_cv/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
+        self.upload_tasks(tasks)
+        self.wait_for_queue_empty(dst_cv.path, 'render_cv/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_using_gridsample_cv(src_z, field_cv,
@@ -1392,14 +1389,11 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(make_render_low_mip_task_message(src_z, field_cv, field_z, 
+            tasks.append(alignment_tasks.RenderLowMipTask(src_z, field_cv, field_z, 
                                                            task_patches, image_mip, 
                                                            vector_mip, dst_cv, dst_z))
-        self.pool.map(self.task_handler.send_message, tasks)
-        # self.task_handler.wait_until_ready()
-        def stop_fn():
-            return self.wait_for_queue_empty(dst_cv.path, 'render_low_mip/'+str(image_mip)+'_'+str(dst_z)+'/',
-                                             len(chunks))
+            self.upload_tasks(tasks)
+        self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, patch_bbox, image_mip, vector_mip)
@@ -1426,7 +1420,7 @@ class Aligner:
       for z in z_range:
         self.downsample(cv, z, bbox, mip, mip+1, wait=False)
       if self.distributed:
-        self.task_handler.wait_until_ready()
+        self.task_queue.block_until_empty()
     
   def downsample(self, cv, z, bbox, source_mip, target_mip, wait=True):
     """Chunkwise downsample
@@ -1446,13 +1440,11 @@ class Aligner:
               task_patches = []
               for j in range(i, min(len(chunks), i + self.task_batch_size * 4)):
                   task_patches.append(chunks[j])
-              tasks.append(make_downsample_task_message(cv, z, task_patches, mip=m))
-          self.pool.map(self.task_handler.send_message, tasks)
+              tasks.append(alignment_tasks.DownsampleTask(cv, z, task_patches, mip=m))
+          self.upload_tasks(tasks)
           if wait:
-            #self.task_handler.wait_until_ready()
-            def stop_fn():
-                return self.wait_for_queue_empty(cv.path, 'downsample_done/'+str(m)+'_'+str(z)+'/',
-                                                 len(chunks))
+              self.wait_for_queue_empty(cv.path, 'downsample_done/'+str(m)+'_'+str(z)+'/',
+                                        len(chunks))
       else:
           def chunkwise(patch_bbox):
             print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
@@ -1491,9 +1483,9 @@ class Aligner:
     if self.distributed:
       tasks = []
       for patch_bbox in chunks:
-        tasks.append(make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, 
+        tasks.append(alignment_tasks.ResidualTask(src_z, src_cv, tgt_z, tgt_cv, 
                                                    field_cv, patch_bbox, mip))
-      self.pool.map(self.task_handler.send_message, tasks)
+      self.upload_tasks(tasks)
     else:
       def chunkwise(patch_bbox):
       #FIXME Torch runs out of memory
@@ -1530,9 +1522,9 @@ class Aligner:
     if self.distributed:
         tasks = []
         for patch_bbox in chunks:
-          tasks.append(make_invert_field_task_message(z, src_cv, dst_cv, patch_bbox, 
+          tasks.append(alignment_tasks.InvertFieldTask(z, src_cv, dst_cv, patch_bbox, 
                                                       mip, optimizer))
-        self.pool.map(self.task_handler.send_message, tasks)
+        self.upload_tasks(tasks)
     else: 
     #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -1563,7 +1555,7 @@ class Aligner:
   #           vector_vote_task = make_vector_vote_task_message(z, read_F_cv, write_F_cv,
   #                                                            patch_bbox, mip, inverse, T) 
   #           self.task_handler.send_message(vector_vote_task)
-  #       self.task_handler.wait_until_ready()
+  #       self.task_queue.block_until_empty()
   #   #for patch_bbox in chunks:
   #   else:
   #       def chunkwise(patch_bbox):
@@ -1596,17 +1588,15 @@ class Aligner:
     if self.distributed:
         tasks = []
         for patch_bbox in chunks:
-            tasks.append(make_vector_vote_task_message(z_range, read_F_cv, write_F_cv,
+            tasks.append(alignment_tasks.VectorVoteTask(z_range, read_F_cv, write_F_cv,
                                                              patch_bbox, mip, inverse, T, 
                                                              negative_offsets, 
                                                              serial_operation))
-        self.pool.map(self.task_handler.send_message, tasks)
-        # self.task_handler.wait_until_ready()
-        def stop_fn():
-            self.wait_for_queue_empty(write_F_cv.path,
-                                      'vv_done/'+str(mip)+'_'+str(z_range[0])+'_'+str(z_range[-1])+'/',
-                                      (z_range[-1]-z_range[0]+1)*len(chunks))
-    #for patch_bbox in chunks:
+        self.upload_tasks(tasks)
+        self.wait_for_queue_empty(write_F_cv.path,
+                                  'vv_done/'+str(mip)+'_'+str(z_range[0])+'_'+str(z_range[-1])+'/',
+                                  (z_range[-1]-z_range[0]+1)*len(chunks))
+   #for patch_bbox in chunks:
     else:
         def chunkwise(patch_bbox):
             self.vector_vote(z_range, read_F_cv, write_F_cv, patch_bbox, mip, 
@@ -1703,47 +1693,36 @@ class Aligner:
       batch_count += 1
       i = 0
       if self.distributed:
-          print("chunks size is", len(chunks))
-          for patch_bbox in chunks:
-              r_and_c_task = make_res_and_compose_message(z, forward_match,
-                                                          reverse_match,
-                                                          patch_bbox, mip,
-                                                          write_F_cv)
-              self.task_handler.send_message(r_and_c_task)
-              #i +=1
-              #print("send a message", i)
-              #attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
-              #response = self.task_handler.sqs.get_queue_attributes(QueueUrl=self.task_handler.queue_url,
-              #                                         AttributeNames=attribute_names)
-              #print(response)
-
+        print("chunks size is", len(chunks))
+        tasks = []
+        for patch_bbox in chunks:
+            tasks.append(alignment_tasks.ResAndComposeTask(z, forward_match,
+                                                        reverse_match,
+                                                        patch_bbox, mip,
+                                                        write_F_cv))
+        self.upload_tasks(tasks)
       else:
-          def chunkwise(patch_bbox):
-              self.res_and_compose(z, forward_match, reverse_match, patch_bbox,
-                                  mip, write_F_cv)
-          self.pool.map(chunkwise, chunks)
+        def chunkwise(patch_bbox):
+            self.res_and_compose(z, forward_match, reverse_match, patch_bbox,
+                                mip, write_F_cv)
+        self.pool.map(chunkwise, chunks)
       if batch_count == batch_size and self.distributed:
         print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
         print('batch_count is {}'.format(batch_count), flush = True)
-        def stop_fn():
-            self.wait_for_queue_empty_range(write_F_cv.path,
-                                            'res_and_compose/'+str(mip)+'/',
-                                            range(z-batch_count+1, z+1),
-                                            len(chunks)*batch_count)
-
-        #self.task_handler.wait_until_ready()
+        self.wait_for_queue_empty_range(write_F_cv.path,
+                                        'res_and_compose/'+str(mip)+'/',
+                                        range(z-batch_count+1, z+1),
+                                        len(chunks)*batch_count)
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
     # report on remaining sections after batch 
     if batch_count > 0 and self.distributed:
       print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
-      #self.task_handler.wait_until_ready()
-      def stop_fn():
-          self.wait_for_queue_empty_range(write_F_cv.path,
-                                          'res_and_compose/'+str(mip)+'/',
-                                          range(z-batch_count+1, z+1),
-                                          len(chunks)*batch_count)
+      self.wait_for_queue_empty_range(write_F_cv.path,
+                                      'res_and_compose/'+str(mip)+'/',
+                                      range(z-batch_count+1, z+1),
+                                      len(chunks)*batch_count)
       end = time()
       print (": {} sec".format(end - start))
 
@@ -1778,30 +1757,25 @@ class Aligner:
                        render=render_match)
       if batch_count == batch_size and self.distributed and wait:
         print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
-        #self.task_handler.wait_until_ready()
-        def stop_fn():
-            self.wait_for_queue_empty_range(cv_path,
-                                            'residual_done'+str(mip)+'/',
-                                            range(z-batch_count+1, z+1),
-                                            len(chunks)*self.tgt_radius*batch_count)
+        self.wait_for_queue_empty_range(cv_path,
+                                        'residual_done'+str(mip)+'/',
+                                        range(z-batch_count+1, z+1),
+                                        len(chunks)*self.tgt_radius*batch_count)
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
     # report on remaining sections after batch 
     if batch_count > 0 and self.distributed and wait:
       print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
-      #self.task_handler.wait_until_ready()
-      def stop_fn():
-          new_range =range(z_range[-1]+1-batch_count, z_range[-1]+1)
-          self.wait_for_queue_empty_range(cv_path,
-                                          'residual_done'+str(mip)+'/',
-                                          new_range,
-                                          len(chunks)*self.tgt_radius*batch_count)
-
+      new_range =range(z_range[-1]+1-batch_count, z_range[-1]+1)
+      self.wait_for_queue_empty_range(cv_path,
+                                      'residual_done'+str(mip)+'/',
+                                      new_range,
+                                      len(chunks)*self.tgt_radius*batch_count)
     end = time()
     print (": {} sec".format(end - start))
     #if self.p_render:
-    #    self.task_handler.wait_until_ready()
+    #    self.task_queue.block_until_empty()
  
   def compose_pairwise(self, z_range, compose_start, bbox, mip,
                              forward_compose=True, inverse_compose=True, 
@@ -1968,11 +1942,11 @@ class Aligner:
     if self.distributed:
         tasks = []
         for patch_bbox in chunks:
-            tasks.append(make_regularize_task_message(z_range[0], z_range[-1],
+            tasks.append(alignment_tasks.RegularizeTask(z_range[0], z_range[-1],
                                                       dir_z, patch_bbox,
                                                       mip, sigma))
-        self.pool.map(self.task_handler.send_message, tasks)
-        self.task_handler.wait_until_ready()
+        self.upload_tasks(tasks)
+        self.task_queue.block_until_empty()
     else:
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -2004,10 +1978,10 @@ class Aligner:
     if self.distributed:
         tasks = []
         for patch_bbox in chunks:
-            tasks.append(make_compose_task_message(z, coarse_cv, fine_cv, dst_cv,
+            tasks.append(alignment_tasks.ComposeTask(z, coarse_cv, fine_cv, dst_cv,
                                                    patch_bbox, coarse_mip, fine_mip))
-        self.pool.map(self.task_handler.send_message, tasks)
-        # self.task_handler.wait_until_ready()
+        self.upload_tasks(tasks)
+        self.task_queue.block_until_empty()
     else:
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -2045,12 +2019,15 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(make_upsample_render_rechunk_task(z_range, src_cv, 
-                                                           field_cv, dst_cv, 
-                                                           task_patches, image_mip, 
-                                                           field_mip))
-        self.pool.map(self.task_handler.send_message, tasks)
-        # self.task_handler.wait_until_ready()
+            tasks.append(alignment_tasks.UpsampleRenderRechunkTask(
+                z_range, src_cv, 
+                field_cv, dst_cv, 
+                task_patches, image_mip, 
+                field_mip
+            ))
+
+        self.upload_tasks(tasks)
+        self.task_queue.block_until_empty()
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.warp_gridsample_cv_batch(z_range, src_cv, field_cv, 
@@ -2062,283 +2039,17 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def handle_residual_task(self, message):
-    src_z = message['src_z']
-    src_cv = DCV(message['src_cv']) 
-    tgt_z = message['tgt_z']
-    tgt_cv = DCV(message['tgt_cv']) 
-    field_cv = DCV(message['field_cv']) 
-    patch_bbox = deserialize_bbox(message['patch_bbox'])
-    mip = message['mip']
-    self.compute_residual_patch(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip)
+  def upload_tasks(self, tasks):
 
-  def handle_res_and_compose(self, message):
-    z = message['z']
-    forward = message['forward']
-    reverse = message['reverse']
-    patch_bbox = deserialize_bbox(message['patch_bbox'])
-    mip = message['mip']
-    w_cv = DCV(message['w_cv'])
-    self.res_and_compose(z, forward, reverse, patch_bbox, mip, w_cv)
+    def multiprocess_upload(ptasks):
+      with TaskQueue(queue_name=self.queue_name) as tq:
+        for task in ptasks:
+          tq.insert(task)
 
-  def handle_render_task_cv(self, message):
-    src_z = message['z']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    #patches  = deserialize_bbox(message['patches'])
-    field_cv = DCV(message['field_cv']) 
-    mip = message['mip']
-    field_z = message['field_z']
-    dst_cv = DCV(message['dst_cv'])
-    dst_z = message['dst_z']
-    def chunkwise(patch_bbox):
-      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-              end='', flush=True)
-      warped_patch = self.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
-      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
-    self.pool.map(chunkwise, patches)
-
-  def handle_batch_render_task(self, message):
-    src_z = message['z']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    batch = message['batch']
-    field_cv = DCV(message['field_cv'])
-    mip = message['mip']
-    field_z = message['field_z']
-    dst_cv = DCV(message['dst_cv'])
-    dst_z = message['dst_z']
-    def chunkwise(patch_bbox):
-      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-              end='', flush=True)
-      warped_patch = self.warp_patch_batch(src_z, field_cv, field_z,
-                                           patch_bbox, mip, batch)
-      self.save_image_patch_batch(dst_cv, (dst_z, dst_z + batch),
-                                  warped_patch, patch_bbox, mip)
-    self.pool.map(chunkwise, patches)
-
-  def handle_render_task(self, message):
-    src_z = message['z']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    #patches  = deserialize_bbox(message['patches'])
-    field_cv = DCV(message['field_cv']) 
-    mip = message['mip']
-    field_z = message['field_z']
-    dst_cv = DCV(message['dst_cv'])
-    dst_z = message['dst_z']
-    def chunkwise(patch_bbox):
-      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-              end='', flush=True)
-      warped_patch = self.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
-      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
-    self.pool.map(chunkwise, patches)
-    #warped_patch = self.warp_patch(src_z, field_cv, field_z, patches, mip)
-    #self.save_image_patch(dst_cv, dst_z, warped_patch, patches, mip)
-
-  def handle_upsample_render_rechunk_task(self, message):
-    z_start = message['z_start']
-    z_end = message['z_end']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    #patches  = deserialize_bbox(message['patches'])
-    src_cv = DCV(message['src_cv']) 
-    field_cv = DCV(message['field_cv']) 
-    dst_cv = DCV(message['dst_cv'])
-    image_mip = message['image_mip']
-    field_mip = message['field_mip']
-    z_range = range(z_start, z_end+1)
-    def chunkwise(patch_bbox):
-      warped_patch = self.warp_gridsample_cv_batch(z_range, src_cv, field_cv, 
-                                                   patch_bbox, image_mip, field_mip)
-      print('warped_patch.shape {0}'.format(warped_patch.shape))
-      self.save_image_patch_batch(dst_cv, (z_range[0], z_range[-1]+1), warped_patch, 
-                                  patch_bbox, image_mip)
-    self.pool.map(chunkwise, patches)
-
-  def handle_render_task_low_mip(self, message):
-    src_z = message['z']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    field_cv = DCV(message['field_cv']) 
-    image_mip = message['image_mip']
-    vector_mip = message['vector_mip']
-    field_z = message['field_z']
-    dst_cv = DCV(message['dst_cv'])
-    dst_z = message['dst_z']
-    def chunkwise(patch_bbox):
-      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), image_mip),
-              end='', flush=True)
-      warped_patch = self.warp_patch_at_low_mip(src_z, field_cv, field_z, 
-                                                patch_bbox, image_mip, vector_mip)
-      self.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, image_mip)
-    self.pool.map(chunkwise, patches)
-
-  def handle_prepare_task(self, message):
-    z = message['z']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    mip = message['mip']
-    start_z = message['start_z']
-    def chunkwise(patch_bbox):
-      print ("Preparing source {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-              end='', flush=True)
-      warped_patch = self.warp_patch(self.src_ng_path, z, patch_bbox,
-                                      (mip, self.process_high_mip), mip, start_z)
-      self.save_image_patch(self.tmp_ng_path, warped_patch, z, patch_bbox, mip)
-
-    self.pool.map(chunkwise, patches)
-
-  def handle_compose_task(self, message):
-    z = message['z']
-    coarse_cv = DCV(message['coarse_cv'])
-    fine_cv = DCV(message['fine_cv'])
-    dst_cv = DCV(message['dst_cv'])
-    bbox = deserialize_bbox(message['bbox'])
-    coarse_mip = message['coarse_mip']
-    fine_mip = message['fine_mip']
-    h = self.compose_cloudvolumes(z, fine_cv, coarse_cv, bbox, fine_mip, coarse_mip)        
-    self.save_vector_patch(dst_cv, z, h, bbox, fine_mip)
-
-  def handle_copy_task(self, message):
-    z = message['z']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    mip = message['mip']
-    dst_cv = DCV(message['dst_cv'])
-    dst_z = message['dst_z']
-    def chunkwise(patch_bbox):
-      src_cv = self.src['src_img']
-      if 'src_mask' in self.src:
-        mask_cv = self.src['src_mask']
-        raw_patch = self.get_image(src_cv, z, patch_bbox, mip,
-                                    adjust_contrast=False, to_tensor=True)
-        raw_mask = self.get_mask(mask_cv, z, patch_bbox, 
-                                 src_mip=self.src.src_mask_mip,
-                                 dst_mip=mip, valid_val=self.src.src_mask_val)
-        raw_patch = raw_patch.masked_fill_(raw_mask, 0)
-        raw_patch = raw_patch.cpu().numpy()
-      else: 
-        raw_patch = self.get_image(src_cv, z, patch_bbox, mip,
-                                    adjust_contrast=False, to_tensor=False)
-      self.save_image_patch(dst_cv, dst_z, raw_patch, patch_bbox, mip)
-    self.pool.map(chunkwise, patches)
-
-  def handle_downsample_task(self, message):
-    z = message['z']
-    cv = DCV(message['cv'])
-    #patches  = deserialize_bbox(message['patches'])
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    mip = message['mip']
-    #downsampled_patch = self.downsample_patch(cv, z, patches, mip - 1)
-    #self.save_image_patch(cv, z, downsampled_patch, patches, mip)
-    def chunkwise(patch_bbox):
-      downsampled_patch = self.downsample_patch(cv, z, patch_bbox, mip - 1)
-      self.save_image_patch(cv, z, downsampled_patch, patch_bbox, mip)
-    self.pool.map(chunkwise, patches)
-
-  # def handle_vector_vote(self, message):
-  #     z = message['z']
-  #     #z_end = message['z_end']
-  #     read_F_cv = DCV(message['read_F_cv'])
-  #     write_F_cv =DCV(message['write_F_cv'])
-  #     #chunks = [deserialize_bbox(p) for p in message['patch_bbox']]
-  #     chunks = deserialize_bbox(message['patch_bbox'])
-  #     mip = message['mip']
-  #     inverse = message['inverse']
-  #     T = message['T']
-  #     #z_range = range(z, z_end)
-  #     self.vector_vote(z, read_F_cv, write_F_cv, chunks, mip, inverse=inverse, T=T)
-
-  def handle_vector_vote(self, message):
-      z_start = message['z_start']
-      z_end = message['z_end']
-      read_F_cv = DCV(message['read_F_cv'])
-      write_F_cv =DCV(message['write_F_cv'])
-      #chunks = [deserialize_bbox(p) for p in message['patch_bbox']]
-      chunks = deserialize_bbox(message['patch_bbox'])
-      mip = message['mip']
-      inverse = message['inverse']
-      T = message['T']
-      negative_offsets = message['negative_offsets']
-      serial_operation = message['serial_operation']
-      z_range = range(z_start, z_end+1)
-      self.vector_vote(z_range, read_F_cv, write_F_cv, chunks, mip, inverse=inverse, 
-                       T=T, negative_offsets=negative_offsets, 
-                       serial_operation=serial_operation)
-
-  def handle_regularize(self, message):
-      z_start = message['z_start']
-      z_end = message['z_end']
-      compose_start = message['compose_start']
-      patch_bbox = deserialize_bbox(message['patch_bbox'])
-      mip = message['mip']
-      sigma = message['sigma']
-      z_range = range(z_start, z_end+1)
-      self.regularize_z(z_range, compose_start, patch_bbox, mip, sigma=sigma)
-
-  def handle_invert(self, message):
-      z = message['z']
-      src_cv = DCV(message['src_cv'])
-      dst_cv = DCV(message['dst_cv'])
-      patch_bbox = deserialize_bbox(message['patch_bbox'])
-      mip = message['mip']
-      optimizer = message['optimizer']
-      self.invert_field(z, src_cv, dst_cv, patch_bbox, mip, optimizer)
-
-  def handle_task_message(self, message):
-    #message types:
-    # -compute residual
-    # -prerender future target
-    # -render final result
-    # -downsample
-    # -copy
-    #import pdb; pdb.set_trace()
-    body = json.loads(message['Body'])
-    task_type = body['type']
-    if task_type == 'residual_task':
-      self.handle_residual_task(body)
-    elif task_type == 'render_task':
-      self.handle_render_task(body)
-    elif task_type == 'res_and_compose':
-      self.handle_res_and_compose(body)
-    elif task_type == 'render_task_cv':
-      self.handle_render_task_cv(body)
-    elif task_type == 'upsample_render_rechunk_task':
-      self.handle_upsample_render_rechunk_task(body)
-    elif task_type == 'batch_render_task':
-      self.handle_batch_render_task(body)
-    elif task_type == 'render_task_low_mip':
-      self.handle_render_task_low_mip(body)
-    elif task_type == 'compose_task':
-      self.handle_compose_task(body)
-    elif task_type == 'copy_task':
-      print("copy_task ----")
-      self.handle_copy_task(body)
-    elif task_type == 'downsample_task':
-      self.handle_downsample_task(body)
-    elif task_type == 'prepare_task':
-      self.handle_prepare_task(body)
-    elif task_type == 'vector_vote_task':
-      self.handle_vector_vote(body)
-    # elif task_type == 'batch_vvote_task':
-    #   self.handle_batch_vvote(body)
-    elif task_type == 'regularize_task':
-      self.handle_regularize(body)
-    elif task_type == 'invert_task':
-      self.handle_invert(body)
+    if self.threads == 1:
+      multiprocess_upload(tasks)
     else:
-      raise Exception("Unsupported task type '{}' received from queue '{}'".format(task_type,
-                                                                 self.task_handler.queue_name))
+      tasks = list(scatter(tasks, self.threads))
 
-  def listen_for_tasks(self):
-    while (True):
-      message = self.task_handler.get_message()
-      #attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
-      #response = self.task_handler.sqs.get_queue_attributes(QueueUrl=self.task_handler.queue_url,
-      #                                         AttributeNames=attribute_names)
-      #print(response)
-      if message != None:
-        print ("Got a job")
-        s = time()
-        #self.task_handler.purge_queue()
-        self.handle_task_message(message)
-        self.task_handler.delete_message(message)
-        e = time()
-        print ("Done: {} sec".format(e - s))
-      else:
-        sleep(3)
-        print ("Waiting for jobs...") 
+      with concurrent.futures.ProcessPoolExecutor(max_workers=parallel) as executor:
+        executor.map(multiprocess_upload, tasks)
