@@ -515,6 +515,10 @@ class Aligner:
         field = field.data.cpu().numpy() 
         self.save_vector_patch(write_F_cv, z, field, bbox, mip,
                                to_int=self.int_field)
+        if self.distributed:
+            with Storage(write_F_cv.path) as stor:
+                stor.put_file('vv_done/'+str(mip)+'_'+str(z_range[0])+'_'+str(z_range[-1])+'/'+str(z)+bbox.__str__(), '')
+
 
   # def vector_vote_single_section(self, z, read_F_cv, write_F_cv, bbox, mip, inverse, T=1):
   #   """Compute consensus vector field using pairwise vector fields with earlier sections. 
@@ -1186,8 +1190,8 @@ class Aligner:
         for i in range(0, len(chunks), self.task_batch_size * 4):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size * 4)):
-                task_patches.append(chunks[j])
-            tasks.append(alignment_tasks.CopyTask(z, dst_cv, dst_z, task_patches, mip=mip))
+                task_patches.append(chunks[j].serialize())
+            tasks.append(alignment_tasks.CopyTask(z, dst_cv.serialize(), dst_z, task_patches, mip=mip))
         self.upload_tasks(tasks)
         self.wait_for_queue_empty(dst_cv.path, 'copy_done/'+str(mip)+'_'+str(dst_z), len(chunks))
     else: 
@@ -1291,9 +1295,9 @@ class Aligner:
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
-                task_patches.append(chunks[j])
+                task_patches.append(chunks[j].serialize())
             tasks.append(alignment_tasks.RenderTask(
-              src_z, field_cv, field_z, task_patches, 
+              src_z, field_cv, field_z, task_patches,
               mip, dst_cv, dst_z
             ))
         self.upload_tasks(tasks)
@@ -1328,7 +1332,7 @@ class Aligner:
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
-                task_patches.append(chunks[j])
+                task_patches.append(chunks[j].serialize())
             tasks.append(alignment_tasks.BatchRenderTask(
               src_z, field_cv, field_z, task_patches,
               mip, dst_cv, dst_z, batch
@@ -1365,7 +1369,7 @@ class Aligner:
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
-                task_patches.append(chunks[j])
+                task_patches.append(chunks[j].serialize())
             tasks.append(alignment_tasks.RenderCVTask(src_z, field_cv, field_z, task_patches,
                                                       mip, dst_cv, dst_z))
         self.upload_tasks(tasks)
@@ -1391,7 +1395,7 @@ class Aligner:
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
-                task_patches.append(chunks[j])
+                task_patches.append(chunks[j].serialize())
             tasks.append(alignment_tasks.RenderLowMipTask(src_z, field_cv, field_z, 
                                                            task_patches, image_mip, 
                                                            vector_mip, dst_cv, dst_z))
@@ -1432,7 +1436,7 @@ class Aligner:
     section Z in region BBOX at MIP. Chunk BBOX appropriately and save the result
     to DST_IMG.
     """
-    print ("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
+    print("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
     for m in range(source_mip+1, target_mip+1):
       chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[m],
                                       self.dst[0].dst_voxel_offsets[m], mip=m, render=True)
@@ -1442,7 +1446,7 @@ class Aligner:
           for i in range(0, len(chunks), self.task_batch_size * 4):
               task_patches = []
               for j in range(i, min(len(chunks), i + self.task_batch_size * 4)):
-                  task_patches.append(chunks[j])
+                  task_patches.append(chunks[j].serialize())
               tasks.append(alignment_tasks.DownsampleTask(cv, z, task_patches, mip=m))
           self.upload_tasks(tasks)
           if wait:
@@ -1450,7 +1454,7 @@ class Aligner:
                                         len(chunks))
       else:
           def chunkwise(patch_bbox):
-            print ("Downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
+            print ("Local downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
             downsampled_patch = self.downsample_patch(cv, z, patch_bbox, m-1)
             self.save_image_patch(cv, z, downsampled_patch, patch_bbox, m)
           self.pool.map(chunkwise, chunks)
@@ -1484,16 +1488,18 @@ class Aligner:
     print ("compute residuals between {} to slice {} at mip {} ({} chunks)".
            format(src_z, tgt_z, mip, len(chunks)), flush=True)
     if self.distributed:
+      cv_path = self.dst[0].root
       tasks = []
       for patch_bbox in chunks:
-        tasks.append(alignment_tasks.ResidualTask(src_z, src_cv, tgt_z, tgt_cv, 
-                                                   field_cv, patch_bbox, mip))
+        tasks.append(alignment_tasks.ResidualTask(src_z, src_cv, tgt_z, tgt_cv,
+                                                  field_cv, patch_bbox, mip,
+                                                  cv_path))
       self.upload_tasks(tasks)
     else:
       def chunkwise(patch_bbox):
       #FIXME Torch runs out of memory
       #FIXME batchify download and upload
-        self.compute_residual_patch(src_z, src_cv, tgt_z, tgt_cv, 
+        self.compute_residual_patch(src_z, src_cv, tgt_z, tgt_cv,
                                     field_cv, patch_bbox, mip)
       self.pool.map(chunkwise, chunks)
     end = time()
@@ -1592,9 +1598,8 @@ class Aligner:
         tasks = []
         for patch_bbox in chunks:
             tasks.append(alignment_tasks.VectorVoteTask(z_range, read_F_cv, write_F_cv,
-                                                             patch_bbox, mip, inverse, T, 
-                                                             negative_offsets, 
-                                                             serial_operation))
+                                                        patch_bbox, mip, inverse, T,
+                                                        negative_offsets, serial_operation))
         self.upload_tasks(tasks)
         self.wait_for_queue_empty(write_F_cv.path,
                                   'vv_done/'+str(mip)+'_'+str(z_range[0])+'_'+str(z_range[-1])+'/',
@@ -2021,11 +2026,11 @@ class Aligner:
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
-                task_patches.append(chunks[j])
+                task_patches.append(chunks[j].serialize())
             tasks.append(alignment_tasks.UpsampleRenderRechunkTask(
-                z_range, src_cv, 
-                field_cv, dst_cv, 
-                task_patches, image_mip, 
+                z_range, src_cv,
+                field_cv, dst_cv,
+                task_patches, image_mip,
                 field_mip
             ))
 

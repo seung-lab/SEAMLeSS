@@ -2,7 +2,8 @@ import boto3
 import time
 import json
 import tenacity
-
+from mipless_cloudvolume import deserialize_miplessCV as DCV
+from cloudvolume import Storage
 from boundingbox import BoundingBox, deserialize_bbox
 
 from taskqueue import RegisteredTask
@@ -16,7 +17,7 @@ class BatchRenderTask(RegisteredTask):
       z, field_cv, field_z, patches, 
       mip, dst_cv, dst_z, batch
     )
-    self.patches = [p.serialize() for p in patches]
+    #self.patches = [p.serialize() for p in patches]
 
   def execute(self, aligner):
     src_z = self.z
@@ -35,6 +36,8 @@ class BatchRenderTask(RegisteredTask):
                                            patch_bbox, mip, batch)
       aligner.save_image_patch_batch(dst_cv, (dst_z, dst_z + batch),
                                   warped_patch, patch_bbox, mip)
+      with Storage(dst_cv.path) as stor:
+          stor.put_file('render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/'+ patch_bbox.__str__(), '')
     aligner.pool.map(chunkwise, patches)
 
 class ComposeTask(RegisteredTask):
@@ -55,13 +58,14 @@ class ComposeTask(RegisteredTask):
     bbox = deserialize_bbox(self.bbox)
     coarse_mip = self.coarse_mip
     fine_mip = self.fine_mip
-    h = aligner.compose_cloudvolumes(z, fine_cv, coarse_cv, bbox, fine_mip, coarse_mip)        
-    aligner.save_vector_patch(dst_cv, z, h, bbox, fine_mip)    
+    h = aligner.compose_cloudvolumes(z, fine_cv, coarse_cv, bbox, fine_mip, coarse_mip) 
+    aligner.save_vector_patch(dst_cv, z, h, bbox, fine_mip)
 
 class CopyTask(RegisteredTask):
   def __init__(self, z, dst_cv, dst_z, patches, mip):
     super().__init__(z, dst_cv, dst_z, patches, mip)
-    self.patches = [p.serialize() for p in patches]
+    #self.patches = [p.serialize() for p in patches]
+    #self.patches = patches
 
   def execute(self, aligner):
     z = self.z
@@ -85,13 +89,15 @@ class CopyTask(RegisteredTask):
         raw_patch = aligner.get_image(src_cv, z, patch_bbox, mip,
                                     adjust_contrast=False, to_tensor=False)
       aligner.save_image_patch(dst_cv, dst_z, raw_patch, patch_bbox, mip)
+      with Storage(dst_cv.path) as stor:
+          stor.put_file('copy_done/'+str(mip)+'_'+str(dst_z)+'/'+patch_bbox.__str__(), '')
     
-    aligner.pool.map(chunkwise, patches)    
+    aligner.pool.map(chunkwise, patches)
 
 class DownsampleTask(RegisteredTask):
   def __init__(self, cv, z, patches, mip):
     super().__init__(cv, z, patches, mip)
-    self.patches = [p.serialize() for p in patches]
+    #self.patches = [p.serialize() for p in patches]
 
   def execute(self, aligner):
     z = self.z
@@ -104,7 +110,9 @@ class DownsampleTask(RegisteredTask):
     def chunkwise(patch_bbox):
       downsampled_patch = aligner.downsample_patch(cv, z, patch_bbox, mip - 1)
       aligner.save_image_patch(cv, z, downsampled_patch, patch_bbox, mip)
-    aligner.pool.map(chunkwise, patches)    
+      with Storage(cv.path) as stor:
+          stor.put_file('downsample_done/'+str(mip)+'_'+str(z)+'/'+patch_bbox.__str__(), '')
+    aligner.pool.map(chunkwise, patches)
 
 class InvertFieldTask(RegisteredTask):
   def __init__(self, z, src_cv, dst_cv, patch_bbox, mip, optimizer):
@@ -116,14 +124,14 @@ class InvertFieldTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
 
     aligner.invert_field(
-      self.z, src_cv, dst_cv, 
+      self.z, src_cv, dst_cv,
       patch_bbox, self.mip, self.optimizer
     )
 
 class PrepareTask(RegisteredTask):
   def __init__(self, z, patches, mip, start_z):
     super().__init__(z, patches, mip, start_z)
-    self.patches = [ p.serialize() for p in patches ]
+    #self.patches = [ p.serialize() for p in patches ]
 
   def execute(self, aligner):
     patches = [ deserialize_bbox(p) for p in self.patches ]
@@ -161,7 +169,7 @@ class RegularizeTask(RegisteredTask):
 class RenderTask(RegisteredTask):
   def __init__(self, z, field_cv, field_z, patches, mip, dst_cv, dst_z):
     super().__init__(z, field_cv, field_z, patches, mip, dst_cv, dst_z)
-    self.patches = [p.serialize() for p in patches]
+    #self.patches = [p.serialize() for p in patches]
 
   def execute(self, aligner):
     src_z = self.z
@@ -177,6 +185,9 @@ class RenderTask(RegisteredTask):
               end='', flush=True)
       warped_patch = aligner.warp_patch(src_z, field_cv, field_z, patch_bbox, mip)
       aligner.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+      with Storage(dst_cv.path) as stor:
+          stor.put_file('render_done/'+str(mip)+'_'+str(dst_z)+'/'+patch_bbox.__str__(), '')
+
     aligner.pool.map(chunkwise, patches)
     #warped_patch = aligner.warp_patch(src_z, field_cv, field_z, patches, mip)
     #aligner.save_image_patch(dst_cv, dst_z, warped_patch, patches, mip)    
@@ -184,7 +195,7 @@ class RenderTask(RegisteredTask):
 class RenderCVTask(RegisteredTask):
   def __init__(self, z, field_cv, field_z, patches, mip, dst_cv, dst_z):
     super().__init__(z, field_cv, field_z, patches, mip, dst_cv, dst_z)
-    self.patches = [p.serialize() for p in patches]
+    #self.patches = [p.serialize() for p in patches]
 
   def execute(self, aligner):
     src_z = self.z
@@ -201,6 +212,8 @@ class RenderCVTask(RegisteredTask):
               end='', flush=True)
       warped_patch = aligner.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
       aligner.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
+      with Storage(dst_cv.path) as stor:
+          stor.put_file('render_cv/'+str(mip)+'_'+str(dst_z)+'/'+ patch_bbox.__str__(), '')
     aligner.pool.map(chunkwise, patches)    
 
 class RenderLowMipTask(RegisteredTask):
@@ -212,7 +225,7 @@ class RenderLowMipTask(RegisteredTask):
       z, field_cv, field_z, patches, 
       image_mip, vector_mip, dst_cv, dst_z
     )
-    self.patches = [p.serialize() for p in patches]
+    #self.patches = [p.serialize() for p in patches]
 
   def execute(self, aligner):
     src_z = self.z
@@ -229,11 +242,15 @@ class RenderLowMipTask(RegisteredTask):
       warped_patch = aligner.warp_patch_at_low_mip(src_z, field_cv, field_z, 
                                                 patch_bbox, image_mip, vector_mip)
       aligner.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, image_mip)
+      with Storage(dst_cv.path) as stor:
+          stor.put_file('render_low_mip/'+str(image_mip)+'_'+str(dst_z)+'/'+ patch_bbox.__str__(), '')
     aligner.pool.map(chunkwise, patches)
 
 class ResidualTask(RegisteredTask):
-  def __init__(self, src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip):
-    super().__init__(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip)
+  def __init__(self, src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip,
+               cv_path):
+    super().__init__(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip,
+                     cv_path)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
@@ -246,6 +263,8 @@ class ResidualTask(RegisteredTask):
       self.src_z, src_cv, self.tgt_z, tgt_cv, 
       field_cv, patch_bbox, mip
     )
+    with Storage(self.cv_path) as stor:
+        stor.put_file('residual_done'+str(mip)+'/'+str(self.src_z)+'_'+str(self.tgt_z)+'_'+patch_bbox.__str__(), '')
 
 class ResAndComposeTask(RegisteredTask):
   def __init__(self, z, forward, reverse, patch_bbox, mip, w_cv):
@@ -258,6 +277,8 @@ class ResAndComposeTask(RegisteredTask):
       self.z, self.forward, self.reverse, 
       patch_bbox, self.mip, w_cv
     )
+    with Storage(w_cv.path) as stor:
+        stor.put_file('res_and_compose/'+str(self.mip)+'/'+str(self.z)+'/'+patch_bbox.__str__(), '')
 
 class UpsampleRenderRechunkTask(RegisteredTask):
   def __init__(
@@ -268,7 +289,7 @@ class UpsampleRenderRechunkTask(RegisteredTask):
       z_range, src_cv, field_cv, dst_cv, 
       patches, image_mip, field_mip
     )
-    self.patches = [p.serialize() for p in patches]
+    #self.patches = [p.serialize() for p in patches]
 
   def execute(self, aligner):
     z_start = self.z_start
@@ -287,7 +308,7 @@ class UpsampleRenderRechunkTask(RegisteredTask):
       print('warped_patch.shape {0}'.format(warped_patch.shape))
       aligner.save_image_patch_batch(dst_cv, (z_range[0], z_range[-1]+1), warped_patch, 
                                   patch_bbox, image_mip)
-    aligner.pool.map(chunkwise, patches)    
+    aligner.pool.map(chunkwise, patches)
 
 class VectorVoteTask(RegisteredTask):
   def __init__(
@@ -311,4 +332,5 @@ class VectorVoteTask(RegisteredTask):
       self.mip, inverse=self.inverse, T=self.T, 
       negative_offsets=self.negative_offsets, 
       serial_operation=self.serial_operation
-    ) 
+    )
+
