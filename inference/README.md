@@ -44,14 +44,15 @@ Master version >= 1.10.9-gke.5 (default)
 Two node pools:
 1. micro pool
    Number of nodes: 3
-   Machine type: f1-micro
+   Machine type: g1-small
+   Boot disk size: 10 GB
 2. gpu pool
    Number of nodes: as many as you like
-   Container-Optimized OS (cos) (default)
-   Cores: 1 vCPU
-   Memory: 3.75 GB
+   Container-Optimized OS (cos) 1.11.5-gke.5 or higher
+   Cores: 8 vCPU
+   Memory: 30 GB
    Number of GPUs: 1
-   GPU type: NVIDIA Tesla K80
+   GPU type: NVIDIA Tesla K80 or T4
    Boot disk size: 16 GB
    Access scopes: 'Allow full access to all Cloud APIs'
    Enable preemptible nodes: True
