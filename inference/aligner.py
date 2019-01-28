@@ -1,4 +1,3 @@
-
 import concurrent.futures
 from copy import deepcopy, copy
 from functools import partial
@@ -1190,7 +1189,7 @@ class Aligner:
                 task_patches.append(chunks[j])
             tasks.append(alignment_tasks.CopyTask(z, dst_cv, dst_z, task_patches, mip=mip))
         self.upload_tasks(tasks)
-        self.task_queue.block_until_empty()
+        self.wait_for_queue_empty(dst_cv.path, 'copy_done/'+str(mip)+'_'+str(dst_z), len(chunks))
     else: 
         #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
@@ -1264,11 +1263,15 @@ class Aligner:
 
   def wait_for_queue_empty_range(self, path, prefix, z_range, chunks_len):
       i = 0
-      with Storage(path) as stor:
-          for z in z_range:
-              lst = stor.list_files(prefix=prefix+str(z))
-              i += sum(1 for _ in lst)
-      return i == chunks_len
+      while True:
+        with Storage(path) as stor:
+            for z in z_range:
+                lst = stor.list_files(prefix=prefix+str(z))
+                i += sum(1 for _ in lst)
+            if i == chunks_len:
+                break
+            else:
+                 sleep(1)
 
   def render(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip, wait=True):
     """Chunkwise render
