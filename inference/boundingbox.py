@@ -111,6 +111,8 @@ class BoundingBox:
     self.check_mips()
 
   def uncrop(self, crop_xy, mip):
+    """Uncrop the bounding box by crop_xy at given MIP level
+    """
     scale_factor = 2**mip
     m0_crop_xy = crop_xy * scale_factor
     self.set_m0(self.m0_x[0] - m0_crop_xy,
@@ -141,3 +143,11 @@ class BoundingBox:
 
   def __str__(self, mip=0):
     return "{}, {}".format(self.x_range(mip), self.y_range(mip))
+
+  def stringify(self, z, mip=0):
+    x_start = self.x_range(mip)[0]    
+    x_stop = self.x_range(mip)[1]    
+    y_start = self.y_range(mip)[0]    
+    y_stop = self.y_range(mip)[1]    
+    return '[{0},{1},{2}], [{3},{4},{5}]'.format(x_start, y_start, z, x_stop, y_stop, z+1)
+    
