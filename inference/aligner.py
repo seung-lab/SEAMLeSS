@@ -29,7 +29,7 @@ from utilities.archive import ModelArchive
 
 import torch.nn as nn
 
-from task_handler import TaskHandler, make_residual_task_message, \
+from task_handler import TaskHandler, make_compute_field_task_message, \
         make_render_task_message, make_copy_task_message, \
         make_downsample_task_message, make_compose_task_message, \
         make_prepare_task_message, make_vector_vote_task_message, \
@@ -324,8 +324,8 @@ class Aligner:
     else:
       return field 
 
-  def get_composed_field(self, f_z, g_z, f_cv, g_cv, bbox, f_mip, g_mip, dst_mip,
-                               pad, as_int16=True):
+  def get_composed_field(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip, dst_mip,
+                               pad=2048):
     """Compose chunk of two field cloudvolumes, such that f(g(x)) at dst_mip
 
     Args:
@@ -345,18 +345,16 @@ class Aligner:
     """
     padded_bbox = deepcopy(bbox)
     padded_bbox.uncrop(pad, mip=0)
-    crop = int(pad / 2**dst_mip)
-    f = self.get_field(f_cv, f_z, padded_bbox, f_mip, relative=True, to_tensor=True, 
-                       as_int16=as_int16)
-    g = self.get_field(g_cv, g_z, padded_bbox, g_mip, relative=True, to_tensor=True,
-                       as_int16=as_int16)
+    crop = pad // 2**dst_mip
+    f = self.get_field(f_cv, f_z, padded_bbox, f_mip, relative=True, to_tensor=True)
+    g = self.get_field(g_cv, g_z, padded_bbox, g_mip, relative=True, to_tensor=True)
     if dst_mip < g_mip:
       g = upsample_field(g, g_mip, dst_mip)
     elif dst_mip < f_mip:
       f = upsample_field(f, f_mip, dst_mip)
     h = compose_fields(f, g)
     h = self.rel_to_abs_residual(h, dst_mip)
-    h = h.cpu().numpy()[:,crop:-crop,crop:-crop,:]
+    h = h[:,crop:-crop,crop:-crop,:]
     return h
 
   def save_field(self, field, cv, z, bbox, mip, relative, as_int16=True):
@@ -585,54 +583,57 @@ class Aligner:
         image = image[:,:,pad:-pad,pad:-pad]
         return image
 
-  def cloudsample_compose(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip, dst_mip):
-      """Wrapper for torch.nn.functional.gridsample for CloudVolume field objects.
+  # def cloudsample_compose(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip, dst_mip,
+  #                               pad=2048):
+  #     """Wrapper for torch.nn.functional.gridsample for CloudVolume field objects.
 
-      Gridsampling a field is a composition, such that f(g(x)).
+  #     Gridsampling a field is a composition, such that f(g(x)).
 
-      Args:
-         f_cv: MiplessCloudVolume storing the vector field to do the warping 
-         g_cv: MiplessCloudVolume storing the vector field to be warped
-         bbox: BoundingBox for output region to be warped
-         z: int for section index to warp
-         f_mip: int for MIP of the warping field 
-         g_mip: int for MIP of the field to be warped
-         dst_mip: int for MIP of the desired output field
+  #     ** THIS METHOD HAS NOT BEEN TESTED **
 
-      Returns:
-         composed field
-      """
-      pad = 2**(dst_mip+3)
-      padded_bbox = deepcopy(bbox)
-      padded_bbox.uncrop(pad, mip=dst_mip)
-      f = self.get_field(f_cv, f_z, padded_bbox, f_mip, relative=False,
-                          to_tensor=True)
-      x_range = bbox.x_range(mip=0)
-      y_range = bbox.y_range(mip=0)
-      if is_identity(f):
-        h = self.get_field(g_cv, g_z, bbox, g_mip, relative=False,
-                            to_tensor=True)
-        return h 
-      else:
-        distance = self.profile_field(f)
-        distance = (distance//(2**f_mip)) * 2**f_mip
-        new_bbox = self.adjust_bbox(padded_bbox, distance)
-        g = self.get_field(g_cv, g_z, new_bbox, g_mip, relative=True,
-                            to_tensor=True)
+  #     Args:
+  #        f_cv: MiplessCloudVolume storing the vector field to do the warping 
+  #        g_cv: MiplessCloudVolume storing the vector field to be warped
+  #        bbox: BoundingBox for output region to be warped
+  #        z: int for section index to warp
+  #        f_mip: int for MIP of the warping field 
+  #        g_mip: int for MIP of the field to be warped
+  #        dst_mip: int for MIP of the desired output field
 
-        f = f - distance.to(device = self.device)
-        f = self.abs_to_rel_residual(f, padded_bbox, f_mip)
-        f = f.to(device = self.device)
+  #     Returns:
+  #        composed field
+  #     """
+  #     padded_bbox = deepcopy(bbox)
+  #     padded_bbox.uncrop(pad, mip=0)
+  #     crop = pad // 2**dst_mip
+  #     f = self.get_field(f_cv, f_z, padded_bbox, f_mip, relative=False,
+  #                         to_tensor=True)
+  #     x_range = bbox.x_range(mip=0)
+  #     y_range = bbox.y_range(mip=0)
+  #     if is_identity(f):
+  #       h = self.get_field(g_cv, g_z, bbox, g_mip, relative=False,
+  #                           to_tensor=True)
+  #       return h 
+  #     else:
+  #       distance = self.profile_field(f)
+  #       distance = (distance//(2**f_mip)) * 2**f_mip
+  #       new_bbox = self.adjust_bbox(padded_bbox, distance)
+  #       g = self.get_field(g_cv, g_z, new_bbox, g_mip, relative=True,
+  #                           to_tensor=True)
 
-        if dst_mip < g_mip:
-          g = upsample_field(g, g_mip, dst_mip)
-        if dst_mip < f_mip:
-          f = upsample_field(f, f_mip, dst_mip)
+  #       f = f - distance.to(device = self.device)
+  #       f = self.abs_to_rel_residual(f, padded_bbox, f_mip)
+  #       f = f.to(device = self.device)
 
-        h = compose_fields(f, g)
-        h = self.rel_to_abs_residual(h, dst_mip)
-        h = h[:,pad:-pad,pad:-pad,:]
-        return h
+  #       if dst_mip < g_mip:
+  #         g = upsample_field(g, g_mip, dst_mip)
+  #       if dst_mip < f_mip:
+  #         f = upsample_field(f, f_mip, dst_mip)
+
+  #       h = compose_fields(f, g)
+  #       h = self.rel_to_abs_residual(h, dst_mip)
+  #       h = h[:,crop:-crop,crop:-crop,:]
+  #       return h
 
   def cloudsample_image_batch(self, z_range, image_cv, field_cv, 
                               bbox, image_mip, field_mip,
@@ -719,18 +720,26 @@ class Aligner:
        mask_val: int for pixel value in the mask that should be zero-filled
        wait: bool indicating whether to wait for all tasks must finish before proceeding
     """
-    print ("\nCopying {0} to {1}, for z={2} to z={3}".format(src_cv, dst_cv, src_z, dst_z))
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 
                                     max_mip=cm.num_scales)
+    print("\nCopy\n"
+          "src {0}\n"
+          "dst {1}\n"
+          "z={2} to z={3}\n"
+          "MIP{4}\n"
+          "{5} chunks\n".format(src_cv, dst_cv, src_z, dst_z, mip, len(chunks)), flush=True)
     if self.distributed and len(chunks) > self.task_batch_size * 4:
         tasks = []
         for i in range(0, len(chunks), self.task_batch_size * 4):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size * 4)):
                 task_patches.append(chunks[j])
-            tasks.append(make_copy_task_message(z, dst_cv, dst_z, task_patches, mip=mip))
+            tasks.append(make_copy_task_message(src_cv, dst_cv, src_z, dst_z, 
+                                                task_patches, 
+                                                mip, is_field, mask_cv, mask_mip, 
+                                                mask_val))
         self.pool.map(self.task_handler.send_message, tasks)
         if wait:
           self.task_handler.wait_until_ready()
@@ -753,7 +762,7 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv, 
-  				  src_z, tgt_z, bbox, mip, pad, wait=True):
+  				  src_z, tgt_z, bbox, mip, pad=2048, wait=True):
     """Compute field to warp src section to tgt section 
   
     Args:
@@ -773,13 +782,21 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
   				  cm.dst_voxel_offsets[mip], mip=mip, 
   				  max_mip=cm.num_scales)
-    print ("compute residuals between {} to slice {} at mip {} ({} chunks)".
-  	 format(src_z, tgt_z, mip, len(chunks)), flush=True)
+    print("\nCompute field\n"
+          "model {}\n"
+          "src {}\n"
+          "tgt {}\n"
+          "field {}\n"
+          "z={} to z={}\n"
+          "MIP{}\n"
+          "{} chunks\n".format(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
+                               mip, len(chunks)), flush=True)
     if self.distributed:
       tasks = []
       for patch_bbox in chunks:
-        tasks.append(make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, 
-  						 field_cv, patch_bbox, mip))
+        tasks.append(make_compute_field_task_message(model_path, src_cv, tgt_cv,
+                                                     field_cv, src_z, tgt_z, patch_bbox, 
+                                                     mip, pad)) 
       self.pool.map(self.task_handler.send_message, tasks)
       if wait:
         self.task_handler.wait_until_ready()
@@ -815,19 +832,27 @@ class Aligner:
        mask_val: int for pixel value in the mask that should be zero-filled
        wait: bool indicating whether to wait for all tasks must finish before proceeding
     """
-    print('\nRendering to z={0}'.format(dst_z))
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[src_mip],
                                     cm.dst_voxel_offsets[src_mip], mip=src_mip, 
                                     max_mip=cm.num_scales)
+    print("\nRendering\n"
+          "src {0}\n"
+          "field {1}\n"
+          "dst {2}\n"
+          "z={3} to z={4}\n"
+          "MIP{5} to MIP{6}\n"
+          "{7} chunks\n".format(src_cv, field_cv, dst_cv, 
+                              src_z, dst_z, field_mip, src_mip, len(chunks)), flush=True)
     if self.distributed:
         tasks = []
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j])
-            tasks.append(make_render_task_message(src_z, field_cv, field_z, task_patches, 
-                                                   mip, dst_cv, dst_z))
+            task.append(make_render_task_message(src_cv, field_cv, dst_cv, src_z, 
+                             field_z, dst_z, patches, src_mip, field_mip, mask_cv, 
+                             mask_mip, mask_val))
         self.pool.map(self.task_handler.send_message, tasks)
         if wait:
           self.task_handler.wait_until_ready()
@@ -870,10 +895,8 @@ class Aligner:
     if self.distributed:
         tasks = []
         for patch_bbox in chunks:
-            tasks.append(make_vector_vote_task_message(z_range, read_F_cv, write_F_cv,
-                                                             patch_bbox, mip, inverse, T, 
-                                                             negative_offsets, 
-                                                             serial_operation))
+            tasks.append(make_vector_vote_task_message(pairwise_cvs, vvote_cv, z, bbox, 
+                                  mip, inverse, softmin_temp, serial))
         self.pool.map(self.task_handler.send_message, tasks)
         if wait:
           self.task_handler.wait_until_ready()
@@ -918,14 +941,16 @@ class Aligner:
     if self.distributed:
         tasks = []
         for patch_bbox in chunks:
-            tasks.append(make_compose_task_message(f_z, g_z, dst_z, f_cv, g_cv, dst_cv,
-                                                   patch_bbox, coarse_mip, fine_mip))
+            tasks.append(make_compose_task_message(f_cv, g_cv, dst_cv, f_z, g_z, 
+                                      dst_z, patch_bbox, f_mip, g_mip, dst_mip))
         self.pool.map(self.task_handler.send_message, tasks)
         if wait:
           self.task_handler.wait_until_ready()
     else:
         def chunkwise(patch_bbox):
-          h = self.cloudsample_compose(f_cv, g_cv, f_z, g_z, patch_bbox, 
+          # h = self.cloudsample_compose(f_cv, g_cv, f_z, g_z, patch_bbox, 
+          #                              f_mip, g_mip, dst_mip)
+          h = self.get_composed_field(f_cv, g_cv, f_z, g_z, patch_bbox, 
                                        f_mip, g_mip, dst_mip)
           h = h.data.cpu().numpy()
           self.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
@@ -1379,24 +1404,97 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def handle_residual_task(self, message):
-    src_z = message['src_z']
+  def handle_copy_task(self, message):
+    src_cv = DCV(message['src_cv'])
+    dst_cv = DCV(message['dst_cv'])
+    src_z = DCV(message['src_z'])
+    dst_z = DCV(message['dst_z'])
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    is_field = message['is_field']
+    mip = message['mip']
+    mask_cv = DCV(message['mask_cv'])
+    mask_mip = message['mask_mip']
+    mask_val = message['mask_val']
+
+    def chunkwise(patch_bbox):
+      if is_field:
+        field =  self.get_field(src_cv, src_z, patch_bbox, mip, relative=False,
+                                to_tensor=False)
+        self.save_field(field, dst_cv, dst_z, patch_bbox, mip, relative=False)
+      else:
+        image = self.get_masked_image(src_cv, src_z, patch_bbox, mip,
+                                mask_cv=mask_cv, mask_mip=mask_mip,
+                                mask_val=mask_val,
+                                to_tensor=False, normalizer=None)
+        self.save_image(image, dst_cv, dst_z, patch_bbox, mip)
+    self.pool.map(chunkwise, patches)
+
+  def handle_compute_field_task(self, message):
+    model_path = message['model_path']
     src_cv = DCV(message['src_cv']) 
-    tgt_z = message['tgt_z']
     tgt_cv = DCV(message['tgt_cv']) 
     field_cv = DCV(message['field_cv']) 
+    src_z = message['src_z']
+    tgt_z = message['tgt_z']
     patch_bbox = deserialize_bbox(message['patch_bbox'])
     mip = message['mip']
-    self.compute_field(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip)
+    pad = message['pad']
+    field = self.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z, 
+                                     patch_bbox, mip, pad)
+    field = field.data.cpu().numpy()
+    self.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
 
-  def handle_res_and_compose(self, message):
-    z = message['z']
-    forward = message['forward']
-    reverse = message['reverse']
+  def handle_render_task(self, message):
+    src_cv = DCV(message['src_cv']) 
+    field_cv = DCV(message['field_cv']) 
+    dst_cv = DCV(message['dst_cv'])
+    src_z = message['src_z']
+    field_z = message['field_z']
+    dst_z = message['dst_z']
+    patches  = [deserialize_bbox(p) for p in message['patches']]
+    src_mip = message['src_mip']
+    field_mip = message['field_mip']
+    mask_cv = DCV(message['mask_cv'])
+    mask_mip = message['mask_mip']
+    mask_val = message['mask_val']
+    def chunkwise(patch_bbox):
+      image = self.cloudsample_image(src_cv, field_cv, src_z, field_z, 
+                                     patch_bbox, src_mip, field_mip, 
+                                     mask_cv=mask_cv, mask_mip=mask_mip,
+                                     mask_val=mask_val)
+      image = image.cpu().numpy()
+      self.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
+    self.pool.map(chunkwise, patches)
+
+  def handle_vector_vote(self, message):
+      pairwise_cvs = {k: DCV(v) for k, v in message['pairwise_cvs'].items()}
+      vvote_cv = DCV(message['vvote_cv'])
+      z = message['z']
+      patch = deserialize_bbox(message['patch_bbox'])
+      mip = message['mip']
+      inverse = message['inverse']
+      softmin_temp = message['softmin_temp']
+      serial = message['serial']
+      field = self.vector_vote_chunk(pairwise_cvs, vvote_cv, z, patch_bbox, mip, 
+                       inverse=inverse, softmin_temp=softmin_temp, 
+                       serial=serial)
+      field = field.data.cpu().numpy()
+      self.save_field(field, vvote_cv, z, patch_bbox, mip, relative=False)
+
+  def handle_compose_task(self, message):
+    f_cv = DCV(message['f_cv'])
+    g_cv = DCV(message['g_cv'])
+    f_z = message['f_z']
+    g_z = message['g_z']
+    dst_z = message['dst_z']
     patch_bbox = deserialize_bbox(message['patch_bbox'])
-    mip = message['mip']
-    w_cv = DCV(message['w_cv'])
-    self.res_and_compose(z, forward, reverse, patch_bbox, mip, w_cv)
+    f_mip = message['f_mip']
+    g_mip = message['g_mip']
+    dst_mip = message['dst_mip']
+    h = self.get_composed_field(f_cv, g_cv, f_z, g_z, patch_bbox, 
+                                 f_mip, g_mip, dst_mip)
+    h = h.data.cpu().numpy()
+    self.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
 
   def handle_render_task_cv(self, message):
     src_z = message['z']
@@ -1431,27 +1529,6 @@ class Aligner:
       self.save_image_batch(dst_cv, (dst_z, dst_z + batch),
                                   warped_patch, patch_bbox, mip)
     self.pool.map(chunkwise, patches)
-
-  def handle_render_task(self, message):
-    src_z = message['z']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    #patches  = deserialize_bbox(message['patches'])
-    field_cv = DCV(message['field_cv']) 
-    mip = message['mip']
-    field_z = message['field_z']
-    dst_cv = DCV(message['dst_cv'])
-    dst_z = message['dst_z']
-    def chunkwise(patch_bbox):
-      print ("Rendering {} at mip {}".format(patch_bbox.__str__(mip=0), mip),
-              end='', flush=True)
-      patch = self.cloudsample_image(image_z, field_z, image_cv, field_cv, 
-                              bbox, image_mip, field_mip,
-                              src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
-                              as_int16=True)
-      self.save_image(dst_cv, dst_z, patch, patch_bbox, mip)
-    self.pool.map(chunkwise, patches)
-    #warped_patch = self.warp_patch(src_z, field_cv, field_z, patches, mip)
-    #self.save_image(dst_cv, dst_z, warped_patch, patches, mip)
 
   def handle_upsample_render_rechunk_task(self, message):
     z_start = message['z_start']
@@ -1503,40 +1580,6 @@ class Aligner:
 
     self.pool.map(chunkwise, patches)
 
-  def handle_compose_task(self, message):
-    z = message['z']
-    coarse_cv = DCV(message['coarse_cv'])
-    fine_cv = DCV(message['fine_cv'])
-    dst_cv = DCV(message['dst_cv'])
-    bbox = deserialize_bbox(message['bbox'])
-    coarse_mip = message['coarse_mip']
-    fine_mip = message['fine_mip']
-    h = self.compose_cloudvolumes(z, fine_cv, coarse_cv, bbox, fine_mip, coarse_mip)        
-    self.save_field(dst_cv, z, h, bbox, fine_mip, relative=False, as_int16=as_int16)
-
-  def handle_copy_task(self, message):
-    z = message['z']
-    patches  = [deserialize_bbox(p) for p in message['patches']]
-    mip = message['mip']
-    dst_cv = DCV(message['dst_cv'])
-    dst_z = message['dst_z']
-    def chunkwise(patch_bbox):
-      src_cv = self.src['src_img']
-      if 'src_mask' in self.src:
-        mask_cv = self.src['src_mask']
-        raw_patch = self.get_image(src_cv, z, patch_bbox, mip,
-                                    adjust_contrast=False, to_tensor=True)
-        raw_mask = self.get_mask(mask_cv, z, patch_bbox, 
-                                 src_mip=self.src.src_mask_mip,
-                                 dst_mip=mip, valid_val=self.src.src_mask_val)
-        raw_patch = raw_patch.masked_fill_(raw_mask, 0)
-        raw_patch = raw_patch.cpu().numpy()
-      else: 
-        raw_patch = self.get_image(src_cv, z, patch_bbox, mip,
-                                    adjust_contrast=False, to_tensor=False)
-      self.save_image(dst_cv, dst_z, raw_patch, patch_bbox, mip)
-    self.pool.map(chunkwise, patches)
-
   def handle_downsample_task(self, message):
     z = message['z']
     cv = DCV(message['cv'])
@@ -1549,23 +1592,6 @@ class Aligner:
       downsampled_patch = self.downsample(cv, z, patch_bbox, mip - 1)
       self.save_image(cv, z, downsampled_patch, patch_bbox, mip)
     self.pool.map(chunkwise, patches)
-
-  def handle_vector_vote(self, message):
-      z_start = message['z_start']
-      z_end = message['z_end']
-      read_F_cv = DCV(message['read_F_cv'])
-      write_F_cv =DCV(message['write_F_cv'])
-      #chunks = [deserialize_bbox(p) for p in message['patch_bbox']]
-      chunks = deserialize_bbox(message['patch_bbox'])
-      mip = message['mip']
-      inverse = message['inverse']
-      T = message['T']
-      negative_offsets = message['negative_offsets']
-      serial_operation = message['serial_operation']
-      z_range = range(z_start, z_end+1)
-      self.vector_vote(z_range, read_F_cv, write_F_cv, chunks, mip, inverse=inverse, 
-                       T=T, negative_offsets=negative_offsets, 
-                       serial_operation=serial_operation)
 
   def handle_regularize(self, message):
       z_start = message['z_start']
@@ -1596,10 +1622,16 @@ class Aligner:
     #import pdb; pdb.set_trace()
     body = json.loads(message['Body'])
     task_type = body['type']
-    if task_type == 'residual_task':
-      self.handle_residual_task(body)
+    if task_type == 'copy_task':
+      self.handle_copy_task(body)
+    if task_type == 'compute_field_task':
+      self.handle_compute_field_task(body)
     elif task_type == 'render_task':
       self.handle_render_task(body)
+    elif task_type == 'vector_vote_task':
+      self.handle_vector_vote(body)
+    elif task_type == 'compose_task':
+      self.handle_compose_task(body)
     elif task_type == 'res_and_compose':
       self.handle_res_and_compose(body)
     elif task_type == 'render_task_cv':
@@ -1610,16 +1642,10 @@ class Aligner:
       self.handle_batch_render_task(body)
     elif task_type == 'render_task_low_mip':
       self.handle_render_task_low_mip(body)
-    elif task_type == 'compose_task':
-      self.handle_compose_task(body)
-    elif task_type == 'copy_task':
-      self.handle_copy_task(body)
     elif task_type == 'downsample_task':
       self.handle_downsample_task(body)
     elif task_type == 'prepare_task':
       self.handle_prepare_task(body)
-    elif task_type == 'vector_vote_task':
-      self.handle_vector_vote(body)
     # elif task_type == 'batch_vvote_task':
     #   self.handle_batch_vvote(body)
     elif task_type == 'regularize_task':

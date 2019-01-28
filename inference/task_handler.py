@@ -9,28 +9,86 @@ retry = tenacity.retry(
   wait=tenacity.wait_full_jitter(0.5, 60.0),
 )
 
-def make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip):
-  content = {                   
-      "type": "residual_task",
-      "src_z": src_z,
+def make_copy_task_message(src_cv, dst_cv, src_z, dst_z, patches, mip, is_field,
+                           mask_cv, mask_mip, mask_val):
+  content = {
+      "type": "copy_task",
       "src_cv": src_cv.serialize(),
-      "tgt_z": tgt_z,
-      "tgt_cv": tgt_cv.serialize(),
-      "field_cv": field_cv.serialize(),
-      "patch_bbox": patch_bbox.serialize(),
+      "dst_cv": dst_cv.serialize(),
+      "src_z": src_z,
+      "dst_z": dst_z,
+      "patches": [p.serialize() for p in patches],
       "mip": mip,
+      "is_field": is_field,
+      "mask_cv": mask_cv.serialize(),
+      "mask_mip": mask_mip,
+      "mask_val": mask_val
   }
   return json.dumps(content)
 
-def make_res_and_compose_message(z, forward, reverse, patch_bbox, mip, w_cv):
-  content = {
-      "type": "res_and_compose",
-      "z": z,
-      "forward": forward,
-      "reverse": reverse,
+def make_compute_field_task_message(model_path, src_cv, tgt_cv, field_cv, 
+  				    src_z, tgt_z, patch_bbox, mip, pad):
+  content = {                   
+      "type": "compute_field",
+      "model_path": model_path,
+      "src_cv": src_cv.serialize(),
+      "tgt_cv": tgt_cv.serialize(),
+      "field_cv": field_cv.serialize(),
+      "src_z": src_z,
+      "tgt_z": tgt_z,
       "patch_bbox": patch_bbox.serialize(),
       "mip": mip,
-      "w_cv": w_cv.serialize(),
+      "pad": pad,
+  }
+  return json.dumps(content)
+
+def make_render_task_message(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
+                             patches, src_mip, field_mip, mask_cv, mask_mip, mask_val):
+  content = {
+      "type": "render_task",
+      "src_cv": src_cv.serialize(),
+      "field_cv": field_cv.serialize(),
+      "dst_cv": dst_cv.serialize(),
+      "src_z": src_z,
+      "field_z": field_z,
+      "dst_z": dst_z,
+      "patches": [p.serialize() for p in patches],
+      "src_mip": mip,
+      "field_mip": field_mip,
+      "mask_cv": mask_cv.serialize(),
+      "mask_mip": mask_mip,
+      "mask_val": mask_val,
+  }
+  return json.dumps(content)
+
+def make_vector_vote_task_message(pairwise_cvs, vvote_cv, z, bbox, mip, 
+                                  inverse, softmin_temp, serial):
+  content = {
+      "type": "vector_vote_task",
+      "pairwise_cvs": {k: cv.serialize() for k, cv in pairwise_cvs.items()},
+      "vvote_cv": vvote_cv.serialize(),
+      "z": z,
+      "patch_bbox": patch_bbox.serialize(),
+      "mip": mip,
+      "inverse": inverse,
+      "softmin_temp": softmin_temp,
+      "serial": serial,
+  }
+  return json.dumps(content)
+
+def make_compose_task_message(f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, 
+                              f_mip, g_mip, dst_mip):
+  content = {
+      "type": "compose_task",
+      "f_cv": f_cv.serialize(),
+      "g_cv": g_cv.serialize(),
+      "f_z": f_z,
+      "g_z": g_z,
+      "dst_z": dst_z,
+      "patch_bbox": patch_bbox.serialize(),
+      "f_mip": f_mip,
+      "g_mip": g_mip,
+      "dst_mip": dst_mip,
   }
   return json.dumps(content)
 
@@ -55,23 +113,6 @@ def make_regularize_task_message(z_start, z_end, compose_start, patch_bbox, mip,
       "patch_bbox": patch_bbox.serialize(),
       "mip": mip,
       "sigma": sigma,
-  }
-  return json.dumps(content)
-
-def make_vector_vote_task_message(z_range, read_F_cv, write_F_cv, patch_bbox, mip,
-                                  inverse, T, negative_offsets, serial_operation):
-  content = {
-      "type": "vector_vote_task",
-      "z_start": z_range[0],
-      "z_end": z_range[-1],
-      "read_F_cv": read_F_cv.serialize(),
-      "write_F_cv": write_F_cv.serialize(),
-      "patch_bbox": patch_bbox.serialize(),
-      "mip": mip,
-      "inverse": inverse,
-      "T": T,
-      "negative_offsets": negative_offsets,
-      "serial_operation": serial_operation,
   }
   return json.dumps(content)
 
@@ -104,20 +145,6 @@ def make_prepare_task_message(z, patches, mip, start_z):
 def make_render_cv_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
   content = {
       "type": "render_task_cv",
-      "z": z,
-      "field_cv": field_cv.serialize(),
-      "field_z": field_z,
-      "patches": [p.serialize() for p in patches],
-      #"patches": patches.serialize(),
-      "mip": mip,
-      "dst_cv": dst_cv.serialize(),
-      "dst_z": dst_z,
-  }
-  return json.dumps(content)
-
-def make_render_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
-  content = {
-      "type": "render_task",
       "z": z,
       "field_cv": field_cv.serialize(),
       "field_z": field_z,
@@ -175,21 +202,6 @@ def make_render_low_mip_task_message(z, field_cv, field_z, patches, image_mip, v
   }
   return json.dumps(content)
 
-            
-def make_compose_task_message(z, coarse_cv, fine_cv, dst_cv, bbox, coarse_mip, fine_mip):
-  content = {
-      "type": "compose_task",
-      "z": z,
-      "coarse_cv": coarse_cv.serialize(),
-      "fine_cv": fine_cv.serialize(),
-      "dst_cv": dst_cv.serialize(),
-      "bbox": bbox.serialize(),
-      "coarse_mip": coarse_mip,
-      "fine_mip": fine_mip,
-  }
-  return json.dumps(content)
-
-
 def make_downsample_task_message(cv, z, patches, mip):
   content = {
       "type": "downsample_task",
@@ -197,17 +209,6 @@ def make_downsample_task_message(cv, z, patches, mip):
       "cv": cv.serialize(),
       "patches": [p.serialize() for p in patches],
       #"patches": patches.serialize(),
-      "mip": mip,
-  }
-  return json.dumps(content)
-
-def make_copy_task_message(z, dst_cv, dst_z, patches, mip):
-  content = {
-      "type": "copy_task",
-      "z": z,
-      "dst_cv": dst_cv.serialize(),
-      "dst_z": dst_z,
-      "patches": [p.serialize() for p in patches],
       "mip": mip,
   }
   return json.dumps(content)

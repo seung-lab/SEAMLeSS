@@ -107,7 +107,7 @@ if __name__ == '__main__':
       dst = dsts[block_start]
       z = block_start + block_offset 
       print('copying z={0}'.format(z))
-      a.copy(cm, z, z, src, dst, bbox, mip, is_field=False, wait=False)
+      a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, wait=False)
 
   # a.task_handler.wait()
 
@@ -117,14 +117,12 @@ if __name__ == '__main__':
     for block_start in block_range:
       dst = dsts[block_start]
       z = block_start + block_offset 
-      print('compute residuals without vector voting z={0}'.format(z))
       a.compute_field(cm, args.model_path, src, dst, no_vvote_field, 
                           z, z+z_offset, bbox, mip, pad, wait=False)
     # a.task_handler.wait()
     for block_start in block_range:
       dst = dsts[block_start]
       z = block_start + block_offset 
-      print('render section without vector voting z={0}'.format(z))
       a.render(cm, src, no_vvote_field, dst, src_z=z, field_z=z, dst_z=z, 
                    bbox=bbox, src_mip=mip, field_mip=mip, wait=True)
 

@@ -74,7 +74,7 @@ if __name__ == '__main__':
 
   # copy first section
   print('copying z={0}'.format(copy_z))
-  a.copy(cm, copy_z, copy_z, src_cv, dst_cv, bbox, mip, is_field=False, wait=True)
+  a.copy(cm, src_cv, dst_cv, copy_z, copy_z, bbox, mip, is_field=False, wait=True)
 
   # align without vector voting
   for z in no_vvote_range:
