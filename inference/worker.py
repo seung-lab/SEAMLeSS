@@ -12,5 +12,6 @@ if __name__ == '__main__':
 
   with TaskQueue(queue_name=args.queue_name, queue_server='sqs', n_threads=0) as tq:
     tq.poll(execute_args=[ aligner ])
+    #tq.poll(execute_args=[ aligner ], verbose=True)
 
 
