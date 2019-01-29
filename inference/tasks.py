@@ -156,15 +156,15 @@ class ComposeTask(RegisteredTask):
     prefix = self.prefix
 
     def chunkwise(patch_bbox):
-      h = self.get_composed_field(f_cv, g_cv, f_z, g_z, patch_bbox, 
+      h = aligner.get_composed_field(f_cv, g_cv, f_z, g_z, patch_bbox, 
                                    f_mip, g_mip, dst_mip)
       h = h.data.cpu().numpy()
-      self.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
+      aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
       with Storage(dst_cv.path) as stor:
         path = 'compose_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
         stor.put_file(path, '')
         print('Marked finished at {}'.format(path))
-    self.pool.map(chunkwise, patches)
+    aligner.pool.map(chunkwise, patches)
 
 class BatchRenderTask(RegisteredTask):
   def __init__(

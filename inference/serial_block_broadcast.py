@@ -44,6 +44,7 @@ if __name__ == '__main__':
   # Compile ranges
   block_range = range(args.bbox_start[2], args.bbox_stop[2], args.block_size)
   overlap = 3
+  copy_range = range(args.block_size+overlap)
   broadcast_range = range(overlap-1, args.block_size+overlap)
 
   # Create CloudVolume Manager
@@ -72,29 +73,59 @@ if __name__ == '__main__':
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True)
 
+  chunks = a.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+                                 cm.dst_voxel_offsets[mip], mip=mip, 
+                                 max_mip=cm.num_scales)
+
+  ###########################
+  # Serial broadcast script #
+  ###########################
+  
+  n_chunks = len(chunks) 
   # Copy vector field of first block
   block_start = block_range[0]
-  for block_offset in broadcast_range: 
+  prefix = block_start
+  for block_offset in copy_range: 
     z = block_start + block_offset
-    a.copy(cm, src_field, dst_field, z, z, bbox, mip, is_field=True, wait=False)
-  # a.task_handler.wait()
-  for block_offset in broadcast_range: 
+    a.copy(cm, src_field, dst_field, z, z, bbox, mip, is_field=True, 
+               wait=False, prefix=prefix)
+
+  # wait
+  n = n_chunks * len(copy_range)
+  a.wait_for_queue_empty(dst_field.path, 'copy_done/{}'.format(prefix), n)
+
+  # Render out the images from the copied field
+  prefix = block_start
+  for block_offset in copy_range: 
     z = block_start + block_offset 
     a.render(cm, src, dst_field, dst, src_z=z, field_z=z, dst_z=z, 
-                 bbox=bbox, src_mip=mip, field_mip=mip, wait=True)
+                 bbox=bbox, src_mip=mip, field_mip=mip, wait=False, prefix=prefix)
+
+  # wait
+  n = n_chunks * len(copy_range)
+  a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
 
   # Compose next block with last vector field from the previous composed block
   for block_start in block_range[1:]:
     z_broadcast = block_start + overlap - 1
+    prefix = block_start
     for block_offset in broadcast_range[1:]:
       z = block_start + block_offset
       a.compose(cm, dst_field, src_field, dst_field, z_broadcast, z, z, 
-                bbox, mip, mip, mip, wait=False)
-    # a.task_handler.wait()
+                bbox, mip, mip, mip, wait=False, prefix=prefix)
+
+    # wait 
+    n = n_chunks * len(broadcast_range[1:])
+    a.wait_for_queue_empty(dst_field.path, 'compose_done/{}'.format(prefix), n)
+
     for block_offset in broadcast_range[1:]: 
       z = block_start + block_offset 
       a.render(cm, src, dst_field, dst, src_z=z, field_z=z, dst_z=z, 
-                   bbox=bbox, src_mip=mip, field_mip=mip, wait=True)
-    # a.task_handler.wait()
+                   bbox=bbox, src_mip=mip, field_mip=mip, wait=False, prefix=prefix)
+
+    # wait 
+    n = n_chunks * len(broadcast_range[1:])
+    a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+
 
   # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
