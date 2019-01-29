@@ -106,9 +106,10 @@ def main():
     train_transform = transforms.Compose([
         stack_dataset.ToFloatTensor(),
         archive.preprocessor,
+    ] + [
         stack_dataset.RandomRotateAndScale(),
         stack_dataset.RandomFlip(),
-    ])
+    ] if not state_vars.skip_aug else [])
     train_dataset = stack_dataset.compile_dataset(
         state_vars.training_set_path, transform=train_transform)
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
@@ -122,8 +123,6 @@ def main():
         val_transform = transforms.Compose([
             stack_dataset.ToFloatTensor(),
             archive.preprocessor,
-            stack_dataset.RandomRotateAndScale(),
-            stack_dataset.RandomFlip(),
         ])
         validation_dataset = stack_dataset.compile_dataset(
             state_vars.validation_set_path, transform=val_transform)
@@ -473,6 +472,7 @@ def load_archive(args):
             'validation_set_path':
                 Path(args.validation_set).expanduser() if args.validation_set
                 else None,
+            'skip_aug': args.skip_aug,
             'supervised': args.supervised,
             'encodings': args.encodings,
             'batch_size': args.batch_size,

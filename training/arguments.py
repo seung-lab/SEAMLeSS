@@ -115,11 +115,12 @@ def _parse_args(args=None):
     param_group.add_argument(
         '--wd', '--weight_decay', default=0, type=float,
         metavar='W', help='weight decay (default: 0)')
-    # param_group.add_argument(
-    #     '-A', '--skip_aug',
-    #     help='skip data augmentation (no cutouts, etc)',
-    #     action='store_true',
-    # )  # not implemented yet. Uncomment once implemented
+    param_group.add_argument(
+        '-A', '--skip_aug',
+        dest='skip_aug',
+        help='skip data augmentation (no cutouts, etc)',
+        action='store_true',
+    )  # TODO: not fully implemented yet.
     # param_group.add_argument(
     #     '--plan', type=str,
     #     help='path to a training plan',
