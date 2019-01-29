@@ -67,7 +67,7 @@ class RandomRotateAndScale(object):
     """
 
     def __call__(self, X):
-        if random.choice([True, False]):
+        if random.randint(0, 20) != 0:
             X, _ = rotate_and_scale(X, None)
         return X.squeeze()
 
