@@ -111,7 +111,8 @@ def main():
         stack_dataset.RandomFlip(),
     ] if not state_vars.skip_aug else [])
     train_dataset = stack_dataset.compile_dataset(
-        state_vars.training_set_path, transform=train_transform)
+        state_vars.training_set_path, transform=train_transform,
+        num_samples=state_vars.num_samples)
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=state_vars.batch_size,
@@ -473,6 +474,7 @@ def load_archive(args):
                 Path(args.validation_set).expanduser() if args.validation_set
                 else None,
             'skip_aug': args.skip_aug,
+            'num_samples': args.num_samples,
             'supervised': args.supervised,
             'encodings': args.encodings,
             'batch_size': args.batch_size,

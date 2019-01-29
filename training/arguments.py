@@ -183,6 +183,12 @@ def _parse_args(args=None):
         help='Dataset to use for training (default: None)',
         type=str, required=True,
     )
+    data_group.add_argument(
+        '--num_samples', metavar='N',
+        help='Number of samples from the dataset to train on. '
+        'Default is all.',
+        type=int, default=None,
+    )
 
     checkpoint_group = start_parser.add_argument_group('checkpointing')
     checkpoint_group.add_argument(

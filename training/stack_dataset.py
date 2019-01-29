@@ -7,11 +7,11 @@ from torch.utils.data import Dataset, ConcatDataset
 from aug import aug_input, rotate_and_scale, random_translation
 
 
-def compile_dataset(*h5_paths, transform=None):
+def compile_dataset(*h5_paths, transform=None, num_samples=None):
     datasets = []
     for h5_path in h5_paths:
         h5f = h5py.File(h5_path, 'r')
-        ds = [StackDataset(v, transform=transform) for v in h5f.values()]
+        ds = [StackDataset(v, transform=transform, num_samples=num_samples) for v in h5f.values()]
         datasets.extend(ds)
     return ConcatDataset(datasets)
 
@@ -95,19 +95,19 @@ class StackDataset(Dataset):
         stack (4D ndarray): 1xZxHxW image array
     """
 
-    def __init__(self, stack, transform=None):
+    def __init__(self, stack, transform=None, num_samples=None):
         self.stack = stack
-        self.N = len(stack)
+        self.N = (num_samples
+                  if num_samples and num_samples < len(stack) else len(stack))
         self.transform = transform
 
     def __len__(self):
-        # 2*(len(stack)-1) consecutive image pairs
-        return 2*self.N
+        return 2*len(self.stack)
 
     def __getitem__(self, k):
         # match i -> i+1 if k < N, else match i -> i-1
         X = self.stack[k % self.N].copy()  # prevent modifying the dataset
-        if k >= self.N:  # flip source and target
+        if k % 2*self.N >= self.N:  # flip source and target
             s, t, sc, tc, sf, tf = X.copy()
             X[0:6] = t, s, tc, sc, tf, sf
         if self.transform:
