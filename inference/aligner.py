@@ -37,6 +37,13 @@ from mipless_cloudvolume import MiplessCloudVolume as CV
 from mipless_cloudvolume import deserialize_miplessCV as DCV
 from process import Process
 
+def multiprocess_upload(queue_name, ptasks):
+  #print("ptasks", len(ptasks), ptasks[0])
+  with TaskQueue(queue_name=queue_name) as tq:
+    for task in ptasks:
+      tq.insert(task)
+
+
 class Aligner:
   """
   Destination directory structure
@@ -1291,6 +1298,7 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
                                     self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
     if self.distributed:
+        s1 = time()
         tasks = []
         for i in range(0, len(chunks), self.task_batch_size):
             task_patches = []
@@ -1300,7 +1308,10 @@ class Aligner:
               src_z, field_cv, field_z, task_patches,
               mip, dst_cv, dst_z
             ))
+        s2 = time()
         self.upload_tasks(tasks)
+        e  =time()
+        print("generating ", len(tasks)," task time", s2 - s1, "populate task time:", e -s2)
         if wait:
           self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
     else:
@@ -2048,16 +2059,20 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def upload_tasks(self, tasks):
+    #import pdb
+    #pdb.set_trace()
 
-    def multiprocess_upload(ptasks):
-      with TaskQueue(queue_name=self.queue_name) as tq:
-        for task in ptasks:
-          tq.insert(task)
+    #tasks = list(scatter(tasks, self.threads))
+    processN = 16
+    tasks = list(scatter(tasks, processN))
+    print(len(tasks), len(tasks[0]))
+    
+    fn = partial(multiprocess_upload, self.queue_name)
 
-    if self.threads == 1:
-      multiprocess_upload(tasks)
-    else:
-      tasks = list(scatter(tasks, self.threads))
+    with concurrent.futures.ProcessPoolExecutor(max_workers=processN) as executor:
+    #with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        executor.map(fn, tasks)
 
-      with concurrent.futures.ProcessPoolExecutor(max_workers=parallel) as executor:
-        executor.map(multiprocess_upload, tasks)
+
+
+
