@@ -85,7 +85,7 @@ from utilities.archive import ModelArchive
 from utilities.helpers import (gridsample_residual, save_chunk,
                                dvl as save_vectors,
                                upsample, downsample, AverageMeter,
-                               retry_enumerate)
+                               retry_enumerate, cp)
 
 
 def main():
@@ -230,7 +230,7 @@ def train(train_loader, archive, epoch):
 
         # debugging, logging, and checkpointing
         if (state_vars.checkpoint_time
-                and i % state_vars.checkpoint_time == 0):
+                and i % state_vars.checkpoint_time == 0 and i != 0):
             archive.create_checkpoint(epoch=epoch, iteration=i)
         if state_vars.log_time and i % state_vars.log_time == 0:
             archive.log([
@@ -251,6 +251,8 @@ def train(train_loader, archive, epoch):
                       data_time=data_time, loss=losses))
         if state_vars.vis_time and i % state_vars.vis_time == 0:
             create_debug_outputs(archive, src, tgt, prediction, truth=None, masks=rest)
+        elif i % 50:
+            archive.visualize_loss('Training Loss', 'Validation Loss')
 
         start_time = time.time()
     return losses.avg
@@ -415,8 +417,11 @@ def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
         save_chunk(warped_src[0:1, ...], str(stack_dir / 'warped_src'))
         archive.visualize_loss('Training Loss', 'Validation Loss')
+        cp(archive.paths['plot'], debug_dir)
         save_vectors(prediction[0:1, ...].detach(),
-                     str(debug_dir / 'prediction'))
+                     str(debug_dir / 'prediction'), mag=30)
+        save_chunk((prediction[0:1, ...].detach()**2).sum(3).unsqueeze(0),
+                   str(debug_dir / 'prediction_img'), norm=False)
         if truth is not None:
             save_vectors(truth[0:1, ...].detach(),
                          str(debug_dir / 'ground_truth'))

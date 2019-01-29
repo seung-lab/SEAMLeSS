@@ -636,7 +636,6 @@ class ModelArchive(object):
         data.plot(title='Training loss for {}'.format(self._name))
         with self.paths['plot'].open('wb') as f:
             plt.savefig(f)
-        cp(self.paths['plot'], self._current_debug_directory)
 
 
 def set_seed(seed):
