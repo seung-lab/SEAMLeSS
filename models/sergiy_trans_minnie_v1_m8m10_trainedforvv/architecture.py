@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import copy
 from utilities.helpers import gridsample_residual, upsample, downsample, load_model_from_dict
-from alignermodule import Aligner
-from rollback_pyramid import RollbackPyramid
+from .alignermodule import Aligner
+from .rollback_pyramid import RollbackPyramid
 
 
 class Model(nn.Module):
@@ -31,10 +31,12 @@ class Model(nn.Module):
         stack = torch.cat((src, tgt), 1)
         if encodings:
             src, tgt = self.encode(src, tgt)
-        stack_t = stack.transpose(2, 3)
-        field_t = self.align(stack_t, plastic_mask=None, mip_in=mip_in)
-        field_t = field_t * 2 / src.shape[-2]
-        field = field_t.transpose(1, 2).flip(3)
+        # stack_t = stack.transpose(2, 3)
+        # field_t = self.align(stack_t, plastic_mask=None, mip_in=mip_in)
+        # field_t = field_t * 2 / src.shape[-2]
+        # field = field_t.transpose(1, 2).flip(3)
+        field = self.align(stack, plastic_mask=None, mip_in=mip_in)
+        field = field * 2 / src.shape[-2]
         return field
 
     def load(self, path):

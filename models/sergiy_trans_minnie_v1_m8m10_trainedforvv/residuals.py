@@ -1,4 +1,4 @@
-from helpers import gridsample_residual
+from utilities.helpers import gridsample_residual
 
 
 def res_warp_res(res_a, res_b, is_pix_res=True):

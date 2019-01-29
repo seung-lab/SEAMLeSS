@@ -1,28 +1,24 @@
-FROM nvidia/cuda:9.0-cudnn7-runtime-ubuntu16.04
+FROM pytorch/pytorch:1.0-cuda10.0-cudnn7-runtime
 
-RUN apt-get update -y 
-RUN apt-get upgrade -y
-RUN apt-get install -y python3-pip \
-                       vim \
-                       screen \
-                       tmux \
-                       htop \
-                       libgtk2.0-dev
-RUN pip3 install pip --upgrade 
-RUN pip3 install numpy
+ADD . /opt/SEAMLeSS
+WORKDIR /opt/SEAMLeSS
 
-WORKDIR /opt
-RUN pwd
+RUN apt-get update \
+  # Install SEAMLeSS dependencies
+  && apt-get install -y --no-install-recommends \
+      libgtk2.0-dev \
+  && pip install --no-cache-dir -r requirements.txt \
+  && python -c "import imageio; imageio.plugins.ffmpeg.download();" \
+  # Register SEAMLeSS
+  && python setup.py develop \
+  # Cleanup apt
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/* \
+  # Cleanup temporary python files
+  && find /opt/conda/lib/python3.6 -depth \
+      \( \
+        \( -type d -a \( -name __pycache__ \) \) \
+        -o \
+        \( -type f -a \( -name '*.pyc' -o -name '*.pyo' \) \) \
+      \) -exec rm -rf '{}' +
 
-RUN apt-get install -y git
-RUN pwd
-ENV LANG en_US.UTF-8
-ENV LC_ALL C.UTF-8
-COPY requirements.txt .
-RUN pip3 install -r requirements.txt
-
-ADD . ./SEAMLeSS
-WORKDIR SEAMLeSS
-RUN pip3 install --no-cache-dir --upgrade setuptools
-RUN python3 setup.py develop
-RUN python3 -c "import imageio; imageio.plugins.ffmpeg.download();"
