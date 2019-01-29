@@ -151,6 +151,12 @@ class ModelArchive(object):
             print('Reading from exisiting model archive: {}'.format(self._name))
         assert self.directory.is_dir() and self.paths['commit'].exists()
 
+        if not self.readonly:
+            # ensure directories exist
+            self.intermediate_models.mkdir(exist_ok=True)
+            self.debug_outputs.mkdir(exist_ok=True)
+            self.last_training_record.mkdir(exist_ok=True)
+
         # check for matching commits
         # this can prevent errors arising from working on the wrong git branch
         saved_commit = self.commit
