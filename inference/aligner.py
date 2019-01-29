@@ -41,6 +41,11 @@ import torch.nn as nn
 from taskqueue import TaskQueue
 import tasks
 
+def multiprocess_upload(queue_name, ptasks):
+  with TaskQueue(queue_name=queue_name) as tq:
+    for task in ptasks:
+      tq.insert(task)
+
 class Aligner:
   def __init__(self, threads=1, queue_name=None, task_batch_size=1, **kwargs):
     print('Creating Aligner object')
@@ -1511,19 +1516,19 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def upload_tasks(self, tasks):
+    processN = 16
+    tasks = list(scatter(tasks, processN))
+    fn = partial(multiprocess_upload, self.queue_name)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=processN) as executor:
+        executor.map(fn, tasks)
 
-    def multiprocess_upload(ptasks):
-      with TaskQueue(queue_name=self.queue_name) as tq:
-        for task in ptasks:
-          tq.insert(task)
+   # if self.threads == 1:
+   #   multiprocess_upload(tasks)
+   # else:
+   #   tasks = list(scatter(tasks, self.threads))
 
-    if self.threads == 1:
-      multiprocess_upload(tasks)
-    else:
-      tasks = list(scatter(tasks, self.threads))
-
-      with concurrent.futures.ProcessPoolExecutor(max_workers=parallel) as executor:
-        executor.map(multiprocess_upload, tasks)
+   #   with concurrent.futures.ProcessPoolExecutor(max_workers=parallel) as executor:
+   #     executor.map(multiprocess_upload, tasks)
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
     if self.distributed:
