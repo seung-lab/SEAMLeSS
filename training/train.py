@@ -117,7 +117,8 @@ def main():
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=state_vars.batch_size,
         shuffle=(train_sampler is None), num_workers=args.num_workers,
-        pin_memory=True, sampler=train_sampler)
+        pin_memory=(state_vars.validation_set_path is None),
+        sampler=train_sampler)
 
     # set up validation data if present
     if state_vars.validation_set_path:
@@ -129,7 +130,7 @@ def main():
             state_vars.validation_set_path, transform=val_transform)
         val_loader = torch.utils.data.DataLoader(
             validation_dataset, batch_size=1,
-            shuffle=False, num_workers=0, pin_memory=True)
+            shuffle=False, num_workers=0, pin_memory=False)
     else:
         val_loader = None
 
