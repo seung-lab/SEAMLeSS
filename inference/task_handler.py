@@ -4,13 +4,13 @@ import json
 import tenacity
 
 retry = tenacity.retry(
-  reraise=True, 
-  stop=tenacity.stop_after_attempt(7), 
+  reraise=True,
+  stop=tenacity.stop_after_attempt(7),
   wait=tenacity.wait_full_jitter(0.5, 60.0),
 )
 
 def make_residual_task_message(src_z, src_cv, tgt_z, tgt_cv, field_cv, patch_bbox, mip):
-  content = {                   
+  content = {
       "type": "residual_task",
       "src_z": src_z,
       "src_cv": src_cv.serialize(),
@@ -129,7 +129,7 @@ def make_render_task_message(z, field_cv, field_z, patches, mip, dst_cv, dst_z):
   }
   return json.dumps(content)
 
-def make_upsample_render_rechunk_task(z_range, src_cv, field_cv, dst_cv, 
+def make_upsample_render_rechunk_task(z_range, src_cv, field_cv, dst_cv,
                                       patches, image_mip, field_mip):
   content = {
       "type": "upsample_render_rechunk_task",
@@ -175,7 +175,7 @@ def make_render_low_mip_task_message(z, field_cv, field_z, patches, image_mip, v
   }
   return json.dumps(content)
 
-            
+
 def make_compose_task_message(z, coarse_cv, fine_cv, dst_cv, bbox, coarse_mip, fine_mip):
   content = {
       "type": "compose_task",
@@ -231,8 +231,8 @@ class TaskHandler:
     #     if Message_num > threshold:
     #         print("Message number is", Message_num, "sleep")
     #         time.sleep(3)
-    #     else: 
-    #         self.sqs.send_message(QueueUrl=self.queue_url, 
+    #     else:
+    #         self.sqs.send_message(QueueUrl=self.queue_url,
     #                               MessageBody=message_body)
     #         break
     self.sqs.send_message(QueueUrl=self.queue_url, MessageBody=message_body)
@@ -259,7 +259,7 @@ class TaskHandler:
       return message
     else:
       return None
-  
+
   @retry
   def delete_message(self, message):
     receipt_handle = message['ReceiptHandle']
@@ -280,9 +280,8 @@ class TaskHandler:
         if int(response['Attributes'][a]) > 0:
           return False
       time.sleep(5)
-    print("donot wait since it")
     return True
-  
+
   def purge_queue(self):
     self.sqs.purge_queue(QueueUrl=self.queue_url)
 

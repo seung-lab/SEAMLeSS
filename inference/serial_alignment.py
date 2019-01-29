@@ -13,7 +13,7 @@ if __name__ == '__main__':
   bbox = get_bbox(args)
 
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
-  # a.dst[0].add_path('dst_temp_img', join(args.dst_path, 'block_image'), 
+  # a.dst[0].add_path('dst_temp_img', join(args.dst_path, 'block_image'),
   #                   data_type='uint8', num_channels=1, fill_missing=True)
   # a.dst[0].create_cv('dst_temp_img', ignore_info=False)
   dst_cv = a.dst[0].for_write('dst_img')
@@ -38,7 +38,7 @@ if __name__ == '__main__':
     print('compute residuals without vector voting z={0}'.format(z))
     a.tgt_radius = 1
     a.tgt_range = range(-a.tgt_radius, a.tgt_radius+1)
-    a.generate_pairwise([z], bbox, forward_match=True, reverse_match=False, 
+    a.generate_pairwise([z], bbox, forward_match=True, reverse_match=False,
                         render_match=False, batch_size=1)
     a.render(z, uncomposed_field_cv, z, dst_cv, z, bbox, a.render_low_mip)
 
@@ -46,11 +46,16 @@ if __name__ == '__main__':
   a.tgt_radius = args.tgt_radius
   a.tgt_range = range(-a.tgt_radius, a.tgt_radius+1)
   for z in composed_range:
-    print('generate pairwise with vector voting z={0}'.format(z))
-    a.generate_pairwise_and_compose([z], args.bbox_start[2], bbox, mip, 
-                                    forward_match=True, reverse_match=False)
-    print('aligning with vector voting z={0}'.format(z))
-    a.render(z, field_cv, z, dst_cv, z, bbox, a.render_low_mip)
+      print('generate pairwise with vector voting z={0}'.format(z))
+      a.generate_pairwise([z], bbox, forward_match=True, reverse_match=False,
+                          render_match=False)
+      print('compose pairwise with vector voting z={0}'.format(z))
+      a.compose_pairwise([z], args.bbox_start[2], bbox, mip, forward_compose=True,
+                         inverse_compose=False, serial_operation=True)
+      a.task_handler.wait_until_ready()
+      print('aligning with vector voting z={0}'.format(z))
+      a.render(z, field_cv, z, dst_cv, z, bbox, a.render_low_mip)
+      a.task_handler.wait_until_ready()
 
   a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
 
