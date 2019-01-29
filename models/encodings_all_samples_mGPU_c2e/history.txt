@@ -1,0 +1,5 @@
+Model: test_encodings_all_samples_a2e
+Time: 2019-01-25 12:18:42.857277
+Commit: e1bd0ccd5f6ee6066f69ad003a02f11398f6448e
+./train.py start test_encodings_all_samples_a** --training_set /usr/people/bnehoran/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --height 5 --seed 5432 -u --lr 0.0000005 --lambda1 3000 --plan all --encodings --vis 100
+
