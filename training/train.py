@@ -69,7 +69,6 @@ from arguments import parse_args  # keep first for fast args access
 import os
 import sys
 import time
-import warnings
 import datetime
 import math
 import random
@@ -424,11 +423,8 @@ def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
                    str(debug_dir / 'prediction_img'), norm=False)
         if truth is not None:
             save_vectors(truth[0:1, ...].detach(),
-                         str(debug_dir / 'ground_truth'))
-        if masks is not None:
-            masks = archive._objective.prepare_masks(masks)
-        else:
-            masks = archive._objective.gen_masks(src, tgt, prediction)
+                         str(debug_dir / 'ground_truth'), mag=30)
+        masks = archive._objective.prepare_masks(src, tgt, masks)
         for k, v in masks.items():
             if v is not None and len(v) > 0:
                 save_chunk(v[0][0:1, ...], str(debug_dir / k))

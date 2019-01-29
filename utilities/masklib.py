@@ -34,6 +34,8 @@ def low_pass(mask, radius=1):
 def dilate(mask, radius, binary=True):
     check_mask(mask, binary)
     mask = prep_mask(mask)
+    if not radius:
+        return mask
     if isinstance(mask.data, torch.FloatTensor) or isinstance(mask.data, torch.cuda.FloatTensor):
         return F.max_pool2d(mask, radius*2+1, stride=1, padding=radius).detach()
     else:

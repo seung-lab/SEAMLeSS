@@ -90,10 +90,7 @@ class SelfSupervisedLoss(nn.Module):
         self.lambda1 = lambda1
 
     def forward(self, src, tgt, prediction, masks=None):
-        if masks is None or masks.nelement() == 0:
-            masks = gen_masks(src, tgt, prediction)
-        else:
-            masks = prepare_masks(masks)
+        masks = prepare_masks(src, tgt, masks)
         src_masks = masks['src_masks']
         tgt_masks = masks['tgt_masks']
         src_field_masks = masks['src_field_masks']
@@ -141,53 +138,71 @@ class SelfSupervisedLoss(nn.Module):
 
 
 @torch.no_grad()
-def gen_masks(src, tgt, prediction=None, threshold=10):
+def gen_masks(src, tgt, threshold=10):
     """
-    Returns masks with which to weight the loss function
+    Heuristic generation of masks based on simple thresholding.
+    Can be expanded in the future to include more sophisticated methods.
+
+    A better option is to include the masks as part of the dataset and pass
+    them to prepare_masks().
     """
-    if prediction is not None:
-        src, tgt = src.to(prediction.device), tgt.to(prediction.device)
     src, tgt = (src * 255).to(torch.uint8), (tgt * 255).to(torch.uint8)
-
-    src_mask, tgt_mask = torch.ones_like(src), torch.ones_like(tgt)
-
-    src_mask_zero, tgt_mask_zero = (src < threshold), (tgt < threshold)
-    src_mask_five = masklib.dilate(src_mask_zero, radius=3)
-    tgt_mask_five = masklib.dilate(tgt_mask_zero, radius=3)
-    src_mask[src_mask_five], tgt_mask[tgt_mask_five] = 5, 5
-    src_mask[src_mask_zero], tgt_mask[tgt_mask_zero] = 0, 0
-
-    src_field_mask, tgt_field_mask = torch.ones_like(src), torch.ones_like(tgt)
-    src_field_mask[src_mask_zero], tgt_field_mask[tgt_mask_zero] = 0, 0
-
-    return {'src_masks': [src_mask.float()],
-            'tgt_masks': [tgt_mask.float()],
-            'src_field_masks': [src_field_mask.float()],
-            'tgt_field_masks': [tgt_field_mask.float()]}
+    return (src < threshold), (tgt < threshold)
 
 
 @torch.no_grad()
-def prepare_masks(masks, threshold=0.7):
+def prepare_masks(src, tgt, masks=None, threshold=0.7):
     """
-    Formats masks in a way that can be used by the loss calculation
+    Returns properly formatted masks with which to weight the loss function.
+    If masks is None, this calls gen_masks to generate them.
     """
-    masks = masks.cuda()
+    # MSE coefficient on the defect (src, tgt) and radius:
+    tissue_coef0 = 0, 0
+    tissue_radius0 = 5
+    # MSE coefficient in the defect neighborhood (src, tgt) and radius:
+    tissue_coef1 = 2, 2
+    tissue_radius1 = 35
+    # smoothness coefficient on the defect (src, tgt) and radius:
+    field_coef0 = 0, 0
+    field_radius0 = 0
+    # smoothness coefficient in the defect neighborhood (src, tgt) and radius:
+    field_coef1 = 0.01, 0.01
+    field_radius1 = 10
 
-    src_mask = torch.ones_like(masks[:, 0:1])
-    tgt_mask = torch.ones_like(masks[:, 1:2])
+    src_weights, tgt_weights = torch.ones_like(src), torch.ones_like(tgt)
+    src_field_weights = torch.ones_like(src)
+    tgt_field_weights = torch.ones_like(tgt)
+    if masks is None or masks.nelement() == 0:
+        src_defects, tgt_defects = gen_masks(src, tgt, threshold)
+    else:
+        masks = masks.cuda()
+        src_defects = masks[:, 2:3] > threshold
+        tgt_defects = masks[:, 3:4] > threshold
 
-    src_mask_zero = masks[:, 2:3] > threshold
-    tgt_mask_zero = masks[:, 3:4] > threshold
-    src_mask_five = masklib.dilate(src_mask_zero, radius=20)
-    tgt_mask_five = masklib.dilate(tgt_mask_zero, radius=20)
-    src_mask[src_mask_five], tgt_mask[tgt_mask_five] = 5, 5
-    src_mask[src_mask_zero], tgt_mask[tgt_mask_zero] = 0, 0
+    # Tissue (MSE) masks
+    src_mask_0 = masklib.dilate(src_defects, radius=tissue_radius0)
+    tgt_mask_0 = masklib.dilate(tgt_defects, radius=tissue_radius0)
+    src_mask_1 = masklib.dilate(src_defects, radius=tissue_radius1)
+    tgt_mask_1 = masklib.dilate(tgt_defects, radius=tissue_radius1)
+    # coefficient in the defect neighborhood:
+    src_weights[src_mask_1], tgt_weights[tgt_mask_1] = tissue_coef1
+    # coefficient on the defect:
+    src_weights[src_mask_0], tgt_weights[tgt_mask_0] = tissue_coef0
+    # no MSE outside tissue
+    src_weights[(src*255.0).to(torch.uint8) < 1] = 0
+    tgt_weights[(tgt*255.0).to(torch.uint8) < 1] = 0
 
-    src_field_mask = torch.ones_like(masks[:, 0:1])
-    tgt_field_mask = torch.ones_like(masks[:, 1:2])
-    src_field_mask[src_mask_zero], tgt_field_mask[tgt_mask_zero] = 0, 0
+    # Field (smoothness) masks
+    src_field_mask_0 = masklib.dilate(src_defects, radius=field_radius0)
+    tgt_field_mask_0 = masklib.dilate(tgt_defects, radius=field_radius0)
+    src_field_mask_1 = masklib.dilate(src_defects, radius=field_radius1)
+    tgt_field_mask_1 = masklib.dilate(tgt_defects, radius=field_radius1)
+    # coefficient in the defect neighborhood:
+    src_field_weights[src_field_mask_1], tgt_field_weights[tgt_field_mask_1] = field_coef1
+    # coefficient on the defect:
+    src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
 
-    return {'src_masks': [src_mask.float()],
-            'tgt_masks': [tgt_mask.float()],
-            'src_field_masks': [src_field_mask.float()],
-            'tgt_field_masks': [tgt_field_mask.float()]}
+    return {'src_masks': [src_weights.float()],
+            'tgt_masks': [tgt_weights.float()],
+            'src_field_masks': [src_field_weights.float()],
+            'tgt_field_masks': [tgt_field_weights.float()]}
