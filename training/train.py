@@ -129,7 +129,7 @@ def main():
         validation_dataset = stack_dataset.compile_dataset(
             state_vars.validation_set_path, transform=val_transform)
         val_loader = torch.utils.data.DataLoader(
-            validation_dataset, batch_size=1,
+            validation_dataset, batch_size=4,
             shuffle=False, num_workers=0, pin_memory=False)
     else:
         val_loader = None
@@ -290,7 +290,7 @@ def validate(val_loader, archive, epoch):
     batch_time = (time.time() - start_time)
 
     # debugging outputs and printing
-    create_debug_outputs(archive, src, tgt, prediction, truth)
+    create_debug_outputs(archive, src, tgt, prediction, None, truth)
     print('{0}\t'
           'Validation: [{1}/{1}]\t'
           'Loss {loss.avg:.10f}\t\t\t'
@@ -491,6 +491,7 @@ def load_archive(args):
             'encodings': args.encodings,
             'batch_size': args.batch_size,
             'log_time': args.log_time,
+            'logdir': args.logdir,
             'checkpoint_time': args.checkpoint_time,
             'vis_time': args.vis_time,
             'lambda1': args.lambda1,

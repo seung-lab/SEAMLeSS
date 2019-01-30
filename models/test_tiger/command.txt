@@ -1,0 +1,1 @@
+training/train.py start test_tiger --training_set /usr/people/runzhey/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --validation_set /usr/people/runzhey/training_data/v1_100slice_minnie_6144_train_mip2_annotated.h5 --height 5 --seed 5432 -u --lr 0.000005 --lambda1 300000 --plan all

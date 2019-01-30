@@ -1,0 +1,32 @@
+batch_size: 1
+checkpoint_time: 100
+encodings: false
+epoch: 10
+epochs_per_mip: 4
+feature_maps: [12, 12, 12, 12, 12]
+gamma: 1
+gamma_step: 30
+gpus: '0'
+height: 5
+initialized_list: [true, true, true, false, false]
+iteration: 90
+lambda1: 300000.0
+levels: !!python/object/apply:builtins.slice [null, null, null]
+log_time: 1
+logdir: logs/
+lr: 5.0e-06
+name: test_tiger
+num_epochs: 1000000
+num_samples: null
+penalty: lap
+plan: all
+seed: 5432
+skip_aug: false
+start_lr: 5.0e-06
+supervised: false
+training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, runzhey,
+  training_data, minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5]
+validation_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, runzhey,
+  training_data, v1_100slice_minnie_6144_train_mip2_annotated.h5]
+vis_time: 50
+wd: 0

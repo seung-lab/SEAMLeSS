@@ -1,0 +1,82 @@
+cc3b2dba61c80b258f9589e7d75f9ca9af276129
+tony-tiger
+diff --git a/models/encodings_all_samples_mGPU_c2e/optimizer.pt b/models/encodings_all_samples_mGPU_c2e/optimizer.pt
+index fe9fc6d..9277547 100644
+Binary files a/models/encodings_all_samples_mGPU_c2e/optimizer.pt and b/models/encodings_all_samples_mGPU_c2e/optimizer.pt differ
+diff --git a/models/encodings_all_samples_mGPU_c2e/prand.pt b/models/encodings_all_samples_mGPU_c2e/prand.pt
+index 5bfd239..5e266e9 100644
+Binary files a/models/encodings_all_samples_mGPU_c2e/prand.pt and b/models/encodings_all_samples_mGPU_c2e/prand.pt differ
+diff --git a/models/encodings_all_samples_mGPU_c2e/state_vars.yaml b/models/encodings_all_samples_mGPU_c2e/state_vars.yaml
+index 080e6ea..4d8622f 100644
+--- a/models/encodings_all_samples_mGPU_c2e/state_vars.yaml
++++ b/models/encodings_all_samples_mGPU_c2e/state_vars.yaml
+@@ -6,7 +6,7 @@ epochs_per_mip: 4
+ feature_maps: [12, 12, 12, 12, 12]
+ gamma: 1
+ gamma_step: 30
+-gpus: 2,3,4,5,6,7
++gpus: '0'
+ height: 5
+ initialized_list: [true, true, true, true, true]
+ iteration: null
+diff --git a/models/encodings_all_samples_mGPU_c2e/weights.pt b/models/encodings_all_samples_mGPU_c2e/weights.pt
+index 2735380..83e433c 100644
+Binary files a/models/encodings_all_samples_mGPU_c2e/weights.pt and b/models/encodings_all_samples_mGPU_c2e/weights.pt differ
+diff --git a/training/arguments.py b/training/arguments.py
+index 3e2d936..35627e2 100644
+--- a/training/arguments.py
++++ b/training/arguments.py
+@@ -199,11 +199,6 @@ def _parse_args(args=None):
+         type=int, default=1, metavar='T',
+     )
+     checkpoint_group.add_argument(
+-        '--logdir',
+-        help='the directory of tensorboard',
+-        type=str, default='logs/', metavar='LD',
+-    )
+-    checkpoint_group.add_argument(
+         '--cpoint', '--checkpoint_interval', '--checkpoint_time',
+         help='the number of samples in between each checkpoint. '
+              'Use 0 to disable.',
+@@ -224,6 +219,11 @@ def _parse_args(args=None):
+         dest='interval',
+         type=int, default=None, metavar='T',
+     )
++    checkpoint_group.add_argument(
++        '--logdir',
++        help='the directory of tensorboard. ',
++        type=str, default='logs/', metavar='SET',
++    )
+ 
+     argcomplete.autocomplete(parser)
+     args = parser.parse_args(args)
+diff --git a/training/train.py b/training/train.py
+index c7d8a24..0778c26 100755
+--- a/training/train.py
++++ b/training/train.py
+@@ -129,7 +129,7 @@ def main():
+         validation_dataset = stack_dataset.compile_dataset(
+             state_vars.validation_set_path, transform=val_transform)
+         val_loader = torch.utils.data.DataLoader(
+-            validation_dataset, batch_size=1,
++            validation_dataset, batch_size=4,
+             shuffle=False, num_workers=0, pin_memory=False)
+     else:
+         val_loader = None
+@@ -290,7 +290,7 @@ def validate(val_loader, archive, epoch):
+     batch_time = (time.time() - start_time)
+ 
+     # debugging outputs and printing
+-    create_debug_outputs(archive, src, tgt, prediction, truth)
++    # create_debug_outputs(archive, src, tgt, prediction, truth)
+     print('{0}\t'
+           'Validation: [{1}/{1}]\t'
+           'Loss {loss.avg:.10f}\t\t\t'
+@@ -491,6 +491,7 @@ def load_archive(args):
+             'encodings': args.encodings,
+             'batch_size': args.batch_size,
+             'log_time': args.log_time,
++            'logdir': args.logdir,
+             'checkpoint_time': args.checkpoint_time,
+             'vis_time': args.vis_time,
+             'lambda1': args.lambda1,

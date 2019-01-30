@@ -199,11 +199,6 @@ def _parse_args(args=None):
         type=int, default=1, metavar='T',
     )
     checkpoint_group.add_argument(
-        '--logdir',
-        help='the directory of tensorboard',
-        type=str, default='logs/', metavar='LD',
-    )
-    checkpoint_group.add_argument(
         '--cpoint', '--checkpoint_interval', '--checkpoint_time',
         help='the number of samples in between each checkpoint. '
              'Use 0 to disable.',
@@ -223,6 +218,11 @@ def _parse_args(args=None):
              'if set',
         dest='interval',
         type=int, default=None, metavar='T',
+    )
+    checkpoint_group.add_argument(
+        '--logdir',
+        help='the directory of tensorboard. ',
+        type=str, default='logs/', metavar='SET',
     )
 
     argcomplete.autocomplete(parser)
