@@ -1,9 +1,11 @@
 import sys
 import torch
 import json
+from time import time, sleep
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
 from cloudmanager import CloudManager
+from tasks import run 
 
 if __name__ == '__main__':
   parser = get_argparser()
@@ -77,55 +79,81 @@ if __name__ == '__main__':
                                  cm.dst_voxel_offsets[mip], mip=mip, 
                                  max_mip=cm.num_scales)
 
+  def print_run(diff, n_tasks):
+    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
+
   ###########################
   # Serial broadcast script #
   ###########################
   
   n_chunks = len(chunks) 
   # Copy vector field of first block
+  batch = []
   block_start = block_range[0]
   prefix = block_start
   for block_offset in copy_range: 
     z = block_start + block_offset
-    a.copy(cm, src_field, dst_field, z, z, bbox, mip, is_field=True, 
-               wait=False, prefix=prefix)
+    t = a.copy(cm, src_field, dst_field, z, z, bbox, mip, is_field=True, prefix=prefix)
+    batch.extend(t)
 
+  run(a, batch)
+  start = time()
   # wait
-  n = n_chunks * len(copy_range)
-  a.wait_for_queue_empty(dst_field.path, 'copy_done/{}'.format(prefix), n)
+  a.wait_for_queue_empty(dst_field.path, 'copy_done/{}'.format(prefix), len(batch))
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
 
   # Render out the images from the copied field
+  batch = []
   prefix = block_start
   for block_offset in copy_range: 
     z = block_start + block_offset 
-    a.render(cm, src, dst_field, dst, src_z=z, field_z=z, dst_z=z, 
-                 bbox=bbox, src_mip=mip, field_mip=mip, wait=False, prefix=prefix)
+    t = a.render(cm, src, dst_field, dst, src_z=z, field_z=z, dst_z=z, 
+                 bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+    batch.extend(t)
 
+  run(a, batch)
+  start = time()
   # wait
-  n = n_chunks * len(copy_range)
-  a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+  a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), len(batch))
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
 
   # Compose next block with last vector field from the previous composed block
   for block_start in block_range[1:]:
+    batch = []
     z_broadcast = block_start + overlap - 1
     prefix = block_start
     for block_offset in broadcast_range[1:]:
       z = block_start + block_offset
-      a.compose(cm, dst_field, src_field, dst_field, z_broadcast, z, z, 
-                bbox, mip, mip, mip, wait=False, prefix=prefix)
+      t = a.compose(cm, dst_field, src_field, dst_field, z_broadcast, z, z, 
+                    bbox, mip, mip, mip, prefix=prefix)
+      batch.extend(t)
 
-    # wait 
-    n = n_chunks * len(broadcast_range[1:])
-    a.wait_for_queue_empty(dst_field.path, 'compose_done/{}'.format(prefix), n)
+    run(a, batch)
+    start = time()
+    # wait
+    a.wait_for_queue_empty(dst_field.path, 'compose_done/{}'.format(prefix), len(batch))
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
+    batch = []
     for block_offset in broadcast_range[1:]: 
       z = block_start + block_offset 
-      a.render(cm, src, dst_field, dst, src_z=z, field_z=z, dst_z=z, 
-                   bbox=bbox, src_mip=mip, field_mip=mip, wait=False, prefix=prefix)
+      t = a.render(cm, src, dst_field, dst, src_z=z, field_z=z, dst_z=z, 
+                   bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+      batch.extend(t)
 
+    run(a, batch)
+    start = time()
     # wait 
-    n = n_chunks * len(broadcast_range[1:])
-    a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+    a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), len(batch))
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
 
   # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
