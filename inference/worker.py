@@ -1,97 +1,112 @@
-import sys
-import torch
-from args import get_argparser, parse_args, get_aligner, get_bbox
-#import task_handler # required to initialize RegisteredTasks
-import os
-from time import sleep
-from multiprocessing import Process, Event
-import signal
 import atexit
+import os
+import signal
+import sys
+from multiprocessing import Event, Process
+from time import sleep, time
 
 from taskqueue import TaskQueue
+
+from args import get_aligner, get_argparser, parse_args
 
 processes = {}
 
 
-def run_aligner(aligner, stop_fn=None):
+def run_aligner(args, stop_fn=None):
+  ppid = os.getppid() # Save parent process ID
+
+  def stop_fn_with_parent_health_check():
+    if callable(stop_fn) and stop_fn():
+      print("Received stop signal. {} shutting down...".format(os.getpid()))
+      return True
+    if os.getppid() != ppid:
+      print("Parent process is gone. {} shutting down...".format(os.getpid()))
+      return True
+    return False
+
+  aligner = get_aligner(args)
   with TaskQueue(queue_name=aligner.queue_name, queue_server='sqs', n_threads=0) as tq:
-    tq.poll(execute_args=[aligner], stop_fn=stop_fn)
+    tq.poll(execute_args=[aligner], stop_fn=stop_fn_with_parent_health_check)
 
 
-def create_process(process_id, aligner, delay_start=False):
+def create_process(process_id, args):
   stop = Event()
-  p = Process(target=run_aligner, args=(aligner, stop.is_set))
-  processes[process_id] = (p, aligner, stop)
-  if not delay_start:
-    start_process(process_id)
+  p = Process(target=run_aligner, args=(args, stop.is_set))
+  processes[process_id] = (p, stop)
 
-
-def start_process(process_id):
   # Child process inherits signal handlers from parent, but we want the parent
-  # to do the clean up, thus we temporarily replace the signal handlers.
+  # to initiate the cleanup, thus we temporarily replace the signal handlers.
   # NOTE: SIGKILL cannot be ignored, which is fine
   signal.signal(signal.SIGINT, signal.SIG_IGN)
   signal.signal(signal.SIGTERM, signal.SIG_IGN)
-  (p, _, _) = processes[process_id]
   p.start()
   signal.signal(signal.SIGINT, cleanup_processes)
   signal.signal(signal.SIGTERM, cleanup_processes)
 
 
-def delete_process(process_id, timeout=30):
-  # Tell worker to stop within the next ``timeout`` seconds, then kill it.
-  (p, _, stop) = processes[process_id]
-  print("Attempting to stop worker {}...".format(process_id))
-  stop.set()
-  p.join(timeout)
-  if p.is_alive():
-    print("Waited {} s for worker {} to finish - killing it...".format(timeout, process_id))
-    os.kill(p.pid, signal.SIGKILL)
-  del processes[process_id]
+def delete_processes(process_ids, timeout=30):
+  if not isinstance(process_ids, list):
+    process_ids = [process_ids]
+
+  # Send stop event to child processes
+  for process_id in process_ids:
+    (p, stop) = processes[process_id]
+    stop.set()
+
+  # Give them ``timeout`` seconds to finish.
+  wait_t = 0.0
+  for process_id in process_ids:
+    (p, stop) = processes[process_id]
+    start_t = time()
+    p.join(max(1, timeout - wait_t))
+    wait_t += time() - start_t
+
+  # Now kill everything that's still not done and clean up
+  for process_id in process_ids:
+    (p, stop) = processes[process_id]
+    if p.is_alive():
+      print("Waited {} s for worker {} to finish - killing it...".format(timeout, process_id))
+      os.kill(p.pid, signal.SIGKILL)
+    del processes[process_id]
 
 
 @atexit.register
 def cleanup_processes(*args):
   print("Parent process received shutdown signal.")
-  for process_id in list(processes.keys()):
-    delete_process(process_id)
+  delete_processes(list(processes.keys()))
   sys.exit(0)
 
 
 if __name__ == '__main__':
   parser = get_argparser()
-  args = parse_args(parser)
+  aligner_args = parse_args(parser)
+  process_count = aligner_args.processes
 
-  if args.processes == 1:
-    aligner = get_aligner(args)
-    run_aligner(aligner)
+  if process_count == 1:
+    run_aligner(aligner_args)
   else:
     signal.signal(signal.SIGINT, cleanup_processes)
     signal.signal(signal.SIGTERM, cleanup_processes)
 
-    print("Preparing {} processes...".format(args.processes))
-    for process_id in range(args.processes):
-      aligner = get_aligner(args)
-      create_process(process_id, aligner, delay_start=True)
-
-    for process_id in processes:
-      start_process(process_id)
+    print("Preparing {} processes...".format(process_count))
+    for process_id in range(process_count):
+      create_process(process_id, aligner_args)
 
     # Check occasionally if our workers are still alive, revive if necessary
     while processes:
       sleep(5.0)
       for process_id in list(processes.keys()):
-        (p, aligner, stop) = processes[process_id]
+        (p, stop) = processes[process_id]
         if p.exitcode is None:
           if not p.is_alive():
             # Haven't encountered that one, yet.
             print("Process {} failed to start. Retrying...".format(process_id))
-            create_process(process_id, aligner)
+            create_process(process_id, aligner_args)
         elif p.exitcode != 0:
           # Worker got killed unexpectedly - probably an uncaught exception.
           print("Process {} terminated with code {}. Restarting...".format(process_id, p.exitcode))
-          create_process(process_id, aligner)
+          create_process(process_id, aligner_args)
         else:
           # Never gonna happen, worker will always wait for SQS messages
           print("Process {} finished successfully with code {}.".format(process_id, p.exitcode))
-          delete_process(process_id)
+          delete_processes([process_id])
