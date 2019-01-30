@@ -15,9 +15,11 @@ block, from the third section through to the final section.
 import sys
 import torch
 import json
+from time import time, sleep
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
 from cloudmanager import CloudManager
+from tasks import run 
 
 if __name__ == '__main__':
   parser = get_argparser()
@@ -104,89 +106,138 @@ if __name__ == '__main__':
   chunks = a.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                  cm.dst_voxel_offsets[mip], mip=mip, 
                                  max_mip=cm.num_scales)
+  n_chunks = len(chunks)
 
   ###########################
   # Serial alignment script #
   ###########################
   
-  n_chunks = len(chunks) 
   # Copy first section
+  batch = []
   for block_offset in copy_range:
     prefix = block_offset
     for block_start in block_range:
       dst = dsts[block_start]
       z = block_start + block_offset 
       print('copying z={0}'.format(z))
-      a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, wait=False, prefix=prefix)
+      t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, prefix=prefix)
+      batch.extend(t)
 
-    # wait
+  run(a, batch)
+  # wait
+  start = time()
+  for block_offset in copy_range:
+    prefix = block_offset
     for block_start in block_range:
       dst = dsts[block_start]
       n = n_chunks
       a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
+  end = time()
+  diff = end - start
+  print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
 
   # Align without vector voting
   for block_offset in no_vvote_range:
     z_offset = 1
+    batch = []
     prefix = block_offset
     for block_start in block_range:
       dst = dsts[block_start]
       z = block_start + block_offset 
-      a.compute_field(cm, args.model_path, src, dst, no_vvote_field, 
-                          z, z+z_offset, bbox, mip, pad, wait=False, prefix=prefix)
+      t = a.compute_field(cm, args.model_path, src, dst, no_vvote_field, 
+                          z, z+z_offset, bbox, mip, pad, prefix=prefix)
+      batch.extend(t)
+
+    run(a, batch)
+    start = time()
     # wait 
-    n = len(block_range) * n_chunks
+    n = len(batch)
     a.wait_for_queue_empty(no_vvote_field.path, 
         'compute_field_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
 
+    batch = []
     for block_start in block_range:
       dst = dsts[block_start]
       z = block_start + block_offset 
-      a.render(cm, src, no_vvote_field, dst, src_z=z, field_z=z, dst_z=z, 
-                   bbox=bbox, src_mip=mip, field_mip=mip, wait=False, prefix=prefix)
-    # wait
+      t = a.render(cm, src, no_vvote_field, dst, src_z=z, field_z=z, dst_z=z, 
+                   bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+      batch.extend(t)
+
+    run(a, batch)
+    start = time()
+    # wait 
     for block_start in block_range:
       dst = dsts[block_start]
       n = n_chunks
       a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
 
   # Align with vector voting
   for block_offset in vvote_range:
+    batch = []
     prefix = block_offset
     for block_start in block_range:
       dst = dsts[block_start]
       z = block_start + block_offset 
       for z_offset in vvote_offsets:
         field = pair_fields[z_offset]
-        a.compute_field(cm, args.model_path, src, dst, field, 
-                            z, z+z_offset, bbox, mip, pad, wait=False, prefix=prefix)
+        t = a.compute_field(cm, args.model_path, src, dst, field, 
+                            z, z+z_offset, bbox, mip, pad, prefix=prefix)
+        batch.extend(t)
+
+    run(a, batch)
+    start = time()
     # wait 
     for z_offset in vvote_offsets:
       field = pair_fields[z_offset]
       n = len(block_range) * n_chunks
       a.wait_for_queue_empty(field.path, 
           'compute_field_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
 
+    batch = []
     for block_start in block_range:
       z = block_start + block_offset 
-      a.vector_vote(cm, pair_fields, vvote_field, z, bbox, mip, inverse=False, 
-                        softmin_temp=-1, serial=True, wait=False, prefix=prefix)
+      t = a.vector_vote(cm, pair_fields, vvote_field, z, bbox, mip, inverse=False, 
+                        softmin_temp=-1, serial=True, prefix=prefix)
+      batch.extend(t)
+
+    run(a, batch)
+    start = time()
     # wait 
-    n = len(block_range) * n_chunks
+    n = len(batch)
     a.wait_for_queue_empty(vvote_field.path, 
         'vector_vote_done/{}'.format(prefix), n)
-
+    end = time()
+    diff = end - start
+    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
+    
+    batch = []
     for block_start in block_range:
       dst = dsts[block_start]
       z = block_start + block_offset 
-      a.render(cm, src, vvote_field, dst, 
+      t = a.render(cm, src, vvote_field, dst, 
                    src_z=z, field_z=z, dst_z=z, 
-                   bbox=bbox, src_mip=mip, field_mip=mip, wait=True, prefix=prefix)
+                   bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+      batch.extend(t)
+
+    run(a, batch)
+    start = time()
     # wait
     for block_start in block_range:
       dst = dsts[block_start]
       n = n_chunks
       a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
 
 
   # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
