@@ -21,13 +21,17 @@ def _parse_args(args=None):
 
     parallel_group = parser.add_argument_group('parallelization')
     parallel_group.add_argument(
-        '--num_workers', type=int, default=1, metavar='W',
+        '--num_workers', type=int, default=None, metavar='W',
         help='Number of workers for the DataLoader',
     )
     parallel_group.add_argument(
         '--gpu_ids', type=str, default=None, metavar='X',
         help='GPUs to use during training, separated by commas. '
              'If not specified, the first unused GPU will be used.',
+    )
+    parallel_group.add_argument(
+        '--batch_size', type=int, default=None, metavar='SIZE',
+        help='Number of samples to be evaluated before each gradient update',
     )
 
     resume_help = ('Resume training a paused model '
@@ -130,10 +134,6 @@ def _parse_args(args=None):
         help='seed for initializing training. '
         'Triggers deterministic behavior if specified.',
     ).completer = (lambda **kwargs: [str(random.getrandbits(10))])
-    param_group.add_argument(
-        '--batch_size', type=int, default=1, metavar='SIZE',
-        help='Number of samples to be evaluated before each gradient update',
-    )
 
     loss_group = start_parser.add_argument_group('training loss')
     loss_type = loss_group.add_mutually_exclusive_group()
@@ -231,6 +231,10 @@ def _parse_args(args=None):
         del args.interval
     if args.gpu_ids is None:
         args.gpu_ids = first_unused_gpu()
+    if args.num_workers is None:
+        args.num_workers = len(args.gpu_ids.split(','))
+    if 'batch_size' in args and args.batch_size is None:
+        args.batch_size = len(args.gpu_ids.split(','))
     if 'test_' in args.name:  # random names for rapid testing
         while '*' in args.name:  # all '*'s are replaced by a random hex digit
             args.name = args.name.replace(
