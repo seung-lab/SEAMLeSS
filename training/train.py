@@ -86,6 +86,7 @@ from utilities.helpers import (gridsample_residual, save_chunk,
                                upsample, downsample, AverageMeter,
                                retry_enumerate, cp)
 
+from tensorboardX import SummaryWriter
 
 def main():
     global state_vars
@@ -138,6 +139,12 @@ def main():
     val_losses = AverageMeter()
     epoch_time = AverageMeter()
 
+    # set up tensorboardX
+    current_time = datetime.datetime.now().strftime('%b%d_%H-%M-%S')
+    log_dir = os.path.join(args.logdir, '{}_{}'.format(args.name, current_time))
+    writer = SummaryWriter(log_dir)
+    
+
     print('=========== BEGIN TRAIN LOOP ============')
     start_epoch = state_vars.epoch
     for epoch in range(start_epoch, state_vars.num_epochs):
@@ -178,6 +185,9 @@ def main():
               '\n'
               .format(state_vars.name, epoch, train_losses=train_losses,
                       val_losses=val_losses, epoch_time=epoch_time))
+        # write tensorboard logs
+        writer.add_scalar('data/train_loss', train_losses.avg, epoch)
+        writer.add_scalar('data/val_loss', val_losses.val, epoch)
 
 
 def train(train_loader, archive, epoch):

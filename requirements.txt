@@ -16,3 +16,4 @@ opencv-python
 setuptools>=34.0.0
 pyyaml
 python-jsonschema-objects==0.3.3
+tensorboardX

@@ -158,3 +158,24 @@ Commit: 9513e59ed4c100dc092dd5cf50016d140c82b3f1
  epochs_per_mip: 4
  feature_maps: [12, 12, 12, 12, 12]
  gamma: 1
+
+At epoch 614, iteration None:
+Time: 2019-01-30 03:13:34.152111
+Commit: 9513e59ed4c100dc092dd5cf50016d140c82b3f1
+training/train.py --num_workers 1 --gpu_ids 0 resume encodings_all_samples_mGPU_c2e
+
+At epoch 614, iteration None:
+Time: 2019-01-30 03:38:45.994743
+Commit: 9513e59ed4c100dc092dd5cf50016d140c82b3f1
+training/train.py --num_worker 1 --gpu_ids 0 resume encodings_all_samples_mGPU_c2e
+--- /usr/people/runzhey/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-01-30 03:13:34.150373216 -0500
++++ /usr/people/runzhey/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-01-30 03:38:07.038029127 -0500
+@@ -21,7 +21,7 @@
+ seed: 5432
+ start_lr: 3.0e-05
+ supervised: false
+-training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, bnehoran,
++training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, runzhey,
+   training_data, minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5]
+ validation_set_path: null
+ vis_time: 10000
