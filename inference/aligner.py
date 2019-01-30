@@ -42,7 +42,8 @@ from taskqueue import TaskQueue
 import tasks
 
 class Aligner:
-  def __init__(self, threads=1, queue_name=None, task_batch_size=1, **kwargs):
+  def __init__(self, threads=1, queue_name=None, task_batch_size=1, 
+                     dry_run=False, **kwargs):
     print('Creating Aligner object')
 
     self.distributed = (queue_name != None)
@@ -59,6 +60,7 @@ class Aligner:
     # self.pool = None #ThreadPool(threads)
     self.threads = threads
     self.task_batch_size = task_batch_size
+    self.dry_run = dry_run
 
   ##########################
   # Chunking & BoundingBox #

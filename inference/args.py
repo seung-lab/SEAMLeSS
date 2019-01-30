@@ -17,6 +17,9 @@ def get_argparser():
      help='no. of threads to use in scheduling chunks (locally & distributed)')
   parser.add_argument('--task_batch_size', type=int, default=1,
      help='no. of tasks to group together for a single worker')
+  parser.add_argument('--dry_run', 
+     help='prevent task executes, but allow task print outs',
+     action='store_true')
   return parser
 
 def parse_args(parser, arg_string=''):
