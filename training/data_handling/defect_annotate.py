@@ -22,20 +22,23 @@ def run_net_chunked(net, image, chunks=(2, 2)):
     """
     image = torch.Tensor(image)
     chunks = [c.chunk(chunks[1], 1) for c in image.chunk(chunks[0], 0)]
-    cracks, folds = [], []
+    proc, cracks, folds = [], [], []
     for row in chunks:
-        crack_row, fold_row = [], []
+        proc_row, crack_row, fold_row = [], [], []
         for c in row:
             c = c.unsqueeze(0).unsqueeze(0)
             c = net.preprocessor(c)
-            c_c, c_f = net.model(c.cuda()).cpu()[0]
-            crack_row.append(c_c), fold_row.append(c_f)
-        cracks.append(crack_row), folds.append(fold_row)
+            x = net.model(c.cuda()).cpu()[0, 0]
+            c_c, c_f = x, x
+            proc_row.append(c[0, 0]), crack_row.append(c_c), fold_row.append(c_f)
+        proc.append(proc_row), cracks.append(crack_row), folds.append(fold_row)
+    proc = [torch.cat(proc_row, 1) for proc_row in proc]
+    proc = torch.cat(proc, 0)
     cracks = [torch.cat(crack_row, 1) for crack_row in cracks]
     cracks = torch.cat(cracks, 0)
     folds = [torch.cat(fold_row, 1) for fold_row in folds]
     folds = torch.cat(folds, 0)
-    return image, cracks, folds
+    return proc, cracks, folds
 
 
 def main(src_fn, dst_fn, defect_net_name='minnie_mip2_defect_v03'):
