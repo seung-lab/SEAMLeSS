@@ -325,18 +325,25 @@ class RenderLowMipTask(RegisteredTask):
     aligner.pool.map(chunkwise, patches)
 
 class ResAndComposeTask(RegisteredTask):
-  def __init__(self, z, forward, reverse, patch_bbox, mip, w_cv):
-    super().__init__(z, forward, reverse, patch_bbox, mip, w_cv)
+  def __init__(self, model_path, src_cv, tgt_cv, z, tgt_range, patch_bbox, mip,
+               w_cv, pad, softmin_temp, prefix):
+    super().__init__(model_path, src_cv, tgt_cv, z, tgt_range, patch_bbox, mip,
+               w_cv, pad, softmin_temp, prefix)
 
   def execute(self, aligner):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     w_cv = DCV(self.w_cv)
-    aligner.res_and_compose(
-      self.z, self.forward, self.reverse, 
-      patch_bbox, self.mip, w_cv
-    )
+    src_cv = DCV(self.src_cv)
+    tgt_cv = DCV(self.tgt_cv)
+    print("self tgt_range is", self.tgt_range)
+    aligner.res_and_compose(self.model_path, src_cv, tgt_cv, self.z,
+                            self.tgt_range, patch_bbox, self.mip, w_cv,
+                            self.pad, self.softmin_temp)
     with Storage(w_cv.path) as stor:
-        stor.put_file('res_and_compose/'+str(self.mip)+'/'+str(self.z)+'/'+patch_bbox.__str__(), '')
+      path = 'res_and_compose/{}-{}/{}'.format(prefix, self.mip,
+                                               patch_bbox.stringify(self.z))
+      stor.put_file(path, '')
+      print('Marked finished at {}'.format(path))
 
 class UpsampleRenderRechunkTask(RegisteredTask):
   def __init__(

@@ -18,7 +18,7 @@ import json
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
 from cloudmanager import CloudManager
-
+from time import time
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--model_path', type=str,
@@ -110,7 +110,11 @@ if __name__ == '__main__':
   ###########################
   
   n_chunks = len(chunks) 
-  # Copy first section
+# Copy first section
+  s = time()
+  print("copy_range:", copy_range)
+  print("block range:", block_range)
+  print("vv range:", vvote_range)
   for block_offset in copy_range:
     prefix = block_offset
     for block_start in block_range:
@@ -124,7 +128,11 @@ if __name__ == '__main__':
       dst = dsts[block_start]
       n = n_chunks
       a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
+  e = time()
+  print("--------copying sections needs {}".format(e-s))
 
+  s = time()
+  print("no vv range:", no_vvote_range)
   # Align without vector voting
   for block_offset in no_vvote_range:
     z_offset = 1
@@ -150,8 +158,12 @@ if __name__ == '__main__':
       n = n_chunks
       a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
 
+  e = time()
+  print("-------Alignwithout vv needs {}".format(e-s))
+
   # Align with vector voting
   for block_offset in vvote_range:
+    s = time()
     prefix = block_offset
     for block_start in block_range:
       dst = dsts[block_start]
@@ -187,6 +199,8 @@ if __name__ == '__main__':
       dst = dsts[block_start]
       n = n_chunks
       a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+    e = time()
+    print("-----Aligning with vv needs {}".format(e-s))
 
 
   # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)

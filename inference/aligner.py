@@ -1207,24 +1207,26 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def res_and_compose(self, z, forward_match, reverse_match, bbox, mip, write_F_cv):
-      tgt_range = []
+  def res_and_compose(self, model_path, src_cv, tgt_cv, z, tgt_range, bbox,
+                      mip, write_F_cvm, pad, softmin_temp):
       T = 2**mip
-      if forward_match:
-        tgt_range.extend(range(self.tgt_range[-1], 0, -1)) 
-      if reverse_match:
-        tgt_range.extend(range(self.tgt_range[0], 0, 1)) 
       fields = []
+      print("path", model_path)
+      print("src_cv", src_cv)
+      print("tgt_cv", tgt_cv)
+      print("z", z)
+      print("tgt_range is", tgt_range, "z is ", z)
       for z_offset in tgt_range:
-          if z_offset != 0:
-            src_z = z
-            tgt_z = src_z - z_offset
-            #print("------------------zoffset is", z_offset)
-            f = self.get_residual(src_z, tgt_z, bbox, mip)
-            fields.append(f) 
-      field = vector_vote(fields, T=T)
-      field = field.data.cpu().numpy() 
-      self.save_field(write_F_cv, z, field, bbox, mip, relative=False, as_int16=as_int16)
+          src_z = z
+          tgt_z = src_z - z_offset
+          print("calc res for src {} and tgt {}".format(src_z, tgt_z))
+          f = self.compute_field_chunk(model_path, src_cv, tgt_cv, src_z,
+                                       tgt_z, bbox, mip, pad)
+          fields.append(f)
+      print("len of fields is", len(fields))
+      field = vector_vote(fields, T=softmin_temp)
+      field = field.data.cpu().numpy()
+      self.save_field(field, write_F_cv, bbox, mip, relative=False)
 
   def downsample_range(self, cv, z_range, bbox, source_mip, target_mip):
     """Downsample a range of sections, downsampling a given MIP across all sections
@@ -1307,6 +1309,47 @@ class Aligner:
       self.task_queue.block_until_empty()
       end = time()
       print (": {} sec".format(end - start))
+
+  def calc_res_and_compose(self, cm, model_path, src_cv, tgt_cv, vvote_field,
+                          tgt_range, z, bbox, mip, pad, softmin_temp, prefix):
+    """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in TGT_RADIUS
+    Args:
+        z_range: list of z indices to be matches 
+        bbox: BoundingBox object for bounds of 2D region
+        forward_match: bool indicating whether to match from z to z-i
+          for i in range(tgt_radius)
+        reverse_match: bool indicating whether to match from z to z+i
+          for i in range(tgt_radius)
+        batch_size: (for distributed only) int describing how many sections to issue 
+          multi-match tasks for, before waiting for all tasks to complete
+    """
+
+    m = mip
+    batch_count = 0
+    start = 0
+    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[m],
+                                    cm.vec_voxel_offsets[m], mip=m,
+                                    max_mip=cm.num_scales)
+    start = time()
+    batch_count += 1
+    i = 0
+    print("tgt_range is", tgt_range)
+    if self.distributed:
+      batch = []
+      for patch_bbox in chunks:
+          batch.append(tasks.ResAndComposeTask(model_path, src_cv, tgt_cv, z,
+                                               tgt_range, patch_bbox, mip,
+                                               vvote_field, pad, softmin_temp,
+                                              prefix))
+      self.upload_tasks(batch)
+    else:
+      def chunkwise(patch_bbox):
+          self.res_and_compose(model_path, src_cv, tgt_cv, z, tgt_range, patch_bbox,
+                              mip, vvote_field, pad, softmin_temp, prefix)
+      self.pool.map(chunkwise, chunks)
+
+    end = time()
+    print (": {} sec".format(end - start))
 
 
   def generate_pairwise(self, z_range, bbox, forward_match, reverse_match, 
@@ -1516,11 +1559,14 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def upload_tasks(self, tasks):
-    processN = 16
-    tasks = list(scatter(tasks, processN))
-    fn = partial(multiprocess_upload, self.queue_name)
-    with concurrent.futures.ProcessPoolExecutor(max_workers=processN) as executor:
-        executor.map(fn, tasks)
+    if self.threads == 1:
+      multiprocess_upload(self.queue_name, tasks)
+    else:
+      processN = 16
+      tasks = list(scatter(tasks, processN))
+      fn = partial(multiprocess_upload, self.queue_name)
+      with concurrent.futures.ProcessPoolExecutor(max_workers=processN) as executor:
+          executor.map(fn, tasks)
 
    # if self.threads == 1:
    #   multiprocess_upload(tasks)
