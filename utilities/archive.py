@@ -18,12 +18,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: 402
 
 
-# Key directories: `models_location` is where all the archives are stored
-git_root = Path(subprocess.check_output('git rev-parse --show-toplevel'
-                                        .split()).strip().decode("utf-8"))
-models_location = git_root / 'models/'
-
-
 class ModelArchive(object):
     """
     Abstraction for the maintainence of trained model archives
@@ -66,33 +60,11 @@ class ModelArchive(object):
         >>> new_model.save()  # save the updated state of the new model to disk
     """
 
-    @classmethod
-    def model_exists(cls, name):
-        """
-        Returns whether a trained model of this name exists
-        """
-        cls._check_name(name)
-        return (models_location / name).is_dir()
-
-    @classmethod
-    def _check_name(cls, name):
-        """
-        Checks a proposed name for formatting irregularities.
-        Checking this prevents accidentally writing to arbitrary
-        file locations.
-        """
-        if not len(name):
-            raise ValueError('Model name must have non-zero length.')
-        if not name.replace('_', '').isalnum():
-            raise ValueError('Malformated name: {}\n'
-                             'Model name can only contain alphanumeric '
-                             'characters and underscores _.'.format(name))
-
     def __init__(self, name, readonly=True, *args, **kwargs):
-        self._check_name(name)  # check name formatting
+        name, directory = self._resolve_model(name)
         self._name = name
+        self.directory = directory
         self.readonly = readonly
-        self.directory = models_location / self._name
         self.intermediate_models = self.directory / 'intermediate_models/'
         self.debug_outputs = self.directory / 'debug_outputs/'
         self.last_training_record = self.directory / '.last_training_record'
@@ -127,7 +99,7 @@ class ModelArchive(object):
         self._current_debug_directory = None
         self._seed = None
 
-        if ModelArchive.model_exists(name):
+        if self._exists():
             self._load(*args, **kwargs)
         elif not self.readonly:
             self._create(*args, **kwargs)
@@ -215,9 +187,9 @@ class ModelArchive(object):
             self.paths[key].touch(exist_ok=False)
 
         # copy the architecture and objective definitions into the archive
-        cp(git_root/'training'/'architecture.py', self.paths['architecture'])
-        cp(git_root/'training'/'objective.py', self.paths['objective'])
-        cp(git_root/'training'/'preprocessor.py', self.paths['preprocessor'])
+        cp(git_root()/'training'/'architecture.py', self.paths['architecture'])
+        cp(git_root()/'training'/'objective.py', self.paths['objective'])
+        cp(git_root()/'training'/'preprocessor.py', self.paths['preprocessor'])
 
         # record the status of the git repository
         with self.paths['commit'].open(mode='wb') as f:
@@ -260,7 +232,7 @@ class ModelArchive(object):
         The new model's training history is copied from the old model
         and appended to.
         """
-        if self.model_exists(name):
+        if self._exists():
             raise ValueError('The model "{}" already exists.'.format(name))
         new_archive = type(self)(name, readonly=False,
                                  weights_file=self.paths['weights'],
@@ -278,6 +250,30 @@ class ModelArchive(object):
         tempfile.unlink()  # delete the temporary file
 
         return new_archive
+
+    def _resolve_model(self, model_path):
+        """
+        Find the model referenced by `model_path`.
+        If `name` is the path to an existing directory, this directory is used.
+        Otherwise, find a model by that name in the repository's `models`
+        directory.
+        """
+        model_path = Path(model_path).absolute()
+        name = model_path.stem
+        if model_path.is_dir():
+            directory = model_path
+        else:
+            root = git_root()
+            if root is None:
+                root = Path()
+            directory = root / 'models' / name
+        return name, directory
+
+    def _exists(self):
+        """
+        Returns whether this trained model already exists
+        """
+        return self.directory.is_dir()
 
     @property
     def name(self):
@@ -366,7 +362,8 @@ class ModelArchive(object):
         If the model is untrained, loads a newly initialized model.
         """
         self._architecture = importlib.import_module(
-            '{}.{}.architecture'.format(models_location.stem, self._name))
+            '{}.{}.architecture'.format(self.directory.parent.stem,
+                                        self._name))
         self._model = self._architecture.Model(*args, **kwargs)
         if self.paths['weights'].exists():
             self._model.load(self.paths['weights'])
@@ -390,7 +387,8 @@ class ModelArchive(object):
         """
         if self.paths['objective'].exists():
             self._objective = importlib.import_module(
-                '{}.{}.objective'.format(models_location.stem, self._name))
+                '{}.{}.objective'.format(self.directory.parent.stem,
+                                         self._name))
         else:
             return None
         self._loss = self._objective.Objective(*args, **kwargs)
@@ -406,7 +404,8 @@ class ModelArchive(object):
         """
         if self.paths['preprocessor'].exists():
             preprocessor = importlib.import_module(
-                '{}.{}.preprocessor'.format(models_location.stem, self._name))
+                '{}.{}.preprocessor'.format(self.directory.parent.stem,
+                                            self._name))
         else:
             return None
         self._preprocessor = preprocessor.Preprocessor(*args, **kwargs)
@@ -646,6 +645,17 @@ class ModelArchive(object):
         data.plot(title='Training loss for {}'.format(self._name))
         with self.paths['plot'].open('wb') as f:
             plt.savefig(f)
+
+
+def git_root():
+    """
+    Return the root directory of the current git repository, if available
+    """
+    try:
+        return Path(subprocess.check_output('git rev-parse --show-toplevel'
+                                            .split()).strip().decode("utf-8"))
+    except subprocess.CalledProcessError:
+        return None
 
 
 def set_seed(seed):
