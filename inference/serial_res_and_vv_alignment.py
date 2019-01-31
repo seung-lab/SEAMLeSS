@@ -167,7 +167,6 @@ if __name__ == '__main__':
     prefix = block_offset
     for block_start in block_range:
       z = block_start + block_offset
-      print("vvote offset range is", vvote_offsets)
       a.calc_res_and_compose(cm, args.model_path, src, dst, vvote_field,
                              vvote_offsets, z, bbox, mip, pad,
                              softmin_temp=-1, prefix=prefix) 

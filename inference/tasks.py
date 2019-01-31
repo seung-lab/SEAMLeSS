@@ -340,7 +340,7 @@ class ResAndComposeTask(RegisteredTask):
                             self.tgt_range, patch_bbox, self.mip, w_cv,
                             self.pad, self.softmin_temp)
     with Storage(w_cv.path) as stor:
-      path = 'res_and_compose/{}-{}/{}'.format(prefix, self.mip,
+      path = 'res_and_compose/{}-{}/{}'.format(self.prefix, self.mip,
                                                patch_bbox.stringify(self.z))
       stor.put_file(path, '')
       print('Marked finished at {}'.format(path))

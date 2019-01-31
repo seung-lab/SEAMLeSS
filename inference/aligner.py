@@ -1208,25 +1208,22 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def res_and_compose(self, model_path, src_cv, tgt_cv, z, tgt_range, bbox,
-                      mip, write_F_cvm, pad, softmin_temp):
+                      mip, write_F_cv, pad, softmin_temp, prefix=""):
       T = 2**mip
       fields = []
-      print("path", model_path)
-      print("src_cv", src_cv)
-      print("tgt_cv", tgt_cv)
-      print("z", z)
-      print("tgt_range is", tgt_range, "z is ", z)
       for z_offset in tgt_range:
           src_z = z
           tgt_z = src_z - z_offset
           print("calc res for src {} and tgt {}".format(src_z, tgt_z))
           f = self.compute_field_chunk(model_path, src_cv, tgt_cv, src_z,
                                        tgt_z, bbox, mip, pad)
-          fields.append(f)
-      print("len of fields is", len(fields))
+          #print("--------f shape is", f.shape)
+          fields.append(f.cpu().data.numpy())
+      fields = [torch.from_numpy(i) for i in fields]
       field = vector_vote(fields, T=softmin_temp)
       field = field.data.cpu().numpy()
-      self.save_field(field, write_F_cv, bbox, mip, relative=False)
+      print("field shape ", field.shape)
+      self.save_field(field, write_F_cv, z, bbox, mip, relative=False)
 
   def downsample_range(self, cv, z_range, bbox, source_mip, target_mip):
     """Downsample a range of sections, downsampling a given MIP across all sections
@@ -1325,17 +1322,12 @@ class Aligner:
     """
 
     m = mip
-    batch_count = 0
-    start = 0
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[m],
                                     cm.vec_voxel_offsets[m], mip=m,
                                     max_mip=cm.num_scales)
     start = time()
-    batch_count += 1
-    i = 0
     print("tgt_range is", tgt_range)
     if self.distributed:
-      batch = []
       for patch_bbox in chunks:
           batch.append(tasks.ResAndComposeTask(model_path, src_cv, tgt_cv, z,
                                                tgt_range, patch_bbox, mip,
