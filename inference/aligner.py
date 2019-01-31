@@ -1217,12 +1217,13 @@ class Aligner:
           print("calc res for src {} and tgt {}".format(src_z, tgt_z))
           f = self.compute_field_chunk(model_path, src_cv, tgt_cv, src_z,
                                        tgt_z, bbox, mip, pad)
-          #print("--------f shape is", f.shape)
-          fields.append(f.cpu().data.numpy())
-      fields = [torch.from_numpy(i) for i in fields]
+          #print("--------f shape is ---", f.shape)
+          fields.append(f.cpu().data)
+          #fields.append(f)
+      fields = [i.to(device=self.device) for i in fields]
+      #print("device is ", fields[0].device)
       field = vector_vote(fields, T=softmin_temp)
       field = field.data.cpu().numpy()
-      print("field shape ", field.shape)
       self.save_field(field, write_F_cv, z, bbox, mip, relative=False)
 
   def downsample_range(self, cv, z_range, bbox, source_mip, target_mip):
