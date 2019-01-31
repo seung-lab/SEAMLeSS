@@ -53,21 +53,22 @@ class CopyTask(RegisteredTask):
           "dst {}\n"
           "z={} to z={}\n"
           "MIP{}\n".format(src_cv, dst_cv, src_z, dst_z, mip), flush=True)
-    
-    if is_field:
-      field =  aligner.get_field(src_cv, src_z, patch_bbox, mip, relative=False,
-                              to_tensor=False)
-      aligner.save_field(field, dst_cv, dst_z, patch_bbox, mip, relative=False)
-    else:
-      image = aligner.get_masked_image(src_cv, src_z, patch_bbox, mip,
-                              mask_cv=mask_cv, mask_mip=mask_mip,
-                              mask_val=mask_val,
-                              to_tensor=False, normalizer=None)
-      aligner.save_image(image, dst_cv, dst_z, patch_bbox, mip)
-    with Storage(dst_cv.path) as stor:
-        path = 'copy_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
+
+    if not aligner.dry_run:
+      if is_field:
+        field =  aligner.get_field(src_cv, src_z, patch_bbox, mip, relative=False,
+                                to_tensor=False)
+        aligner.save_field(field, dst_cv, dst_z, patch_bbox, mip, relative=False)
+      else:
+        image = aligner.get_masked_image(src_cv, src_z, patch_bbox, mip,
+                                mask_cv=mask_cv, mask_mip=mask_mip,
+                                mask_val=mask_val,
+                                to_tensor=False, normalizer=None)
+        aligner.save_image(image, dst_cv, dst_z, patch_bbox, mip)
+      with Storage(dst_cv.path) as stor:
+          path = 'copy_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
+          stor.put_file(path, '')
+          print('Marked finished at {}'.format(path))
 
 class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
@@ -94,15 +95,15 @@ class ComputeFieldTask(RegisteredTask):
           "z={} to z={}\n"
           "MIP{}\n".format(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
                            mip), flush=True)
-
-    field = aligner.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z, 
-    			 patch_bbox, mip, pad)
-    field = field.data.cpu().numpy()
-    aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
-    with Storage(field_cv.path) as stor:
-      path = 'compute_field_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))
-      stor.put_file(path, '')
-      print('Marked finished at {}'.format(path))
+    if not aligner.dry_run:
+      field = aligner.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z, 
+      			 patch_bbox, mip, pad)
+      field = field.data.cpu().numpy()
+      aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
+      with Storage(field_cv.path) as stor:
+        path = 'compute_field_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
 
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
@@ -133,17 +134,17 @@ class RenderTask(RegisteredTask):
           "z={3} to z={4}\n"
           "MIP{5} to MIP{6}\n".format(src_cv, field_cv, dst_cv, 
                               src_z, dst_z, field_mip, src_mip), flush=True)
-
-    image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z, 
-                                   patch_bbox, src_mip, field_mip, 
-                                   mask_cv=mask_cv, mask_mip=mask_mip,
-                                   mask_val=mask_val)
-    image = image.cpu().numpy()
-    aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
-    with Storage(dst_cv.path) as stor:
-      path = 'render_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
-      stor.put_file(path, '')
-      print('Marked finished at {}'.format(path))
+    if not aligner.dry_run:
+      image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z, 
+                                     patch_bbox, src_mip, field_mip, 
+                                     mask_cv=mask_cv, mask_mip=mask_mip,
+                                     mask_val=mask_val)
+      image = image.cpu().numpy()
+      aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
+      with Storage(dst_cv.path) as stor:
+        path = 'render_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
 
 class VectorVoteTask(RegisteredTask):
   def __init__(self, pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, 
@@ -171,22 +172,22 @@ class VectorVoteTask(RegisteredTask):
           "serial={}\n".format(pairwise_cvs.keys(), vvote_cv, z, 
                               mip, inverse, softmin_temp, serial),
                               flush=True)
-
-    field = aligner.vector_vote_chunk(pairwise_cvs, vvote_cv, z, patch_bbox, mip, 
-                     inverse=inverse, softmin_temp=softmin_temp, 
-                     serial=serial)
-    field = field.data.cpu().numpy()
-    aligner.save_field(field, vvote_cv, z, patch_bbox, mip, relative=False)
-    with Storage(vvote_cv.path) as stor:
-      path = 'vector_vote_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
-      stor.put_file(path, '')
-      print('Marked finished at {}'.format(path))
+    if not aligner.dry_run:
+      field = aligner.vector_vote_chunk(pairwise_cvs, vvote_cv, z, patch_bbox, mip, 
+                       inverse=inverse, softmin_temp=softmin_temp, 
+                       serial=serial)
+      field = field.data.cpu().numpy()
+      aligner.save_field(field, vvote_cv, z, patch_bbox, mip, relative=False)
+      with Storage(vvote_cv.path) as stor:
+        path = 'vector_vote_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
 
 class ComposeTask(RegisteredTask):
   def __init__(self, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
-                     dst_mip, prefix):
+                     dst_mip, factor, prefix):
     super().__init__(f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
-                     dst_mip, prefix)
+                     dst_mip, factor, prefix)
 
   def execute(self, aligner):
     f_cv = DCV(self.f_cv)
@@ -199,6 +200,7 @@ class ComposeTask(RegisteredTask):
     f_mip = self.f_mip
     g_mip = self.g_mip
     dst_mip = self.dst_mip
+    factor = self.factor
     prefix = self.prefix
     print("\nCompose\n"
           "f {}\n"
@@ -206,17 +208,18 @@ class ComposeTask(RegisteredTask):
           "f_z={}, g_z={}\n"
           "f_MIP{}, g_MIP{}\n"
           "dst {}\n"
-          "dst_MIP{}\n".format(f_cv, g_cv, f_z, g_z, f_mip, g_mip, dst_cv, 
-                               dst_mip), flush=True)
-
-    h = aligner.get_composed_field(f_cv, g_cv, f_z, g_z, patch_bbox, 
-                                 f_mip, g_mip, dst_mip)
-    h = h.data.cpu().numpy()
-    aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
-    with Storage(dst_cv.path) as stor:
-      path = 'compose_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
-      stor.put_file(path, '')
-      print('Marked finished at {}'.format(path))
+          "dst_MIP {}\n"
+          "factor={}\n".format(f_cv, g_cv, f_z, g_z, f_mip, g_mip, dst_cv, 
+                               dst_mip, factor), flush=True)
+    if not aligner.dry_run:
+      h = aligner.get_composed_field(f_cv, g_cv, f_z, g_z, patch_bbox, 
+                                   f_mip, g_mip, dst_mip, factor)
+      h = h.data.cpu().numpy()
+      aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
+      with Storage(dst_cv.path) as stor:
+        path = 'compose_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
 
 class BatchRenderTask(RegisteredTask):
   def __init__(

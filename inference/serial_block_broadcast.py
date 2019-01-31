@@ -7,6 +7,9 @@ from os.path import join
 from cloudmanager import CloudManager
 from tasks import run 
 
+def print_run(diff, n_tasks):
+  print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
+
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--src_path', type=str)
@@ -79,9 +82,6 @@ if __name__ == '__main__':
                                  cm.dst_voxel_offsets[mip], mip=mip, 
                                  max_mip=cm.num_scales)
 
-  def print_run(diff, n_tasks):
-    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
-
   ###########################
   # Serial broadcast script #
   ###########################
@@ -127,9 +127,12 @@ if __name__ == '__main__':
     z_broadcast = block_start + overlap - 1
     prefix = block_start
     for block_offset in broadcast_range[1:]:
+      # decay the composition over the length of the block
+      br = float(broadcast_range[-1])
+      factor = (br - block_offset) / (br - broadcast_range[1])
       z = block_start + block_offset
       t = a.compose(cm, dst_field, src_field, dst_field, z_broadcast, z, z, 
-                    bbox, mip, mip, mip, prefix=prefix)
+                    bbox, mip, mip, mip, factor, prefix=prefix)
       batch.extend(t)
 
     run(a, batch)

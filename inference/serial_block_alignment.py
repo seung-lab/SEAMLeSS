@@ -21,6 +21,9 @@ from os.path import join
 from cloudmanager import CloudManager
 from tasks import run 
 
+def print_run(diff, n_tasks):
+  print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
+
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--model_path', type=str,
@@ -63,10 +66,11 @@ if __name__ == '__main__':
   full_range = range(args.block_size + overlap)
 
   copy_range = full_range[2:3]
-  no_vvote_range = full_range[:2][::-1]
+  serial_range = full_range[:2][::-1]
   vvote_range = full_range[3:]
 
-  no_vvote_offsets = [1]
+  serial_offsets = {serial_range[0]: 1,
+                    serial_range[1]: 2}
   vvote_offsets = [-3,-2,-1]
 
   # Create CloudVolume Manager
@@ -91,7 +95,9 @@ if __name__ == '__main__':
     dsts[block_start] = dst 
 
   # Create field CloudVolumes
-  no_vvote_field = cm.create(join(args.dst_path, 'field', str(1)), 
+  serial_fields = {}
+  for z_offset in serial_offsets.values():
+    serial_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
                                   data_type='int16', num_channels=2,
                                   fill_missing=True, overwrite=True)
   pair_fields = {}
@@ -119,7 +125,6 @@ if __name__ == '__main__':
     for block_start in block_range:
       dst = dsts[block_start]
       z = block_start + block_offset 
-      print('copying z={0}'.format(z))
       t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, prefix=prefix)
       batch.extend(t)
 
@@ -134,35 +139,36 @@ if __name__ == '__main__':
       a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
   end = time()
   diff = end - start
-  print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
+  print_run(diff, len(batch))
 
   # Align without vector voting
-  for block_offset in no_vvote_range:
-    z_offset = 1
+  for block_offset in serial_range:
+    z_offset = serial_offsets[block_offset] 
+    serial_field = serial_fields[z_offset]
     batch = []
     prefix = block_offset
     for block_start in block_range:
       dst = dsts[block_start]
       z = block_start + block_offset 
-      t = a.compute_field(cm, args.model_path, src, dst, no_vvote_field, 
+      t = a.compute_field(cm, args.model_path, src, dst, serial_field, 
                           z, z+z_offset, bbox, mip, pad, prefix=prefix)
       batch.extend(t)
 
     run(a, batch)
     start = time()
     # wait 
-    n = len(batch)
-    a.wait_for_queue_empty(no_vvote_field.path, 
+    n = len(batch) 
+    a.wait_for_queue_empty(serial_field.path, 
         'compute_field_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
-    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
+    print_run(diff, len(batch))
 
     batch = []
     for block_start in block_range:
       dst = dsts[block_start]
       z = block_start + block_offset 
-      t = a.render(cm, src, no_vvote_field, dst, src_z=z, field_z=z, dst_z=z, 
+      t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
                    bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
       batch.extend(t)
 
@@ -175,7 +181,7 @@ if __name__ == '__main__':
       a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
-    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
+    print_run(diff, len(batch))
 
   # Align with vector voting
   for block_offset in vvote_range:
@@ -200,7 +206,7 @@ if __name__ == '__main__':
           'compute_field_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
-    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
+    print_run(diff, len(batch))
 
     batch = []
     for block_start in block_range:
@@ -217,7 +223,7 @@ if __name__ == '__main__':
         'vector_vote_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
-    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
+    print_run(diff, len(batch))
     
     batch = []
     for block_start in block_range:
@@ -237,7 +243,6 @@ if __name__ == '__main__':
       a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
-    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, len(batch), diff/len(batch)))
-
+    print_run(diff, len(batch))
 
   # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
