@@ -96,8 +96,8 @@ if __name__ == '__main__':
 
   # Create field CloudVolumes
   serial_fields = {}
-  for z_offset in serial.values():
-    serial_fields = cm.create(join(args.dst_path, 'field', str(z_offset)), 
+  for z_offset in serial_offsets.values():
+    serial_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
                                   data_type='int16', num_channels=2,
                                   fill_missing=True, overwrite=True)
   pair_fields = {}
@@ -125,7 +125,6 @@ if __name__ == '__main__':
     for block_start in block_range:
       dst = dsts[block_start]
       z = block_start + block_offset 
-      print('copying z={0}'.format(z))
       t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, prefix=prefix)
       batch.extend(t)
 
