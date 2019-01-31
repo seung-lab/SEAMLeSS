@@ -251,10 +251,12 @@ class ModelArchive(object):
 
         return new_archive
 
-    def _resolve_model(self, model_path):
+    @classmethod
+    def _resolve_model(cls, model_path):
         """
         Find the model referenced by `model_path`.
-        If `name` is the path to an existing directory, this directory is used.
+        If `model_path` is the path to an existing directory, this
+        directory is used.
         Otherwise, find a model by that name in the repository's `models`
         directory.
         """
@@ -268,6 +270,18 @@ class ModelArchive(object):
                 root = Path()
             directory = root / 'models' / name
         return name, directory
+
+    @classmethod
+    def model_exists(cls, model_path):
+        """
+        Returns whether a trained model of this name or path exists.
+        If `model_path` is the path to an existing directory, this
+        directory is checked.
+        Otherwise, a model by that name is searched for in the repository's
+        `models` directory.
+        """
+        _, directory = cls._resolve_model(model_path)
+        return directory.is_dir()
 
     def _exists(self):
         """
