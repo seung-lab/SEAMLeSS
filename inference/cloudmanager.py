@@ -1,4 +1,4 @@
-from mipless_cloudvolume import MiplessCloudVolume as CV 
+from mipless_cloudvolume import MiplessCloudVolume as CV
 from copy import deepcopy, copy
 from cloudvolume import CloudVolume
 from cloudvolume.lib import Vec
@@ -6,10 +6,10 @@ from os.path import join
 
 class CloudManager():
   """Manager of CloudVolumes required by the Aligner
-  
+
   Manage CloudVolumes used for reading & CloudVolumes used for writing. Read & write
   distinguished by the different sets of kwargs that are used for the CloudVolume.
-  All CloudVolumes are MiplessCloudVolumes. 
+  All CloudVolumes are MiplessCloudVolumes.
 
   Args:
      cv_path: str for path to existing CloudVolume to use as template for new
@@ -24,15 +24,15 @@ class CloudManager():
     self.num_scales = len(self.info['scales'])
     self.dst_chunk_sizes = []
     self.dst_voxel_offsets = []
-    self.vec_chunk_sizes = [] 
+    self.vec_chunk_sizes = []
     self.vec_voxel_offsets = []
     self.vec_total_sizes = []
     self.compile_scales()
     self.cvs = {}
-    self.kwargs = {'bounded': False, 'progress': False, 
-                   'autocrop': True, 'non_aligned_writes': False, 
+    self.kwargs = {'bounded': False, 'progress': False,
+                   'autocrop': False, 'non_aligned_writes': False,
                    'cdn_cache': False}
-  
+
   def __getitem__(self, k):
     return self.cvs[k]
 
@@ -40,7 +40,7 @@ class CloudManager():
     return k in self.cvs
 
   @classmethod
-  def create_info(cls, src_cv, max_mip, max_offset, 
+  def create_info(cls, src_cv, max_mip, max_offset,
                        batch_size=-1, size_chunk=[-1,-1], batch_mip=-1):
     """Use an existing CloudVolume to make an info file for CloudVolumes to store
        outputs of the Aligner class.
@@ -57,7 +57,7 @@ class CloudManager():
         output objects; adjusts the voxel_offset of each MIP to account for this
         amount, then increases the size of each MIP to accommodate an integer number
         of chunk_sizes.
-       batch_size: int for number of slices to include in adjusted MIP level's 
+       batch_size: int for number of slices to include in adjusted MIP level's
         chunk_size (optional)
        size_chunk: tuple for dimensions of adjusted MIP level's chunk_size (optional)
        batch_mip: int for MIP level where to adjust the chunk_size (optional)
@@ -114,8 +114,8 @@ class CloudManager():
       #make it slice-by-slice writable
       scales[i]["chunk_sizes"][0][2] = 1
 
-    if adjusting_chunksize: 
-      scales[batch_mip]["chunk_sizes"][0][2] = batch_size 
+    if adjusting_chunksize:
+      scales[batch_mip]["chunk_sizes"][0][2] = batch_size
 
     return info
 
@@ -125,7 +125,7 @@ class CloudManager():
     scales = self.info["scales"]
     for i in range(len(scales)):
       self.dst_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
-      self.dst_voxel_offsets.append(scales[i]["voxel_offset"]) 
+      self.dst_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_chunk_sizes.append(scales[i]["chunk_sizes"][0][0:2])
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
@@ -153,7 +153,7 @@ class CloudManager():
       print('Use existing info file for MiplessCloudVolume at {0}'.format(path))
       info = None
       provenance = None
-    self.cvs[path] = CV(path, mkdir=overwrite, info=info, provenance=provenance, 
+    self.cvs[path] = CV(path, mkdir=overwrite, info=info, provenance=provenance,
                        fill_missing=fill_missing, **self.kwargs)
     return self.cvs[path]
 

@@ -6,7 +6,7 @@ metadata:
     run: seamless
   name: seamless
 spec:
-  replicas: 2 
+  replicas: 40 
   selector:
     matchLabels:
       run: seamless
@@ -22,11 +22,11 @@ spec:
         run: seamless
     spec:
       containers:
-      - image: seunglab/seamless:serial-block-alignment
+      - image: seunglab/seamless:sergiy
         name: seamless
         imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/worker.py --queue_name deepalign"]
+        args: ["-c", "python inference/worker.py --queue_name deepalign_sergiy"]
         resources: 
           limits:
             nvidia.com/gpu: 1
