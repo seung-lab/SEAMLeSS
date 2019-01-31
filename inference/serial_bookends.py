@@ -185,7 +185,7 @@ if __name__ == '__main__':
           z_offset = z_offset * fr
           field = pair_fields[z_offset]
           t = a.compute_field(cm, args.model_path, src, dst, field, 
-                              z, z+z_offset, bbox, mip, pad, prefix=prefix)
+                              z+z_offset, z, bbox, mip, pad, prefix=prefix)
           batch.extend(t)
 
     run(a, batch)
