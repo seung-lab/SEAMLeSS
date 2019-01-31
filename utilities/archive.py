@@ -147,28 +147,32 @@ class ModelArchive(object):
             print('Writing to exisiting model archive: {}'.format(self._name))
         else:
             print('Reading from exisiting model archive: {}'.format(self._name))
-        assert self.directory.is_dir() and self.paths['commit'].exists()
+        assert self.directory.is_dir()
 
         # check for matching commits
         # this can prevent errors arising from working on the wrong git branch
         saved_commit = self.commit
-        current_commit = subprocess.check_output('git rev-parse HEAD'
-                                                 .split()).strip()
-        if int(saved_commit, 16) != int(current_commit, 16):
-            print('Warning: The repository has changed since this '
-                  'net was last trained.')
-            if not self.readonly:
-                print('Continuing may overwrite the archive by '
-                      'running the new code. If this was the intent, '
-                      'then it might not be a problem.'
-                      '\nIf not, exit the process and return to the '
-                      'old commit by running `git checkout {}`'
-                      '\nDo you wish to proceed?  [y/N]'
-                      .format(saved_commit))
-                if input().lower() not in {'yes', 'y'}:
-                    print('Exiting')
-                    sys.exit()
-                print('OK, proceeding...')
+        if saved_commit is not None:
+            try:
+                current_commit = subprocess.check_output('git rev-parse HEAD'
+                                                         .split()).strip()
+            except subprocess.CalledProcessError:
+                current_commit = 0
+            if int(saved_commit, 16) != int(current_commit, 16):
+                print('Warning: The repository has changed since this '
+                      'net was last trained.')
+                if not self.readonly:
+                    print('Continuing may overwrite the archive by '
+                          'running the new code. If this was the intent, '
+                          'then it might not be a problem.'
+                          '\nIf not, exit the process and return to the '
+                          'old commit by running `git checkout {}`'
+                          '\nDo you wish to proceed?  [y/N]'
+                          .format(saved_commit))
+                    if input().lower() not in {'yes', 'y'}:
+                        print('Exiting')
+                        sys.exit()
+                    print('OK, proceeding...')
 
         # load the model, optimizer, and state variables
         self._load_state_vars(*args, **kwargs)
