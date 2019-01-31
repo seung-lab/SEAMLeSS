@@ -1,0 +1,5 @@
+
+At epoch 0, iteration None:
+Time: 2019-01-31 03:27:14.727689
+Commit: 72ac99afd6253f4e6dea492784da20fac79b0003
+training/train.py --num_workers 4 --gpu_ids 0,1,2,3 start tiger_6 --training_set /home/runzhey/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --height 5 --seed 5432 -u --lr 0.000005 --lambda1 300000 --plan all --encodings

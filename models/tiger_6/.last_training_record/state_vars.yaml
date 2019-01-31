@@ -1,0 +1,29 @@
+batch_size: 4
+checkpoint_time: 100
+encodings: true
+epoch: 0
+epochs_per_mip: 4
+feature_maps: [12, 12, 12, 12, 12]
+gamma: 1
+gamma_step: 30
+gpus: 0,1,2,3
+height: 5
+iteration: null
+lambda1: 300000.0
+log_time: 1
+logdir: logs/
+lr: 5.0e-06
+name: tiger_6
+num_epochs: 1000000
+num_samples: null
+penalty: lap
+plan: all
+seed: 5432
+skip_aug: false
+start_lr: 5.0e-06
+supervised: false
+training_set_path: !!python/object/apply:pathlib.PosixPath [/, home, runzhey, training_data,
+  minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5]
+validation_set_path: null
+vis_time: 50
+wd: 0

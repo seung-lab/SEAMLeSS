@@ -1,0 +1,2457 @@
+72ac99afd6253f4e6dea492784da20fac79b0003
+tony-tiger
+diff --git a/models/test_tiger/.last_training_record/architecture.py b/models/test_tiger/.last_training_record/architecture.py
+deleted file mode 100644
+index 3fbf816..0000000
+--- a/models/test_tiger/.last_training_record/architecture.py
++++ /dev/null
+@@ -1,334 +0,0 @@
+-import torch
+-import torch.nn as nn
+-from utilities.helpers import gridsample_residual, upsample, downsample, load_model_from_dict
+-
+-
+-class Model(nn.Module):
+-    """
+-    Defines an aligner network.
+-    This is the main class of the architecture code.
+-
+-    `height` is the number of levels of the network
+-    `feature_maps` is the number of feature maps per encoding layer
+-    """
+-
+-    def __init__(self, feature_maps=None, encodings=True, *args, **kwargs):
+-        super().__init__()
+-        self.feature_maps = feature_maps
+-        self.encode = (EncodingPyramid(self.feature_maps, **kwargs)
+-                       if encodings else None)
+-        self.align = AligningPyramid(self.feature_maps if encodings
+-                                     else [1]*len(feature_maps), **kwargs)
+-
+-    def forward(self, src, tgt, in_field=None, **kwargs):
+-        if self.encode:
+-            src, tgt = self.encode(src, tgt, **kwargs)
+-        field = self.align(src, tgt, in_field, **kwargs)
+-        return field
+-
+-    def load(self, path):
+-        """
+-        Loads saved weights into the model
+-        """
+-        with path.open('rb') as f:
+-            weights = torch.load(f)
+-        load_model_from_dict(self, weights)
+-        return self
+-
+-    def save(self, path):
+-        """
+-        Saves the model weights to a file
+-        """
+-        with path.open('wb') as f:
+-            torch.save(self.state_dict(), f)
+-
+-    def __len__(self):
+-        return self.height
+-
+-    @property
+-    def height(self):
+-        return len(self.feature_maps)
+-
+-    def __getitem__(self, index):
+-        return self.submodule(index)
+-
+-    def submodule(self, index):
+-        """
+-        Returns a submodule as indexed by `index`.
+-
+-        Submodules with lower indices are intended to be trained earlier,
+-        so this also decides the training order.
+-
+-        `index` must be an int, a slice, or None.
+-        If `index` is a slice, the submodule contains the relevant levels.
+-        If `index` is None or greater than the height, the submodule
+-        returned contains the whole model.
+-        """
+-        if index is None or (isinstance(index, int)
+-                             and index >= self.height):
+-            index = slice(self.height)
+-        return _SubmoduleView(self, index)
+-
+-    def train_level(self, level=slice(None), _index=slice(None)):
+-        """
+-        Set only a specific level of the submodule to training mode and
+-        freeze all the other weights
+-        """
+-        for p in self.parameters():
+-            p.requires_grad = False
+-        if level == 'all':
+-            for p in self.parameters():
+-                p.requires_grad = True
+-        elif level == 'lowest':
+-            for p in self.align.list[_index][0].parameters():
+-                p.requires_grad = True
+-        elif level == 'highest':
+-            for p in self.align.list[_index][-1].parameters():
+-                p.requires_grad = True
+-        else:
+-            for p in self.align.list[_index][level].parameters():
+-                p.requires_grad = True
+-        return self
+-
+-    def init_level(self, level='lowest', _index=slice(None)):
+-        """
+-        Initialize the last level of the SubmoduleView by copying the trained
+-        weights of the next to last level.
+-        Whether the last level is the lowest or highest level is determined
+-        by the `level` argument.
+-        If the SubmoduleView has only one level, this does nothing.
+-        """
+-        # TODO: init encoders, handle different size aligners
+-        if len(self.aligners) > 1:
+-            if level == 'lowest':
+-                state_dict = self.align.list[_index][1].state_dict()
+-                self.align.list[_index][0].load_state_dict(state_dict)
+-            elif level == 'highest':
+-                state_dict = self.align.list[_index][-2].state_dict()
+-                self.align.list[_index][-1].load_state_dict(state_dict)
+-        return self
+-
+-    @property
+-    def pixel_size_ratio(self, _index=slice(None)):
+-        """
+-        The ratio of the pixel size of the submodule's highest level to
+-        the pixel size at its input level.
+-        By assumption, each level of the network has equal ability, so this
+-        is a measure of the power of the submodule to detect and correct
+-        large misalignments in its input scale.
+-        """
+-        return 2**(self.height - 1)
+-
+-
+-class Encoder(nn.Module):
+-    """
+-    Module that implements a two-convolution siamese encoder.
+-    These can be stacked to build an encoding pyramid.
+-    """
+-
+-    def __init__(self, infm, outfm, k=3):
+-        super().__init__()
+-        p = (k-1)//2
+-        self.seq = nn.Sequential(
+-            nn.Conv2d(infm, outfm, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(outfm, outfm, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-        )
+-        self.seq.apply(init_leaky_relu)
+-
+-    def forward(self, src, tgt, **kwargs):
+-        return self.seq(src), self.seq(tgt)
+-
+-
+-class EncodingPyramid(nn.Module):
+-    """
+-    A stack of siamese encoders with one Encoder module at each mip level.
+-    It takes a pair of images and returns a list of encodings, one for
+-    each element of `feature_list`
+-
+-    `feature_list` should be a list of integers, each of which specifies
+-    the number of feature maps at a particular mip level.
+-    For example,
+-        >>> EncodingPyramid([2, 4, 8, 16])
+-    creates a pyramid with four Encoder modules, with 2, 4, 8, and 16
+-    feature maps respectively.
+-    `input_fm` is the number of input feature maps, and should remain 1
+-    for normal image inputs.
+-    """
+-
+-    def __init__(self, feature_list, input_fm=1, **kwargs):
+-        super().__init__()
+-        self.feature_list = [input_fm] + list(feature_list)
+-        self.list = nn.ModuleList([
+-            Encoder(infm, outfm)
+-            for infm, outfm
+-            in zip(self.feature_list[:-1], self.feature_list[1:])
+-        ])
+-
+-    def forward(self, src, tgt, **kwargs):
+-        src_encodings = []
+-        tgt_encodings = []
+-        for module in self.list:
+-            src, tgt = module(src, tgt, **kwargs)
+-            src_encodings.append(src)
+-            tgt_encodings.append(tgt)
+-            src, tgt = downsample()(src), downsample()(tgt)
+-        return src_encodings, tgt_encodings
+-
+-
+-class Aligner(nn.Module):
+-    """
+-    Module that takes a pair of images as input and outputs a vector field
+-    that can be used to transform one to the other.
+-
+-    While the output of the module has the standard shape for input to
+-    the PyTorch gridsampler, the units of the field is pixels in order
+-    to be agnostic to the size of the input images.
+-    """
+-
+-    def __init__(self, channels=1, k=7):
+-        super().__init__()
+-        p = (k-1)//2
+-        self.channels = channels
+-        self.seq = nn.Sequential(
+-            nn.Conv2d(channels * 2, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 2, k, padding=p),
+-        )
+-        self.seq.apply(init_leaky_relu)
+-
+-    def forward(self, src, tgt, **kwargs):
+-        if src.shape[1] != tgt.shape[1]:
+-            raise ValueError('Cannot align src and tgt of different shapes. '
+-                             'src: {}, tgt: {}'.format(src.shape, tgt.shape))
+-        elif src.shape[1] % self.channels != 0:
+-            raise ValueError('Number of channels does not divide stack size. '
+-                             '{} channels for {}'
+-                             .format(self.channels, src.shape))
+-        if src.shape[1] == self.channels:
+-            stack = torch.cat((src, tgt), dim=1)
+-            field = self.seq(stack).permute(0, 2, 3, 1)
+-            return field
+-        else:  # stack of encodings
+-            fields = []
+-            for pair in zip(src.split(self.channels, dim=1),
+-                            tgt.split(self.channels, dim=1)):
+-                stack = torch.cat(pair, dim=1)
+-                fields.append(self.seq(stack).permute(0, 2, 3, 1))
+-            return sum(fields) / len(fields)
+-
+-
+-class AligningPyramid(nn.Module):
+-    """
+-    A stack of Aligner modules with one Aligner at each mip level.
+-    It takes a pair of images and produces a vector field which maps from
+-    the first image, the source, to the second image, the target.
+-
+-    If `src_input` and `tgt_input` are lists, then they are taken to be
+-    precomputed encodings or downsamples of the respective images.
+-
+-    `feature_list` should be a list of integers, each of which specifies
+-    the number of feature maps at a particular mip level.
+-    For example,
+-        >>> AligningPyramid([2, 4, 8, 16])
+-    creates a pyramid with four Aligner modules, with 2, 4, 8, and 16
+-    feature maps respectively.
+-    """
+-
+-    def __init__(self, feature_list, **kwargs):
+-        super().__init__()
+-        self.feature_list = list(feature_list)
+-        self.list = nn.ModuleList([Aligner(ch) for ch in feature_list])
+-
+-    def forward(self, src_input, tgt_input, accum_field=None,
+-                _index=slice(None), **kwargs):
+-        prev_level = None
+-        for i, aligner in zip(reversed(range(len(self.list))[_index]),
+-                              reversed(self.list[_index])):
+-            if isinstance(src_input, list) and isinstance(tgt_input, list):
+-                src, tgt = src_input[i], tgt_input[i]
+-            else:
+-                src, tgt = downsample(i)(src_input), downsample(i)(tgt_input)
+-            if prev_level is not None:
+-                accum_field = (upsample(prev_level - i)
+-                               (accum_field.permute(0, 3, 1, 2))
+-                               .permute(0, 2, 3, 1))
+-                src = gridsample_residual(src, accum_field,
+-                                          padding_mode='border')
+-            factor = 2 / src.shape[-1]  # scale to [-1,1]
+-            res_field = aligner(src, tgt, **kwargs) * factor
+-            if accum_field is not None:
+-                resampled = gridsample_residual(
+-                    accum_field.permute(0, 3, 1, 2), res_field,
+-                    padding_mode='border').permute(0, 2, 3, 1)
+-                accum_field = res_field + resampled
+-            else:
+-                accum_field = res_field
+-            prev_level = i
+-        accum_field = (upsample(prev_level)
+-                       (accum_field.permute(0, 3, 1, 2))
+-                       .permute(0, 2, 3, 1))
+-        return accum_field
+-
+-
+-class _SubmoduleView(nn.Module):
+-    """
+-    Returns a view into a sequence of aligners of a model.
+-    This is useful for training and testing.
+-    """
+-
+-    def __init__(self, model, index):
+-        super().__init__()
+-        if isinstance(index, int):
+-            index = slice(index, index+1)
+-        self.model = model
+-        self.index = index
+-
+-    def forward(self, *args, **kwargs):
+-        kwargs.update(_index=self.index)
+-        return self.model.forward(*args, **kwargs)
+-
+-    def train_level(self, *args, **kwargs):
+-        kwargs.update(_index=self.index)
+-        return self.model.train_level(*args, **kwargs)
+-
+-    def init_level(self, *args, **kwargs):
+-        kwargs.update(_index=self.index)
+-        return self.model.init_level(*args, **kwargs)
+-
+-    @property
+-    def pixel_size_ratio(self, _index=slice(None)):
+-        return 2**(range(self.height)[_index][-1])
+-
+-    def __len__(self):
+-        return self.height
+-
+-    @property
+-    def height(self):
+-        return len(self.model.height)
+-
+-
+-def init_leaky_relu(m, a=None):
+-    """
+-    Initialize to account for the default negative slope of LeakyReLU.
+-    PyTorch's LeakyReLU by defualt has a slope of 0.01 for negative
+-    values, but the default initialization for Conv2d uses
+-    `kaiming_uniform_` with `a=math.sqrt(5)`. (ref: https://goo.gl/Bx3wdS)
+-    Instead, this initializes according to He, K. et al. (2015).
+-    (ref https://goo.gl/hH6qaM)
+-
+-    If `a` is given it uses that as the negative slope. If it is None,
+-    the default for LeakyReLU is used.
+-    """
+-    if not isinstance(m, torch.nn.Conv2d):
+-        return
+-    if a is None:
+-        a = nn.modules.activation.LeakyReLU().negative_slope
+-    nn.init.kaiming_uniform_(m.weight, a=a)
+diff --git a/models/test_tiger/.last_training_record/objective.py b/models/test_tiger/.last_training_record/objective.py
+deleted file mode 100644
+index 27bf98d..0000000
+--- a/models/test_tiger/.last_training_record/objective.py
++++ /dev/null
+@@ -1,208 +0,0 @@
+-import torch
+-import torch.nn as nn
+-from utilities import masklib
+-from training.loss import smoothness_penalty
+-from utilities.helpers import gridsample_residual
+-
+-
+-class Objective(nn.Module):
+-    """
+-    Module that calculates an objective function on the net's outputs.
+-
+-    `supervised` indicates the type of loss to be used: supervised if True,
+-    self-supervised if False. Other possible values can be added.
+-
+-    `function` is an optional argument that, if specified, overrides this
+-    with a custom function. It must be a callable and differentiable,
+-    accept inputs in the format of the outputs produced by the model,
+-    and produce a PyTorch scalar as output.
+-
+-    `Objective` is implemented as a PyTorch module for ease of distributing
+-    the calculation across GPUs with DataParallel, and for modularity.
+-    It is bundled with the archive because models can often have
+-    different objective functions, the calculation of which can
+-    depend on the model's specific architecture.
+-    """
+-
+-    def __init__(self, *args, supervised=True, function=None, **kwargs):
+-        super().__init__()
+-        if function is not None:
+-            if callable(function):
+-                self.function = function
+-            else:
+-                raise TypeError('Cannot use {} as an objective function. '
+-                                'Must be a callable.'.format(type(function)))
+-        elif supervised:
+-            self.function = SupervisedLoss(*args, **kwargs)
+-        else:
+-            self.function = SelfSupervisedLoss(*args, **kwargs)
+-
+-    def forward(self, *args, **kwargs):
+-        return self.function(*args, **kwargs)
+-
+-
+-class ValidationObjective(Objective):
+-    """
+-    Calculates a validation objective function on the net's outputs.
+-
+-    This is currently set to simply be the self-supervised loss,
+-    but this could be changed here to Pearson correlation or some
+-    other measure without affecting the training objective.
+-    """
+-
+-    def __init__(self, *args, **kwargs):
+-        kwargs['supervised'] = False
+-        super().__init__(*args, **kwargs)
+-
+-
+-class SupervisedLoss(nn.Module):
+-    """
+-    Calculates a supervised loss based on the mean squared error with
+-    the ground truth vector field.
+-    """
+-
+-    def __init__(self, *args, **kwargs):
+-        super().__init__()
+-
+-    def forward(self, prediction, truth):  # TODO: use masks
+-        truth = truth.to(prediction.device)
+-        return ((prediction - truth) ** 2).mean() * 25000
+-
+-
+-class SelfSupervisedLoss(nn.Module):
+-    """
+-    Calculates a self-supervised loss based on
+-    (a) the mean squared error between the source and target images
+-    (b) the smoothness of the vector field
+-
+-    The masks are used to ignore or reduce the loss values in certain regions
+-    of the images and vector field.
+-
+-    If `MSE(a, b)` is the mean squared error of two images, and `Penalty(f)`
+-    is the smoothness penalty of a vector field, the loss is calculated
+-    roughly as
+-        >>> loss = MSE(src, tgt) + lambda1 * Penalty(prediction)
+-    """
+-
+-    def __init__(self, penalty, lambda1, *args, **kwargs):
+-        super().__init__()
+-        self.field_penalty = smoothness_penalty(penalty)
+-        self.lambda1 = lambda1
+-
+-    def forward(self, src, tgt, prediction, masks=None):
+-        masks = prepare_masks(src, tgt, masks)
+-        src_masks = masks['src_masks']
+-        tgt_masks = masks['tgt_masks']
+-        src_field_masks = masks['src_field_masks']
+-        tgt_field_masks = masks['tgt_field_masks']
+-
+-        src, tgt = src.to(prediction.device), tgt.to(prediction.device)
+-
+-        src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
+-        image_loss_map = (src_warped - tgt)**2
+-        if src_masks or tgt_masks:
+-            image_weights = torch.ones_like(image_loss_map)
+-            if src_masks is not None:
+-                for mask in src_masks:
+-                    mask = gridsample_residual(mask, prediction,
+-                                               padding_mode='border')
+-                    image_loss_map = image_loss_map * mask
+-                    image_weights = image_weights * mask
+-            if tgt_masks is not None:
+-                for mask in tgt_masks:
+-                    image_loss_map = image_loss_map * mask
+-                    image_weights = image_weights * mask
+-            mse_loss = image_loss_map.sum() / image_weights.sum()
+-        else:
+-            mse_loss = image_loss_map.mean()
+-
+-        field_loss_map = self.field_penalty([prediction])
+-        if src_field_masks or tgt_field_masks:
+-            field_weights = torch.ones_like(field_loss_map)
+-            if src_field_masks is not None:
+-                for mask in src_field_masks:
+-                    mask = gridsample_residual(mask, prediction,
+-                                               padding_mode='border')
+-                    field_loss_map = field_loss_map * mask
+-                    field_weights = field_weights * mask
+-            if tgt_field_masks is not None:
+-                for mask in tgt_field_masks:
+-                    field_loss_map = field_loss_map * mask
+-                    field_weights = field_weights * mask
+-            field_loss = field_loss_map.sum() / field_weights.sum()
+-        else:
+-            field_loss = field_loss_map.mean()
+-
+-        loss = (mse_loss + self.lambda1 * field_loss)
+-        return loss
+-
+-
+-@torch.no_grad()
+-def gen_masks(src, tgt, threshold=10):
+-    """
+-    Heuristic generation of masks based on simple thresholding.
+-    Can be expanded in the future to include more sophisticated methods.
+-
+-    A better option is to include the masks as part of the dataset and pass
+-    them to prepare_masks().
+-    """
+-    src, tgt = (src * 255).to(torch.uint8), (tgt * 255).to(torch.uint8)
+-    return (src < threshold), (tgt < threshold)
+-
+-
+-@torch.no_grad()
+-def prepare_masks(src, tgt, masks=None, threshold=0.7):
+-    """
+-    Returns properly formatted masks with which to weight the loss function.
+-    If masks is None, this calls gen_masks to generate them.
+-    """
+-    # MSE coefficient on the defect (src, tgt) and radius:
+-    tissue_coef0 = 0, 0
+-    tissue_radius0 = 5
+-    # MSE coefficient in the defect neighborhood (src, tgt) and radius:
+-    tissue_coef1 = 2, 2
+-    tissue_radius1 = 35
+-    # smoothness coefficient on the defect (src, tgt) and radius:
+-    field_coef0 = 0, 0
+-    field_radius0 = 0
+-    # smoothness coefficient in the defect neighborhood (src, tgt) and radius:
+-    field_coef1 = 0.01, 0.01
+-    field_radius1 = 10
+-
+-    src_weights, tgt_weights = torch.ones_like(src), torch.ones_like(tgt)
+-    src_field_weights = torch.ones_like(src)
+-    tgt_field_weights = torch.ones_like(tgt)
+-    if masks is None or masks.nelement() == 0:
+-        src_defects, tgt_defects = gen_masks(src, tgt, threshold)
+-    else:
+-        masks = masks.cuda()
+-        src_defects = masks[:, 2:3] > threshold
+-        tgt_defects = masks[:, 3:4] > threshold
+-
+-    # Tissue (MSE) masks
+-    src_mask_0 = masklib.dilate(src_defects, radius=tissue_radius0)
+-    tgt_mask_0 = masklib.dilate(tgt_defects, radius=tissue_radius0)
+-    src_mask_1 = masklib.dilate(src_defects, radius=tissue_radius1)
+-    tgt_mask_1 = masklib.dilate(tgt_defects, radius=tissue_radius1)
+-    # coefficient in the defect neighborhood:
+-    src_weights[src_mask_1], tgt_weights[tgt_mask_1] = tissue_coef1
+-    # coefficient on the defect:
+-    src_weights[src_mask_0], tgt_weights[tgt_mask_0] = tissue_coef0
+-    # no MSE outside tissue
+-    src_weights[(src*255.0).to(torch.uint8) < 1] = 0
+-    tgt_weights[(tgt*255.0).to(torch.uint8) < 1] = 0
+-
+-    # Field (smoothness) masks
+-    src_field_mask_0 = masklib.dilate(src_defects, radius=field_radius0)
+-    tgt_field_mask_0 = masklib.dilate(tgt_defects, radius=field_radius0)
+-    src_field_mask_1 = masklib.dilate(src_defects, radius=field_radius1)
+-    tgt_field_mask_1 = masklib.dilate(tgt_defects, radius=field_radius1)
+-    # coefficient in the defect neighborhood:
+-    src_field_weights[src_field_mask_1], tgt_field_weights[tgt_field_mask_1] = field_coef1
+-    # coefficient on the defect:
+-    src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
+-
+-    return {'src_masks': [src_weights.float()],
+-            'tgt_masks': [tgt_weights.float()],
+-            'src_field_masks': [src_field_weights.float()],
+-            'tgt_field_masks': [tgt_field_weights.float()]}
+diff --git a/models/test_tiger/.last_training_record/preprocessor.py b/models/test_tiger/.last_training_record/preprocessor.py
+deleted file mode 100644
+index 18e7b70..0000000
+--- a/models/test_tiger/.last_training_record/preprocessor.py
++++ /dev/null
+@@ -1,50 +0,0 @@
+-import torch
+-import torch.nn as nn
+-import cv2
+-
+-
+-class Preprocessor(nn.Module):
+-    """
+-    Code to preprocess the data.
+-    This can include contrast normalization, masking, etc.
+-
+-    While this does necessarily not need to be a PyTorch module, it inherits
+-    from nn.Module to make it easier to parallelize with DataParallel if
+-    desired.
+-    """
+-
+-    def __init__(self, clipLimit=40, tileGridSize=(8, 8), *args, **kwargs):
+-        super().__init__()
+-        self.clahe = cv2.createCLAHE(clipLimit=clipLimit,
+-                                     tileGridSize=tileGridSize)
+-
+-    def forward(self, X, *args, **kwargs):
+-        for i in range(2):
+-            mask = self.gen_mask(X[..., i, :, :])
+-            X[..., i, :, :] = self.normalize(X[..., i, :, :], mask=mask)
+-            X[..., i, :, :] = self.contrast(X[..., i, :, :], mask=mask)
+-        return X
+-
+-    def contrast(self, X, mask=...):
+-        """
+-        Performs Contrast Limited Adaptive Histogram Equalization
+-        """
+-        Xb = (X * 255).to(torch.uint8)[mask].squeeze()
+-        eq = torch.from_numpy(self.clahe.apply(Xb.cpu().numpy()))
+-        X[mask] = eq.unsqueeze(0).to(torch.float) / 255
+-        X[..., Xb == 0] = 0
+-        return X
+-
+-    def normalize(self, X, mask=..., min=0, max=1):
+-        """
+-        Rescale values from min to max
+-        """
+-        X[mask] = X[mask] - X[mask].min()
+-        X[mask] = X[mask] / X[mask].max() * (max - min) + min
+-        return X
+-
+-    def gen_mask(self, X, threshold=1):
+-        """
+-        Return a mask that selects only the relevant parts of the image
+-        """
+-        return ...
+diff --git a/models/test_tiger/.last_training_record/state_vars.yaml b/models/test_tiger/.last_training_record/state_vars.yaml
+deleted file mode 100644
+index 853605f..0000000
+--- a/models/test_tiger/.last_training_record/state_vars.yaml
++++ /dev/null
+@@ -1,30 +0,0 @@
+-batch_size: 1
+-checkpoint_time: 100
+-encodings: false
+-epoch: 0
+-epochs_per_mip: 4
+-feature_maps: [12, 12, 12, 12, 12]
+-gamma: 1
+-gamma_step: 30
+-gpus: '0'
+-height: 5
+-iteration: null
+-lambda1: 300000.0
+-log_time: 1
+-logdir: logs/
+-lr: 5.0e-06
+-name: test_tiger
+-num_epochs: 1000000
+-num_samples: null
+-penalty: lap
+-plan: all
+-seed: 5432
+-skip_aug: false
+-start_lr: 5.0e-06
+-supervised: false
+-training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, runzhey,
+-  training_data, minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5]
+-validation_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, runzhey,
+-  training_data, v1_100slice_minnie_6144_train_mip2_annotated.h5]
+-vis_time: 50
+-wd: 0
+diff --git a/models/test_tiger/architecture.py b/models/test_tiger/architecture.py
+deleted file mode 100644
+index 3fbf816..0000000
+--- a/models/test_tiger/architecture.py
++++ /dev/null
+@@ -1,334 +0,0 @@
+-import torch
+-import torch.nn as nn
+-from utilities.helpers import gridsample_residual, upsample, downsample, load_model_from_dict
+-
+-
+-class Model(nn.Module):
+-    """
+-    Defines an aligner network.
+-    This is the main class of the architecture code.
+-
+-    `height` is the number of levels of the network
+-    `feature_maps` is the number of feature maps per encoding layer
+-    """
+-
+-    def __init__(self, feature_maps=None, encodings=True, *args, **kwargs):
+-        super().__init__()
+-        self.feature_maps = feature_maps
+-        self.encode = (EncodingPyramid(self.feature_maps, **kwargs)
+-                       if encodings else None)
+-        self.align = AligningPyramid(self.feature_maps if encodings
+-                                     else [1]*len(feature_maps), **kwargs)
+-
+-    def forward(self, src, tgt, in_field=None, **kwargs):
+-        if self.encode:
+-            src, tgt = self.encode(src, tgt, **kwargs)
+-        field = self.align(src, tgt, in_field, **kwargs)
+-        return field
+-
+-    def load(self, path):
+-        """
+-        Loads saved weights into the model
+-        """
+-        with path.open('rb') as f:
+-            weights = torch.load(f)
+-        load_model_from_dict(self, weights)
+-        return self
+-
+-    def save(self, path):
+-        """
+-        Saves the model weights to a file
+-        """
+-        with path.open('wb') as f:
+-            torch.save(self.state_dict(), f)
+-
+-    def __len__(self):
+-        return self.height
+-
+-    @property
+-    def height(self):
+-        return len(self.feature_maps)
+-
+-    def __getitem__(self, index):
+-        return self.submodule(index)
+-
+-    def submodule(self, index):
+-        """
+-        Returns a submodule as indexed by `index`.
+-
+-        Submodules with lower indices are intended to be trained earlier,
+-        so this also decides the training order.
+-
+-        `index` must be an int, a slice, or None.
+-        If `index` is a slice, the submodule contains the relevant levels.
+-        If `index` is None or greater than the height, the submodule
+-        returned contains the whole model.
+-        """
+-        if index is None or (isinstance(index, int)
+-                             and index >= self.height):
+-            index = slice(self.height)
+-        return _SubmoduleView(self, index)
+-
+-    def train_level(self, level=slice(None), _index=slice(None)):
+-        """
+-        Set only a specific level of the submodule to training mode and
+-        freeze all the other weights
+-        """
+-        for p in self.parameters():
+-            p.requires_grad = False
+-        if level == 'all':
+-            for p in self.parameters():
+-                p.requires_grad = True
+-        elif level == 'lowest':
+-            for p in self.align.list[_index][0].parameters():
+-                p.requires_grad = True
+-        elif level == 'highest':
+-            for p in self.align.list[_index][-1].parameters():
+-                p.requires_grad = True
+-        else:
+-            for p in self.align.list[_index][level].parameters():
+-                p.requires_grad = True
+-        return self
+-
+-    def init_level(self, level='lowest', _index=slice(None)):
+-        """
+-        Initialize the last level of the SubmoduleView by copying the trained
+-        weights of the next to last level.
+-        Whether the last level is the lowest or highest level is determined
+-        by the `level` argument.
+-        If the SubmoduleView has only one level, this does nothing.
+-        """
+-        # TODO: init encoders, handle different size aligners
+-        if len(self.aligners) > 1:
+-            if level == 'lowest':
+-                state_dict = self.align.list[_index][1].state_dict()
+-                self.align.list[_index][0].load_state_dict(state_dict)
+-            elif level == 'highest':
+-                state_dict = self.align.list[_index][-2].state_dict()
+-                self.align.list[_index][-1].load_state_dict(state_dict)
+-        return self
+-
+-    @property
+-    def pixel_size_ratio(self, _index=slice(None)):
+-        """
+-        The ratio of the pixel size of the submodule's highest level to
+-        the pixel size at its input level.
+-        By assumption, each level of the network has equal ability, so this
+-        is a measure of the power of the submodule to detect and correct
+-        large misalignments in its input scale.
+-        """
+-        return 2**(self.height - 1)
+-
+-
+-class Encoder(nn.Module):
+-    """
+-    Module that implements a two-convolution siamese encoder.
+-    These can be stacked to build an encoding pyramid.
+-    """
+-
+-    def __init__(self, infm, outfm, k=3):
+-        super().__init__()
+-        p = (k-1)//2
+-        self.seq = nn.Sequential(
+-            nn.Conv2d(infm, outfm, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(outfm, outfm, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-        )
+-        self.seq.apply(init_leaky_relu)
+-
+-    def forward(self, src, tgt, **kwargs):
+-        return self.seq(src), self.seq(tgt)
+-
+-
+-class EncodingPyramid(nn.Module):
+-    """
+-    A stack of siamese encoders with one Encoder module at each mip level.
+-    It takes a pair of images and returns a list of encodings, one for
+-    each element of `feature_list`
+-
+-    `feature_list` should be a list of integers, each of which specifies
+-    the number of feature maps at a particular mip level.
+-    For example,
+-        >>> EncodingPyramid([2, 4, 8, 16])
+-    creates a pyramid with four Encoder modules, with 2, 4, 8, and 16
+-    feature maps respectively.
+-    `input_fm` is the number of input feature maps, and should remain 1
+-    for normal image inputs.
+-    """
+-
+-    def __init__(self, feature_list, input_fm=1, **kwargs):
+-        super().__init__()
+-        self.feature_list = [input_fm] + list(feature_list)
+-        self.list = nn.ModuleList([
+-            Encoder(infm, outfm)
+-            for infm, outfm
+-            in zip(self.feature_list[:-1], self.feature_list[1:])
+-        ])
+-
+-    def forward(self, src, tgt, **kwargs):
+-        src_encodings = []
+-        tgt_encodings = []
+-        for module in self.list:
+-            src, tgt = module(src, tgt, **kwargs)
+-            src_encodings.append(src)
+-            tgt_encodings.append(tgt)
+-            src, tgt = downsample()(src), downsample()(tgt)
+-        return src_encodings, tgt_encodings
+-
+-
+-class Aligner(nn.Module):
+-    """
+-    Module that takes a pair of images as input and outputs a vector field
+-    that can be used to transform one to the other.
+-
+-    While the output of the module has the standard shape for input to
+-    the PyTorch gridsampler, the units of the field is pixels in order
+-    to be agnostic to the size of the input images.
+-    """
+-
+-    def __init__(self, channels=1, k=7):
+-        super().__init__()
+-        p = (k-1)//2
+-        self.channels = channels
+-        self.seq = nn.Sequential(
+-            nn.Conv2d(channels * 2, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 2, k, padding=p),
+-        )
+-        self.seq.apply(init_leaky_relu)
+-
+-    def forward(self, src, tgt, **kwargs):
+-        if src.shape[1] != tgt.shape[1]:
+-            raise ValueError('Cannot align src and tgt of different shapes. '
+-                             'src: {}, tgt: {}'.format(src.shape, tgt.shape))
+-        elif src.shape[1] % self.channels != 0:
+-            raise ValueError('Number of channels does not divide stack size. '
+-                             '{} channels for {}'
+-                             .format(self.channels, src.shape))
+-        if src.shape[1] == self.channels:
+-            stack = torch.cat((src, tgt), dim=1)
+-            field = self.seq(stack).permute(0, 2, 3, 1)
+-            return field
+-        else:  # stack of encodings
+-            fields = []
+-            for pair in zip(src.split(self.channels, dim=1),
+-                            tgt.split(self.channels, dim=1)):
+-                stack = torch.cat(pair, dim=1)
+-                fields.append(self.seq(stack).permute(0, 2, 3, 1))
+-            return sum(fields) / len(fields)
+-
+-
+-class AligningPyramid(nn.Module):
+-    """
+-    A stack of Aligner modules with one Aligner at each mip level.
+-    It takes a pair of images and produces a vector field which maps from
+-    the first image, the source, to the second image, the target.
+-
+-    If `src_input` and `tgt_input` are lists, then they are taken to be
+-    precomputed encodings or downsamples of the respective images.
+-
+-    `feature_list` should be a list of integers, each of which specifies
+-    the number of feature maps at a particular mip level.
+-    For example,
+-        >>> AligningPyramid([2, 4, 8, 16])
+-    creates a pyramid with four Aligner modules, with 2, 4, 8, and 16
+-    feature maps respectively.
+-    """
+-
+-    def __init__(self, feature_list, **kwargs):
+-        super().__init__()
+-        self.feature_list = list(feature_list)
+-        self.list = nn.ModuleList([Aligner(ch) for ch in feature_list])
+-
+-    def forward(self, src_input, tgt_input, accum_field=None,
+-                _index=slice(None), **kwargs):
+-        prev_level = None
+-        for i, aligner in zip(reversed(range(len(self.list))[_index]),
+-                              reversed(self.list[_index])):
+-            if isinstance(src_input, list) and isinstance(tgt_input, list):
+-                src, tgt = src_input[i], tgt_input[i]
+-            else:
+-                src, tgt = downsample(i)(src_input), downsample(i)(tgt_input)
+-            if prev_level is not None:
+-                accum_field = (upsample(prev_level - i)
+-                               (accum_field.permute(0, 3, 1, 2))
+-                               .permute(0, 2, 3, 1))
+-                src = gridsample_residual(src, accum_field,
+-                                          padding_mode='border')
+-            factor = 2 / src.shape[-1]  # scale to [-1,1]
+-            res_field = aligner(src, tgt, **kwargs) * factor
+-            if accum_field is not None:
+-                resampled = gridsample_residual(
+-                    accum_field.permute(0, 3, 1, 2), res_field,
+-                    padding_mode='border').permute(0, 2, 3, 1)
+-                accum_field = res_field + resampled
+-            else:
+-                accum_field = res_field
+-            prev_level = i
+-        accum_field = (upsample(prev_level)
+-                       (accum_field.permute(0, 3, 1, 2))
+-                       .permute(0, 2, 3, 1))
+-        return accum_field
+-
+-
+-class _SubmoduleView(nn.Module):
+-    """
+-    Returns a view into a sequence of aligners of a model.
+-    This is useful for training and testing.
+-    """
+-
+-    def __init__(self, model, index):
+-        super().__init__()
+-        if isinstance(index, int):
+-            index = slice(index, index+1)
+-        self.model = model
+-        self.index = index
+-
+-    def forward(self, *args, **kwargs):
+-        kwargs.update(_index=self.index)
+-        return self.model.forward(*args, **kwargs)
+-
+-    def train_level(self, *args, **kwargs):
+-        kwargs.update(_index=self.index)
+-        return self.model.train_level(*args, **kwargs)
+-
+-    def init_level(self, *args, **kwargs):
+-        kwargs.update(_index=self.index)
+-        return self.model.init_level(*args, **kwargs)
+-
+-    @property
+-    def pixel_size_ratio(self, _index=slice(None)):
+-        return 2**(range(self.height)[_index][-1])
+-
+-    def __len__(self):
+-        return self.height
+-
+-    @property
+-    def height(self):
+-        return len(self.model.height)
+-
+-
+-def init_leaky_relu(m, a=None):
+-    """
+-    Initialize to account for the default negative slope of LeakyReLU.
+-    PyTorch's LeakyReLU by defualt has a slope of 0.01 for negative
+-    values, but the default initialization for Conv2d uses
+-    `kaiming_uniform_` with `a=math.sqrt(5)`. (ref: https://goo.gl/Bx3wdS)
+-    Instead, this initializes according to He, K. et al. (2015).
+-    (ref https://goo.gl/hH6qaM)
+-
+-    If `a` is given it uses that as the negative slope. If it is None,
+-    the default for LeakyReLU is used.
+-    """
+-    if not isinstance(m, torch.nn.Conv2d):
+-        return
+-    if a is None:
+-        a = nn.modules.activation.LeakyReLU().negative_slope
+-    nn.init.kaiming_uniform_(m.weight, a=a)
+diff --git a/models/test_tiger/command.txt b/models/test_tiger/command.txt
+deleted file mode 100644
+index 19743f1..0000000
+--- a/models/test_tiger/command.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-training/train.py start test_tiger --training_set /usr/people/runzhey/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --validation_set /usr/people/runzhey/training_data/v1_100slice_minnie_6144_train_mip2_annotated.h5 --height 5 --seed 5432 -u --lr 0.000005 --lambda1 300000 --plan all
+\ No newline at end of file
+diff --git a/models/test_tiger/commit.diff b/models/test_tiger/commit.diff
+deleted file mode 100644
+index 55c6ed0..0000000
+--- a/models/test_tiger/commit.diff
++++ /dev/null
+@@ -1,82 +0,0 @@
+-cc3b2dba61c80b258f9589e7d75f9ca9af276129
+-tony-tiger
+-diff --git a/models/encodings_all_samples_mGPU_c2e/optimizer.pt b/models/encodings_all_samples_mGPU_c2e/optimizer.pt
+-index fe9fc6d..9277547 100644
+-Binary files a/models/encodings_all_samples_mGPU_c2e/optimizer.pt and b/models/encodings_all_samples_mGPU_c2e/optimizer.pt differ
+-diff --git a/models/encodings_all_samples_mGPU_c2e/prand.pt b/models/encodings_all_samples_mGPU_c2e/prand.pt
+-index 5bfd239..5e266e9 100644
+-Binary files a/models/encodings_all_samples_mGPU_c2e/prand.pt and b/models/encodings_all_samples_mGPU_c2e/prand.pt differ
+-diff --git a/models/encodings_all_samples_mGPU_c2e/state_vars.yaml b/models/encodings_all_samples_mGPU_c2e/state_vars.yaml
+-index 080e6ea..4d8622f 100644
+---- a/models/encodings_all_samples_mGPU_c2e/state_vars.yaml
+-+++ b/models/encodings_all_samples_mGPU_c2e/state_vars.yaml
+-@@ -6,7 +6,7 @@ epochs_per_mip: 4
+- feature_maps: [12, 12, 12, 12, 12]
+- gamma: 1
+- gamma_step: 30
+--gpus: 2,3,4,5,6,7
+-+gpus: '0'
+- height: 5
+- initialized_list: [true, true, true, true, true]
+- iteration: null
+-diff --git a/models/encodings_all_samples_mGPU_c2e/weights.pt b/models/encodings_all_samples_mGPU_c2e/weights.pt
+-index 2735380..83e433c 100644
+-Binary files a/models/encodings_all_samples_mGPU_c2e/weights.pt and b/models/encodings_all_samples_mGPU_c2e/weights.pt differ
+-diff --git a/training/arguments.py b/training/arguments.py
+-index 3e2d936..35627e2 100644
+---- a/training/arguments.py
+-+++ b/training/arguments.py
+-@@ -199,11 +199,6 @@ def _parse_args(args=None):
+-         type=int, default=1, metavar='T',
+-     )
+-     checkpoint_group.add_argument(
+--        '--logdir',
+--        help='the directory of tensorboard',
+--        type=str, default='logs/', metavar='LD',
+--    )
+--    checkpoint_group.add_argument(
+-         '--cpoint', '--checkpoint_interval', '--checkpoint_time',
+-         help='the number of samples in between each checkpoint. '
+-              'Use 0 to disable.',
+-@@ -224,6 +219,11 @@ def _parse_args(args=None):
+-         dest='interval',
+-         type=int, default=None, metavar='T',
+-     )
+-+    checkpoint_group.add_argument(
+-+        '--logdir',
+-+        help='the directory of tensorboard. ',
+-+        type=str, default='logs/', metavar='SET',
+-+    )
+- 
+-     argcomplete.autocomplete(parser)
+-     args = parser.parse_args(args)
+-diff --git a/training/train.py b/training/train.py
+-index c7d8a24..0778c26 100755
+---- a/training/train.py
+-+++ b/training/train.py
+-@@ -129,7 +129,7 @@ def main():
+-         validation_dataset = stack_dataset.compile_dataset(
+-             state_vars.validation_set_path, transform=val_transform)
+-         val_loader = torch.utils.data.DataLoader(
+--            validation_dataset, batch_size=1,
+-+            validation_dataset, batch_size=4,
+-             shuffle=False, num_workers=0, pin_memory=False)
+-     else:
+-         val_loader = None
+-@@ -290,7 +290,7 @@ def validate(val_loader, archive, epoch):
+-     batch_time = (time.time() - start_time)
+- 
+-     # debugging outputs and printing
+--    create_debug_outputs(archive, src, tgt, prediction, truth)
+-+    # create_debug_outputs(archive, src, tgt, prediction, truth)
+-     print('{0}\t'
+-           'Validation: [{1}/{1}]\t'
+-           'Loss {loss.avg:.10f}\t\t\t'
+-@@ -491,6 +491,7 @@ def load_archive(args):
+-             'encodings': args.encodings,
+-             'batch_size': args.batch_size,
+-             'log_time': args.log_time,
+-+            'logdir': args.logdir,
+-             'checkpoint_time': args.checkpoint_time,
+-             'vis_time': args.vis_time,
+-             'lambda1': args.lambda1,
+diff --git a/models/test_tiger/history.txt b/models/test_tiger/history.txt
+deleted file mode 100644
+index b95e57c..0000000
+--- a/models/test_tiger/history.txt
++++ /dev/null
+@@ -1,5 +0,0 @@
+-Model: test_tiger
+-Time: 2019-01-30 12:47:12.930483
+-Commit: cc3b2dba61c80b258f9589e7d75f9ca9af276129
+-training/train.py start test_tiger --training_set /usr/people/runzhey/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --validation_set /usr/people/runzhey/training_data/v1_100slice_minnie_6144_train_mip2_annotated.h5 --height 5 --seed 5432 -u --lr 0.000005 --lambda1 300000 --plan all
+-
+diff --git a/models/test_tiger/loss.csv b/models/test_tiger/loss.csv
+deleted file mode 100644
+index 66d8131..0000000
+--- a/models/test_tiger/loss.csv
++++ /dev/null
+@@ -1,1001 +0,0 @@
+-Time Stamp, Epoch, Iteration, Training Loss, Validation Loss
+-2019-01-30 12:47:23.114415, 0, 0, 0.1313905119895935, 
+-2019-01-30 12:47:33.714761, 0, 1, 0.12733294069766998, 
+-2019-01-30 12:47:34.835627, 0, 2, 0.13324470818042755, 
+-2019-01-30 12:47:35.953293, 0, 3, 0.11304343491792679, 
+-2019-01-30 12:47:37.075727, 0, 4, 0.11922037601470947, 
+-2019-01-30 12:47:38.195730, 0, 5, 0.11490977555513382, 
+-2019-01-30 12:47:39.318062, 0, 6, 0.1107652559876442, 
+-2019-01-30 12:47:40.435370, 0, 7, 0.12168485671281815, 
+-2019-01-30 12:47:41.550449, 0, 8, 0.11354292929172516, 
+-2019-01-30 12:47:42.668715, 0, 9, 0.11569994688034058, 
+-2019-01-30 12:47:43.795173, 0, 10, 0.11636004596948624, 
+-2019-01-30 12:47:44.991711, 0, 11, 0.11473294347524643, 
+-2019-01-30 12:47:46.108804, 0, 12, 0.1138887107372284, 
+-2019-01-30 12:47:47.228413, 0, 13, 0.11279000341892242, 
+-2019-01-30 12:47:48.365452, 0, 14, 0.1134587973356247, 
+-2019-01-30 12:47:49.535699, 0, 15, 0.17078030109405518, 
+-2019-01-30 12:47:50.661597, 0, 16, 0.11440626531839371, 
+-2019-01-30 12:47:51.790393, 0, 17, 0.11546483635902405, 
+-2019-01-30 12:47:52.923399, 0, 18, 0.11433851718902588, 
+-2019-01-30 12:47:54.053778, 0, 19, 0.11020772159099579, 
+-2019-01-30 12:47:55.185396, 0, 20, 0.10854417085647583, 
+-2019-01-30 12:47:56.320792, 0, 21, 0.1230381578207016, 
+-2019-01-30 12:47:57.455055, 0, 22, 0.1113058477640152, 
+-2019-01-30 12:47:58.580401, 0, 23, 0.1073983684182167, 
+-2019-01-30 12:47:59.693939, 0, 24, 0.1271987408399582, 
+-2019-01-30 12:48:00.815349, 0, 25, 0.10780665278434753, 
+-2019-01-30 12:48:01.938433, 0, 26, 0.11179523915052414, 
+-2019-01-30 12:48:03.061535, 0, 27, 0.1047484278678894, 
+-2019-01-30 12:48:04.180101, 0, 28, 0.15588821470737457, 
+-2019-01-30 12:48:05.300521, 0, 29, 0.1036895215511322, 
+-2019-01-30 12:48:06.430960, 0, 30, 0.10505443066358566, 
+-2019-01-30 12:48:07.560495, 0, 31, 0.11064798384904861, 
+-2019-01-30 12:48:08.685573, 0, 32, 0.10153494775295258, 
+-2019-01-30 12:48:09.812406, 0, 33, 0.09903504699468613, 
+-2019-01-30 12:48:10.943966, 0, 34, 0.10585002601146698, 
+-2019-01-30 12:48:12.072350, 0, 35, 0.10181319713592529, 
+-2019-01-30 12:48:13.200002, 0, 36, 0.1049480140209198, 
+-2019-01-30 12:48:14.340264, 0, 37, 0.09726890176534653, 
+-2019-01-30 12:48:15.473444, 0, 38, 0.10249161720275879, 
+-2019-01-30 12:48:16.611472, 0, 39, 0.10751983523368835, 
+-2019-01-30 12:48:17.753108, 0, 40, 0.10885249078273773, 
+-2019-01-30 12:48:19.057458, 0, 41, 0.09951990842819214, 
+-2019-01-30 12:48:20.195177, 0, 42, 0.10816839337348938, 
+-2019-01-30 12:48:21.349481, 0, 43, 0.10005882382392883, 
+-2019-01-30 12:48:22.495656, 0, 44, 0.09862532466650009, 
+-2019-01-30 12:48:23.632276, 0, 45, 0.10121020674705505, 
+-2019-01-30 12:48:24.771974, 0, 46, 0.10174832493066788, 
+-2019-01-30 12:48:25.902050, 0, 47, 0.10755966603755951, 
+-2019-01-30 12:48:27.041464, 0, 48, 0.10914947837591171, 
+-2019-01-30 12:48:28.179482, 0, 49, 0.09817180037498474, 
+-2019-01-30 12:48:29.318107, 0, 50, 0.12342026829719543, 
+-2019-01-30 12:48:39.877692, 0, 51, 0.10278726369142532, 
+-2019-01-30 12:48:41.013623, 0, 52, 0.1009724959731102, 
+-2019-01-30 12:48:42.148981, 0, 53, 0.09779684245586395, 
+-2019-01-30 12:48:43.276608, 0, 54, 0.10139092803001404, 
+-2019-01-30 12:48:44.414113, 0, 55, 0.10617471486330032, 
+-2019-01-30 12:48:45.559289, 0, 56, 0.1048613041639328, 
+-2019-01-30 12:48:46.693606, 0, 57, 0.12370575964450836, 
+-2019-01-30 12:48:47.828228, 0, 58, 0.12155929952859879, 
+-2019-01-30 12:48:49.115153, 0, 59, 0.10121861845254898, 
+-2019-01-30 12:48:50.252765, 0, 60, 0.09841489791870117, 
+-2019-01-30 12:48:51.387016, 0, 61, 0.09880504012107849, 
+-2019-01-30 12:48:52.529864, 0, 62, 0.10813720524311066, 
+-2019-01-30 12:48:53.672073, 0, 63, 0.11442025005817413, 
+-2019-01-30 12:48:54.801765, 0, 64, 0.12522746622562408, 
+-2019-01-30 12:48:55.939548, 0, 65, 0.1014176607131958, 
+-2019-01-30 12:48:57.073247, 0, 66, 0.10355841368436813, 
+-2019-01-30 12:48:58.217344, 0, 67, 0.09915810823440552, 
+-2019-01-30 12:48:59.350613, 0, 68, 0.09466171264648438, 
+-2019-01-30 12:49:00.520378, 0, 69, 0.09892017394304276, 
+-2019-01-30 12:49:01.742190, 0, 70, 0.09550153464078903, 
+-2019-01-30 12:49:02.990522, 0, 71, 0.09781129658222198, 
+-2019-01-30 12:49:04.247410, 0, 72, 0.10250848531723022, 
+-2019-01-30 12:49:05.502548, 0, 73, 0.10271233320236206, 
+-2019-01-30 12:49:06.768666, 0, 74, 0.09839968383312225, 
+-2019-01-30 12:49:08.026907, 0, 75, 0.10367172211408615, 
+-2019-01-30 12:49:09.285313, 0, 76, 0.11388042569160461, 
+-2019-01-30 12:49:10.515228, 0, 77, 0.09923635423183441, 
+-2019-01-30 12:49:11.741102, 0, 78, 0.10052270442247391, 
+-2019-01-30 12:49:12.974640, 0, 79, 0.09934874624013901, 
+-2019-01-30 12:49:14.213062, 0, 80, 0.09970001131296158, 
+-2019-01-30 12:49:15.435498, 0, 81, 0.09898028522729874, 
+-2019-01-30 12:49:16.679767, 0, 82, 0.10094518214464188, 
+-2019-01-30 12:49:17.904249, 0, 83, 0.0989019125699997, 
+-2019-01-30 12:49:19.208039, 0, 84, 0.09798812866210938, 
+-2019-01-30 12:49:20.430436, 0, 85, 0.0977126955986023, 
+-2019-01-30 12:49:21.664914, 0, 86, 0.10270218551158905, 
+-2019-01-30 12:49:22.885372, 0, 87, 0.10376899689435959, 
+-2019-01-30 12:49:24.102255, 0, 88, 0.10900898277759552, 
+-2019-01-30 12:49:25.324500, 0, 89, 0.09954901039600372, 
+-2019-01-30 12:51:39.640970, 0, 90, , 0.14461004257202148
+-2019-01-30 12:51:41.812797, 1, 0, 0.10130326449871063, 
+-2019-01-30 12:51:52.267733, 1, 1, 0.09492351859807968, 
+-2019-01-30 12:51:53.420223, 1, 2, 0.10035432875156403, 
+-2019-01-30 12:51:54.560350, 1, 3, 0.10313516855239868, 
+-2019-01-30 12:51:55.709108, 1, 4, 0.09621404111385345, 
+-2019-01-30 12:51:56.852619, 1, 5, 0.09905291348695755, 
+-2019-01-30 12:51:57.991042, 1, 6, 0.09780672192573547, 
+-2019-01-30 12:51:59.132182, 1, 7, 0.10102655738592148, 
+-2019-01-30 12:52:00.273022, 1, 8, 0.10161443054676056, 
+-2019-01-30 12:52:01.424065, 1, 9, 0.11247926950454712, 
+-2019-01-30 12:52:02.562787, 1, 10, 0.09761404246091843, 
+-2019-01-30 12:52:03.705523, 1, 11, 0.14558547735214233, 
+-2019-01-30 12:52:04.846462, 1, 12, 0.09771718084812164, 
+-2019-01-30 12:52:05.989543, 1, 13, 0.10385958850383759, 
+-2019-01-30 12:52:07.149173, 1, 14, 0.1034199446439743, 
+-2019-01-30 12:52:08.296507, 1, 15, 0.09361469000577927, 
+-2019-01-30 12:52:09.447476, 1, 16, 0.09860486537218094, 
+-2019-01-30 12:52:10.630995, 1, 17, 0.09830353409051895, 
+-2019-01-30 12:52:11.844814, 1, 18, 0.10502463579177856, 
+-2019-01-30 12:52:13.091845, 1, 19, 0.11955933272838593, 
+-2019-01-30 12:52:14.368581, 1, 20, 0.11741839349269867, 
+-2019-01-30 12:52:15.642805, 1, 21, 0.09272105246782303, 
+-2019-01-30 12:52:16.911804, 1, 22, 0.09768015146255493, 
+-2019-01-30 12:52:18.189743, 1, 23, 0.09404391795396805, 
+-2019-01-30 12:52:19.501607, 1, 24, 0.10293825715780258, 
+-2019-01-30 12:52:20.760733, 1, 25, 0.10393941402435303, 
+-2019-01-30 12:52:22.032512, 1, 26, 0.11913793534040451, 
+-2019-01-30 12:52:23.286204, 1, 27, 0.09624795615673065, 
+-2019-01-30 12:52:24.530623, 1, 28, 0.10125087946653366, 
+-2019-01-30 12:52:25.775821, 1, 29, 0.09743287414312363, 
+-2019-01-30 12:52:27.028792, 1, 30, 0.10330913215875626, 
+-2019-01-30 12:52:28.287549, 1, 31, 0.10116679966449738, 
+-2019-01-30 12:52:29.705681, 1, 32, 0.10344148427248001, 
+-2019-01-30 12:52:30.933344, 1, 33, 0.09906253218650818, 
+-2019-01-30 12:52:32.166269, 1, 34, 0.09553517401218414, 
+-2019-01-30 12:52:33.411223, 1, 35, 0.09796352684497833, 
+-2019-01-30 12:52:34.666988, 1, 36, 0.10124640166759491, 
+-2019-01-30 12:52:35.911757, 1, 37, 0.09852485358715057, 
+-2019-01-30 12:52:37.167420, 1, 38, 0.10417849570512772, 
+-2019-01-30 12:52:38.425442, 1, 39, 0.0985795259475708, 
+-2019-01-30 12:52:39.685997, 1, 40, 0.12367518246173859, 
+-2019-01-30 12:52:40.926844, 1, 41, 0.09909981489181519, 
+-2019-01-30 12:52:42.182748, 1, 42, 0.12165558338165283, 
+-2019-01-30 12:52:43.422901, 1, 43, 0.09791076928377151, 
+-2019-01-30 12:52:44.680036, 1, 44, 0.13866810500621796, 
+-2019-01-30 12:52:45.937243, 1, 45, 0.10369839519262314, 
+-2019-01-30 12:52:47.208530, 1, 46, 0.09513813257217407, 
+-2019-01-30 12:52:48.496416, 1, 47, 0.12035945057868958, 
+-2019-01-30 12:52:49.766245, 1, 48, 0.09715186059474945, 
+-2019-01-30 12:52:51.010052, 1, 49, 0.09858584403991699, 
+-2019-01-30 12:52:52.269498, 1, 50, 0.10092238336801529, 
+-2019-01-30 12:53:02.085159, 1, 51, 0.09405969828367233, 
+-2019-01-30 12:53:03.225934, 1, 52, 0.0979216992855072, 
+-2019-01-30 12:53:04.371573, 1, 53, 0.09116967022418976, 
+-2019-01-30 12:53:05.528956, 1, 54, 0.1105136051774025, 
+-2019-01-30 12:53:06.672592, 1, 55, 0.0946255475282669, 
+-2019-01-30 12:53:07.814844, 1, 56, 0.09872179478406906, 
+-2019-01-30 12:53:08.957951, 1, 57, 0.09679201245307922, 
+-2019-01-30 12:53:10.109980, 1, 58, 0.1053285077214241, 
+-2019-01-30 12:53:11.265858, 1, 59, 0.10832589864730835, 
+-2019-01-30 12:53:12.414629, 1, 60, 0.11137785017490387, 
+-2019-01-30 12:53:13.560936, 1, 61, 0.0996362492442131, 
+-2019-01-30 12:53:14.715836, 1, 62, 0.09504648298025131, 
+-2019-01-30 12:53:15.858354, 1, 63, 0.09126708656549454, 
+-2019-01-30 12:53:17.000078, 1, 64, 0.09738513827323914, 
+-2019-01-30 12:53:18.152355, 1, 65, 0.1014237031340599, 
+-2019-01-30 12:53:19.463063, 1, 66, 0.09567971527576447, 
+-2019-01-30 12:53:20.874098, 1, 67, 0.09619513154029846, 
+-2019-01-30 12:53:22.118817, 1, 68, 0.09899411350488663, 
+-2019-01-30 12:53:23.390888, 1, 69, 0.09281989187002182, 
+-2019-01-30 12:53:24.680935, 1, 70, 0.11363214999437332, 
+-2019-01-30 12:53:25.968000, 1, 71, 0.1009315475821495, 
+-2019-01-30 12:53:27.252401, 1, 72, 0.10042213648557663, 
+-2019-01-30 12:53:28.538672, 1, 73, 0.1114940345287323, 
+-2019-01-30 12:53:29.891728, 1, 74, 0.10874993354082108, 
+-2019-01-30 12:53:31.162720, 1, 75, 0.09925641864538193, 
+-2019-01-30 12:53:32.430422, 1, 76, 0.09640157222747803, 
+-2019-01-30 12:53:33.706271, 1, 77, 0.08842624723911285, 
+-2019-01-30 12:53:35.023171, 1, 78, 0.09943552315235138, 
+-2019-01-30 12:53:36.264265, 1, 79, 0.09362797439098358, 
+-2019-01-30 12:53:37.513330, 1, 80, 0.10070303082466125, 
+-2019-01-30 12:53:38.788706, 1, 81, 0.09143076837062836, 
+-2019-01-30 12:53:40.112440, 1, 82, 0.09639241546392441, 
+-2019-01-30 12:53:41.363701, 1, 83, 0.09368366748094559, 
+-2019-01-30 12:53:42.630103, 1, 84, 0.0982452854514122, 
+-2019-01-30 12:53:43.899007, 1, 85, 0.11866685748100281, 
+-2019-01-30 12:53:45.166571, 1, 86, 0.10988917946815491, 
+-2019-01-30 12:53:46.415539, 1, 87, 0.09432781487703323, 
+-2019-01-30 12:53:47.661109, 1, 88, 0.0985371395945549, 
+-2019-01-30 12:53:48.964518, 1, 89, 0.13517870008945465, 
+-2019-01-30 12:55:57.914154, 1, 90, , 0.13820010364055635
+-2019-01-30 12:56:00.091535, 2, 0, 0.09698887169361115, 
+-2019-01-30 12:56:10.660336, 2, 1, 0.09528371691703796, 
+-2019-01-30 12:56:11.805491, 2, 2, 0.0905030220746994, 
+-2019-01-30 12:56:12.967442, 2, 3, 0.11912725865840912, 
+-2019-01-30 12:56:14.112632, 2, 4, 0.10086645185947418, 
+-2019-01-30 12:56:15.256623, 2, 5, 0.09385111927986145, 
+-2019-01-30 12:56:16.410901, 2, 6, 0.09390727430582047, 
+-2019-01-30 12:56:17.561184, 2, 7, 0.09359712153673172, 
+-2019-01-30 12:56:18.730991, 2, 8, 0.09450713545084, 
+-2019-01-30 12:56:19.895866, 2, 9, 0.13243283331394196, 
+-2019-01-30 12:56:21.045289, 2, 10, 0.088107630610466, 
+-2019-01-30 12:56:22.187733, 2, 11, 0.09211459755897522, 
+-2019-01-30 12:56:23.341627, 2, 12, 0.11534350365400314, 
+-2019-01-30 12:56:24.491895, 2, 13, 0.09336143732070923, 
+-2019-01-30 12:56:25.639107, 2, 14, 0.09463542699813843, 
+-2019-01-30 12:56:26.794412, 2, 15, 0.10674630850553513, 
+-2019-01-30 12:56:27.945477, 2, 16, 0.09639204293489456, 
+-2019-01-30 12:56:29.103828, 2, 17, 0.13470931351184845, 
+-2019-01-30 12:56:30.545408, 2, 18, 0.10943958163261414, 
+-2019-01-30 12:56:31.758360, 2, 19, 0.10053779929876328, 
+-2019-01-30 12:56:33.003238, 2, 20, 0.09726516902446747, 
+-2019-01-30 12:56:34.280548, 2, 21, 0.11879261583089828, 
+-2019-01-30 12:56:35.572124, 2, 22, 0.09276076406240463, 
+-2019-01-30 12:56:36.858450, 2, 23, 0.10407742112874985, 
+-2019-01-30 12:56:38.133142, 2, 24, 0.10029386729001999, 
+-2019-01-30 12:56:39.399252, 2, 25, 0.10280126333236694, 
+-2019-01-30 12:56:40.671775, 2, 26, 0.09785880148410797, 
+-2019-01-30 12:56:41.944643, 2, 27, 0.10914286226034164, 
+-2019-01-30 12:56:43.219037, 2, 28, 0.09443450719118118, 
+-2019-01-30 12:56:44.497980, 2, 29, 0.09006032347679138, 
+-2019-01-30 12:56:45.763946, 2, 30, 0.09883023798465729, 
+-2019-01-30 12:56:47.029661, 2, 31, 0.09821048378944397, 
+-2019-01-30 12:56:48.289309, 2, 32, 0.09327877312898636, 
+-2019-01-30 12:56:49.598940, 2, 33, 0.09432248771190643, 
+-2019-01-30 12:56:50.916143, 2, 34, 0.11925816535949707, 
+-2019-01-30 12:56:52.162121, 2, 35, 0.09259378910064697, 
+-2019-01-30 12:56:53.412485, 2, 36, 0.09899964183568954, 
+-2019-01-30 12:56:54.664710, 2, 37, 0.09980978071689606, 
+-2019-01-30 12:56:55.914299, 2, 38, 0.09837642312049866, 
+-2019-01-30 12:56:57.179903, 2, 39, 0.09445846080780029, 
+-2019-01-30 12:56:58.455190, 2, 40, 0.11469174176454544, 
+-2019-01-30 12:56:59.714048, 2, 41, 0.09188739955425262, 
+-2019-01-30 12:57:00.961232, 2, 42, 0.09849675744771957, 
+-2019-01-30 12:57:02.221279, 2, 43, 0.09263430535793304, 
+-2019-01-30 12:57:03.468576, 2, 44, 0.10659465938806534, 
+-2019-01-30 12:57:04.696924, 2, 45, 0.09164823591709137, 
+-2019-01-30 12:57:05.929275, 2, 46, 0.10265710949897766, 
+-2019-01-30 12:57:07.169005, 2, 47, 0.09788453578948975, 
+-2019-01-30 12:57:08.405393, 2, 48, 0.08931344747543335, 
+-2019-01-30 12:57:09.655696, 2, 49, 0.09385471045970917, 
+-2019-01-30 12:57:10.895480, 2, 50, 0.09074215590953827, 
+-2019-01-30 12:57:20.928542, 2, 51, 0.09426409006118774, 
+-2019-01-30 12:57:22.070193, 2, 52, 0.0956733301281929, 
+-2019-01-30 12:57:23.216328, 2, 53, 0.09091490507125854, 
+-2019-01-30 12:57:24.354691, 2, 54, 0.0933985784649849, 
+-2019-01-30 12:57:25.492926, 2, 55, 0.09041768312454224, 
+-2019-01-30 12:57:26.634613, 2, 56, 0.09456925094127655, 
+-2019-01-30 12:57:27.774535, 2, 57, 0.090779609978199, 
+-2019-01-30 12:57:28.914063, 2, 58, 0.09808278828859329, 
+-2019-01-30 12:57:30.061274, 2, 59, 0.094696044921875, 
+-2019-01-30 12:57:31.209554, 2, 60, 0.0945224016904831, 
+-2019-01-30 12:57:32.351345, 2, 61, 0.11453170329332352, 
+-2019-01-30 12:57:33.494460, 2, 62, 0.09834742546081543, 
+-2019-01-30 12:57:34.649190, 2, 63, 0.09062229841947556, 
+-2019-01-30 12:57:35.797872, 2, 64, 0.09756967425346375, 
+-2019-01-30 12:57:36.947236, 2, 65, 0.0932580828666687, 
+-2019-01-30 12:57:38.127775, 2, 66, 0.0947674959897995, 
+-2019-01-30 12:57:39.345546, 2, 67, 0.09888532012701035, 
+-2019-01-30 12:57:40.610473, 2, 68, 0.09016650170087814, 
+-2019-01-30 12:57:41.901684, 2, 69, 0.09081792086362839, 
+-2019-01-30 12:57:43.447071, 2, 70, 0.09093259274959564, 
+-2019-01-30 12:57:44.718688, 2, 71, 0.10034702718257904, 
+-2019-01-30 12:57:45.992274, 2, 72, 0.0990210548043251, 
+-2019-01-30 12:57:47.270638, 2, 73, 0.09249312430620193, 
+-2019-01-30 12:57:48.568446, 2, 74, 0.10856335610151291, 
+-2019-01-30 12:57:49.868785, 2, 75, 0.10639000684022903, 
+-2019-01-30 12:57:51.157563, 2, 76, 0.1090291291475296, 
+-2019-01-30 12:57:52.429964, 2, 77, 0.11425302177667618, 
+-2019-01-30 12:57:53.677611, 2, 78, 0.09831030666828156, 
+-2019-01-30 12:57:54.912694, 2, 79, 0.1367529183626175, 
+-2019-01-30 12:57:56.156509, 2, 80, 0.09579440206289291, 
+-2019-01-30 12:57:57.405447, 2, 81, 0.09437241405248642, 
+-2019-01-30 12:57:58.672127, 2, 82, 0.09120364487171173, 
+-2019-01-30 12:57:59.932593, 2, 83, 0.09003996849060059, 
+-2019-01-30 12:58:01.202911, 2, 84, 0.09322955459356308, 
+-2019-01-30 12:58:02.469927, 2, 85, 0.09613338112831116, 
+-2019-01-30 12:58:03.729057, 2, 86, 0.09963381290435791, 
+-2019-01-30 12:58:04.996714, 2, 87, 0.09462787955999374, 
+-2019-01-30 12:58:06.260520, 2, 88, 0.11204501241445541, 
+-2019-01-30 12:58:07.533810, 2, 89, 0.09785015881061554, 
+-2019-01-30 13:00:15.547646, 2, 90, , 0.1344890457391739
+-2019-01-30 13:00:17.727794, 3, 0, 0.09008593112230301, 
+-2019-01-30 13:00:27.939925, 3, 1, 0.10163035243749619, 
+-2019-01-30 13:00:29.089165, 3, 2, 0.09343227744102478, 
+-2019-01-30 13:00:30.235699, 3, 3, 0.09246394783258438, 
+-2019-01-30 13:00:31.385190, 3, 4, 0.09454416483640671, 
+-2019-01-30 13:00:32.531202, 3, 5, 0.09024108946323395, 
+-2019-01-30 13:00:33.669246, 3, 6, 0.09416668862104416, 
+-2019-01-30 13:00:34.807235, 3, 7, 0.12754327058792114, 
+-2019-01-30 13:00:35.950654, 3, 8, 0.09790300577878952, 
+-2019-01-30 13:00:37.099733, 3, 9, 0.10061611980199814, 
+-2019-01-30 13:00:38.244656, 3, 10, 0.0946706160902977, 
+-2019-01-30 13:00:39.396125, 3, 11, 0.08991918712854385, 
+-2019-01-30 13:00:40.547638, 3, 12, 0.09490612149238586, 
+-2019-01-30 13:00:41.688375, 3, 13, 0.08796892315149307, 
+-2019-01-30 13:00:42.824046, 3, 14, 0.09958431124687195, 
+-2019-01-30 13:00:43.972893, 3, 15, 0.09430112689733505, 
+-2019-01-30 13:00:45.126629, 3, 16, 0.09293209761381149, 
+-2019-01-30 13:00:46.298278, 3, 17, 0.0927007719874382, 
+-2019-01-30 13:00:47.509430, 3, 18, 0.09569218754768372, 
+-2019-01-30 13:00:48.799320, 3, 19, 0.0897321105003357, 
+-2019-01-30 13:00:50.084218, 3, 20, 0.09342744201421738, 
+-2019-01-30 13:00:51.360672, 3, 21, 0.08802489936351776, 
+-2019-01-30 13:00:52.652531, 3, 22, 0.10214770585298538, 
+-2019-01-30 13:00:53.926686, 3, 23, 0.09773901104927063, 
+-2019-01-30 13:00:55.216848, 3, 24, 0.08844628185033798, 
+-2019-01-30 13:00:56.561729, 3, 25, 0.09594197571277618, 
+-2019-01-30 13:00:57.810803, 3, 26, 0.11510949581861496, 
+-2019-01-30 13:00:59.050090, 3, 27, 0.08444882929325104, 
+-2019-01-30 13:01:00.310616, 3, 28, 0.09051929414272308, 
+-2019-01-30 13:01:01.588801, 3, 29, 0.1480354219675064, 
+-2019-01-30 13:01:02.859383, 3, 30, 0.09280537068843842, 
+-2019-01-30 13:01:04.122365, 3, 31, 0.0899537205696106, 
+-2019-01-30 13:01:05.382867, 3, 32, 0.10207834094762802, 
+-2019-01-30 13:01:06.641724, 3, 33, 0.09378895163536072, 
+-2019-01-30 13:01:07.905601, 3, 34, 0.09182899445295334, 
+-2019-01-30 13:01:09.159585, 3, 35, 0.09073811024427414, 
+-2019-01-30 13:01:10.414438, 3, 36, 0.10534624755382538, 
+-2019-01-30 13:01:11.666161, 3, 37, 0.09244164824485779, 
+-2019-01-30 13:01:12.910670, 3, 38, 0.09189514815807343, 
+-2019-01-30 13:01:14.157392, 3, 39, 0.09267761558294296, 
+-2019-01-30 13:01:15.391869, 3, 40, 0.0966787189245224, 
+-2019-01-30 13:01:16.631917, 3, 41, 0.09452611953020096, 
+-2019-01-30 13:01:17.879122, 3, 42, 0.11280754953622818, 
+-2019-01-30 13:01:19.203825, 3, 43, 0.09316177666187286, 
+-2019-01-30 13:01:20.445603, 3, 44, 0.095008485019207, 
+-2019-01-30 13:01:21.691029, 3, 45, 0.09837287664413452, 
+-2019-01-30 13:01:22.933685, 3, 46, 0.09540179371833801, 
+-2019-01-30 13:01:24.184517, 3, 47, 0.12996722757816315, 
+-2019-01-30 13:01:25.796698, 3, 48, 0.08482097834348679, 
+-2019-01-30 13:01:27.014508, 3, 49, 0.09521486610174179, 
+-2019-01-30 13:01:28.245578, 3, 50, 0.09375645220279694, 
+-2019-01-30 13:01:39.213098, 3, 51, 0.09087110310792923, 
+-2019-01-30 13:01:40.357163, 3, 52, 0.09348228573799133, 
+-2019-01-30 13:01:41.502739, 3, 53, 0.10706363618373871, 
+-2019-01-30 13:01:42.663736, 3, 54, 0.1181081086397171, 
+-2019-01-30 13:01:43.807533, 3, 55, 0.10506943613290787, 
+-2019-01-30 13:01:44.945016, 3, 56, 0.09826868027448654, 
+-2019-01-30 13:01:46.095684, 3, 57, 0.10776861011981964, 
+-2019-01-30 13:01:47.245150, 3, 58, 0.09656920284032822, 
+-2019-01-30 13:01:48.398033, 3, 59, 0.09450645744800568, 
+-2019-01-30 13:01:49.584613, 3, 60, 0.09108829498291016, 
+-2019-01-30 13:01:50.734689, 3, 61, 0.09300945699214935, 
+-2019-01-30 13:01:51.886022, 3, 62, 0.08975476026535034, 
+-2019-01-30 13:01:53.042487, 3, 63, 0.11061399430036545, 
+-2019-01-30 13:01:54.192198, 3, 64, 0.0947953388094902, 
+-2019-01-30 13:01:55.345962, 3, 65, 0.09521405398845673, 
+-2019-01-30 13:01:56.497621, 3, 66, 0.11195111274719238, 
+-2019-01-30 13:01:57.653173, 3, 67, 0.08804956823587418, 
+-2019-01-30 13:01:58.857176, 3, 68, 0.10013234615325928, 
+-2019-01-30 13:02:00.086912, 3, 69, 0.09101618081331253, 
+-2019-01-30 13:02:01.359395, 3, 70, 0.09402243793010712, 
+-2019-01-30 13:02:02.648970, 3, 71, 0.09033171087503433, 
+-2019-01-30 13:02:03.947212, 3, 72, 0.09395349025726318, 
+-2019-01-30 13:02:05.247128, 3, 73, 0.10091572999954224, 
+-2019-01-30 13:02:06.524219, 3, 74, 0.08796120434999466, 
+-2019-01-30 13:02:07.831618, 3, 75, 0.10159241408109665, 
+-2019-01-30 13:02:09.116601, 3, 76, 0.09540729969739914, 
+-2019-01-30 13:02:10.398061, 3, 77, 0.09842696785926819, 
+-2019-01-30 13:02:11.669586, 3, 78, 0.09750586748123169, 
+-2019-01-30 13:02:12.931631, 3, 79, 0.08943882584571838, 
+-2019-01-30 13:02:14.207598, 3, 80, 0.1140141561627388, 
+-2019-01-30 13:02:15.475697, 3, 81, 0.08958601951599121, 
+-2019-01-30 13:02:16.748629, 3, 82, 0.1127132773399353, 
+-2019-01-30 13:02:18.002891, 3, 83, 0.08618739992380142, 
+-2019-01-30 13:02:19.341694, 3, 84, 0.09292155504226685, 
+-2019-01-30 13:02:20.604104, 3, 85, 0.08773208409547806, 
+-2019-01-30 13:02:21.871692, 3, 86, 0.09667695313692093, 
+-2019-01-30 13:02:23.141458, 3, 87, 0.08784350007772446, 
+-2019-01-30 13:02:24.401543, 3, 88, 0.08866557478904724, 
+-2019-01-30 13:02:25.640761, 3, 89, 0.09632875770330429, 
+-2019-01-30 13:04:34.078920, 3, 90, , 0.13183239191770554
+-2019-01-30 13:04:36.048682, 4, 0, 0.08939526230096817, 
+-2019-01-30 13:04:46.196478, 4, 1, 0.10493307560682297, 
+-2019-01-30 13:04:47.349580, 4, 2, 0.09487158805131912, 
+-2019-01-30 13:04:48.530610, 4, 3, 0.13762058317661285, 
+-2019-01-30 13:04:49.717716, 4, 4, 0.11325650662183762, 
+-2019-01-30 13:04:50.885775, 4, 5, 0.08275741338729858, 
+-2019-01-30 13:04:52.058006, 4, 6, 0.09749582409858704, 
+-2019-01-30 13:04:53.211485, 4, 7, 0.0858643501996994, 
+-2019-01-30 13:04:54.371011, 4, 8, 0.09277677536010742, 
+-2019-01-30 13:04:55.528321, 4, 9, 0.11151335388422012, 
+-2019-01-30 13:04:56.680385, 4, 10, 0.09827163070440292, 
+-2019-01-30 13:04:57.826918, 4, 11, 0.09698490053415298, 
+-2019-01-30 13:04:58.981233, 4, 12, 0.09220162779092789, 
+-2019-01-30 13:05:00.139236, 4, 13, 0.09125266224145889, 
+-2019-01-30 13:05:01.293953, 4, 14, 0.09748885035514832, 
+-2019-01-30 13:05:02.464050, 4, 15, 0.11828108131885529, 
+-2019-01-30 13:05:03.620280, 4, 16, 0.08544772863388062, 
+-2019-01-30 13:05:04.787268, 4, 17, 0.10581724345684052, 
+-2019-01-30 13:05:06.011004, 4, 18, 0.09205254167318344, 
+-2019-01-30 13:05:07.279619, 4, 19, 0.08883453160524368, 
+-2019-01-30 13:05:08.573013, 4, 20, 0.09361597895622253, 
+-2019-01-30 13:05:09.861037, 4, 21, 0.09589704871177673, 
+-2019-01-30 13:05:11.142186, 4, 22, 0.09560989588499069, 
+-2019-01-30 13:05:12.417639, 4, 23, 0.09061780571937561, 
+-2019-01-30 13:05:13.703637, 4, 24, 0.08874201029539108, 
+-2019-01-30 13:05:14.985805, 4, 25, 0.09085234999656677, 
+-2019-01-30 13:05:16.270345, 4, 26, 0.11097421497106552, 
+-2019-01-30 13:05:17.961292, 4, 27, 0.10291410982608795, 
+-2019-01-30 13:05:19.281412, 4, 28, 0.09123250842094421, 
+-2019-01-30 13:05:20.511612, 4, 29, 0.08838311582803726, 
+-2019-01-30 13:05:21.759665, 4, 30, 0.09068640321493149, 
+-2019-01-30 13:05:23.016432, 4, 31, 0.13377782702445984, 
+-2019-01-30 13:05:24.276838, 4, 32, 0.0937894806265831, 
+-2019-01-30 13:05:25.526073, 4, 33, 0.09594219923019409, 
+-2019-01-30 13:05:26.784277, 4, 34, 0.09806396067142487, 
+-2019-01-30 13:05:28.021601, 4, 35, 0.09607230126857758, 
+-2019-01-30 13:05:29.266758, 4, 36, 0.09008684754371643, 
+-2019-01-30 13:05:30.518731, 4, 37, 0.09104745090007782, 
+-2019-01-30 13:05:31.772941, 4, 38, 0.08993589133024216, 
+-2019-01-30 13:05:33.019320, 4, 39, 0.09596732258796692, 
+-2019-01-30 13:05:34.271527, 4, 40, 0.08587771654129028, 
+-2019-01-30 13:05:35.534374, 4, 41, 0.09954632818698883, 
+-2019-01-30 13:05:36.802343, 4, 42, 0.08522135764360428, 
+-2019-01-30 13:05:38.058921, 4, 43, 0.09943100064992905, 
+-2019-01-30 13:05:39.314071, 4, 44, 0.09204354137182236, 
+-2019-01-30 13:05:40.564092, 4, 45, 0.0908661037683487, 
+-2019-01-30 13:05:41.838918, 4, 46, 0.1121269091963768, 
+-2019-01-30 13:05:43.091285, 4, 47, 0.13146081566810608, 
+-2019-01-30 13:05:44.336333, 4, 48, 0.09321824461221695, 
+-2019-01-30 13:05:45.588727, 4, 49, 0.09111803770065308, 
+-2019-01-30 13:05:46.875909, 4, 50, 0.09084627032279968, 
+-2019-01-30 13:05:57.322017, 4, 51, 0.09861264377832413, 
+-2019-01-30 13:05:58.470654, 4, 52, 0.09153992682695389, 
+-2019-01-30 13:05:59.623474, 4, 53, 0.08378124237060547, 
+-2019-01-30 13:06:00.775240, 4, 54, 0.10697469860315323, 
+-2019-01-30 13:06:01.931286, 4, 55, 0.10894197225570679, 
+-2019-01-30 13:06:03.095216, 4, 56, 0.08986866474151611, 
+-2019-01-30 13:06:04.314016, 4, 57, 0.09430303424596786, 
+-2019-01-30 13:06:05.459901, 4, 58, 0.08861561864614487, 
+-2019-01-30 13:06:06.609344, 4, 59, 0.09490618109703064, 
+-2019-01-30 13:06:07.770617, 4, 60, 0.08687236905097961, 
+-2019-01-30 13:06:08.907291, 4, 61, 0.08705729246139526, 
+-2019-01-30 13:06:10.054666, 4, 62, 0.09443256258964539, 
+-2019-01-30 13:06:11.205135, 4, 63, 0.08280855417251587, 
+-2019-01-30 13:06:12.360313, 4, 64, 0.10925163328647614, 
+-2019-01-30 13:06:13.525667, 4, 65, 0.08859630674123764, 
+-2019-01-30 13:06:14.797352, 4, 66, 0.09916049242019653, 
+-2019-01-30 13:06:16.028859, 4, 67, 0.08644067496061325, 
+-2019-01-30 13:06:17.290152, 4, 68, 0.08559634536504745, 
+-2019-01-30 13:06:18.604920, 4, 69, 0.11415880173444748, 
+-2019-01-30 13:06:19.915400, 4, 70, 0.086339071393013, 
+-2019-01-30 13:06:21.196360, 4, 71, 0.09404116868972778, 
+-2019-01-30 13:06:22.475994, 4, 72, 0.08604222536087036, 
+-2019-01-30 13:06:23.768168, 4, 73, 0.09823399037122726, 
+-2019-01-30 13:06:25.055787, 4, 74, 0.11539751291275024, 
+-2019-01-30 13:06:26.337972, 4, 75, 0.09731496870517731, 
+-2019-01-30 13:06:27.619539, 4, 76, 0.10879480093717575, 
+-2019-01-30 13:06:28.884692, 4, 77, 0.09049443900585175, 
+-2019-01-30 13:06:30.143081, 4, 78, 0.0900149792432785, 
+-2019-01-30 13:06:31.400231, 4, 79, 0.08879279345273972, 
+-2019-01-30 13:06:32.650896, 4, 80, 0.08832447230815887, 
+-2019-01-30 13:06:33.911261, 4, 81, 0.08965148031711578, 
+-2019-01-30 13:06:35.175503, 4, 82, 0.12843875586986542, 
+-2019-01-30 13:06:36.454037, 4, 83, 0.09322375804185867, 
+-2019-01-30 13:06:37.730124, 4, 84, 0.0854208916425705, 
+-2019-01-30 13:06:38.990767, 4, 85, 0.08994445949792862, 
+-2019-01-30 13:06:40.251471, 4, 86, 0.12888504564762115, 
+-2019-01-30 13:06:41.525415, 4, 87, 0.12662100791931152, 
+-2019-01-30 13:06:42.797161, 4, 88, 0.08851271867752075, 
+-2019-01-30 13:06:44.036257, 4, 89, 0.09252944588661194, 
+-2019-01-30 13:08:52.611513, 4, 90, , 0.1295951610803604
+-2019-01-30 13:08:54.739589, 5, 0, 0.11706048995256424, 
+-2019-01-30 13:09:05.754531, 5, 1, 0.09133371710777283, 
+-2019-01-30 13:09:06.896597, 5, 2, 0.09489033371210098, 
+-2019-01-30 13:09:08.049919, 5, 3, 0.08666528016328812, 
+-2019-01-30 13:09:09.196074, 5, 4, 0.09891998767852783, 
+-2019-01-30 13:09:10.341593, 5, 5, 0.08874566107988358, 
+-2019-01-30 13:09:11.484449, 5, 6, 0.0921865701675415, 
+-2019-01-30 13:09:12.631532, 5, 7, 0.08687686920166016, 
+-2019-01-30 13:09:13.775882, 5, 8, 0.08899965137243271, 
+-2019-01-30 13:09:14.930102, 5, 9, 0.08968248218297958, 
+-2019-01-30 13:09:16.083919, 5, 10, 0.09280931204557419, 
+-2019-01-30 13:09:17.241467, 5, 11, 0.10600098222494125, 
+-2019-01-30 13:09:18.389666, 5, 12, 0.09101534634828568, 
+-2019-01-30 13:09:19.581236, 5, 13, 0.08820901066064835, 
+-2019-01-30 13:09:20.734543, 5, 14, 0.09091062843799591, 
+-2019-01-30 13:09:21.875933, 5, 15, 0.09441699087619781, 
+-2019-01-30 13:09:23.029858, 5, 16, 0.08711808919906616, 
+-2019-01-30 13:09:24.183015, 5, 17, 0.13288922607898712, 
+-2019-01-30 13:09:25.363887, 5, 18, 0.09186134487390518, 
+-2019-01-30 13:09:26.585881, 5, 19, 0.09356273710727692, 
+-2019-01-30 13:09:27.845758, 5, 20, 0.08480274677276611, 
+-2019-01-30 13:09:29.135981, 5, 21, 0.09254074096679688, 
+-2019-01-30 13:09:30.420679, 5, 22, 0.09371764957904816, 
+-2019-01-30 13:09:32.218287, 5, 23, 0.0913112536072731, 
+-2019-01-30 13:09:33.464592, 5, 24, 0.09052080661058426, 
+-2019-01-30 13:09:34.725246, 5, 25, 0.08754164725542068, 
+-2019-01-30 13:09:35.987431, 5, 26, 0.08695168793201447, 
+-2019-01-30 13:09:37.261850, 5, 27, 0.08111246675252914, 
+-2019-01-30 13:09:38.539627, 5, 28, 0.08634036034345627, 
+-2019-01-30 13:09:39.804038, 5, 29, 0.11115653067827225, 
+-2019-01-30 13:09:41.052654, 5, 30, 0.08337603509426117, 
+-2019-01-30 13:09:42.313580, 5, 31, 0.09786505252122879, 
+-2019-01-30 13:09:43.565978, 5, 32, 0.0873553529381752, 
+-2019-01-30 13:09:44.846027, 5, 33, 0.09346573799848557, 
+-2019-01-30 13:09:46.115690, 5, 34, 0.0913752019405365, 
+-2019-01-30 13:09:47.376543, 5, 35, 0.0907021015882492, 
+-2019-01-30 13:09:48.648196, 5, 36, 0.09921793639659882, 
+-2019-01-30 13:09:49.910114, 5, 37, 0.09412838518619537, 
+-2019-01-30 13:09:51.163104, 5, 38, 0.09006247669458389, 
+-2019-01-30 13:09:52.420130, 5, 39, 0.09285006672143936, 
+-2019-01-30 13:09:53.686453, 5, 40, 0.09024687856435776, 
+-2019-01-30 13:09:54.931589, 5, 41, 0.1047905832529068, 
+-2019-01-30 13:09:56.181267, 5, 42, 0.11299487203359604, 
+-2019-01-30 13:09:57.440615, 5, 43, 0.10385734587907791, 
+-2019-01-30 13:09:58.753277, 5, 44, 0.10995782911777496, 
+-2019-01-30 13:09:59.994836, 5, 45, 0.09008324891328812, 
+-2019-01-30 13:10:01.273626, 5, 46, 0.11324726790189743, 
+-2019-01-30 13:10:02.540075, 5, 47, 0.08610083162784576, 
+-2019-01-30 13:10:03.798780, 5, 48, 0.08535683155059814, 
+-2019-01-30 13:10:05.042291, 5, 49, 0.09181185811758041, 
+-2019-01-30 13:10:06.303541, 5, 50, 0.08606816828250885, 
+-2019-01-30 13:10:16.229110, 5, 51, 0.08491070568561554, 
+-2019-01-30 13:10:17.370185, 5, 52, 0.08439482003450394, 
+-2019-01-30 13:10:18.589582, 5, 53, 0.10024914145469666, 
+-2019-01-30 13:10:19.752976, 5, 54, 0.09331769496202469, 
+-2019-01-30 13:10:20.900473, 5, 55, 0.0891997367143631, 
+-2019-01-30 13:10:22.049482, 5, 56, 0.09421089291572571, 
+-2019-01-30 13:10:23.200911, 5, 57, 0.08778421580791473, 
+-2019-01-30 13:10:24.352836, 5, 58, 0.08996617794036865, 
+-2019-01-30 13:10:25.494913, 5, 59, 0.097352534532547, 
+-2019-01-30 13:10:26.644585, 5, 60, 0.08454791456460953, 
+-2019-01-30 13:10:27.786642, 5, 61, 0.08812857419252396, 
+-2019-01-30 13:10:28.929450, 5, 62, 0.09253167361021042, 
+-2019-01-30 13:10:30.073917, 5, 63, 0.10125183314085007, 
+-2019-01-30 13:10:31.230596, 5, 64, 0.09089832007884979, 
+-2019-01-30 13:10:32.398976, 5, 65, 0.08403068035840988, 
+-2019-01-30 13:10:33.597630, 5, 66, 0.0949079766869545, 
+-2019-01-30 13:10:34.836653, 5, 67, 0.10299105942249298, 
+-2019-01-30 13:10:36.105220, 5, 68, 0.11301364004611969, 
+-2019-01-30 13:10:37.399484, 5, 69, 0.09295845776796341, 
+-2019-01-30 13:10:38.684886, 5, 70, 0.09549526870250702, 
+-2019-01-30 13:10:39.969094, 5, 71, 0.09071648120880127, 
+-2019-01-30 13:10:41.246953, 5, 72, 0.09091106057167053, 
+-2019-01-30 13:10:42.519463, 5, 73, 0.08609939366579056, 
+-2019-01-30 13:10:43.791164, 5, 74, 0.08635175228118896, 
+-2019-01-30 13:10:45.055177, 5, 75, 0.08406129479408264, 
+-2019-01-30 13:10:46.321468, 5, 76, 0.08650068193674088, 
+-2019-01-30 13:10:47.590378, 5, 77, 0.09450159966945648, 
+-2019-01-30 13:10:48.925036, 5, 78, 0.1135297566652298, 
+-2019-01-30 13:10:50.199009, 5, 79, 0.09559076279401779, 
+-2019-01-30 13:10:51.470446, 5, 80, 0.08789078146219254, 
+-2019-01-30 13:10:52.731632, 5, 81, 0.08372107148170471, 
+-2019-01-30 13:10:53.990595, 5, 82, 0.10939773172140121, 
+-2019-01-30 13:10:55.246716, 5, 83, 0.08540728688240051, 
+-2019-01-30 13:10:56.508420, 5, 84, 0.08453107625246048, 
+-2019-01-30 13:10:57.772286, 5, 85, 0.13741756975650787, 
+-2019-01-30 13:10:59.031047, 5, 86, 0.09641339629888535, 
+-2019-01-30 13:11:00.371147, 5, 87, 0.09582892805337906, 
+-2019-01-30 13:11:01.605954, 5, 88, 0.09141994267702103, 
+-2019-01-30 13:11:02.850447, 5, 89, 0.09933842718601227, 
+-2019-01-30 13:13:11.539605, 5, 90, , 0.1284608620405197
+-2019-01-30 13:13:13.847286, 6, 0, 0.1027679443359375, 
+-2019-01-30 13:13:24.855670, 6, 1, 0.09011993557214737, 
+-2019-01-30 13:13:26.016178, 6, 2, 0.08720322698354721, 
+-2019-01-30 13:13:27.166484, 6, 3, 0.09791610389947891, 
+-2019-01-30 13:13:28.307859, 6, 4, 0.08292540907859802, 
+-2019-01-30 13:13:29.456193, 6, 5, 0.09667904675006866, 
+-2019-01-30 13:13:30.606926, 6, 6, 0.08810121566057205, 
+-2019-01-30 13:13:31.763403, 6, 7, 0.11190164089202881, 
+-2019-01-30 13:13:32.910099, 6, 8, 0.08646715432405472, 
+-2019-01-30 13:13:34.064127, 6, 9, 0.11425939947366714, 
+-2019-01-30 13:13:35.218995, 6, 10, 0.09638495743274689, 
+-2019-01-30 13:13:36.365872, 6, 11, 0.09457038342952728, 
+-2019-01-30 13:13:37.525736, 6, 12, 0.08888856321573257, 
+-2019-01-30 13:13:38.678881, 6, 13, 0.08457373082637787, 
+-2019-01-30 13:13:39.827361, 6, 14, 0.08856423199176788, 
+-2019-01-30 13:13:40.966154, 6, 15, 0.09392642229795456, 
+-2019-01-30 13:13:42.112813, 6, 16, 0.08982789516448975, 
+-2019-01-30 13:13:43.273798, 6, 17, 0.09464594721794128, 
+-2019-01-30 13:13:44.462170, 6, 18, 0.0925673097372055, 
+-2019-01-30 13:13:45.692596, 6, 19, 0.08993034064769745, 
+-2019-01-30 13:13:46.951942, 6, 20, 0.09035936743021011, 
+-2019-01-30 13:13:48.248714, 6, 21, 0.12326771020889282, 
+-2019-01-30 13:13:49.598399, 6, 22, 0.08883283287286758, 
+-2019-01-30 13:13:50.892418, 6, 23, 0.09071878343820572, 
+-2019-01-30 13:13:52.172283, 6, 24, 0.0840071439743042, 
+-2019-01-30 13:13:53.451097, 6, 25, 0.09730455279350281, 
+-2019-01-30 13:13:54.734235, 6, 26, 0.11177629232406616, 
+-2019-01-30 13:13:56.005101, 6, 27, 0.09372543543577194, 
+-2019-01-30 13:13:57.299729, 6, 28, 0.09071239084005356, 
+-2019-01-30 13:13:58.643789, 6, 29, 0.09626957029104233, 
+-2019-01-30 13:13:59.908213, 6, 30, 0.11274062097072601, 
+-2019-01-30 13:14:01.163882, 6, 31, 0.08984296768903732, 
+-2019-01-30 13:14:02.429800, 6, 32, 0.10508083552122116, 
+-2019-01-30 13:14:03.759925, 6, 33, 0.09040285646915436, 
+-2019-01-30 13:14:05.017032, 6, 34, 0.08633735775947571, 
+-2019-01-30 13:14:06.272322, 6, 35, 0.08539953082799911, 
+-2019-01-30 13:14:07.527188, 6, 36, 0.08672793954610825, 
+-2019-01-30 13:14:08.801436, 6, 37, 0.0953688696026802, 
+-2019-01-30 13:14:10.074619, 6, 38, 0.1323109120130539, 
+-2019-01-30 13:14:11.347176, 6, 39, 0.09336388111114502, 
+-2019-01-30 13:14:12.621361, 6, 40, 0.10548833012580872, 
+-2019-01-30 13:14:13.937932, 6, 41, 0.10522826015949249, 
+-2019-01-30 13:14:15.200380, 6, 42, 0.09054095298051834, 
+-2019-01-30 13:14:17.063664, 6, 43, 0.08801797777414322, 
+-2019-01-30 13:14:18.283183, 6, 44, 0.08515308052301407, 
+-2019-01-30 13:14:19.563431, 6, 45, 0.08310797065496445, 
+-2019-01-30 13:14:20.808346, 6, 46, 0.08976217359304428, 
+-2019-01-30 13:14:22.047873, 6, 47, 0.09494444727897644, 
+-2019-01-30 13:14:23.291949, 6, 48, 0.08300492912530899, 
+-2019-01-30 13:14:24.527004, 6, 49, 0.08495166897773743, 
+-2019-01-30 13:14:25.778570, 6, 50, 0.08962807804346085, 
+-2019-01-30 13:14:35.567600, 6, 51, 0.11057963967323303, 
+-2019-01-30 13:14:36.725714, 6, 52, 0.08505941182374954, 
+-2019-01-30 13:14:37.879244, 6, 53, 0.08429181575775146, 
+-2019-01-30 13:14:39.030867, 6, 54, 0.0860026404261589, 
+-2019-01-30 13:14:40.184612, 6, 55, 0.08888787776231766, 
+-2019-01-30 13:14:41.338913, 6, 56, 0.08604070544242859, 
+-2019-01-30 13:14:42.497936, 6, 57, 0.10432316362857819, 
+-2019-01-30 13:14:43.645504, 6, 58, 0.0943356603384018, 
+-2019-01-30 13:14:44.803927, 6, 59, 0.09297981858253479, 
+-2019-01-30 13:14:45.957792, 6, 60, 0.09083785861730576, 
+-2019-01-30 13:14:47.102776, 6, 61, 0.08605881035327911, 
+-2019-01-30 13:14:48.249492, 6, 62, 0.08651088923215866, 
+-2019-01-30 13:14:49.444259, 6, 63, 0.08702950924634933, 
+-2019-01-30 13:14:50.607368, 6, 64, 0.09184876084327698, 
+-2019-01-30 13:14:51.808826, 6, 65, 0.0925176739692688, 
+-2019-01-30 13:14:53.044617, 6, 66, 0.08384843170642853, 
+-2019-01-30 13:14:54.311376, 6, 67, 0.08159612864255905, 
+-2019-01-30 13:14:55.597809, 6, 68, 0.09347853064537048, 
+-2019-01-30 13:14:56.903480, 6, 69, 0.09531909972429276, 
+-2019-01-30 13:14:58.197483, 6, 70, 0.09179600328207016, 
+-2019-01-30 13:14:59.494247, 6, 71, 0.09041186422109604, 
+-2019-01-30 13:15:00.775764, 6, 72, 0.08988655358552933, 
+-2019-01-30 13:15:02.060942, 6, 73, 0.11260734498500824, 
+-2019-01-30 13:15:03.341257, 6, 74, 0.09665632992982864, 
+-2019-01-30 13:15:04.620434, 6, 75, 0.09844492375850677, 
+-2019-01-30 13:15:05.910662, 6, 76, 0.10202693194150925, 
+-2019-01-30 13:15:07.216188, 6, 77, 0.08712602406740189, 
+-2019-01-30 13:15:08.468490, 6, 78, 0.10410818457603455, 
+-2019-01-30 13:15:09.725400, 6, 79, 0.09024661034345627, 
+-2019-01-30 13:15:10.994899, 6, 80, 0.08501528948545456, 
+-2019-01-30 13:15:12.319353, 6, 81, 0.12969094514846802, 
+-2019-01-30 13:15:13.580025, 6, 82, 0.08421686291694641, 
+-2019-01-30 13:15:14.844078, 6, 83, 0.08382009714841843, 
+-2019-01-30 13:15:16.112819, 6, 84, 0.09762565791606903, 
+-2019-01-30 13:15:17.388200, 6, 85, 0.10965534299612045, 
+-2019-01-30 13:15:18.673736, 6, 86, 0.0996270552277565, 
+-2019-01-30 13:15:19.970824, 6, 87, 0.08319821208715439, 
+-2019-01-30 13:15:21.225330, 6, 88, 0.08931024372577667, 
+-2019-01-30 13:15:22.467640, 6, 89, 0.08595988154411316, 
+-2019-01-30 13:17:31.842312, 6, 90, , 0.12723943144083022
+-2019-01-30 13:17:34.277931, 7, 0, 0.10314735025167465, 
+-2019-01-30 13:17:43.026563, 7, 1, 0.09699849039316177, 
+-2019-01-30 13:17:44.201520, 7, 2, 0.12860451638698578, 
+-2019-01-30 13:17:45.355667, 7, 3, 0.11225327849388123, 
+-2019-01-30 13:17:46.515444, 7, 4, 0.09897252172231674, 
+-2019-01-30 13:17:47.682049, 7, 5, 0.08664105087518692, 
+-2019-01-30 13:17:48.870831, 7, 6, 0.08374201506376266, 
+-2019-01-30 13:17:50.037418, 7, 7, 0.12406331300735474, 
+-2019-01-30 13:17:51.199667, 7, 8, 0.08246807754039764, 
+-2019-01-30 13:17:52.350826, 7, 9, 0.10366232693195343, 
+-2019-01-30 13:17:53.511597, 7, 10, 0.08259037137031555, 
+-2019-01-30 13:17:54.671791, 7, 11, 0.0877380222082138, 
+-2019-01-30 13:17:55.832771, 7, 12, 0.11097801476716995, 
+-2019-01-30 13:17:56.973738, 7, 13, 0.08471078425645828, 
+-2019-01-30 13:17:58.131750, 7, 14, 0.09110615402460098, 
+-2019-01-30 13:17:59.315358, 7, 15, 0.08924183249473572, 
+-2019-01-30 13:18:00.542642, 7, 16, 0.08313630521297455, 
+-2019-01-30 13:18:01.804478, 7, 17, 0.10592996329069138, 
+-2019-01-30 13:18:03.084836, 7, 18, 0.10765575617551804, 
+-2019-01-30 13:18:04.382458, 7, 19, 0.08702974021434784, 
+-2019-01-30 13:18:05.681301, 7, 20, 0.08406279981136322, 
+-2019-01-30 13:18:06.975165, 7, 21, 0.11435162276029587, 
+-2019-01-30 13:18:08.265087, 7, 22, 0.0916576087474823, 
+-2019-01-30 13:18:09.546882, 7, 23, 0.08690527826547623, 
+-2019-01-30 13:18:10.823225, 7, 24, 0.09542383998632431, 
+-2019-01-30 13:18:12.086818, 7, 25, 0.0880875214934349, 
+-2019-01-30 13:18:13.349347, 7, 26, 0.086056649684906, 
+-2019-01-30 13:18:14.605037, 7, 27, 0.0919155403971672, 
+-2019-01-30 13:18:15.871391, 7, 28, 0.09246863424777985, 
+-2019-01-30 13:18:17.137940, 7, 29, 0.08325108885765076, 
+-2019-01-30 13:18:18.419597, 7, 30, 0.08717192709445953, 
+-2019-01-30 13:18:19.709843, 7, 31, 0.08648974448442459, 
+-2019-01-30 13:18:20.959588, 7, 32, 0.09126075357198715, 
+-2019-01-30 13:18:22.212204, 7, 33, 0.09054389595985413, 
+-2019-01-30 13:18:23.460134, 7, 34, 0.0912911519408226, 
+-2019-01-30 13:18:24.718244, 7, 35, 0.09521684050559998, 
+-2019-01-30 13:18:25.973451, 7, 36, 0.08600115776062012, 
+-2019-01-30 13:18:27.218570, 7, 37, 0.08829298615455627, 
+-2019-01-30 13:18:28.458227, 7, 38, 0.0934075340628624, 
+-2019-01-30 13:18:29.709061, 7, 39, 0.09218723326921463, 
+-2019-01-30 13:18:30.972203, 7, 40, 0.10880330204963684, 
+-2019-01-30 13:18:32.252383, 7, 41, 0.09271799772977829, 
+-2019-01-30 13:18:33.525585, 7, 42, 0.1140047162771225, 
+-2019-01-30 13:18:34.782735, 7, 43, 0.09523477405309677, 
+-2019-01-30 13:18:36.038501, 7, 44, 0.12313629686832428, 
+-2019-01-30 13:18:37.297294, 7, 45, 0.08497704565525055, 
+-2019-01-30 13:18:38.553012, 7, 46, 0.10223988443613052, 
+-2019-01-30 13:18:39.819129, 7, 47, 0.08464480191469193, 
+-2019-01-30 13:18:41.096046, 7, 48, 0.09119203686714172, 
+-2019-01-30 13:18:42.369198, 7, 49, 0.10512024164199829, 
+-2019-01-30 13:18:43.703213, 7, 50, 0.0919722318649292, 
+-2019-01-30 13:18:54.006840, 7, 51, 0.1103145033121109, 
+-2019-01-30 13:18:55.145754, 7, 52, 0.09046009927988052, 
+-2019-01-30 13:18:56.308638, 7, 53, 0.09932297468185425, 
+-2019-01-30 13:18:57.447425, 7, 54, 0.08873816579580307, 
+-2019-01-30 13:18:58.583547, 7, 55, 0.08925027400255203, 
+-2019-01-30 13:18:59.739844, 7, 56, 0.09122715890407562, 
+-2019-01-30 13:19:00.890166, 7, 57, 0.07914465665817261, 
+-2019-01-30 13:19:02.039878, 7, 58, 0.08452832698822021, 
+-2019-01-30 13:19:03.196832, 7, 59, 0.0975615605711937, 
+-2019-01-30 13:19:04.346431, 7, 60, 0.08244044333696365, 
+-2019-01-30 13:19:05.502184, 7, 61, 0.09153709560632706, 
+-2019-01-30 13:19:06.659214, 7, 62, 0.09437289834022522, 
+-2019-01-30 13:19:07.811593, 7, 63, 0.09698399156332016, 
+-2019-01-30 13:19:08.966266, 7, 64, 0.09966745227575302, 
+-2019-01-30 13:19:10.116109, 7, 65, 0.08465088158845901, 
+-2019-01-30 13:19:11.297470, 7, 66, 0.12936288118362427, 
+-2019-01-30 13:19:12.512960, 7, 67, 0.09265214204788208, 
+-2019-01-30 13:19:13.766001, 7, 68, 0.09372503310441971, 
+-2019-01-30 13:19:15.051064, 7, 69, 0.08723292499780655, 
+-2019-01-30 13:19:16.351984, 7, 70, 0.08571720868349075, 
+-2019-01-30 13:19:17.644784, 7, 71, 0.08310966193675995, 
+-2019-01-30 13:19:18.994008, 7, 72, 0.0865255668759346, 
+-2019-01-30 13:19:20.293329, 7, 73, 0.0847092717885971, 
+-2019-01-30 13:19:22.290431, 7, 74, 0.09707819670438766, 
+-2019-01-30 13:19:23.523245, 7, 75, 0.08939643949270248, 
+-2019-01-30 13:19:24.760936, 7, 76, 0.08869956433773041, 
+-2019-01-30 13:19:26.025828, 7, 77, 0.088340625166893, 
+-2019-01-30 13:19:27.290576, 7, 78, 0.08449102938175201, 
+-2019-01-30 13:19:28.561749, 7, 79, 0.08505644649267197, 
+-2019-01-30 13:19:29.833225, 7, 80, 0.09041104465723038, 
+-2019-01-30 13:19:31.106926, 7, 81, 0.0876787081360817, 
+-2019-01-30 13:19:32.374800, 7, 82, 0.0851888358592987, 
+-2019-01-30 13:19:33.654754, 7, 83, 0.08590317517518997, 
+-2019-01-30 13:19:34.986659, 7, 84, 0.09365800768136978, 
+-2019-01-30 13:19:36.233587, 7, 85, 0.10770159959793091, 
+-2019-01-30 13:19:37.477111, 7, 86, 0.08536166697740555, 
+-2019-01-30 13:19:38.728207, 7, 87, 0.08074828237295151, 
+-2019-01-30 13:19:39.995407, 7, 88, 0.09355588257312775, 
+-2019-01-30 13:19:41.270184, 7, 89, 0.09372647851705551, 
+-2019-01-30 13:21:50.483894, 7, 90, , 0.12676908910274506
+-2019-01-30 13:21:52.953260, 8, 0, 0.08985002338886261, 
+-2019-01-30 13:22:03.963814, 8, 1, 0.08801005035638809, 
+-2019-01-30 13:22:05.122005, 8, 2, 0.08472221344709396, 
+-2019-01-30 13:22:06.279016, 8, 3, 0.09452706575393677, 
+-2019-01-30 13:22:07.429466, 8, 4, 0.08946279436349869, 
+-2019-01-30 13:22:08.584017, 8, 5, 0.08903907239437103, 
+-2019-01-30 13:22:09.741749, 8, 6, 0.08779742568731308, 
+-2019-01-30 13:22:10.899842, 8, 7, 0.08559570461511612, 
+-2019-01-30 13:22:12.063715, 8, 8, 0.0992642343044281, 
+-2019-01-30 13:22:13.226670, 8, 9, 0.08243132382631302, 
+-2019-01-30 13:22:14.391595, 8, 10, 0.13271664083003998, 
+-2019-01-30 13:22:15.547680, 8, 11, 0.08433326333761215, 
+-2019-01-30 13:22:16.712294, 8, 12, 0.08641165494918823, 
+-2019-01-30 13:22:17.879747, 8, 13, 0.08755040168762207, 
+-2019-01-30 13:22:19.080466, 8, 14, 0.08550839871168137, 
+-2019-01-30 13:22:20.247514, 8, 15, 0.09280306100845337, 
+-2019-01-30 13:22:21.410792, 8, 16, 0.08029641211032867, 
+-2019-01-30 13:22:22.611239, 8, 17, 0.10934983938932419, 
+-2019-01-30 13:22:23.840493, 8, 18, 0.08693765848875046, 
+-2019-01-30 13:22:25.090984, 8, 19, 0.09528125822544098, 
+-2019-01-30 13:22:26.369790, 8, 20, 0.09470702707767487, 
+-2019-01-30 13:22:27.651121, 8, 21, 0.08428936451673508, 
+-2019-01-30 13:22:28.950065, 8, 22, 0.08867469429969788, 
+-2019-01-30 13:22:30.249567, 8, 23, 0.10291100293397903, 
+-2019-01-30 13:22:31.531294, 8, 24, 0.08376097679138184, 
+-2019-01-30 13:22:32.810665, 8, 25, 0.08882775902748108, 
+-2019-01-30 13:22:34.085225, 8, 26, 0.08574527502059937, 
+-2019-01-30 13:22:35.367432, 8, 27, 0.09018419682979584, 
+-2019-01-30 13:22:36.650272, 8, 28, 0.08376767486333847, 
+-2019-01-30 13:22:37.917307, 8, 29, 0.09028603881597519, 
+-2019-01-30 13:22:39.191870, 8, 30, 0.09597555547952652, 
+-2019-01-30 13:22:40.491995, 8, 31, 0.1006861999630928, 
+-2019-01-30 13:22:41.767783, 8, 32, 0.08716222643852234, 
+-2019-01-30 13:22:43.023582, 8, 33, 0.10530360788106918, 
+-2019-01-30 13:22:44.264456, 8, 34, 0.09117313474416733, 
+-2019-01-30 13:22:45.523231, 8, 35, 0.09247113764286041, 
+-2019-01-30 13:22:46.780371, 8, 36, 0.09282791614532471, 
+-2019-01-30 13:22:48.040843, 8, 37, 0.09460601210594177, 
+-2019-01-30 13:22:49.380067, 8, 38, 0.08644821494817734, 
+-2019-01-30 13:22:50.652417, 8, 39, 0.0934872254729271, 
+-2019-01-30 13:22:51.921813, 8, 40, 0.09732270240783691, 
+-2019-01-30 13:22:53.184323, 8, 41, 0.0903087854385376, 
+-2019-01-30 13:22:54.459981, 8, 42, 0.08869380503892899, 
+-2019-01-30 13:22:55.715013, 8, 43, 0.08120138943195343, 
+-2019-01-30 13:22:56.952510, 8, 44, 0.08967839181423187, 
+-2019-01-30 13:22:58.206685, 8, 45, 0.08677325397729874, 
+-2019-01-30 13:22:59.484077, 8, 46, 0.08456449210643768, 
+-2019-01-30 13:23:00.771296, 8, 47, 0.0842023715376854, 
+-2019-01-30 13:23:02.038540, 8, 48, 0.09362584352493286, 
+-2019-01-30 13:23:03.299844, 8, 49, 0.08621448278427124, 
+-2019-01-30 13:23:04.561402, 8, 50, 0.08474951237440109, 
+-2019-01-30 13:23:15.222313, 8, 51, 0.09740258753299713, 
+-2019-01-30 13:23:16.366807, 8, 52, 0.09257618337869644, 
+-2019-01-30 13:23:17.520207, 8, 53, 0.0845913514494896, 
+-2019-01-30 13:23:18.706638, 8, 54, 0.08142711222171783, 
+-2019-01-30 13:23:19.869139, 8, 55, 0.08788352459669113, 
+-2019-01-30 13:23:21.025144, 8, 56, 0.08655720949172974, 
+-2019-01-30 13:23:22.180235, 8, 57, 0.08579184859991074, 
+-2019-01-30 13:23:23.335892, 8, 58, 0.1006103977560997, 
+-2019-01-30 13:23:24.497220, 8, 59, 0.08799144625663757, 
+-2019-01-30 13:23:25.658829, 8, 60, 0.11530961841344833, 
+-2019-01-30 13:23:26.813033, 8, 61, 0.09958499670028687, 
+-2019-01-30 13:23:28.006040, 8, 62, 0.10946622490882874, 
+-2019-01-30 13:23:29.162573, 8, 63, 0.09757401794195175, 
+-2019-01-30 13:23:30.322308, 8, 64, 0.11171519756317139, 
+-2019-01-30 13:23:31.488168, 8, 65, 0.08830910921096802, 
+-2019-01-30 13:23:32.701144, 8, 66, 0.08736424148082733, 
+-2019-01-30 13:23:33.961638, 8, 67, 0.10822002589702606, 
+-2019-01-30 13:23:35.230660, 8, 68, 0.09542219340801239, 
+-2019-01-30 13:23:36.540574, 8, 69, 0.09299389272928238, 
+-2019-01-30 13:23:37.832193, 8, 70, 0.08788085728883743, 
+-2019-01-30 13:23:39.116883, 8, 71, 0.08564897626638412, 
+-2019-01-30 13:23:40.403338, 8, 72, 0.09003128856420517, 
+-2019-01-30 13:23:41.685756, 8, 73, 0.1114610880613327, 
+-2019-01-30 13:23:42.971479, 8, 74, 0.11330240219831467, 
+-2019-01-30 13:23:44.246094, 8, 75, 0.07835723459720612, 
+-2019-01-30 13:23:45.523072, 8, 76, 0.08976481109857559, 
+-2019-01-30 13:23:46.796140, 8, 77, 0.08949575573205948, 
+-2019-01-30 13:23:48.080625, 8, 78, 0.09204093366861343, 
+-2019-01-30 13:23:49.420915, 8, 79, 0.09322818368673325, 
+-2019-01-30 13:23:50.685365, 8, 80, 0.0884781926870346, 
+-2019-01-30 13:23:51.967924, 8, 81, 0.09292207658290863, 
+-2019-01-30 13:23:53.227549, 8, 82, 0.08919460326433182, 
+-2019-01-30 13:23:54.496229, 8, 83, 0.08435935527086258, 
+-2019-01-30 13:23:55.757588, 8, 84, 0.09621777385473251, 
+-2019-01-30 13:23:57.040306, 8, 85, 0.10580895096063614, 
+-2019-01-30 13:23:58.314739, 8, 86, 0.08860518783330917, 
+-2019-01-30 13:23:59.583208, 8, 87, 0.0914914533495903, 
+-2019-01-30 13:24:00.851099, 8, 88, 0.09053076803684235, 
+-2019-01-30 13:24:02.139293, 8, 89, 0.0870988667011261, 
+-2019-01-30 13:26:12.937965, 8, 90, , 0.12572948902845382
+-2019-01-30 13:26:14.886050, 9, 0, 0.09825170040130615, 
+-2019-01-30 13:26:24.622674, 9, 1, 0.09101416915655136, 
+-2019-01-30 13:26:25.802011, 9, 2, 0.09343837946653366, 
+-2019-01-30 13:26:26.967163, 9, 3, 0.08194910734891891, 
+-2019-01-30 13:26:28.141356, 9, 4, 0.08850450813770294, 
+-2019-01-30 13:26:29.308954, 9, 5, 0.08948604762554169, 
+-2019-01-30 13:26:30.467114, 9, 6, 0.08230090141296387, 
+-2019-01-30 13:26:31.634512, 9, 7, 0.08768551051616669, 
+-2019-01-30 13:26:32.793433, 9, 8, 0.08681293576955795, 
+-2019-01-30 13:26:33.950316, 9, 9, 0.08292578160762787, 
+-2019-01-30 13:26:35.107486, 9, 10, 0.08814162015914917, 
+-2019-01-30 13:26:36.277267, 9, 11, 0.08128214627504349, 
+-2019-01-30 13:26:37.437735, 9, 12, 0.09012945741415024, 
+-2019-01-30 13:26:38.596303, 9, 13, 0.08703569322824478, 
+-2019-01-30 13:26:39.772454, 9, 14, 0.08601240813732147, 
+-2019-01-30 13:26:40.970527, 9, 15, 0.08284569531679153, 
+-2019-01-30 13:26:42.182236, 9, 16, 0.08330704271793365, 
+-2019-01-30 13:26:43.437986, 9, 17, 0.11301857233047485, 
+-2019-01-30 13:26:44.718476, 9, 18, 0.12538398802280426, 
+-2019-01-30 13:26:46.023357, 9, 19, 0.0828227624297142, 
+-2019-01-30 13:26:47.335619, 9, 20, 0.10815650224685669, 
+-2019-01-30 13:26:48.673189, 9, 21, 0.08778437227010727, 
+-2019-01-30 13:26:49.995374, 9, 22, 0.08745153248310089, 
+-2019-01-30 13:26:51.281946, 9, 23, 0.09000470489263535, 
+-2019-01-30 13:26:52.562310, 9, 24, 0.10124339908361435, 
+-2019-01-30 13:26:53.854855, 9, 25, 0.09144334495067596, 
+-2019-01-30 13:26:55.128943, 9, 26, 0.0893753319978714, 
+-2019-01-30 13:26:56.405497, 9, 27, 0.1062031090259552, 
+-2019-01-30 13:26:58.559536, 9, 28, 0.09054376929998398, 
+-2019-01-30 13:26:59.818994, 9, 29, 0.10801660269498825, 
+-2019-01-30 13:27:01.069246, 9, 30, 0.0963759794831276, 
+-2019-01-30 13:27:02.324370, 9, 31, 0.09247399121522903, 
+-2019-01-30 13:27:03.582692, 9, 32, 0.10760202258825302, 
+-2019-01-30 13:27:04.844590, 9, 33, 0.08388390392065048, 
+-2019-01-30 13:27:06.097982, 9, 34, 0.08359360694885254, 
+-2019-01-30 13:27:07.364419, 9, 35, 0.10246811807155609, 
+-2019-01-30 13:27:08.621714, 9, 36, 0.09677909314632416, 
+-2019-01-30 13:27:09.896429, 9, 37, 0.09508082270622253, 
+-2019-01-30 13:27:11.167883, 9, 38, 0.11832228302955627, 
+-2019-01-30 13:27:12.442660, 9, 39, 0.08942145854234695, 
+-2019-01-30 13:27:13.713437, 9, 40, 0.09630674123764038, 
+-2019-01-30 13:27:14.976705, 9, 41, 0.09443899989128113, 
+-2019-01-30 13:27:16.237068, 9, 42, 0.1267438381910324, 
+-2019-01-30 13:27:17.507403, 9, 43, 0.11177424341440201, 
+-2019-01-30 13:27:18.835107, 9, 44, 0.08567841351032257, 
+-2019-01-30 13:27:20.105430, 9, 45, 0.09066646546125412, 
+-2019-01-30 13:27:21.364194, 9, 46, 0.09056616574525833, 
+-2019-01-30 13:27:22.620992, 9, 47, 0.09080088883638382, 
+-2019-01-30 13:27:23.885199, 9, 48, 0.08597369492053986, 
+-2019-01-30 13:27:25.152914, 9, 49, 0.13124273717403412, 
+-2019-01-30 13:27:26.434054, 9, 50, 0.08185341209173203, 
+-2019-01-30 13:27:36.296836, 9, 51, 0.08500649034976959, 
+-2019-01-30 13:27:37.451156, 9, 52, 0.08268564939498901, 
+-2019-01-30 13:27:38.598828, 9, 53, 0.07855627685785294, 
+-2019-01-30 13:27:39.748840, 9, 54, 0.0875842347741127, 
+-2019-01-30 13:27:40.894295, 9, 55, 0.08643978089094162, 
+-2019-01-30 13:27:42.047230, 9, 56, 0.08533307164907455, 
+-2019-01-30 13:27:43.197702, 9, 57, 0.09183642268180847, 
+-2019-01-30 13:27:44.358848, 9, 58, 0.09391148388385773, 
+-2019-01-30 13:27:45.515300, 9, 59, 0.08505307883024216, 
+-2019-01-30 13:27:46.673237, 9, 60, 0.08630801737308502, 
+-2019-01-30 13:27:47.835916, 9, 61, 0.08383351564407349, 
+-2019-01-30 13:27:49.037797, 9, 62, 0.09677523374557495, 
+-2019-01-30 13:27:50.200282, 9, 63, 0.08693550527095795, 
+-2019-01-30 13:27:51.362996, 9, 64, 0.08494169265031815, 
+-2019-01-30 13:27:52.551004, 9, 65, 0.09585694968700409, 
+-2019-01-30 13:27:53.760497, 9, 66, 0.08455919474363327, 
+-2019-01-30 13:27:55.004642, 9, 67, 0.09293261915445328, 
+-2019-01-30 13:27:56.285125, 9, 68, 0.08979889005422592, 
+-2019-01-30 13:27:57.602614, 9, 69, 0.08566088229417801, 
+-2019-01-30 13:27:58.902379, 9, 70, 0.08457249402999878, 
+-2019-01-30 13:28:00.198709, 9, 71, 0.08838565647602081, 
+-2019-01-30 13:28:01.502808, 9, 72, 0.08432258665561676, 
+-2019-01-30 13:28:02.796275, 9, 73, 0.0800820142030716, 
+-2019-01-30 13:28:04.086806, 9, 74, 0.09137091785669327, 
+-2019-01-30 13:28:05.369497, 9, 75, 0.10401206463575363, 
+-2019-01-30 13:28:06.637065, 9, 76, 0.09321670979261398, 
+-2019-01-30 13:28:07.919843, 9, 77, 0.09595703333616257, 
+-2019-01-30 13:28:09.206936, 9, 78, 0.10846046358346939, 
+-2019-01-30 13:28:10.501874, 9, 79, 0.11558254063129425, 
+-2019-01-30 13:28:11.776906, 9, 80, 0.08799142390489578, 
+-2019-01-30 13:28:13.046478, 9, 81, 0.10979409515857697, 
+-2019-01-30 13:28:14.313315, 9, 82, 0.09697958827018738, 
+-2019-01-30 13:28:15.571351, 9, 83, 0.09114199876785278, 
+-2019-01-30 13:28:16.821500, 9, 84, 0.08080357313156128, 
+-2019-01-30 13:28:18.075451, 9, 85, 0.07912614941596985, 
+-2019-01-30 13:28:19.398690, 9, 86, 0.1012849360704422, 
+-2019-01-30 13:28:20.664962, 9, 87, 0.08814405649900436, 
+-2019-01-30 13:28:21.928679, 9, 88, 0.08816506713628769, 
+-2019-01-30 13:28:23.189661, 9, 89, 0.08469657599925995, 
+-2019-01-30 13:30:33.405859, 9, 90, , 0.12585046917200088
+-2019-01-30 13:30:35.732546, 10, 0, 0.08948937803506851, 
+-2019-01-30 13:30:46.934466, 10, 1, 0.08319580554962158, 
+-2019-01-30 13:30:48.078491, 10, 2, 0.11070888489484787, 
+-2019-01-30 13:30:49.281620, 10, 3, 0.08792446553707123, 
+-2019-01-30 13:30:50.432340, 10, 4, 0.08790314197540283, 
+-2019-01-30 13:30:51.584483, 10, 5, 0.09861882776021957, 
+-2019-01-30 13:30:52.747195, 10, 6, 0.09609400480985641, 
+-2019-01-30 13:30:53.904204, 10, 7, 0.106667160987854, 
+-2019-01-30 13:30:55.052432, 10, 8, 0.08730719238519669, 
+-2019-01-30 13:30:56.217779, 10, 9, 0.09048708528280258, 
+-2019-01-30 13:30:57.374350, 10, 10, 0.0937362089753151, 
+-2019-01-30 13:30:58.535002, 10, 11, 0.08643788844347, 
+-2019-01-30 13:30:59.704684, 10, 12, 0.08980245888233185, 
+-2019-01-30 13:31:00.872117, 10, 13, 0.08354482054710388, 
+-2019-01-30 13:31:02.030327, 10, 14, 0.08923894912004471, 
+-2019-01-30 13:31:03.189136, 10, 15, 0.08704659342765808, 
+-2019-01-30 13:31:04.364939, 10, 16, 0.08533952385187149, 
+-2019-01-30 13:31:05.534926, 10, 17, 0.10906416177749634, 
+-2019-01-30 13:31:06.695314, 10, 18, 0.08346259593963623, 
+-2019-01-30 13:31:07.886279, 10, 19, 0.0919288769364357, 
+-2019-01-30 13:31:09.107394, 10, 20, 0.08997445553541183, 
+-2019-01-30 13:31:10.378972, 10, 21, 0.09064441174268723, 
+-2019-01-30 13:31:11.659901, 10, 22, 0.08158016949892044, 
+-2019-01-30 13:31:12.962132, 10, 23, 0.08491531759500504, 
+-2019-01-30 13:31:14.261260, 10, 24, 0.10854067653417587, 
+-2019-01-30 13:31:15.550450, 10, 25, 0.08781217038631439, 
+-2019-01-30 13:31:16.855040, 10, 26, 0.09673270583152771, 
+-2019-01-30 13:31:18.204739, 10, 27, 0.11525040119886398, 
+-2019-01-30 13:31:19.555005, 10, 28, 0.08237291872501373, 
+-2019-01-30 13:31:20.837324, 10, 29, 0.09319712221622467, 
+-2019-01-30 13:31:22.115949, 10, 30, 0.08546803891658783, 
+-2019-01-30 13:31:23.396968, 10, 31, 0.08743986487388611, 
+-2019-01-30 13:31:24.673125, 10, 32, 0.10828543454408646, 
+-2019-01-30 13:31:25.946592, 10, 33, 0.08778299391269684, 
+-2019-01-30 13:31:27.201317, 10, 34, 0.08387700468301773, 
+-2019-01-30 13:31:28.461025, 10, 35, 0.0912272185087204, 
+-2019-01-30 13:31:29.726540, 10, 36, 0.08058713376522064, 
+-2019-01-30 13:31:31.022335, 10, 37, 0.10325699299573898, 
+-2019-01-30 13:31:32.283937, 10, 38, 0.097733274102211, 
+-2019-01-30 13:31:33.552140, 10, 39, 0.08264826983213425, 
+-2019-01-30 13:31:34.829895, 10, 40, 0.09541329741477966, 
+-2019-01-30 13:31:36.091304, 10, 41, 0.09162008762359619, 
+-2019-01-30 13:31:37.337522, 10, 42, 0.09880159050226212, 
+-2019-01-30 13:31:38.575839, 10, 43, 0.08538083732128143, 
+-2019-01-30 13:31:39.841740, 10, 44, 0.08381740003824234, 
+-2019-01-30 13:31:41.098380, 10, 45, 0.0786634236574173, 
+-2019-01-30 13:31:42.367877, 10, 46, 0.09263959527015686, 
+-2019-01-30 13:31:43.630046, 10, 47, 0.08728504180908203, 
+-2019-01-30 13:31:44.900969, 10, 48, 0.086570143699646, 
+-2019-01-30 13:31:46.155576, 10, 49, 0.096026211977005, 
+-2019-01-30 13:31:47.414862, 10, 50, 0.09195620566606522, 
+-2019-01-30 13:31:57.563990, 10, 51, 0.08332905918359756, 
+-2019-01-30 13:31:58.711627, 10, 52, 0.10324505716562271, 
+-2019-01-30 13:31:59.858765, 10, 53, 0.08079810440540314, 
+-2019-01-30 13:32:01.019290, 10, 54, 0.08164378255605698, 
+-2019-01-30 13:32:02.165220, 10, 55, 0.08431918174028397, 
+-2019-01-30 13:32:03.320365, 10, 56, 0.10143571346998215, 
+-2019-01-30 13:32:04.474509, 10, 57, 0.11322202533483505, 
+-2019-01-30 13:32:05.621969, 10, 58, 0.13281716406345367, 
+-2019-01-30 13:32:06.766773, 10, 59, 0.09097691625356674, 
+-2019-01-30 13:32:07.920365, 10, 60, 0.09284695982933044, 
+-2019-01-30 13:32:09.067105, 10, 61, 0.08392396569252014, 
+-2019-01-30 13:32:10.210508, 10, 62, 0.07860801368951797, 
+-2019-01-30 13:32:11.367838, 10, 63, 0.11052603274583817, 
+-2019-01-30 13:32:12.525436, 10, 64, 0.08657070994377136, 
+-2019-01-30 13:32:13.700602, 10, 65, 0.08898822218179703, 
+-2019-01-30 13:32:14.924368, 10, 66, 0.10665836930274963, 
+-2019-01-30 13:32:16.173504, 10, 67, 0.08432364463806152, 
+-2019-01-30 13:32:17.457742, 10, 68, 0.09185169637203217, 
+-2019-01-30 13:32:18.785044, 10, 69, 0.08598490804433823, 
+-2019-01-30 13:32:20.090713, 10, 70, 0.0855029746890068, 
+-2019-01-30 13:32:21.373419, 10, 71, 0.11369132250547409, 
+-2019-01-30 13:32:22.661117, 10, 72, 0.08317059278488159, 
+-2019-01-30 13:32:23.941644, 10, 73, 0.08315860480070114, 
+-2019-01-30 13:32:25.212551, 10, 74, 0.09496496617794037, 
+-2019-01-30 13:32:26.492373, 10, 75, 0.08656056225299835, 
+-2019-01-30 13:32:27.773452, 10, 76, 0.1125776544213295, 
+-2019-01-30 13:32:29.058312, 10, 77, 0.08217524737119675, 
+-2019-01-30 13:32:30.332161, 10, 78, 0.08724871277809143, 
+-2019-01-30 13:32:31.593693, 10, 79, 0.08803277462720871, 
+-2019-01-30 13:32:32.843195, 10, 80, 0.09188557416200638, 
+-2019-01-30 13:32:34.094911, 10, 81, 0.08356866985559464, 
+-2019-01-30 13:32:35.358672, 10, 82, 0.09039483964443207, 
+-2019-01-30 13:32:36.631287, 10, 83, 0.0911518856883049, 
+-2019-01-30 13:32:37.898214, 10, 84, 0.09269999712705612, 
+-2019-01-30 13:32:39.182838, 10, 85, 0.09389755874872208, 
+-2019-01-30 13:32:40.462132, 10, 86, 0.08466582000255585, 
+-2019-01-30 13:32:41.737877, 10, 87, 0.09074918925762177, 
+-2019-01-30 13:32:43.016002, 10, 88, 0.09066969901323318, 
+-2019-01-30 13:32:44.277375, 10, 89, 0.08741378039121628, 
+diff --git a/models/test_tiger/objective.py b/models/test_tiger/objective.py
+deleted file mode 100644
+index 27bf98d..0000000
+--- a/models/test_tiger/objective.py
++++ /dev/null
+@@ -1,208 +0,0 @@
+-import torch
+-import torch.nn as nn
+-from utilities import masklib
+-from training.loss import smoothness_penalty
+-from utilities.helpers import gridsample_residual
+-
+-
+-class Objective(nn.Module):
+-    """
+-    Module that calculates an objective function on the net's outputs.
+-
+-    `supervised` indicates the type of loss to be used: supervised if True,
+-    self-supervised if False. Other possible values can be added.
+-
+-    `function` is an optional argument that, if specified, overrides this
+-    with a custom function. It must be a callable and differentiable,
+-    accept inputs in the format of the outputs produced by the model,
+-    and produce a PyTorch scalar as output.
+-
+-    `Objective` is implemented as a PyTorch module for ease of distributing
+-    the calculation across GPUs with DataParallel, and for modularity.
+-    It is bundled with the archive because models can often have
+-    different objective functions, the calculation of which can
+-    depend on the model's specific architecture.
+-    """
+-
+-    def __init__(self, *args, supervised=True, function=None, **kwargs):
+-        super().__init__()
+-        if function is not None:
+-            if callable(function):
+-                self.function = function
+-            else:
+-                raise TypeError('Cannot use {} as an objective function. '
+-                                'Must be a callable.'.format(type(function)))
+-        elif supervised:
+-            self.function = SupervisedLoss(*args, **kwargs)
+-        else:
+-            self.function = SelfSupervisedLoss(*args, **kwargs)
+-
+-    def forward(self, *args, **kwargs):
+-        return self.function(*args, **kwargs)
+-
+-
+-class ValidationObjective(Objective):
+-    """
+-    Calculates a validation objective function on the net's outputs.
+-
+-    This is currently set to simply be the self-supervised loss,
+-    but this could be changed here to Pearson correlation or some
+-    other measure without affecting the training objective.
+-    """
+-
+-    def __init__(self, *args, **kwargs):
+-        kwargs['supervised'] = False
+-        super().__init__(*args, **kwargs)
+-
+-
+-class SupervisedLoss(nn.Module):
+-    """
+-    Calculates a supervised loss based on the mean squared error with
+-    the ground truth vector field.
+-    """
+-
+-    def __init__(self, *args, **kwargs):
+-        super().__init__()
+-
+-    def forward(self, prediction, truth):  # TODO: use masks
+-        truth = truth.to(prediction.device)
+-        return ((prediction - truth) ** 2).mean() * 25000
+-
+-
+-class SelfSupervisedLoss(nn.Module):
+-    """
+-    Calculates a self-supervised loss based on
+-    (a) the mean squared error between the source and target images
+-    (b) the smoothness of the vector field
+-
+-    The masks are used to ignore or reduce the loss values in certain regions
+-    of the images and vector field.
+-
+-    If `MSE(a, b)` is the mean squared error of two images, and `Penalty(f)`
+-    is the smoothness penalty of a vector field, the loss is calculated
+-    roughly as
+-        >>> loss = MSE(src, tgt) + lambda1 * Penalty(prediction)
+-    """
+-
+-    def __init__(self, penalty, lambda1, *args, **kwargs):
+-        super().__init__()
+-        self.field_penalty = smoothness_penalty(penalty)
+-        self.lambda1 = lambda1
+-
+-    def forward(self, src, tgt, prediction, masks=None):
+-        masks = prepare_masks(src, tgt, masks)
+-        src_masks = masks['src_masks']
+-        tgt_masks = masks['tgt_masks']
+-        src_field_masks = masks['src_field_masks']
+-        tgt_field_masks = masks['tgt_field_masks']
+-
+-        src, tgt = src.to(prediction.device), tgt.to(prediction.device)
+-
+-        src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
+-        image_loss_map = (src_warped - tgt)**2
+-        if src_masks or tgt_masks:
+-            image_weights = torch.ones_like(image_loss_map)
+-            if src_masks is not None:
+-                for mask in src_masks:
+-                    mask = gridsample_residual(mask, prediction,
+-                                               padding_mode='border')
+-                    image_loss_map = image_loss_map * mask
+-                    image_weights = image_weights * mask
+-            if tgt_masks is not None:
+-                for mask in tgt_masks:
+-                    image_loss_map = image_loss_map * mask
+-                    image_weights = image_weights * mask
+-            mse_loss = image_loss_map.sum() / image_weights.sum()
+-        else:
+-            mse_loss = image_loss_map.mean()
+-
+-        field_loss_map = self.field_penalty([prediction])
+-        if src_field_masks or tgt_field_masks:
+-            field_weights = torch.ones_like(field_loss_map)
+-            if src_field_masks is not None:
+-                for mask in src_field_masks:
+-                    mask = gridsample_residual(mask, prediction,
+-                                               padding_mode='border')
+-                    field_loss_map = field_loss_map * mask
+-                    field_weights = field_weights * mask
+-            if tgt_field_masks is not None:
+-                for mask in tgt_field_masks:
+-                    field_loss_map = field_loss_map * mask
+-                    field_weights = field_weights * mask
+-            field_loss = field_loss_map.sum() / field_weights.sum()
+-        else:
+-            field_loss = field_loss_map.mean()
+-
+-        loss = (mse_loss + self.lambda1 * field_loss)
+-        return loss
+-
+-
+-@torch.no_grad()
+-def gen_masks(src, tgt, threshold=10):
+-    """
+-    Heuristic generation of masks based on simple thresholding.
+-    Can be expanded in the future to include more sophisticated methods.
+-
+-    A better option is to include the masks as part of the dataset and pass
+-    them to prepare_masks().
+-    """
+-    src, tgt = (src * 255).to(torch.uint8), (tgt * 255).to(torch.uint8)
+-    return (src < threshold), (tgt < threshold)
+-
+-
+-@torch.no_grad()
+-def prepare_masks(src, tgt, masks=None, threshold=0.7):
+-    """
+-    Returns properly formatted masks with which to weight the loss function.
+-    If masks is None, this calls gen_masks to generate them.
+-    """
+-    # MSE coefficient on the defect (src, tgt) and radius:
+-    tissue_coef0 = 0, 0
+-    tissue_radius0 = 5
+-    # MSE coefficient in the defect neighborhood (src, tgt) and radius:
+-    tissue_coef1 = 2, 2
+-    tissue_radius1 = 35
+-    # smoothness coefficient on the defect (src, tgt) and radius:
+-    field_coef0 = 0, 0
+-    field_radius0 = 0
+-    # smoothness coefficient in the defect neighborhood (src, tgt) and radius:
+-    field_coef1 = 0.01, 0.01
+-    field_radius1 = 10
+-
+-    src_weights, tgt_weights = torch.ones_like(src), torch.ones_like(tgt)
+-    src_field_weights = torch.ones_like(src)
+-    tgt_field_weights = torch.ones_like(tgt)
+-    if masks is None or masks.nelement() == 0:
+-        src_defects, tgt_defects = gen_masks(src, tgt, threshold)
+-    else:
+-        masks = masks.cuda()
+-        src_defects = masks[:, 2:3] > threshold
+-        tgt_defects = masks[:, 3:4] > threshold
+-
+-    # Tissue (MSE) masks
+-    src_mask_0 = masklib.dilate(src_defects, radius=tissue_radius0)
+-    tgt_mask_0 = masklib.dilate(tgt_defects, radius=tissue_radius0)
+-    src_mask_1 = masklib.dilate(src_defects, radius=tissue_radius1)
+-    tgt_mask_1 = masklib.dilate(tgt_defects, radius=tissue_radius1)
+-    # coefficient in the defect neighborhood:
+-    src_weights[src_mask_1], tgt_weights[tgt_mask_1] = tissue_coef1
+-    # coefficient on the defect:
+-    src_weights[src_mask_0], tgt_weights[tgt_mask_0] = tissue_coef0
+-    # no MSE outside tissue
+-    src_weights[(src*255.0).to(torch.uint8) < 1] = 0
+-    tgt_weights[(tgt*255.0).to(torch.uint8) < 1] = 0
+-
+-    # Field (smoothness) masks
+-    src_field_mask_0 = masklib.dilate(src_defects, radius=field_radius0)
+-    tgt_field_mask_0 = masklib.dilate(tgt_defects, radius=field_radius0)
+-    src_field_mask_1 = masklib.dilate(src_defects, radius=field_radius1)
+-    tgt_field_mask_1 = masklib.dilate(tgt_defects, radius=field_radius1)
+-    # coefficient in the defect neighborhood:
+-    src_field_weights[src_field_mask_1], tgt_field_weights[tgt_field_mask_1] = field_coef1
+-    # coefficient on the defect:
+-    src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
+-
+-    return {'src_masks': [src_weights.float()],
+-            'tgt_masks': [tgt_weights.float()],
+-            'src_field_masks': [src_field_weights.float()],
+-            'tgt_field_masks': [tgt_field_weights.float()]}
+diff --git a/models/test_tiger/optimizer.pt b/models/test_tiger/optimizer.pt
+deleted file mode 100644
+index f471e02..0000000
+Binary files a/models/test_tiger/optimizer.pt and /dev/null differ
+diff --git a/models/test_tiger/plan.txt b/models/test_tiger/plan.txt
+deleted file mode 100644
+index 0d26f3e..0000000
+--- a/models/test_tiger/plan.txt
++++ /dev/null
+@@ -1,5 +0,0 @@
+-
+-At epoch 0, iteration None:
+-Time: 2019-01-30 12:47:15.068031
+-Commit: cc3b2dba61c80b258f9589e7d75f9ca9af276129
+-training/train.py start test_tiger --training_set /usr/people/runzhey/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --validation_set /usr/people/runzhey/training_data/v1_100slice_minnie_6144_train_mip2_annotated.h5 --height 5 --seed 5432 -u --lr 0.000005 --lambda1 300000 --plan all
+diff --git a/models/test_tiger/plot.png b/models/test_tiger/plot.png
+deleted file mode 100644
+index 225f121..0000000
+Binary files a/models/test_tiger/plot.png and /dev/null differ
+diff --git a/models/test_tiger/prand.pt b/models/test_tiger/prand.pt
+deleted file mode 100644
+index 76c47e8..0000000
+Binary files a/models/test_tiger/prand.pt and /dev/null differ
+diff --git a/models/test_tiger/preprocessor.py b/models/test_tiger/preprocessor.py
+deleted file mode 100644
+index 18e7b70..0000000
+--- a/models/test_tiger/preprocessor.py
++++ /dev/null
+@@ -1,50 +0,0 @@
+-import torch
+-import torch.nn as nn
+-import cv2
+-
+-
+-class Preprocessor(nn.Module):
+-    """
+-    Code to preprocess the data.
+-    This can include contrast normalization, masking, etc.
+-
+-    While this does necessarily not need to be a PyTorch module, it inherits
+-    from nn.Module to make it easier to parallelize with DataParallel if
+-    desired.
+-    """
+-
+-    def __init__(self, clipLimit=40, tileGridSize=(8, 8), *args, **kwargs):
+-        super().__init__()
+-        self.clahe = cv2.createCLAHE(clipLimit=clipLimit,
+-                                     tileGridSize=tileGridSize)
+-
+-    def forward(self, X, *args, **kwargs):
+-        for i in range(2):
+-            mask = self.gen_mask(X[..., i, :, :])
+-            X[..., i, :, :] = self.normalize(X[..., i, :, :], mask=mask)
+-            X[..., i, :, :] = self.contrast(X[..., i, :, :], mask=mask)
+-        return X
+-
+-    def contrast(self, X, mask=...):
+-        """
+-        Performs Contrast Limited Adaptive Histogram Equalization
+-        """
+-        Xb = (X * 255).to(torch.uint8)[mask].squeeze()
+-        eq = torch.from_numpy(self.clahe.apply(Xb.cpu().numpy()))
+-        X[mask] = eq.unsqueeze(0).to(torch.float) / 255
+-        X[..., Xb == 0] = 0
+-        return X
+-
+-    def normalize(self, X, mask=..., min=0, max=1):
+-        """
+-        Rescale values from min to max
+-        """
+-        X[mask] = X[mask] - X[mask].min()
+-        X[mask] = X[mask] / X[mask].max() * (max - min) + min
+-        return X
+-
+-    def gen_mask(self, X, threshold=1):
+-        """
+-        Return a mask that selects only the relevant parts of the image
+-        """
+-        return ...
+diff --git a/models/test_tiger/state_vars.yaml b/models/test_tiger/state_vars.yaml
+deleted file mode 100644
+index d4583f4..0000000
+--- a/models/test_tiger/state_vars.yaml
++++ /dev/null
+@@ -1,32 +0,0 @@
+-batch_size: 1
+-checkpoint_time: 100
+-encodings: false
+-epoch: 10
+-epochs_per_mip: 4
+-feature_maps: [12, 12, 12, 12, 12]
+-gamma: 1
+-gamma_step: 30
+-gpus: '0'
+-height: 5
+-initialized_list: [true, true, true, false, false]
+-iteration: 90
+-lambda1: 300000.0
+-levels: !!python/object/apply:builtins.slice [null, null, null]
+-log_time: 1
+-logdir: logs/
+-lr: 5.0e-06
+-name: test_tiger
+-num_epochs: 1000000
+-num_samples: null
+-penalty: lap
+-plan: all
+-seed: 5432
+-skip_aug: false
+-start_lr: 5.0e-06
+-supervised: false
+-training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, runzhey,
+-  training_data, minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5]
+-validation_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, runzhey,
+-  training_data, v1_100slice_minnie_6144_train_mip2_annotated.h5]
+-vis_time: 50
+-wd: 0
+diff --git a/models/test_tiger/weights.pt b/models/test_tiger/weights.pt
+deleted file mode 100644
+index 7bdbd62..0000000
+Binary files a/models/test_tiger/weights.pt and /dev/null differ
+diff --git a/slurm/tiger_train.cmd b/slurm/tiger_train.cmd
+index 5efe61f..deaff7c 100644
+--- a/slurm/tiger_train.cmd
++++ b/slurm/tiger_train.cmd
+@@ -6,7 +6,7 @@
+ #SBATCH --cpus-per-task=4
+ #SBATCH --gres=gpu:4
+ #SBATCH -t 72:00:00
+-#SBATCH --mem 40G
++#SBATCH --mem 100G
+ # sends mail when process begins, and
+ # when it ends. Make sure you difine your email
+ # address
+@@ -21,5 +21,5 @@ export LC_ALL=en_US.UTF-8
+ source activate rllab3
+ 
+ cd /home/runzhey/SEAMLeSS/
+-python training/train.py --num_workers 4 --gpu_ids 0,1,2,3 --training_set /home/runzhey/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --validation_set /home/runzhey/training_data/v1_100slice_minnie_6144_train_mip2_annotated.h5 --height 5 --seed 5432 -u --lr 0.000005 --lambda1 300000 --plan all --encodings
++python training/train.py --num_workers 4 --gpu_ids 0,1,2,3 start tiger_6 --training_set /home/runzhey/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --height 5 --seed 5432 -u --lr 0.000005 --lambda1 300000 --plan all --encodings
+ 

@@ -20,6 +20,6 @@ export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 source activate rllab3
 
-cd /home/runzhey/SEAMLeSS/
-python training/train.py --num_workers 4 --gpu_ids 0,1,2,3 resume tiger_6 --training_set /tigress/runzhey/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --height 5 --seed 5432 -u --lr 0.000005 --lambda1 300000 --plan all --encodings
+cd /scratch/align/SEAMLeSS/
+python training/train.py --num_workers 4 --gpu_ids 0,1,2,3 resume tiger_6 --training_set /home/runzhey/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --height 5 --seed 5432 -u --lr 0.000005 --lambda1 300000 --plan all --encodings
 
