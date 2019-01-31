@@ -330,7 +330,7 @@ class Aligner:
       return field 
 
   def get_composed_field(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip, dst_mip,
-                               pad=2048):
+                               factor=1., pad=2048):
     """Compose chunk of two field cloudvolumes, such that f(g(x)) at dst_mip
 
     Args:
@@ -342,6 +342,7 @@ class Aligner:
        f_mip: MIP of left-hand vector field
        g_mip: MIP of right-hand vector field
        dst_mip: MIP of the output vector field, such that min(f_mip, g_mip) >= dst_mip
+       factor: float to multiply the f vector field by
        pad: int for amount of MIP0 padding to use before processing
 
     Returns:
@@ -352,6 +353,7 @@ class Aligner:
     padded_bbox.uncrop(pad, mip=0)
     crop = pad // 2**dst_mip
     f = self.get_field(f_cv, f_z, padded_bbox, f_mip, relative=True, to_tensor=True)
+    f = f*factor
     g = self.get_field(g_cv, g_z, padded_bbox, g_mip, relative=True, to_tensor=True)
     if dst_mip < g_mip:
       g = upsample_field(g, g_mip, dst_mip)
@@ -845,7 +847,7 @@ class Aligner:
     return batch
 
   def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 
-                    f_mip, g_mip, dst_mip, prefix=''):
+                    f_mip, g_mip, dst_mip, factor=1., prefix=''):
     """Compose two vector field CloudVolumes
 
     For coarse + fine composition:
@@ -877,7 +879,7 @@ class Aligner:
     for chunk in chunks:
       batch.append(tasks.ComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
                                      dst_z, chunk, f_mip, g_mip, dst_mip,
-                                     prefix))
+                                     factor, prefix))
     return batch
 
   def cpc_chunkwise(self, src_z, tgt_z, src_cv, tgt_cv, dst_cv, bbox, src_mip, dst_mip):

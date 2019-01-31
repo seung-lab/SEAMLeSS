@@ -185,9 +185,9 @@ class VectorVoteTask(RegisteredTask):
 
 class ComposeTask(RegisteredTask):
   def __init__(self, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
-                     dst_mip, prefix):
+                     dst_mip, factor, prefix):
     super().__init__(f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
-                     dst_mip, prefix)
+                     dst_mip, factor, prefix)
 
   def execute(self, aligner):
     f_cv = DCV(self.f_cv)
@@ -200,6 +200,7 @@ class ComposeTask(RegisteredTask):
     f_mip = self.f_mip
     g_mip = self.g_mip
     dst_mip = self.dst_mip
+    factor = self.factor
     prefix = self.prefix
     print("\nCompose\n"
           "f {}\n"
@@ -207,11 +208,12 @@ class ComposeTask(RegisteredTask):
           "f_z={}, g_z={}\n"
           "f_MIP{}, g_MIP{}\n"
           "dst {}\n"
-          "dst_MIP{}\n".format(f_cv, g_cv, f_z, g_z, f_mip, g_mip, dst_cv, 
-                               dst_mip), flush=True)
+          "dst_MIP {}\n"
+          "factor={}\n".format(f_cv, g_cv, f_z, g_z, f_mip, g_mip, dst_cv, 
+                               dst_mip, factor), flush=True)
     if not aligner.dry_run:
       h = aligner.get_composed_field(f_cv, g_cv, f_z, g_z, patch_bbox, 
-                                   f_mip, g_mip, dst_mip)
+                                   f_mip, g_mip, dst_mip, factor)
       h = h.data.cpu().numpy()
       aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
       with Storage(dst_cv.path) as stor:
