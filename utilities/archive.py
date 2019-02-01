@@ -59,7 +59,7 @@ class ModelArchive(object):
         >>> new_model.save()  # save the updated state of the new model to disk
     """
 
-    def __init__(self, name, readonly=True, *args, **kwargs):
+    def __init__(self, name, readonly=1, *args, **kwargs):
         name, directory = self._resolve_model(name)
         self._name = name
         self.directory = directory
@@ -374,10 +374,14 @@ class ModelArchive(object):
             self._model.load(self.paths['weights'])
 
         # set model to eval or train mode
-        if self.readonly:
+        if self.readonly==1:
             for p in self._model.parameters():
                 p.requires_grad = False
             self._model.eval().cuda()
+        elif self.readonly==2:
+            for p in self._model.parameters():
+                p.requires_grad = False
+            self._model.train().cuda()
         else:
             for p in self._model.parameters():
                 p.requires_grad = True
