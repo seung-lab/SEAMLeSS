@@ -22,11 +22,11 @@ spec:
         run: seamless
     spec:
       containers:
-      - image: seunglab/seamless:serial-block-alignment
+      - image: seunglab/seamless:nkem
         name: seamless
         imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/worker.py --queue_name deepalign"]
+        args: ["-c", "python inference/worker.py --queue_name nkem-igneous"]
         resources: 
           limits:
             nvidia.com/gpu: 1

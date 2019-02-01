@@ -155,9 +155,16 @@ class Aligner:
                              to_tensor=to_tensor, normalizer=normalizer)
 
   def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
-                             to_tensor=True, normalizer=None):
+                             to_tensor=True, normalizer=None, alt_z=None):
     """Get image with mask applied
     """
+    if alt_z is not None:
+      z_list = [z] + alt_z
+      return self.get_composite_image(image_cv, z_list, bbox, image_mip,
+                                      mask_cv=mask_cv, mask_mip=mask_mip,
+                                      mask_val=mask_val, to_tensor=to_tensor,
+                                      normalizer=normalizer)
+
     image = self.get_image(image_cv, z, bbox, image_mip,
                            to_tensor=to_tensor, normalizer=normalizer)
     if mask_cv is not None:
@@ -168,27 +175,43 @@ class Aligner:
       image = image.masked_fill_(mask, 0)
     return image
 
-  def get_composite_image(self, cv, z_list, bbox, mip, to_tensor=True): 
-    """Collapse 3D image into a 2D image, replacing black pixels in the first 
+  def get_composite_image(self, image_cv, z_list, bbox, image_mip,
+                                mask_cv=None, mask_mip=0, mask_val=0,
+                                to_tensor=True, normalizer=None):
+    """Collapse 3D image into a 2D image, replacing black pixels in the first
         z slice with the nearest nonzero pixel in other slices.
     
     Args:
        cv: MiplessCloudVolume where images are stored
-       z_list: list of ints that will be processed in order 
+       z_list: list of indices that will be processed in order
        bbox: BoundingBox defining data range
-       mip: int MIP level of the data to process
-       adjust_contrast: output will be normalized
+       image_mip: int MIP level of the image data to process
+       mask_cv: optional, MiplessCloudVolume where masks are stored
+       mask_mip: int MIP level of the mask, ignored when no ``mask_cv`` is
+        specified, defaults to 0.
+       mask_val: The value that specifies regions to be blackened, ignored when
+        no ``mask_cv`` is specified, defaults to 0 (black).
        to_tensor: output will be torch.tensor
        #TODO normalizer: callable function to adjust the contrast of the image
     """
-    z_start = np.min(z_range)
-    z_stop = np.max(z_range)+1
-    z_range = range(z_start, z_stop) 
-    img = self.get_data_range(cv, z_range, bbox, src_mip=mip, dst_mip=mip)
+    z_start = np.min(z_list)
+    z_stop = np.max(z_list) + 1
+    z_range = range(z_start, z_stop)
+
+    # Retrieve image stack
+    img = self.get_data_range(image_cv, z_range, bbox, src_mip=image_mip, dst_mip=image_mip)
+
+    # Load and apply masks to image stack
+    if mask_cv is not None:
+      mask = self.get_data_range(mask_cv, z_range, bbox, to_float=False, src_mip=mask_mip, dst_mip=image_mip)
+      mask = mask == mask_val
+      img = img.masked_fill_(mask, 0)
+
+    # Collapse selected z images to single 2D, consecutively filling black (0) regions
     z = z_list[0]
-    o = img[z-z_start, ...]
+    o = img[z - z_start, ...]
     for z in z_list[1:]:
-      o[o <= 1] = img[z-z_start, ...][o <= 1]
+      o[o == 0] = img[z - z_start, ...][o == 0]
     return o
 
   def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
@@ -216,7 +239,7 @@ class Aligner:
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
     if normalizer is not None:
-      data = self.normalizer(data).reshape(data.shape)
+      data = normalizer(data).reshape(data.shape)
     # convert to tensor if requested, or if up/downsampling required
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
@@ -236,7 +259,8 @@ class Aligner:
     
     return data
   
-  def get_data_range(self, cv, z_range, bbox, src_mip, dst_mip, to_tensor=True):
+  def get_data_range(self, cv, z_range, bbox, src_mip, dst_mip, to_float=True,
+                           to_tensor=True, normalizer=None):
     """Retrieve CloudVolume data. Returns 4D tensor, BxCxWxH
     
     Args:
@@ -244,27 +268,39 @@ class Aligner:
        bbox: BoundingBox defining data range
        src_mip: mip of the CloudVolume data
        dst_mip: mip of the output mask (dictates whether to up/downsample)
+       to_float: output should be float32
        to_tensor: output will be torch.tensor
-       #TODO normalizer: callable function to adjust the contrast of the image
+       normalizer: callable function to adjust the contrast of the image
+
+    Returns:
+       image from CloudVolume in region bbox at dst_mip, with contrast adjusted,
+       if normalizer is specified, and as a uint8 or float32 torch tensor or numpy, 
+       as specified
     """
     x_range = bbox.x_range(mip=src_mip)
     y_range = bbox.y_range(mip=src_mip)
     data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range]
     data = np.transpose(data, (2,3,0,1))
-    if isinstance(data, np.ndarray):
-      data = torch.from_numpy(data)
-    data = data.to(device=self.device)
-    if src_mip != dst_mip:
-      # k = 2**(src_mip - dst_mip)
-      size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
-      if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
-        data = interpolate(data, size=size, mode='bilinear')
-      else:
-        data = data.type('torch.cuda.DoubleTensor')
-        data = interpolate(data, size=size, mode='nearest')
-        data = data.type('torch.cuda.ByteTensor')
-    if not to_tensor:
-      data = data.cpu().numpy()
+    if to_float:
+      data = np.divide(data, float(255.0), dtype=np.float32)
+    if normalizer is not None:
+      data = normalizer(data).reshape(data.shape)
+    # convert to tensor if requested, or if up/downsampling required
+    if to_tensor | (src_mip != dst_mip):
+      if isinstance(data, np.ndarray):
+        data = torch.from_numpy(data)
+      data = data.to(device=self.device)
+      if src_mip != dst_mip:
+        # k = 2**(src_mip - dst_mip)
+        size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
+        if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
+          data = interpolate(data, size=size, mode='bilinear')
+        else:
+          data = data.type('torch.cuda.DoubleTensor')
+          data = interpolate(data, size=size, mode='nearest')
+          data = data.type('torch.cuda.ByteTensor')
+      if not to_tensor:
+        data = data.cpu().numpy()
     
     return data
 
@@ -422,9 +458,9 @@ class Aligner:
   # CloudVolume chunk methods #
   #############################
 
-  def compute_field_chunk(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad, 
-                          src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
-                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0):
+  def compute_field_chunk(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
+                                src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
+                                tgt_alt_z=None):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
     Args:
@@ -451,12 +487,12 @@ class Aligner:
 
     src_patch = self.get_masked_image(src_cv, src_z, padded_bbox, mip,
                                 mask_cv=src_mask_cv, mask_mip=src_mask_mip,
-                                mask_val=src_mask_val,
-                                to_tensor=True, normalizer=normalizer)
+                                mask_val=src_mask_val, to_tensor=True,
+                                normalizer=normalizer)
     tgt_patch = self.get_masked_image(tgt_cv, tgt_z, padded_bbox, mip,
-                                mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
-                                mask_val=tgt_mask_val,
-                                to_tensor=True, normalizer=normalizer)
+                                mask_cv=None, mask_mip=None, mask_val=None,
+                                to_tensor=True, normalizer=normalizer,
+                                alt_z=tgt_alt_z)
 
     # model produces field in relative coordinates
     field = model(src_patch, tgt_patch)
@@ -742,8 +778,9 @@ class Aligner:
                                   is_field, mask_cv, mask_mip, mask_val, prefix))
     return batch
 
-  def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv, 
-                          src_z, tgt_z, bbox, mip, pad=2048, prefix=''):
+  def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv,
+                          src_z, tgt_z, bbox, mip, pad=2048, mask_cv=None,
+                          mask_mip=0, mask_val=0, tgt_alt_z=None, prefix=''):
     """Compute field to warp src section to tgt section 
   
     Args:
@@ -758,11 +795,14 @@ class Aligner:
         and where the resulting vector field will be written
        mip: int for MIP level images will be loaded and field will be stored at
        pad: int for amount of padding to add to bbox before processing
-       wait: bool indicating whether to wait for all tasks must finish before proceeding
        prefix: str used to write "finished" files for each task 
         (only used for distributed)
+       mask_cv: MiplessCloudVolume where source mask is stored
+       mask_mip: int for MIP level at which source mask is stored
+       mask_val: int for pixel value in the mask that should be zero-filled
+       tgt_alt_z: list of section indices of target image that will be used
+        to fill in black/masked regions in `tgt_z`
     """
-    start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 
                                     max_mip=cm.num_scales)
@@ -771,8 +811,9 @@ class Aligner:
     batch = []
     for chunk in chunks:
       batch.append(tasks.ComputeFieldTask(model_path, src_cv, tgt_cv,
-                                                   field_cv, src_z, tgt_z, chunk, 
-                                                   mip, pad, prefix)) 
+                                          field_cv, src_z, tgt_z, chunk,
+                                          mip, pad, mask_cv, mask_mip,
+                                          mask_val, tgt_alt_z, prefix))
     return batch
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
