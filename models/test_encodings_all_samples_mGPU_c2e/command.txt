@@ -1,0 +1,1 @@
+./train.py start test_encodings_all_samples_a** --training_set /usr/people/bnehoran/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --height 5 --seed 5432 -u --lr 0.0000005 --lambda1 3000 --plan all --encodings --vis 100
