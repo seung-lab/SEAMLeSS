@@ -18,8 +18,11 @@ class CloudManager():
      max_displacement: int for the maximum MIP0 padding required for processing
      provenance: dict to be saved as json file with each new directory created
   """
-  def __init__(self, cv_path, max_mip, max_displacement, provenance):
-    self.info = self.create_info(CloudVolume(cv_path), max_mip, max_displacement)
+  def __init__(self, cv_path, max_mip, max_displacement, provenance,
+               batch_size=-1, size_chunk=-1, batch_mip=-1):
+    self.info = self.create_info(CloudVolume(cv_path), max_mip,
+                                 max_displacement, batch_size, size_chunk,
+                                 batch_mip)
     self.provenance = provenance
     self.num_scales = len(self.info['scales'])
     self.dst_chunk_sizes = []
@@ -41,7 +44,7 @@ class CloudManager():
 
   @classmethod
   def create_info(cls, src_cv, max_mip, max_offset, 
-                       batch_size=-1, size_chunk=[-1,-1], batch_mip=-1):
+                       batch_size=-1, size_chunk=-1, batch_mip=-1):
     """Use an existing CloudVolume to make an info file for CloudVolumes to store
        outputs of the Aligner class.
 
@@ -65,8 +68,7 @@ class CloudManager():
     Returns:
        an info file that can accommodate the max_mip, max_offset
     """
-    adjusting_chunksize = ((batch_size >= 0) and (all(i >= 0 for i in size_chunk)) and
-                                                                       (batch_mip > 0))
+    adjusting_chunksize = ((batch_size >= 0) and (size_chunk >0) and (batch_mip > 0))
     src_info = src_cv.info
     m = len(src_info['scales'])
     each_factor = Vec(2,2,1)

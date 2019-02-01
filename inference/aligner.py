@@ -466,6 +466,47 @@ class Aligner:
     field = field[:,pad:-pad,pad:-pad,:]
     return field
 
+  def fold_detection(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
+                    chunk_size):
+    start = time()
+    chunks = self.break_into_chunks(bbox, chunk_size,
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.num_scales)
+    print("\nfold detect\n"
+          "model {}\n"
+          "src {}\n"
+          "dst {}\n"
+          "z={} \n"
+          "MIP{}\n"
+          "{} chunks\n".format(model_path, src_cv, dst_cv, z,
+                               mip, len(chunks)), flush=True)
+    if self.distributed:
+      if prefix == '':
+        prefix = '{}_{}'.format(mip, src_z)
+      batch = []
+      for patch_bbox in chunks:
+        batch.append(tasks.ComputeFieldTask(model_path, src_cv, tgt_cv,
+                                                     field_cv, src_z, tgt_z, patch_bbox, 
+                                                     mip, pad, prefix)) 
+      self.upload_tasks(batch)
+    else:
+      def chunkwise(patch_bbox):
+        image = self.fold_detect_chunk(model_path, src_cv, z, mip, patch_bbox)
+        image = image.cpu().numpy()
+        print("image size is", image.shape)
+        self.save_image(image, dst_cv, z, patch_bbox, mip)
+      self.pool.map(chunkwise, chunks)
+    end = time()
+    print (": {} sec".format(end - start))
+
+  def fold_detect_chunk(self, model_path, src_cv, z, mip, bbox):
+    archive = self.get_model_archive(model_path)
+    model = archive.model
+    image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
+    new_image = model(image)
+    return new_image
+
+
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
                         inverse=False, softmin_temp=-1, serial=True):
     """Compute consensus vector field using pairwise vector fields with earlier sections. 
