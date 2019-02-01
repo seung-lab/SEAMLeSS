@@ -32,6 +32,8 @@ if __name__ == '__main__':
     type=int, default=2048)
   parser.add_argument('--z_offset', type=int, default=-1,
     help='int for offset of section to be compared against')
+  parser.add_argument('--unnormalized', action='store_true', 
+    help='do not normalize the CPC output, save as float')
   args = parse_args(parser)
   if args.src_info_path == '':
     args.src_info_path = args.src_path
@@ -51,9 +53,13 @@ if __name__ == '__main__':
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False)
+  data_type = 'uint8'
+  if args.unnormalized:
+    data_type = 'float32'
+  
   # Create dst CloudVolumes for each block, since blocks will overlap by 3 sections
   dst = cm.create(join(args.dst_path, 'cpc', '{}_{}'.format(args.src_mip, args.dst_mip)), 
-                  data_type='uint8', num_channels=1, fill_missing=True, 
+                  data_type=data_type, num_channels=1, fill_missing=True, 
                   overwrite=True)
 
   ##############
@@ -65,7 +71,7 @@ if __name__ == '__main__':
   prefix = ''
   for z in z_range:
     t = a.cpc(cm, src, src, dst, z, z+args.z_offset, bbox, 
-                  args.src_mip, args.dst_mip, prefix=prefix)
+                  args.src_mip, args.dst_mip, norm=not args.unnormalized, prefix=prefix)
     batch.extend(t)
 
   run(a, batch)

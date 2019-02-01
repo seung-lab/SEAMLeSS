@@ -223,9 +223,9 @@ class ComposeTask(RegisteredTask):
 
 class CPCTask(RegisteredTask):
   def __init__(self, src_cv, tgt_cv, dst_cv, src_z, tgt_z, patch_bbox, 
-                    src_mip, dst_mip, prefix):
+                    src_mip, dst_mip, norm, prefix):
     super().__init__(src_cv, tgt_cv, dst_cv, src_z, tgt_z, patch_bbox, 
-                    src_mip, dst_mip, prefix)
+                    src_mip, dst_mip, norm, prefix)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
@@ -236,18 +236,21 @@ class CPCTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     src_mip = self.src_mip
     dst_mip = self.dst_mip
+    norm = self.norm
     prefix = self.prefix
     print("\nCPC\n"
           "src {}\n"
           "tgt {}\n"
           "src_z={}, tgt_z={}\n"
           "src_MIP{} to dst_MIP{}\n"
-          "dst {}\n".format(src_cv, tgt_cv, src_z, tgt_z, src_mip, dst_mip, 
+          "norm={}\n"
+          "dst {}\n".format(src_cv, tgt_cv, src_z, tgt_z, src_mip, dst_mip, norm,
                             dst_cv), flush=True)
     if not aligner.dry_run:
-      r = aligner.cpc_chunk(src_cv, tgt_cv, src_z, tgt_z, patch_bbox, src_mip, dst_mip)
+      r = aligner.cpc_chunk(src_cv, tgt_cv, src_z, tgt_z, patch_bbox, src_mip, 
+                            dst_mip, norm)
       r = r.cpu().numpy()
-      aligner.save_image(r, dst_cv, src_z, patch_bbox, dst_mip)
+      aligner.save_image(r, dst_cv, src_z, patch_bbox, dst_mip, to_uint8=norm)
       with Storage(dst_cv.path) as stor:
         path = 'cpc_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))
         stor.put_file(path, '')

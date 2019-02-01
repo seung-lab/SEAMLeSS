@@ -519,14 +519,17 @@ def center_image(X, scale_factor, device=torch.device('cpu')):
   X_bar = interpolate(X_bar_down, size=X.shape[2:], mode='nearest')
   return X - X_bar    
 
-def cpc(S, T, scale_factor, device=torch.device('cpu')):
+def cpc(S, T, scale_factor, norm=True, device=torch.device('cpu')):
   chunk_dim = get_chunk_dim(scale_factor)
   sum_pool = LPPool2d(1, chunk_dim, stride=chunk_dim).to(device=device)
   S_hat = center_image(S, scale_factor, device=device)
   T_hat = center_image(T, scale_factor, device=device)
-  S_hat_std = pow(sum_pool(pow(S_hat, 2)), 0.5)
-  T_hat_std = pow(sum_pool(pow(T_hat, 2)), 0.5)
-  norm = reciprocal(mul(S_hat_std, T_hat_std))
-  R = mul(sum_pool(mul(S_hat, T_hat)), norm)
+  if norm:
+    S_hat_std = pow(sum_pool(pow(S_hat, 2)), 0.5)
+    T_hat_std = pow(sum_pool(pow(T_hat, 2)), 0.5)
+    norm = reciprocal(mul(S_hat_std, T_hat_std))
+    R = mul(sum_pool(mul(S_hat, T_hat)), norm)
+  else:
+    R = sum_pool(mul(S_hat, T_hat))
   return R
 

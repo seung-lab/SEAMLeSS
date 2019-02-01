@@ -23,8 +23,7 @@ from torch.nn.functional import interpolate
 import torch.nn as nn
 
 from normalizer import Normalizer
-from vector_vote import vector_vote, get_diffs, weight_diffs, \
-                        compile_field_weights, weighted_sum_fields
+from vector_vote import vector_vote
 from temporal_regularization import create_field_bump
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
                               np_downsample, invert, compose_fields, upsample_field, \
@@ -674,7 +673,7 @@ class Aligner:
     data = interpolate(data, scale_factor=0.5, mode='bilinear')
     return data.cpu().numpy()
 
-  def cpc_chunk(self, src_cv, tgt_cv, src_z, tgt_z, bbox, src_mip, dst_mip):
+  def cpc_chunk(self, src_cv, tgt_cv, src_z, tgt_z, bbox, src_mip, dst_mip, norm=True):
     """Calculate the chunked pearson r between two chunks
 
     Args:
@@ -702,7 +701,7 @@ class Aligner:
                          to_tensor=True)
     print('src.shape {}'.format(src.shape))
     print('tgt.shape {}'.format(tgt.shape))
-    return cpc(src, tgt, scale_factor, device=self.device)
+    return cpc(src, tgt, scale_factor, norm=norm, device=self.device)
 
   ######################
   # Dataset operations #
@@ -884,7 +883,8 @@ class Aligner:
                                      factor, prefix))
     return batch
 
-  def cpc(self, cm, src_cv, tgt_cv, dst_cv, src_z, tgt_z, bbox, src_mip, dst_mip, prefix=''):
+  def cpc(self, cm, src_cv, tgt_cv, dst_cv, src_z, tgt_z, bbox, src_mip, dst_mip, 
+                norm=True, prefix=''):
     """Chunked Pearson Correlation between two CloudVolume images
 
     Args:
@@ -898,6 +898,7 @@ class Aligner:
        src_mip: int MIP level of input src & tgt images
        dst_mip: int MIP level of output image, will dictate the size of the chunks
         used for the pearson r
+       norm: bool for whether to normalize or not
        prefix: str used to write "finished" files for each task 
         (only used for distributed)
     """
@@ -910,7 +911,7 @@ class Aligner:
     batch = []
     for chunk in chunks:
       batch.append(tasks.CPCTask(src_cv, tgt_cv, dst_cv, src_z, tgt_z, 
-                                 chunk, src_mip, dst_mip, prefix))
+                                 chunk, src_mip, dst_mip, norm, prefix))
     return batch
 
   def render_batch_chunkwise(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip,
