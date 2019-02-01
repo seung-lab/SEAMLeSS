@@ -122,7 +122,7 @@ class Aligner:
   # IO methods #
   ##############
 
-  def get_model_archive(self, model_path):
+  def get_model_archive(self, model_path, readonly=1):
     """Load a model stored in the repo with its relative path
 
     TODO: evict old models from self.models
@@ -140,7 +140,7 @@ class Aligner:
       print('Adding model {0} to the cache'.format(model_path))
       path = Path(model_path)
       model_name = path.stem
-      archive = ModelArchive(model_name)
+      archive = ModelArchive(model_name, readonly)
       self.model_archives[model_path] = archive
       return archive
 
@@ -500,7 +500,7 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def fold_detect_chunk(self, model_path, src_cv, z, mip, bbox):
-    archive = self.get_model_archive(model_path)
+    archive = self.get_model_archive(model_path, readonly=2)
     model = archive.model
     image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
     new_image = model(image)
