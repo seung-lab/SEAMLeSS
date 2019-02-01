@@ -26,10 +26,9 @@ from normalizer import Normalizer
 from vector_vote import vector_vote, get_diffs, weight_diffs, \
                         compile_field_weights, weighted_sum_fields
 from temporal_regularization import create_field_bump
-from cpc import cpc 
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
                               np_downsample, invert, compose_fields, upsample_field, \
-                              is_identity
+                              is_identity, cpc
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -675,14 +674,14 @@ class Aligner:
     data = interpolate(data, scale_factor=0.5, mode='bilinear')
     return data.cpu().numpy()
 
-  def cpc(self, src_z, tgt_z, src_cv, tgt_cv, bbox, src_mip, dst_mip):
+  def cpc_chunk(self, src_cv, tgt_cv, src_z, tgt_z, bbox, src_mip, dst_mip):
     """Calculate the chunked pearson r between two chunks
 
     Args:
-       src_z: int z index of one section to compare
-       tgt_z: int z index of other section to compare
        src_cv: MiplessCloudVolume of source image
        tgt_cv: MiplessCloudVolume of target image
+       src_z: int z index of one section to compare
+       tgt_z: int z index of other section to compare
        bbox: BoundingBox of region to process
        src_mip: int MIP level of input src & tgt images
        dst_mip: int MIP level of output image, will dictate the size of the chunks
@@ -697,10 +696,12 @@ class Aligner:
                                                                    tgt_z, 
                                                                    bbox.__str__(mip=0)))
     scale_factor = 2**(dst_mip - src_mip)
-    src = self.get_image(src_cv, src_z, bbox, src_mip, adjust_contrast=False, 
+    src = self.get_image(src_cv, src_z, bbox, src_mip, normalizer=None,
                          to_tensor=True)
-    tgt = self.get_image(tgt_cv, tgt_z, bbox, src_mip, adjust_contrast=False, 
+    tgt = self.get_image(tgt_cv, tgt_z, bbox, src_mip, normalizer=None,
                          to_tensor=True)
+    print('src.shape {}'.format(src.shape))
+    print('tgt.shape {}'.format(tgt.shape))
     return cpc(src, tgt, scale_factor, device=self.device)
 
   ######################
@@ -855,6 +856,7 @@ class Aligner:
       g = coarse 
     
     Args:
+       cm: CloudManager that corresponds to the f_cv, g_cv, dst_cv
        f_cv: MiplessCloudVolume of vector field f
        g_cv: MiplessCloudVolume of vector field g
        dst_cv: MiplessCloudVolume of composed vector field
@@ -882,45 +884,34 @@ class Aligner:
                                      factor, prefix))
     return batch
 
-  def cpc_chunkwise(self, src_z, tgt_z, src_cv, tgt_cv, dst_cv, bbox, src_mip, dst_mip):
-    """Chunkwise CPC 
+  def cpc(self, cm, src_cv, tgt_cv, dst_cv, src_z, tgt_z, bbox, src_mip, dst_mip, prefix=''):
+    """Chunked Pearson Correlation between two CloudVolume images
 
     Args:
-       src_z: int z index of one section to compare
-       tgt_z: int z index of other section to compare
+       cm: CloudManager that corresponds to the src_cv, tgt_cv, dst_cv
        src_cv: MiplessCloudVolume of source image
        tgt_cv: MiplessCloudVolume of target image
        dst_cv: MiplessCloudVolume of destination image
+       src_z: int z index of one section to compare
+       tgt_z: int z index of other section to compare
        bbox: BoundingBox of region to process
        src_mip: int MIP level of input src & tgt images
        dst_mip: int MIP level of output image, will dictate the size of the chunks
         used for the pearson r
+       prefix: str used to write "finished" files for each task 
+        (only used for distributed)
     """
-    
-    print('Compute CPC of MIP{0} at MIP{1}, {2}<-({2},{3})'.format(src_mip, dst_mip, 
-                                                                   src_z, tgt_z))
     start = time()
-    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[dst_mip],
-                                    cm.dst_voxel_offsets[dst_mip], mip=dst_mip, 
-                                    render=True)
-    if self.distributed:
-        batch = []
-        for i in range(0, len(chunks), self.task_batch_size):
-            task_patches = []
-            for j in range(i, min(len(chunks), i + self.task_batch_size)):
-                task_patches.append(chunks[j].serialize())
-            batch.append(tasks.RenderCVTask(src_z, field_cv, field_z, task_patches,
-                                                      mip, dst_cv, dst_z))
-        self.upload_tasks(batch)
-        self.wait_for_queue_empty(dst_cv.path,'render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/', len(chunks))
-    else:
-        def chunkwise(patch_bbox):
-          r = self.cpc(src_z, tgt_z, src_cv, tgt_cv, patch_bbox, src_mip, dst_mip)
-          r = r.cpu().numpy()
-          self.save_image(dst_cv, src_z, r, patch_bbox, dst_mip)
-        self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
+    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
+                                    cm.vec_voxel_offsets[dst_mip], 
+                                    mip=dst_mip)
+    if prefix == '':
+      prefix = '{}_{}'.format(dst_mip, src_z)
+    batch = []
+    for chunk in chunks:
+      batch.append(tasks.CPCTask(src_cv, tgt_cv, dst_cv, src_z, tgt_z, 
+                                 chunk, src_mip, dst_mip, prefix))
+    return batch
 
   def render_batch_chunkwise(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip,
                    batch):

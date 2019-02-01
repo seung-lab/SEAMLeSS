@@ -10,6 +10,9 @@ import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import pow, mul, reciprocal
+from torch.nn.functional import interpolate
+from torch.nn import AvgPool2d, LPPool2d
 from skimage.transform import rescale
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum 
@@ -504,4 +507,26 @@ def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   V.requires_grad = False
   print('Final cost @ t={0}: {1}'.format(currt, costs[-1].item()))
   return V
+
+def get_chunk_dim(scale_factor):
+  return scale_factor, scale_factor
+
+def center_image(X, scale_factor, device=torch.device('cpu')):
+  chunk_dim = get_chunk_dim(scale_factor)
+  avg_pool = AvgPool2d(chunk_dim, stride=chunk_dim).to(device=device)
+  X_bar_down = avg_pool(X)
+  # X_bar = interpolate(X_bar_down, scale_factor=scale_factor, mode='nearest')
+  X_bar = interpolate(X_bar_down, size=X.shape[2:], mode='nearest')
+  return X - X_bar    
+
+def cpc(S, T, scale_factor, device=torch.device('cpu')):
+  chunk_dim = get_chunk_dim(scale_factor)
+  sum_pool = LPPool2d(1, chunk_dim, stride=chunk_dim).to(device=device)
+  S_hat = center_image(S, scale_factor, device=device)
+  T_hat = center_image(T, scale_factor, device=device)
+  S_hat_std = pow(sum_pool(pow(S_hat, 2)), 0.5)
+  T_hat_std = pow(sum_pool(pow(T_hat, 2)), 0.5)
+  norm = reciprocal(mul(S_hat_std, T_hat_std))
+  R = mul(sum_pool(mul(S_hat, T_hat)), norm)
+  return R
 

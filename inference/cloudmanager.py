@@ -30,7 +30,7 @@ class CloudManager():
     self.compile_scales()
     self.cvs = {}
     self.kwargs = {'bounded': False, 'progress': False, 
-                   'autocrop': True, 'non_aligned_writes': False, 
+                   'autocrop': False, 'non_aligned_writes': False, 
                    'cdn_cache': False}
   
   def __getitem__(self, k):
