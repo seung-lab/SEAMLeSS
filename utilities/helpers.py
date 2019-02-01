@@ -13,6 +13,9 @@ import torch.nn.functional as F
 from torch import pow, mul, reciprocal
 from torch.nn.functional import interpolate
 from torch.nn import AvgPool2d, LPPool2d
+from torch import matmul, pow
+from torch.nn.functional import softmax
+from itertools import combinations
 from skimage.transform import rescale
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum 
@@ -533,3 +536,62 @@ def cpc(S, T, scale_factor, norm=True, device=torch.device('cpu')):
     R = sum_pool(mul(S_hat, T_hat))
   return R
 
+def compute_distance(U, V):
+  """Compute Euclidean distance between two field tensors
+
+  Args:
+    U: torch tensor for field
+    V: torch tensor for field
+
+  Returns:
+    torch tensor (image format) with distance between U, V
+  """
+  D = U - V
+  N = pow(D, 2)
+  return pow(torch.sum(N, 3), 0.5).unsqueeze(0)
+
+def vector_vote(fields, softmin_temp=1):
+  """Produce a single, consensus vector field from a set of vector fields
+
+  Args:
+    fields: list of fields (torch tensors in gridsample convention)
+    softmin_temp: float for temperature of softmin
+
+  Returns:
+    single vector field
+  """
+  n = len(fields)
+  assert(n % 2 == 1)
+  # majority
+  m = n // 2 + 1
+  indices = range(n)
+
+  # compute distances for all pairs of fields
+  dists = {}
+  for i,j in combinations(indices, 2):
+    dists[(i,j)] = compute_distance(fields[i], fields[j])
+  # compute mean distance for all m-tuples
+  mtuple_avg = []
+  mtuples = list(combinations(indices, m))
+  for mt in mtuples:
+    t = []
+    for i,j in combinations(mt, 2):
+      t.append(dists[(i,j)])
+    mtuple_avg.append(torch.mean(torch.cat(t, dim=0), dim=0, keepdim=True))
+  mavg = torch.cat(mtuple_avg, dim=0)
+
+  # compute weights for mtuples, giving higher weight to mtuples w/ smaller distances
+  mtuple_weights = softmax(-mavg/softmin_temp , dim=0)
+  # assign mtuple weights back to individual fields
+  field_weights = torch.zeros((n,) + mtuple_weights.shape[1:])
+  field_weights = field_weights.to(device=mtuple_weights.device)
+  for i, mtuple in enumerate(mtuples):
+    for j in mtuple:
+      field_weights[j,...] += mtuple_weights[i,...]
+  # divy up the weight by contribution
+  field_weights = field_weights / m
+  # create a voted field by multiplying fields by field weights
+  field = torch.cat(fields, dim=0)
+  field = field.permute(1,2,3,0)
+  field_weights = field_weights.permute(2,3,0,1)
+  return matmul(field, field_weights).permute(3,0,1,2)

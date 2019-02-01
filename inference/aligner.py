@@ -23,11 +23,10 @@ from torch.nn.functional import interpolate
 import torch.nn as nn
 
 from normalizer import Normalizer
-from vector_vote import vector_vote
 from temporal_regularization import create_field_bump
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
                               np_downsample, invert, compose_fields, upsample_field, \
-                              is_identity, cpc
+                              is_identity, cpc, vector_vote
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -501,7 +500,7 @@ class Aligner:
           G_z = z+z_offset
           F = self.get_composed_field(G_cv, f_cv, G_z, f_z, bbox, mip, mip, mip)
       fields.append(F)
-    return vector_vote(fields, T=softmin_temp)
+    return vector_vote(fields, softmin_temp=softmin_temp)
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
     """Compute the inverse vector field for a given bbox 
