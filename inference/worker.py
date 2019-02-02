@@ -15,7 +15,7 @@ processes = {}
 
 def run_aligner(aligner, stop_fn=None):
   with TaskQueue(queue_name=aligner.queue_name, queue_server='sqs', n_threads=0) as tq:
-    tq.poll(execute_args=[aligner], stop_fn=stop_fn)
+    tq.poll(execute_args=[aligner], stop_fn=stop_fn, lease_seconds=20)
 
 
 def create_process(process_id, aligner, delay_start=False):

@@ -19,7 +19,7 @@ from time import time, sleep
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
 from cloudmanager import CloudManager
-from tasks import run 
+from tasks import run
 
 def print_run(diff, n_tasks):
   print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
@@ -44,8 +44,8 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--max_displacement', 
-    help='the size of the largest displacement expected; should be 2^high_mip', 
+  parser.add_argument('--max_displacement',
+    help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   args = parse_args(parser)
@@ -54,7 +54,7 @@ if __name__ == '__main__':
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
-  
+
   # Simplify var names
   mip = args.mip
   max_mip = args.max_mip
@@ -89,42 +89,42 @@ if __name__ == '__main__':
   # Create dst CloudVolumes for each block, since blocks will overlap by 3 sections
   dsts = {}
   for block_start in block_range:
-    dst = cm.create(join(args.dst_path, 'image_blocks', str(block_start)), 
-                    data_type='uint8', num_channels=1, fill_missing=True, 
+    dst = cm.create(join(args.dst_path, 'image_blocks', str(block_start)),
+                    data_type='uint8', num_channels=1, fill_missing=True,
                     overwrite=True)
-    dsts[block_start] = dst 
+    dsts[block_start] = dst
 
   # Create field CloudVolumes
   serial_fields = {}
   for z_offset in serial_offsets.values():
-    serial_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
+    serial_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)),
                                   data_type='int16', num_channels=2,
                                   fill_missing=True, overwrite=True)
   pair_fields = {}
   for z_offset in vvote_offsets:
-    pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
+    pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)),
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True)
-  vvote_field = cm.create(join(args.dst_path, 'field', 'vvote'), 
+  vvote_field = cm.create(join(args.dst_path, 'field', 'vvote'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True)
 
   chunks = a.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
-                                 cm.dst_voxel_offsets[mip], mip=mip, 
+                                 cm.dst_voxel_offsets[mip], mip=mip,
                                  max_mip=cm.num_scales)
   n_chunks = len(chunks)
 
   ###########################
   # Serial alignment script #
   ###########################
-  
+
   # Copy first section
   batch = []
   for block_offset in copy_range:
     prefix = block_offset
     for block_start in block_range:
       dst = dsts[block_start]
-      z = block_start + block_offset 
+      z = block_start + block_offset
       t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, prefix=prefix)
       batch.extend(t)
 
@@ -143,22 +143,22 @@ if __name__ == '__main__':
 
   # Align without vector voting
   for block_offset in serial_range:
-    z_offset = serial_offsets[block_offset] 
+    z_offset = serial_offsets[block_offset]
     serial_field = serial_fields[z_offset]
     batch = []
     prefix = block_offset
     for block_start in block_range:
       dst = dsts[block_start]
-      z = block_start + block_offset 
-      t = a.compute_field(cm, args.model_path, src, dst, serial_field, 
+      z = block_start + block_offset
+      t = a.compute_field(cm, args.model_path, src, dst, serial_field,
                           z, z+z_offset, bbox, mip, pad, prefix=prefix)
       batch.extend(t)
 
     run(a, batch)
     start = time()
-    # wait 
-    n = len(batch) 
-    a.wait_for_queue_empty(serial_field.path, 
+    # wait
+    n = len(batch)
+    a.wait_for_queue_empty(serial_field.path,
         'compute_field_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
@@ -167,14 +167,14 @@ if __name__ == '__main__':
     batch = []
     for block_start in block_range:
       dst = dsts[block_start]
-      z = block_start + block_offset 
-      t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
+      z = block_start + block_offset
+      t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z,
                    bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
       batch.extend(t)
 
     run(a, batch)
     start = time()
-    # wait 
+    # wait
     for block_start in block_range:
       dst = dsts[block_start]
       n = n_chunks
@@ -189,20 +189,20 @@ if __name__ == '__main__':
     prefix = block_offset
     for block_start in block_range:
       dst = dsts[block_start]
-      z = block_start + block_offset 
+      z = block_start + block_offset
       for z_offset in vvote_offsets:
         field = pair_fields[z_offset]
-        t = a.compute_field(cm, args.model_path, src, dst, field, 
+        t = a.compute_field(cm, args.model_path, src, dst, field,
                             z, z+z_offset, bbox, mip, pad, prefix=prefix)
         batch.extend(t)
 
     run(a, batch)
     start = time()
-    # wait 
+    # wait
     for z_offset in vvote_offsets:
       field = pair_fields[z_offset]
       n = len(block_range) * n_chunks
-      a.wait_for_queue_empty(field.path, 
+      a.wait_for_queue_empty(field.path,
           'compute_field_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
@@ -210,27 +210,27 @@ if __name__ == '__main__':
 
     batch = []
     for block_start in block_range:
-      z = block_start + block_offset 
-      t = a.vector_vote(cm, pair_fields, vvote_field, z, bbox, mip, inverse=False, 
+      z = block_start + block_offset
+      t = a.vector_vote(cm, pair_fields, vvote_field, z, bbox, mip, inverse=False,
                         softmin_temp=-1, serial=True, prefix=prefix)
       batch.extend(t)
 
     run(a, batch)
     start = time()
-    # wait 
+    # wait
     n = len(batch)
-    a.wait_for_queue_empty(vvote_field.path, 
+    a.wait_for_queue_empty(vvote_field.path,
         'vector_vote_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
     print_run(diff, len(batch))
-    
+
     batch = []
     for block_start in block_range:
       dst = dsts[block_start]
-      z = block_start + block_offset 
-      t = a.render(cm, src, vvote_field, dst, 
-                   src_z=z, field_z=z, dst_z=z, 
+      z = block_start + block_offset
+      t = a.render(cm, src, vvote_field, dst,
+                   src_z=z, field_z=z, dst_z=z,
                    bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
       batch.extend(t)
 
