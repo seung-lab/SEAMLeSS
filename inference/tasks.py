@@ -102,9 +102,9 @@ class ComputeFieldTask(RegisteredTask):
           "field {}\n"
           "z={} to z={} (then {})\n"
           "Image MIP={}\n"
-          "Mask MIP={}, Value={}\n".format(model_path, src_cv, tgt_cv, field_cv,
+          "Mask src={}, Mask MIP={}, Value={}\n".format(model_path, src_cv, tgt_cv, field_cv,
                                            src_z, tgt_z, tgt_alt_z, mip,
-                                           mask_mip, mask_val), flush=True)
+                                           mask_cv, mask_mip, mask_val), flush=True)
     if not aligner.dry_run:
       field = aligner.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z,
                                           patch_bbox, mip, pad, mask_cv, mask_mip,

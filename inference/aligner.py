@@ -199,11 +199,15 @@ class Aligner:
     z_range = range(z_start, z_stop)
 
     # Retrieve image stack
-    img = self.get_data_range(image_cv, z_range, bbox, src_mip=image_mip, dst_mip=image_mip)
+    img = self.get_data_range(image_cv, z_range, bbox, to_float=True,
+                              to_tensor=to_tensor, src_mip=image_mip,
+                              dst_mip=image_mip, normalizer=normalizer)
 
     # Load and apply masks to image stack
     if mask_cv is not None:
-      mask = self.get_data_range(mask_cv, z_range, bbox, to_float=False, src_mip=mask_mip, dst_mip=image_mip)
+      mask = self.get_data_range(mask_cv, z_range, bbox, to_float=False,
+                                 to_tensor=to_tensor, src_mip=mask_mip,
+                                 dst_mip=image_mip, normalizer=None)
       mask = mask == mask_val
       img = img.masked_fill_(mask, 0)
 
@@ -212,7 +216,9 @@ class Aligner:
     o = img[z - z_start, ...]
     for z in z_list[1:]:
       o[o == 0] = img[z - z_start, ...][o == 0]
-    return o
+
+    # Restore 4th dimension
+    return o.unsqueeze_(0)
 
   def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
                      to_tensor=True, normalizer=None):
@@ -256,7 +262,6 @@ class Aligner:
           data = data.type('torch.cuda.ByteTensor')
       if not to_tensor:
         data = data.cpu().numpy()
-    
     return data
   
   def get_data_range(self, cv, z_range, bbox, src_mip, dst_mip, to_float=True,
@@ -301,7 +306,6 @@ class Aligner:
           data = data.type('torch.cuda.ByteTensor')
       if not to_tensor:
         data = data.cpu().numpy()
-    
     return data
 
   def save_image(self, float_patch, cv, z, bbox, mip, to_uint8=True):
