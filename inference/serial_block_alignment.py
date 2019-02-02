@@ -15,6 +15,7 @@ block, from the third section through to the final section.
 import sys
 import torch
 import json
+import math
 from time import time, sleep
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
@@ -44,6 +45,8 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
+  parser.add_argument('--tgt_radius', type=int, default=3,
+    help='int for number of sections to include in vector voting')
   parser.add_argument('--max_displacement', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
@@ -62,16 +65,21 @@ if __name__ == '__main__':
 
   # Compile ranges
   block_range = range(args.bbox_start[2], args.bbox_stop[2], args.block_size)
-  overlap = 3
+  overlap = args.tgt_radius
   full_range = range(args.block_size + overlap)
 
-  copy_range = full_range[2:3]
-  serial_range = full_range[:2][::-1]
-  vvote_range = full_range[3:]
+  copy_range = full_range[overlap-1:overlap]
+  serial_range = full_range[:overlap-1][::-1]
+  vvote_range = full_range[overlap:]
 
-  serial_offsets = {serial_range[0]: 1,
-                    serial_range[1]: 2}
-  vvote_offsets = [-3,-2,-1]
+  serial_offsets = {serial_range[i]: i+1 for i in range(overlap-1)}
+  vvote_offsets = [-i for i in range(1, overlap+1)]
+
+  print('copy_range {}'.format(copy_range))
+  print('serial_range {}'.format(serial_range))
+  print('vvote_range {}'.format(vvote_range))
+  print('serial_offsets {}'.format(serial_offsets))
+  print('vvote_offsets {}'.format(vvote_offsets))
 
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance)
@@ -86,13 +94,14 @@ if __name__ == '__main__':
                                fill_missing=True, overwrite=True)
     tgt_mask_cv = src_mask_cv
 
-  # Create dst CloudVolumes for each block, since blocks will overlap by 3 sections
+  # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius 
   dsts = {}
-  for block_start in block_range:
-    dst = cm.create(join(args.dst_path, 'image_blocks', str(block_start)), 
+  block_types = ['even', 'odd']
+  for block_type in block_types:
+    dst = cm.create(join(args.dst_path, 'image_blocks', block_type), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True)
-    dsts[block_start] = dst 
+    dsts[block_type] = dst 
 
   # Create field CloudVolumes
   serial_fields = {}
@@ -105,7 +114,7 @@ if __name__ == '__main__':
     pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True)
-  vvote_field = cm.create(join(args.dst_path, 'field', 'vvote'), 
+  vvote_field = cm.create(join(args.dst_path, 'field', 'vvote_{}'.format(overlap)), 
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True)
 
@@ -118,77 +127,89 @@ if __name__ == '__main__':
   # Serial alignment script #
   ###########################
   
-  # Copy first section
-  batch = []
-  for block_offset in copy_range:
-    prefix = block_offset
-    for block_start in block_range:
-      dst = dsts[block_start]
-      z = block_start + block_offset 
-      t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, prefix=prefix)
-      batch.extend(t)
+  # # Copy first section
+  # batch = []
+  # for block_offset in copy_range:
+  #   prefix = block_offset
+  #   for i, block_start in enumerate(block_range):
+  #     block_type = block_types[i % 2]
+  #     dst = dsts[block_type]
+  #     z = block_start + block_offset 
+  #     t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, prefix=prefix)
+  #     batch.extend(t)
 
-  run(a, batch)
-  # wait
-  start = time()
-  for block_offset in copy_range:
-    prefix = block_offset
-    for block_start in block_range:
-      dst = dsts[block_start]
-      n = n_chunks
-      a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
-  end = time()
-  diff = end - start
-  print_run(diff, len(batch))
+  # run(a, batch)
+  # # wait
+  # start = time()
+  # for block_offset in copy_range:
+  #   prefix = block_offset
+  #   for block_type in block_types:
+  #     dst = dsts[block_type]
+  #     if block_type == 'even':
+  #       # there may be more even than odd blocks
+  #       n = n_chunks * int(math.ceil(len(block_range) / 2))
+  #     else:
+  #       n = n_chunks * (len(block_range) // 2)
+  #     a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
+  # end = time()
+  # diff = end - start
+  # print_run(diff, len(batch))
 
-  # Align without vector voting
-  for block_offset in serial_range:
-    z_offset = serial_offsets[block_offset] 
-    serial_field = serial_fields[z_offset]
-    batch = []
-    prefix = block_offset
-    for block_start in block_range:
-      dst = dsts[block_start]
-      z = block_start + block_offset 
-      t = a.compute_field(cm, args.model_path, src, dst, serial_field, 
-                          z, z+z_offset, bbox, mip, pad, prefix=prefix)
-      batch.extend(t)
+  # # Align without vector voting
+  # for block_offset in serial_range:
+  #   z_offset = serial_offsets[block_offset] 
+  #   serial_field = serial_fields[z_offset]
+  #   batch = []
+  #   prefix = block_offset
+  #   for i, block_start in enumerate(block_range):
+  #     block_type = block_types[i % 2]
+  #     dst = dsts[block_type]
+  #     z = block_start + block_offset 
+  #     t = a.compute_field(cm, args.model_path, src, dst, serial_field, 
+  #                         z, z+z_offset, bbox, mip, pad, prefix=prefix)
+  #     batch.extend(t)
 
-    run(a, batch)
-    start = time()
-    # wait 
-    n = len(batch) 
-    a.wait_for_queue_empty(serial_field.path, 
-        'compute_field_done/{}'.format(prefix), n)
-    end = time()
-    diff = end - start
-    print_run(diff, len(batch))
+  #   run(a, batch)
+  #   start = time()
+  #   # wait 
+  #   n = len(batch) 
+  #   a.wait_for_queue_empty(serial_field.path, 
+  #       'compute_field_done/{}'.format(prefix), n)
+  #   end = time()
+  #   diff = end - start
+  #   print_run(diff, len(batch))
 
-    batch = []
-    for block_start in block_range:
-      dst = dsts[block_start]
-      z = block_start + block_offset 
-      t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
-                   bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
-      batch.extend(t)
+  #   batch = []
+  #   for i, block_start in enumerate(block_range):
+  #     block_type = block_types[i % 2]
+  #     dst = dsts[block_type]
+  #     z = block_start + block_offset 
+  #     t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
+  #                  bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+  #     batch.extend(t)
 
-    run(a, batch)
-    start = time()
-    # wait 
-    for block_start in block_range:
-      dst = dsts[block_start]
-      n = n_chunks
-      a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
-    end = time()
-    diff = end - start
-    print_run(diff, len(batch))
+  #   run(a, batch)
+  #   start = time()
+  #   # wait 
+  #   for block_type in block_types:
+  #     dst = dsts[block_type]
+  #     if block_type == 'even':
+  #       # there may be more even than odd blocks
+  #       n = n_chunks * int(math.ceil(len(block_range) / 2))
+  #     else:
+  #       n = n_chunks * (len(block_range) // 2)
+  #     a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+  #   end = time()
+  #   diff = end - start
+  #   print_run(diff, len(batch))
 
   # Align with vector voting
   for block_offset in vvote_range:
     batch = []
     prefix = block_offset
-    for block_start in block_range:
-      dst = dsts[block_start]
+    for i, block_start in enumerate(block_range):
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
       z = block_start + block_offset 
       for z_offset in vvote_offsets:
         field = pair_fields[z_offset]
@@ -226,8 +247,9 @@ if __name__ == '__main__':
     print_run(diff, len(batch))
     
     batch = []
-    for block_start in block_range:
-      dst = dsts[block_start]
+    for i, block_start in enumerate(block_range):
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
       z = block_start + block_offset 
       t = a.render(cm, src, vvote_field, dst, 
                    src_z=z, field_z=z, dst_z=z, 
@@ -237,9 +259,13 @@ if __name__ == '__main__':
     run(a, batch)
     start = time()
     # wait
-    for block_start in block_range:
-      dst = dsts[block_start]
-      n = n_chunks
+    for block_type in block_types:
+      dst = dsts[block_type]
+      if block_type == 'even':
+        # there may be more even than odd blocks
+        n = n_chunks * int(math.ceil(len(block_range) / 2))
+      else:
+        n = n_chunks * (len(block_range) // 2)
       a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
