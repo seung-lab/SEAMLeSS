@@ -11,25 +11,22 @@ from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
 
 from cloudvolume import Storage
-from cloudvolume.lib import Vec, scatter
+from cloudvolume.lib import Vec
 import numpy as np
 import scipy
 import scipy.ndimage
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum 
-from taskqueue import TaskQueue
+from taskqueue import TaskQueue, LocalTaskQueue
 import torch
 from torch.nn.functional import interpolate
 import torch.nn as nn
 
 from normalizer import Normalizer
-from vector_vote import vector_vote, get_diffs, weight_diffs, \
-                        compile_field_weights, weighted_sum_fields
 from temporal_regularization import create_field_bump
-from cpc import cpc 
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
                               np_downsample, invert, compose_fields, upsample_field, \
-                              is_identity
+                              is_identity, cpc, vector_vote
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -42,7 +39,8 @@ from taskqueue import TaskQueue
 import tasks
 
 class Aligner:
-  def __init__(self, threads=1, queue_name=None, task_batch_size=1, **kwargs):
+  def __init__(self, threads=1, queue_name=None, task_batch_size=1, 
+                     dry_run=False, **kwargs):
     print('Creating Aligner object')
 
     self.distributed = (queue_name != None)
@@ -56,9 +54,10 @@ class Aligner:
 
     self.model_archives = {}
     
-    self.pool = ThreadPool(threads)
+    # self.pool = None #ThreadPool(threads)
     self.threads = threads
     self.task_batch_size = task_batch_size
+    self.dry_run = dry_run
 
   ##########################
   # Chunking & BoundingBox #
@@ -328,7 +327,7 @@ class Aligner:
       return field 
 
   def get_composed_field(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip, dst_mip,
-                               pad=2048):
+                               factor=1., pad=2048):
     """Compose chunk of two field cloudvolumes, such that f(g(x)) at dst_mip
 
     Args:
@@ -340,6 +339,7 @@ class Aligner:
        f_mip: MIP of left-hand vector field
        g_mip: MIP of right-hand vector field
        dst_mip: MIP of the output vector field, such that min(f_mip, g_mip) >= dst_mip
+       factor: float to multiply the f vector field by
        pad: int for amount of MIP0 padding to use before processing
 
     Returns:
@@ -350,6 +350,7 @@ class Aligner:
     padded_bbox.uncrop(pad, mip=0)
     crop = pad // 2**dst_mip
     f = self.get_field(f_cv, f_z, padded_bbox, f_mip, relative=True, to_tensor=True)
+    f = f*factor
     g = self.get_field(g_cv, g_z, padded_bbox, g_mip, relative=True, to_tensor=True)
     if dst_mip < g_mip:
       g = upsample_field(g, g_mip, dst_mip)
@@ -499,7 +500,7 @@ class Aligner:
           G_z = z+z_offset
           F = self.get_composed_field(G_cv, f_cv, G_z, f_z, bbox, mip, mip, mip)
       fields.append(F)
-    return vector_vote(fields, T=softmin_temp)
+    return vector_vote(fields, softmin_temp=softmin_temp)
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
     """Compute the inverse vector field for a given bbox 
@@ -671,14 +672,14 @@ class Aligner:
     data = interpolate(data, scale_factor=0.5, mode='bilinear')
     return data.cpu().numpy()
 
-  def cpc(self, src_z, tgt_z, src_cv, tgt_cv, bbox, src_mip, dst_mip):
+  def cpc_chunk(self, src_cv, tgt_cv, src_z, tgt_z, bbox, src_mip, dst_mip, norm=True):
     """Calculate the chunked pearson r between two chunks
 
     Args:
-       src_z: int z index of one section to compare
-       tgt_z: int z index of other section to compare
        src_cv: MiplessCloudVolume of source image
        tgt_cv: MiplessCloudVolume of target image
+       src_z: int z index of one section to compare
+       tgt_z: int z index of other section to compare
        bbox: BoundingBox of region to process
        src_mip: int MIP level of input src & tgt images
        dst_mip: int MIP level of output image, will dictate the size of the chunks
@@ -693,18 +694,19 @@ class Aligner:
                                                                    tgt_z, 
                                                                    bbox.__str__(mip=0)))
     scale_factor = 2**(dst_mip - src_mip)
-    src = self.get_image(src_cv, src_z, bbox, src_mip, adjust_contrast=False, 
+    src = self.get_image(src_cv, src_z, bbox, src_mip, normalizer=None,
                          to_tensor=True)
-    tgt = self.get_image(tgt_cv, tgt_z, bbox, src_mip, adjust_contrast=False, 
+    tgt = self.get_image(tgt_cv, tgt_z, bbox, src_mip, normalizer=None,
                          to_tensor=True)
-    return cpc(src, tgt, scale_factor, device=self.device)
+    print('src.shape {}'.format(src.shape))
+    print('tgt.shape {}'.format(tgt.shape))
+    return cpc(src, tgt, scale_factor, norm=norm, device=self.device)
 
   ######################
   # Dataset operations #
   ######################
-
   def copy(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, is_field=False,
-                     mask_cv=None, mask_mip=0, mask_val=0, wait=True, prefix=''):
+                     mask_cv=None, mask_mip=0, mask_val=0, prefix=''):
     """Copy one CloudVolume to another
 
     Args:
@@ -721,56 +723,25 @@ class Aligner:
        mask_cv: MiplessCloudVolume where source mask is stored
        mask_mip: int for MIP level at which source mask is stored
        mask_val: int for pixel value in the mask that should be zero-filled
-       wait: bool indicating whether to wait for all tasks must finish before proceeding
        prefix: str used to write "finished" files for each task 
         (only used for distributed)
+
+    Returns:
+       a list of CopyTasks
     """
-    start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 
                                     max_mip=cm.num_scales)
-    print("\nCopy\n"
-          "src {0}\n"
-          "dst {1}\n"
-          "z={2} to z={3}\n"
-          "MIP{4}\n"
-          "{5} chunks\n".format(src_cv, dst_cv, src_z, dst_z, mip, len(chunks)), flush=True)
-    if self.distributed: # and len(chunks) > self.task_batch_size * 4:
-      if prefix == '':
-        prefix = '{}_{}'.format(mip, dst_z)
-      batch = []
-      for i in range(len(chunks)): #range(0, len(chunks), self.task_batch_size * 4):
-          # task_patches = []
-          # for j in range(i): # range(i, min(len(chunks), i + self.task_batch_size * 4)):
-          #     task_patches.append(chunks[j].serialize())
-        batch.append(tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, [chunks[i].serialize()], 
-                                      mip, is_field, mask_cv, mask_mip, mask_val, prefix))
-
-      self.upload_tasks(batch)
-      if wait:    
-        self.wait_for_queue_empty(dst_cv.path, 
-            'copy_done/{}'.format(prefix), 
-            len(chunks))
-    else: 
-        #for patch_bbox in chunks:
-        def chunkwise(patch_bbox):
-          if is_field:
-            field =  self.get_field(src_cv, src_z, patch_bbox, mip, relative=False,
-                                    to_tensor=False)
-            self.save_field(field, dst_cv, dst_z, patch_bbox, mip, relative=False)
-          else:
-            image = self.get_masked_image(src_cv, src_z, patch_bbox, mip,
-                                    mask_cv=mask_cv, mask_mip=mask_mip,
-                                    mask_val=mask_val,
-                                    to_tensor=False, normalizer=None)
-            self.save_image(image, dst_cv, dst_z, patch_bbox, mip)
-        self.pool.map(chunkwise, chunks)
-
-    end = time()
-    print (": {} sec".format(end - start))
+    if prefix == '':
+      prefix = '{}_{}'.format(mip, dst_z)
+    batch = []
+    for chunk in chunks: 
+      batch.append(tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
+                                  is_field, mask_cv, mask_mip, mask_val, prefix))
+    return batch
 
   def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv, 
-                          src_z, tgt_z, bbox, mip, pad=2048, wait=True, prefix=''):
+                          src_z, tgt_z, bbox, mip, pad=2048, prefix=''):
     """Compute field to warp src section to tgt section 
   
     Args:
@@ -793,41 +764,18 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 
                                     max_mip=cm.num_scales)
-    print("\nCompute field\n"
-          "model {}\n"
-          "src {}\n"
-          "tgt {}\n"
-          "field {}\n"
-          "z={} to z={}\n"
-          "MIP{}\n"
-          "{} chunks\n".format(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
-                               mip, len(chunks)), flush=True)
-    if self.distributed:
-      if prefix == '':
-        prefix = '{}_{}_{}'.format(mip, src_z, tgt_z)
-      batch = []
-      for patch_bbox in chunks:
-        batch.append(tasks.ComputeFieldTask(model_path, src_cv, tgt_cv,
-                                                     field_cv, src_z, tgt_z, patch_bbox, 
-                                                     mip, pad, prefix)) 
-      self.upload_tasks(batch)
-      if wait:
-        self.wait_for_queue_empty(field_cv.path, 
-            'compute_field_done/{}'.format(prefix),
-             len(chunks))
-    else:
-      def chunkwise(patch_bbox):
-        field = self.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z, 
-  				 patch_bbox, mip, pad)
-        field = field.data.cpu().numpy()
-        self.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
-      self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
+    if prefix == '':
+      prefix = '{}_{}_{}'.format(mip, src_z, tgt_z)
+    batch = []
+    for chunk in chunks:
+      batch.append(tasks.ComputeFieldTask(model_path, src_cv, tgt_cv,
+                                                   field_cv, src_z, tgt_z, chunk, 
+                                                   mip, pad, prefix)) 
+    return batch
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
                    bbox, src_mip, field_mip, mask_cv=None, mask_mip=0, 
-                   mask_val=0, wait=True, prefix=''):
+                   mask_val=0, prefix=''):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -853,45 +801,18 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[src_mip],
                                     cm.dst_voxel_offsets[src_mip], mip=src_mip, 
                                     max_mip=cm.num_scales)
-    print("\nRendering\n"
-          "src {0}\n"
-          "field {1}\n"
-          "dst {2}\n"
-          "z={3} to z={4}\n"
-          "MIP{5} to MIP{6}\n"
-          "{7} chunks\n".format(src_cv, field_cv, dst_cv, 
-                              src_z, dst_z, field_mip, src_mip, len(chunks)), flush=True)
-    if self.distributed:
-      if prefix == '':
-        prefix = '{}_{}_{}'.format(src_mip, src_z, dst_z)
-      batch = []
-      for i in range(0, len(chunks), self.task_batch_size):
-          patches = []
-          for j in range(i, min(len(chunks), i + self.task_batch_size)):
-              patches.append(chunks[j].serialize())
-          batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z, 
-                           field_z, dst_z, patches, src_mip, field_mip, mask_cv, 
-                           mask_mip, mask_val, prefix))
-      self.upload_tasks(batch)
-      if wait:
-        self.wait_for_queue_empty(dst_cv.path, 
-             'render_done/{}'.format(prefix),
-              len(chunks))
-    else:
-        def chunkwise(patch_bbox):
-          image = self.cloudsample_image(src_cv, field_cv, src_z, field_z, 
-                                         patch_bbox, src_mip, field_mip, 
-                                         mask_cv=mask_cv, mask_mip=mask_mip,
-                                         mask_val=mask_val)
-          image = image.cpu().numpy()
-          self.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
-        self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
+    if prefix == '':
+      prefix = '{}_{}_{}'.format(src_mip, src_z, dst_z)
+    batch = []
+    for chunk in chunks:
+      batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z, 
+                       field_z, dst_z, chunk, src_mip, field_mip, mask_cv, 
+                       mask_mip, mask_val, prefix))
+    return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip, 
                         inverse=False, softmin_temp=-1, serial=True, 
-                        wait=True, prefix=''):
+                        prefix=''):
     """Compute consensus field from a set of vector fields
 
     Note: 
@@ -915,44 +836,17 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[mip],
                                     cm.vec_voxel_offsets[mip], mip=mip)
-    print("\nVector vote\n"
-          "fields {}\n"
-          "dst {}\n"
-          "z={}\n"
-          "MIP{}\n"
-          "inverse={}\n"
-          "softmin_temp={}\n"
-          "serial={}\n"
-          "{} chunks\n".format(pairwise_cvs.keys(), vvote_cv, z, 
-                              mip, inverse, softmin_temp, serial, len(chunks)), 
-                              flush=True)
-    if self.distributed:
-      if prefix == '':
-        prefix = '{}_{}'.format(mip, z)
-      batch = []
-      for patch_bbox in chunks:
-        batch.append(tasks.VectorVoteTask(deepcopy(pairwise_cvs), vvote_cv, z,
-                                          patch_bbox, mip, inverse, softmin_temp, 
-                                          serial, prefix))
-      self.upload_tasks(batch)
-      if wait:
-        self.wait_for_queue_empty(vvote_cv.path, 
-             'vector_vote_done/{}'.format(prefix), 
-              len(chunks))
-    else:
-        def chunkwise(patch_bbox):
-            field = self.vector_vote_chunk(pairwise_cvs, vvote_cv, z, patch_bbox, mip, 
-                             inverse=inverse, softmin_temp=softmin_temp, 
-                             serial=serial)
-            field = field.data.cpu().numpy()
-            self.save_field(field, vvote_cv, z, patch_bbox, mip, relative=False)
-
-        self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
+    if prefix == '':
+      prefix = '{}_{}'.format(mip, z)
+    batch = []
+    for chunk in chunks:
+      batch.append(tasks.VectorVoteTask(deepcopy(pairwise_cvs), vvote_cv, z,
+                                        chunk, mip, inverse, softmin_temp, 
+                                        serial, prefix))
+    return batch
 
   def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 
-                    f_mip, g_mip, dst_mip, wait=True, prefix=''):
+                    f_mip, g_mip, dst_mip, factor=1., prefix=''):
     """Compose two vector field CloudVolumes
 
     For coarse + fine composition:
@@ -960,6 +854,7 @@ class Aligner:
       g = coarse 
     
     Args:
+       cm: CloudManager that corresponds to the f_cv, g_cv, dst_cv
        f_cv: MiplessCloudVolume of vector field f
        g_cv: MiplessCloudVolume of vector field g
        dst_cv: MiplessCloudVolume of composed vector field
@@ -978,82 +873,45 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
                                     cm.vec_voxel_offsets[dst_mip], 
                                     mip=dst_mip)
-    print("\nCompose\n"
-          "f {}\n"
-          "g {}\n"
-          "f_z={}, g_z={}\n"
-          "f_MIP{}, g_MIP{}\n"
-          "dst {}\n"
-          "dst_MIP{}\n"
-          "{} chunks\n".format(f_cv, g_cv, f_z, g_z, f_mip, g_mip, dst_cv, 
-                               dst_mip, len(chunks)), flush=True)
-    if self.distributed:
-      if prefix == '':
-        prefix = '{}_{}'.format(dst_mip, dst_z)
-      batch = []
-      for i in range(0, len(chunks), self.task_batch_size):
-        patches = []
-        for j in range(i, min(len(chunks), i + self.task_batch_size)):
-            patches.append(chunks[j].serialize())
-        batch.append(tasks.ComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
-                                       dst_z, patches, f_mip, g_mip, dst_mip,
-                                       prefix))
-      self.upload_tasks(batch)
-      if wait:
-        self.wait_for_queue_empty(dst_cv.path, 
-             'compose_done/{}'.format(prefix), 
-              len(chunks))
-    else:
-        def chunkwise(patch_bbox):
-          # h = self.cloudsample_compose(f_cv, g_cv, f_z, g_z, patch_bbox, 
-          #                              f_mip, g_mip, dst_mip)
-          h = self.get_composed_field(f_cv, g_cv, f_z, g_z, patch_bbox, 
-                                       f_mip, g_mip, dst_mip)
-          h = h.data.cpu().numpy()
-          self.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
-        self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
+    if prefix == '':
+      prefix = '{}_{}'.format(dst_mip, dst_z)
+    batch = []
+    for chunk in chunks:
+      batch.append(tasks.ComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
+                                     dst_z, chunk, f_mip, g_mip, dst_mip,
+                                     factor, prefix))
+    return batch
 
-  def cpc_chunkwise(self, src_z, tgt_z, src_cv, tgt_cv, dst_cv, bbox, src_mip, dst_mip):
-    """Chunkwise CPC 
+  def cpc(self, cm, src_cv, tgt_cv, dst_cv, src_z, tgt_z, bbox, src_mip, dst_mip, 
+                norm=True, prefix=''):
+    """Chunked Pearson Correlation between two CloudVolume images
 
     Args:
-       src_z: int z index of one section to compare
-       tgt_z: int z index of other section to compare
+       cm: CloudManager that corresponds to the src_cv, tgt_cv, dst_cv
        src_cv: MiplessCloudVolume of source image
        tgt_cv: MiplessCloudVolume of target image
        dst_cv: MiplessCloudVolume of destination image
+       src_z: int z index of one section to compare
+       tgt_z: int z index of other section to compare
        bbox: BoundingBox of region to process
        src_mip: int MIP level of input src & tgt images
        dst_mip: int MIP level of output image, will dictate the size of the chunks
         used for the pearson r
+       norm: bool for whether to normalize or not
+       prefix: str used to write "finished" files for each task 
+        (only used for distributed)
     """
-    
-    print('Compute CPC of MIP{0} at MIP{1}, {2}<-({2},{3})'.format(src_mip, dst_mip, 
-                                                                   src_z, tgt_z))
     start = time()
-    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[dst_mip],
-                                    cm.dst_voxel_offsets[dst_mip], mip=dst_mip, 
-                                    render=True)
-    if self.distributed:
-        batch = []
-        for i in range(0, len(chunks), self.task_batch_size):
-            task_patches = []
-            for j in range(i, min(len(chunks), i + self.task_batch_size)):
-                task_patches.append(chunks[j].serialize())
-            batch.append(tasks.RenderCVTask(src_z, field_cv, field_z, task_patches,
-                                                      mip, dst_cv, dst_z))
-        self.upload_tasks(batch)
-        self.wait_for_queue_empty(dst_cv.path,'render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/', len(chunks))
-    else:
-        def chunkwise(patch_bbox):
-          r = self.cpc(src_z, tgt_z, src_cv, tgt_cv, patch_bbox, src_mip, dst_mip)
-          r = r.cpu().numpy()
-          self.save_image(dst_cv, src_z, r, patch_bbox, dst_mip)
-        self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
+    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
+                                    cm.vec_voxel_offsets[dst_mip], 
+                                    mip=dst_mip)
+    if prefix == '':
+      prefix = '{}_{}'.format(dst_mip, src_z)
+    batch = []
+    for chunk in chunks:
+      batch.append(tasks.CPCTask(src_cv, tgt_cv, dst_cv, src_z, tgt_z, 
+                                 chunk, src_mip, dst_mip, norm, prefix))
+    return batch
 
   def render_batch_chunkwise(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip,
                    batch):
@@ -1509,21 +1367,6 @@ class Aligner:
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
-
-  def upload_tasks(self, tasks):
-
-    def multiprocess_upload(ptasks):
-      with TaskQueue(queue_name=self.queue_name) as tq:
-        for task in ptasks:
-          tq.insert(task)
-
-    if self.threads == 1:
-      multiprocess_upload(tasks)
-    else:
-      tasks = list(scatter(tasks, self.threads))
-
-      with concurrent.futures.ProcessPoolExecutor(max_workers=parallel) as executor:
-        executor.map(multiprocess_upload, tasks)
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
     if self.distributed:

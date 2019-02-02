@@ -18,7 +18,7 @@ back to their own CloudVolumes.
 
 ## Parameters  
 
-## Workflows  
+## Workflows 
 
 ## Distributed operation  
 SEAMLeSS has been designed for distributed operation across a cluster. We have 
@@ -61,6 +61,12 @@ Advanced options
 * VPC-native, Enable VPC-native: True
 ```
 
+We have a template script to create a cluster that you can use:
+
+```
+./docker/create_cluster.sh [CLUSTER NAME] [NO. OF NODES IN GPU POOL]
+```
+
 * Connect to your cluster.  
 
 Once your cluster has been created, within the console, select the `Connect` button to access the `kubectl` commands to connect your local workstation to your cluster. Now you can mount your secrets to your cluster nodes:
@@ -76,8 +82,6 @@ Your service account credentials for gcloud as a JSON are needed:
 ```
 kubectl create secret generic secrets --from-file=$HOME/.cloudvolume/secrets/google-secret.json
 ```
-
-As are your AWS credentials, which are passed through as a [YAML file](https://kubernetes.io/docs/concepts/configuration/secret/#creating-a-secret-manually).
 
 * Create a deployment for your cluster.  
 

@@ -10,6 +10,12 @@ import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import pow, mul, reciprocal
+from torch.nn.functional import interpolate
+from torch.nn import AvgPool2d, LPPool2d
+from torch import matmul, pow
+from torch.nn.functional import softmax
+from itertools import combinations
 from skimage.transform import rescale
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum 
@@ -505,3 +511,87 @@ def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   print('Final cost @ t={0}: {1}'.format(currt, costs[-1].item()))
   return V
 
+def get_chunk_dim(scale_factor):
+  return scale_factor, scale_factor
+
+def center_image(X, scale_factor, device=torch.device('cpu')):
+  chunk_dim = get_chunk_dim(scale_factor)
+  avg_pool = AvgPool2d(chunk_dim, stride=chunk_dim).to(device=device)
+  X_bar_down = avg_pool(X)
+  # X_bar = interpolate(X_bar_down, scale_factor=scale_factor, mode='nearest')
+  X_bar = interpolate(X_bar_down, size=X.shape[2:], mode='nearest')
+  return X - X_bar    
+
+def cpc(S, T, scale_factor, norm=True, device=torch.device('cpu')):
+  chunk_dim = get_chunk_dim(scale_factor)
+  sum_pool = LPPool2d(1, chunk_dim, stride=chunk_dim).to(device=device)
+  S_hat = center_image(S, scale_factor, device=device)
+  T_hat = center_image(T, scale_factor, device=device)
+  if norm:
+    S_hat_std = pow(sum_pool(pow(S_hat, 2)), 0.5)
+    T_hat_std = pow(sum_pool(pow(T_hat, 2)), 0.5)
+    norm = reciprocal(mul(S_hat_std, T_hat_std))
+    R = mul(sum_pool(mul(S_hat, T_hat)), norm)
+  else:
+    R = sum_pool(mul(S_hat, T_hat))
+  return R
+
+def compute_distance(U, V):
+  """Compute Euclidean distance between two field tensors
+
+  Args:
+    U: torch tensor for field
+    V: torch tensor for field
+
+  Returns:
+    torch tensor (image format) with distance between U, V
+  """
+  D = U - V
+  N = pow(D, 2)
+  return pow(torch.sum(N, 3), 0.5).unsqueeze(0)
+
+def vector_vote(fields, softmin_temp=1):
+  """Produce a single, consensus vector field from a set of vector fields
+
+  Args:
+    fields: list of fields (torch tensors in gridsample convention)
+    softmin_temp: float for temperature of softmin
+
+  Returns:
+    single vector field
+  """
+  n = len(fields)
+  assert(n % 2 == 1)
+  # majority
+  m = n // 2 + 1
+  indices = range(n)
+
+  # compute distances for all pairs of fields
+  dists = {}
+  for i,j in combinations(indices, 2):
+    dists[(i,j)] = compute_distance(fields[i], fields[j])
+  # compute mean distance for all m-tuples
+  mtuple_avg = []
+  mtuples = list(combinations(indices, m))
+  for mt in mtuples:
+    t = []
+    for i,j in combinations(mt, 2):
+      t.append(dists[(i,j)])
+    mtuple_avg.append(torch.mean(torch.cat(t, dim=0), dim=0, keepdim=True))
+  mavg = torch.cat(mtuple_avg, dim=0)
+
+  # compute weights for mtuples, giving higher weight to mtuples w/ smaller distances
+  mtuple_weights = softmax(-mavg/softmin_temp , dim=0)
+  # assign mtuple weights back to individual fields
+  field_weights = torch.zeros((n,) + mtuple_weights.shape[1:])
+  field_weights = field_weights.to(device=mtuple_weights.device)
+  for i, mtuple in enumerate(mtuples):
+    for j in mtuple:
+      field_weights[j,...] += mtuple_weights[i,...]
+  # divy up the weight by contribution
+  field_weights = field_weights / m
+  # create a voted field by multiplying fields by field weights
+  field = torch.cat(fields, dim=0)
+  field = field.permute(1,2,3,0)
+  field_weights = field_weights.permute(2,3,0,1)
+  return matmul(field, field_weights).permute(3,0,1,2)
