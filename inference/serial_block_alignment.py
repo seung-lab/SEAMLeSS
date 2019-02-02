@@ -127,81 +127,81 @@ if __name__ == '__main__':
   # Serial alignment script #
   ###########################
   
-  # # Copy first section
-  # batch = []
-  # for block_offset in copy_range:
-  #   prefix = block_offset
-  #   for i, block_start in enumerate(block_range):
-  #     block_type = block_types[i % 2]
-  #     dst = dsts[block_type]
-  #     z = block_start + block_offset 
-  #     t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, prefix=prefix)
-  #     batch.extend(t)
+  # Copy first section
+  batch = []
+  for block_offset in copy_range:
+    prefix = block_offset
+    for i, block_start in enumerate(block_range):
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
+      z = block_start + block_offset 
+      t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, prefix=prefix)
+      batch.extend(t)
 
-  # run(a, batch)
-  # # wait
-  # start = time()
-  # for block_offset in copy_range:
-  #   prefix = block_offset
-  #   for block_type in block_types:
-  #     dst = dsts[block_type]
-  #     if block_type == 'even':
-  #       # there may be more even than odd blocks
-  #       n = n_chunks * int(math.ceil(len(block_range) / 2))
-  #     else:
-  #       n = n_chunks * (len(block_range) // 2)
-  #     a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
-  # end = time()
-  # diff = end - start
-  # print_run(diff, len(batch))
+  run(a, batch)
+  # wait
+  start = time()
+  for block_offset in copy_range:
+    prefix = block_offset
+    for block_type in block_types:
+      dst = dsts[block_type]
+      if block_type == 'even':
+        # there may be more even than odd blocks
+        n = n_chunks * int(math.ceil(len(block_range) / 2))
+      else:
+        n = n_chunks * (len(block_range) // 2)
+      a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
 
-  # # Align without vector voting
-  # for block_offset in serial_range:
-  #   z_offset = serial_offsets[block_offset] 
-  #   serial_field = serial_fields[z_offset]
-  #   batch = []
-  #   prefix = block_offset
-  #   for i, block_start in enumerate(block_range):
-  #     block_type = block_types[i % 2]
-  #     dst = dsts[block_type]
-  #     z = block_start + block_offset 
-  #     t = a.compute_field(cm, args.model_path, src, dst, serial_field, 
-  #                         z, z+z_offset, bbox, mip, pad, prefix=prefix)
-  #     batch.extend(t)
+  # Align without vector voting
+  for block_offset in serial_range:
+    z_offset = serial_offsets[block_offset] 
+    serial_field = serial_fields[z_offset]
+    batch = []
+    prefix = block_offset
+    for i, block_start in enumerate(block_range):
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
+      z = block_start + block_offset 
+      t = a.compute_field(cm, args.model_path, src, dst, serial_field, 
+                          z, z+z_offset, bbox, mip, pad, prefix=prefix)
+      batch.extend(t)
 
-  #   run(a, batch)
-  #   start = time()
-  #   # wait 
-  #   n = len(batch) 
-  #   a.wait_for_queue_empty(serial_field.path, 
-  #       'compute_field_done/{}'.format(prefix), n)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
+    run(a, batch)
+    start = time()
+    # wait 
+    n = len(batch) 
+    a.wait_for_queue_empty(serial_field.path, 
+        'compute_field_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
-  #   batch = []
-  #   for i, block_start in enumerate(block_range):
-  #     block_type = block_types[i % 2]
-  #     dst = dsts[block_type]
-  #     z = block_start + block_offset 
-  #     t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
-  #                  bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
-  #     batch.extend(t)
+    batch = []
+    for i, block_start in enumerate(block_range):
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
+      z = block_start + block_offset 
+      t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
+                   bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+      batch.extend(t)
 
-  #   run(a, batch)
-  #   start = time()
-  #   # wait 
-  #   for block_type in block_types:
-  #     dst = dsts[block_type]
-  #     if block_type == 'even':
-  #       # there may be more even than odd blocks
-  #       n = n_chunks * int(math.ceil(len(block_range) / 2))
-  #     else:
-  #       n = n_chunks * (len(block_range) // 2)
-  #     a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
+    run(a, batch)
+    start = time()
+    # wait 
+    for block_type in block_types:
+      dst = dsts[block_type]
+      if block_type == 'even':
+        # there may be more even than odd blocks
+        n = n_chunks * int(math.ceil(len(block_range) / 2))
+      else:
+        n = n_chunks * (len(block_range) // 2)
+      a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
   # Align with vector voting
   for block_offset in vvote_range:
