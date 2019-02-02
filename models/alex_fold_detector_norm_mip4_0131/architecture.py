@@ -125,7 +125,7 @@ class DownConvBlock(nn.Module):
         self.conv1 = conv3x3(in_channels, out_channels)
         self.conv2 = conv3x3(out_channels, out_channels)
         self.conv3 = conv3x3(out_channels, out_channels)
-        self.norm = nn.BatchNorm2d(out_channels)
+        self.norm = nn.BatchNorm2d(out_channels, track_running_stats=False)
 
     def forward(self, x):
         x = self.maxpool(x)
@@ -147,7 +147,7 @@ class UpConvBlock(nn.Module):
         self.conv1 = conv3x3(in_channels, out_channels)
         self.conv2 = conv3x3(out_channels, out_channels)
         self.conv3 = conv3x3(out_channels, out_channels)
-        self.norm = nn.BatchNorm2d(out_channels)
+        self.norm = nn.BatchNorm2d(out_channels, track_running_stats=False)
 
     def forward(self, xh, xv):
         """
@@ -192,7 +192,7 @@ class UNet(nn.Module):
         x8 = self.uconv3(x2, x7)
         x9 = self.uconv4(x1, x8)
         x10 = self.conv_out(x9)
-        return x10
+        return torch.sigmoid(x10)
 
     def _initialize_weights(self):
         conv_modules = [m for m in self.modules() if isinstance(m, nn.Conv2d)]
