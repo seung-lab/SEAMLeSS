@@ -40,7 +40,7 @@ def cp(src, dst):
 
 @torch.no_grad()
 def load_model_from_dict(model, archive_params):
-    model_params = dict(model.named_parameters())
+    model_params = model.state_dict(keep_vars=True)
     model_keys = sorted(model_params.keys())
     archive_keys = sorted(archive_params.keys())
 
