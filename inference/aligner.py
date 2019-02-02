@@ -667,10 +667,10 @@ class Aligner:
       batch.append(image)
     return torch.cat(batch, axis=0)
 
-  def downsample(self, cv, z, bbox, mip):
-    data = self.get_image(cv, z, bbox, mip, adjust_contrast=False, to_tensor=True)
-    data = interpolate(data, scale_factor=0.5, mode='bilinear')
-    return data.cpu().numpy()
+  def downsample_chunk(self, cv, z, bbox, src_mip, dst_mip):
+    scale_factor = 2.**(src_mip - dst_mip)
+    data = self.get_image(cv, z, bbox, mip, normalizer=None, to_tensor=True)
+    return interpolate(data, scale_factor=scale_factor, mode='bilinear')
 
   def cpc_chunk(self, src_cv, tgt_cv, src_z, tgt_z, bbox, src_mip, dst_mip, norm=True):
     """Calculate the chunked pearson r between two chunks
@@ -756,7 +756,6 @@ class Aligner:
         and where the resulting vector field will be written
        mip: int for MIP level images will be loaded and field will be stored at
        pad: int for amount of padding to add to bbox before processing
-       wait: bool indicating whether to wait for all tasks must finish before proceeding
        prefix: str used to write "finished" files for each task 
         (only used for distributed)
     """
@@ -793,7 +792,6 @@ class Aligner:
        mask_cv: MiplessCloudVolume where source mask is stored
        mask_mip: int for MIP level at which source mask is stored
        mask_val: int for pixel value in the mask that should be zero-filled
-       wait: bool indicating whether to wait for all tasks must finish before proceeding
        prefix: str used to write "finished" files for each task 
         (only used for distributed)
     """
@@ -865,7 +863,6 @@ class Aligner:
        f_mip: MIP of vector field f
        g_mip: MIP of vector field g
        dst_mip: MIP of composed vector field
-       wait: bool indicating whether to wait for all tasks must finish before proceeding
        prefix: str used to write "finished" files for each task 
         (only used for distributed)
     """
@@ -913,6 +910,30 @@ class Aligner:
                                  chunk, src_mip, dst_mip, norm, prefix))
     return batch
 
+  def downsample(self, cm, cv, z, bbox, src_mip, dst_mip, prefix=''):
+    """Downsample image in cv at src_mip to tgt_mip
+
+    Args:
+       cm: CloudManager that corresponds to the src_cv, field_cv, & dst_cv
+       cv: MiplessCloudVolume where image is stored & where higher mip will be saved
+       z: int for section index of image to be processed
+       bbox: BoundingBox for region to be processed
+       src_mip: int for MIP level of image to be downsampled 
+       dst_mip: int for MIP level of image to downsample to
+       prefix: str used to write "finished" files for each task 
+        (only used for distributed)
+    """
+    assert(dst_mip > src_mip)
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[dst_mip],
+                                    cm.dst_voxel_offsets[dst_mip], mip=dst_mip, 
+                                    max_mip=cm.num_scales)
+    if prefix == '':
+      prefix = '{}_{}_{}'.format(src_mip, dst_mip, z)
+    batch = []
+    for chunk in chunks:
+      batch.append(tasks.DownsampleTask(cv, z, chunk, src_mip, dst_mip, prefix))
+    return batch
+
   def render_batch_chunkwise(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip,
                    batch):
     """Chunkwise render
@@ -948,40 +969,6 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def downsample_chunkwise(self, cv, z, bbox, source_mip, target_mip, wait=True):
-    """Chunkwise downsample
-
-    For the CloudVolume dirs at Z_OFFSET, warp the SRC_IMG using the FIELD for
-    section Z in region BBOX at MIP. Chunk BBOX appropriately and save the result
-    to DST_IMG.
-    """
-    print("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
-    for m in range(source_mip+1, target_mip+1):
-      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[m],
-                                      cm.dst_voxel_offsets[m], mip=m, render=True)
-      if self.distributed and len(chunks) > self.task_batch_size * 4:
-          batch = []
-          print("Distributed downsampling to mip", m, len(chunks)," chunks")
-          for i in range(0, len(chunks), self.task_batch_size * 4):
-              task_patches = []
-              for j in range(i, min(len(chunks), i + self.task_batch_size * 4)):
-                  task_patches.append(chunks[j].serialize())
-              batch.append(tasks.DownsampleTask(cv, z, task_patches, mip=m))
-          self.upload_tasks(batch)
-          if wait:
-            self.task_queue.block_until_empty()
-      else:
-          def chunkwise(patch_bbox):
-            print ("Local downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
-            downsampled_patch = self.downsample_patch(cv, z, patch_bbox, m-1)
-            self.save_image_patch(cv, z, downsampled_patch, patch_bbox, m)
-          self.pool.map(chunkwise, chunks)
-
-  def render_section_all_mips(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip, wait=True):
-    self.render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip, wait=wait)
-    # self.render_grid_cv(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
-    self.downsample(dst_cv, dst_z, bbox, self.render_low_mip, self.render_high_mip, wait=wait)
-  
   def render_to_low_mip(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
       self.low_mip_render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip)
       self.downsample(dst_cv, dst_z, bbox, image_mip, self.render_high_mip)
@@ -1078,25 +1065,6 @@ class Aligner:
       field = vector_vote(fields, T=T)
       field = field.data.cpu().numpy() 
       self.save_field(write_F_cv, z, field, bbox, mip, relative=False, as_int16=as_int16)
-
-  def downsample_range(self, cv, z_range, bbox, source_mip, target_mip):
-    """Downsample a range of sections, downsampling a given MIP across all sections
-       before proceeding to the next higher MIP level.
-    
-    Args:
-       cv: MiplessCloudVolume where images will be loaded and written
-       z_range: list of ints for section indices that will be downsampled
-       bbox: BoundingBox for region to be downsampled in each section
-       source_mip: int for MIP level of the data to be initially loaded
-       target_mip: int for MIP level after which downsampling will stop
-    """
-    for mip in range(source_mip, target_mip):
-      print('downsample_range from {src} to {tgt}'.format(src=source_mip, tgt=target_mip))
-      for z in z_range:
-        self.downsample(cv, z, bbox, mip, mip+1, wait=False)
-      if self.distributed:
-        self.task_handler.wait_until_ready()
-    
 
   def generate_pairwise_and_compose(self, z_range, compose_start, bbox, mip, forward_match,
                                     reverse_match, batch_size=1):

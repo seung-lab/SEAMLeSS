@@ -256,6 +256,30 @@ class CPCTask(RegisteredTask):
         stor.put_file(path, '')
         print('Marked finished at {}'.format(path))
 
+class DownsampleTask(RegisteredTask):
+  def __init__(self, cv, z, patch_bbox, src_mip, dst_mip, prefix):
+    super().__init__(cv, z, patch_bbox, src_mip, dst_mip, prefix)
+
+  def execute(self, aligner):
+    cv = DCV(self.cv) 
+    z = self.z
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    src_mip = self.src_mip
+    dst_mip = self.dst_mip
+    prefix = self.prefix
+    print("\nDownsampling\n"
+          "cv {}\n"
+          "z {}\n"
+          "MIP{} to MIP{}\n".format(cv, z, src_mip, dst_mip), flush=True)
+    if not aligner.dry_run:
+      image = self.downsample_chunk(cv, z, patch_bbox, src_mip, dst_mip)
+      image = image.cpu().numpy()
+      aligner.save_image(image, cv, z, patch_bbox, dst_mip)
+      with Storage(dst_cv.path) as stor:
+        path = 'downsample_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
+
 class BatchRenderTask(RegisteredTask):
   def __init__(
     self, z, field_cv, field_z, patches, 
