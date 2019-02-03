@@ -62,6 +62,8 @@ if __name__ == '__main__':
   mip = args.mip
   max_mip = args.max_mip
   pad = args.max_displacement
+  src_mask_val = args.src_mask_val
+  src_mask_mip = args.src_mask_mip
 
   # Compile ranges
   block_range = range(args.bbox_start[2], args.bbox_stop[2], args.block_size)
@@ -91,7 +93,7 @@ if __name__ == '__main__':
   tgt_mask_cv = None
   if args.src_mask_path:
     src_mask_cv = cm.create(args.src_mask_path, data_type='uint8', num_channels=1,
-                               fill_missing=True, overwrite=True)
+                               fill_missing=True, overwrite=False)
     tgt_mask_cv = src_mask_cv
 
   # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius 
@@ -135,7 +137,8 @@ if __name__ == '__main__':
       block_type = block_types[i % 2]
       dst = dsts[block_type]
       z = block_start + block_offset 
-      t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, prefix=prefix)
+      t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, mask_cv=src_mask_cv,
+                     mask_mip=src_mask_mip, mask_val=src_mask_val, prefix=prefix)
       batch.extend(t)
 
   run(a, batch)
@@ -166,7 +169,10 @@ if __name__ == '__main__':
       dst = dsts[block_type]
       z = block_start + block_offset 
       t = a.compute_field(cm, args.model_path, src, dst, serial_field, 
-                          z, z+z_offset, bbox, mip, pad, prefix=prefix)
+                          z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
+                          src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                          tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+                          tgt_mask_val=src_mask_val, prefix=prefix)
       batch.extend(t)
 
     run(a, batch)
@@ -185,7 +191,8 @@ if __name__ == '__main__':
       dst = dsts[block_type]
       z = block_start + block_offset 
       t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
-                   bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+                   bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
+                   mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
       batch.extend(t)
 
     run(a, batch)
@@ -214,7 +221,10 @@ if __name__ == '__main__':
       for z_offset in vvote_offsets:
         field = pair_fields[z_offset]
         t = a.compute_field(cm, args.model_path, src, dst, field, 
-                            z, z+z_offset, bbox, mip, pad, prefix=prefix)
+                            z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
+                            src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                            tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+                            tgt_mask_val=src_mask_val, prefix=prefix)
         batch.extend(t)
 
     run(a, batch)
@@ -252,8 +262,9 @@ if __name__ == '__main__':
       dst = dsts[block_type]
       z = block_start + block_offset 
       t = a.render(cm, src, vvote_field, dst, 
-                   src_z=z, field_z=z, dst_z=z, 
-                   bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+                   src_z=z, field_z=z, dst_z=z, bbox=bbox, src_mip=mip, field_mip=mip, 
+                   mask_cv=src_mask_cv, mask_val=src_mask_val, mask_mip=src_mask_mip,
+                   prefix=prefix)
       batch.extend(t)
 
     run(a, batch)

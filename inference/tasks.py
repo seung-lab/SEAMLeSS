@@ -51,8 +51,10 @@ class CopyTask(RegisteredTask):
     print("\nCopy\n"
           "src {}\n"
           "dst {}\n"
+          "mask {}, val {}, MIP{}\n"
           "z={} to z={}\n"
-          "MIP{}\n".format(src_cv, dst_cv, src_z, dst_z, mip), flush=True)
+          "MIP{}\n".format(src_cv, dst_cv, mask_cv, mask_val, mask_mip, 
+                            src_z, dst_z, mip), flush=True)
 
     if not aligner.dry_run:
       if is_field:
@@ -72,9 +74,11 @@ class CopyTask(RegisteredTask):
 
 class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
-                     patch_bbox, mip, pad, prefix):
+                     patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
+                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix):
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
-                                 patch_bbox, mip, pad, prefix)
+                     patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
+                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -86,18 +90,33 @@ class ComputeFieldTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
     pad = self.pad
+    src_mask_cv = None 
+    if self.src_mask_cv:
+      src_mask_cv = DCV(self.src_mask_cv)
+    src_mask_mip = self.src_mask_mip
+    src_mask_val = self.src_mask_val
+    tgt_mask_cv = None 
+    if self.tgt_mask_cv:
+      tgt_mask_cv = DCV(self.tgt_mask_cv)
+    tgt_mask_mip = self.tgt_mask_mip
+    tgt_mask_val = self.tgt_mask_val
     prefix = self.prefix
     print("\nCompute field\n"
           "model {}\n"
           "src {}\n"
           "tgt {}\n"
           "field {}\n"
+          "src_mask {}, val {}, MIP{}\n"
+          "tgt_mask {}, val {}, MIP{}\n"
           "z={} to z={}\n"
-          "MIP{}\n".format(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
-                           mip), flush=True)
+          "MIP{}\n".format(model_path, src_cv, tgt_cv, field_cv, src_mask_cv, src_mask_val,
+                           src_mask_mip, tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
+                           src_z, tgt_z, mip), flush=True)
     if not aligner.dry_run:
       field = aligner.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z, 
-      			 patch_bbox, mip, pad)
+      		                          patch_bbox, mip, pad, 
+                                          src_mask_cv, src_mask_mip, src_mask_val,
+                                          tgt_mask_cv, tgt_mask_mip, tgt_mask_val)
       field = field.data.cpu().numpy()
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       with Storage(field_cv.path) as stor:
