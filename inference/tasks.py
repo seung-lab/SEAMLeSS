@@ -30,25 +30,24 @@ def run(aligner, tasks):
 
 class PredictImgTask(RegisteredTask):
   def __init__(self, model_path, src_cv, dst_cv, z, mip, bbox, prefix):
-    super().__init__(model_path, src_cv, z, mip, bbox, prefix)
+    super().__init__(model_path, src_cv, dst_cv, z, mip, bbox, prefix)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
     dst_cv = DCV(self.dst_cv)
     z = self.z
-    patch_bbox = deserialize_bbox(bbox)
+    patch_bbox = deserialize_bbox(self.bbox)
     mip = self.mip
     prefix = self.prefix
     print("\nPredict Image\n"
           "src {}\n"
           "dst {}\n"
-          "mask {}, val {}, MIP{}\n"
-          "z={} to z={}\n"
+          "at z={}\n"
           "MIP{}\n".format(src_cv, dst_cv, z, mip), flush=True)
     start = time()
-    image = self.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox)
+    image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox)
     image = image.cpu().numpy()
-    self.save_image(image, dst_cv, z, patch_bbox, mip)
+    aligner.save_image(image, dst_cv, z, patch_bbox, mip)
 
     with Storage(dst_cv.path) as stor:
         path = 'PreImg_done/{}/{}'.format(prefix, patch_bbox.stringify(z))

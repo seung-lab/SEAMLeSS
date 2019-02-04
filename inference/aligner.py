@@ -481,7 +481,7 @@ class Aligner:
     return field
 
   def perdict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
-                    chunk_size):
+                    chunk_size, prefix=''):
     start = time()
     chunks = self.break_into_chunks(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
@@ -494,13 +494,12 @@ class Aligner:
           "MIP{}\n"
           "{} chunks\n".format(model_path, src_cv, dst_cv, z,
                                mip, len(chunks)), flush=True)
-    if self.distributed:
-      if prefix == '':
-        prefix = '{}'.format(mip)
-      batch = []
-      for patch_bbox in chunks:
-        batch.append(tasks.PredictImgTask(model_path, src_cv, dst_cv, z, mip,
-                                          patch_bbox, prefix))
+    if prefix == '':
+      prefix = '{}'.format(mip)
+    batch = []
+    for patch_bbox in chunks:
+      batch.append(tasks.PredictImgTask(model_path, src_cv, dst_cv, z, mip,
+                                        patch_bbox, prefix))
     return batch
 
   def predict_image_chunk(self, model_path, src_cv, z, mip, bbox):
