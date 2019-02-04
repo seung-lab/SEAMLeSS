@@ -128,10 +128,10 @@ class Aligner:
        the ModelArchive at that model_path
     """
     if model_path in self.model_archives:
-      print('Loading model {0} from cache'.format(model_path))
+      print('Loading model {0} from cache'.format(model_path), flush=True)
       return self.model_archives[model_path]
     else:
-      print('Adding model {0} to the cache'.format(model_path))
+      print('Adding model {0} to the cache'.format(model_path), flush=True)
       path = Path(model_path)
       model_name = path.stem
       archive = ModelArchive(model_name)
@@ -143,29 +143,42 @@ class Aligner:
   #######################
 
   def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True):
+    start = time()
     data = self.get_data(cv, z, bbox, src_mip=src_mip, dst_mip=dst_mip, 
                              to_float=False, to_tensor=to_tensor, normalizer=None)
-    return data == valid_val
+    mask = data == valid_val
+    end = time()
+    diff = end - start
+    print('get_mask: {:.3f}'.format(diff), flush=True) 
+    return mask
 
   def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None):
-    print('get_image for {0}'.format(bbox.stringify(z)))
-    return self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
+    print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
+    start = time()
+    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
                              to_tensor=to_tensor, normalizer=normalizer)
+    end = time()
+    diff = end - start
+    print('get_image: {:.3f}'.format(diff), flush=True) 
+    return image
 
   def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
                              to_tensor=True, normalizer=None):
     """Get image with mask applied
     """
+    start = time()
     image = self.get_image(image_cv, z, bbox, image_mip,
                            to_tensor=True, normalizer=normalizer)
     if mask_cv is not None:
-      print('masking image')
       mask = self.get_mask(mask_cv, z, bbox, 
                            src_mip=mask_mip,
                            dst_mip=image_mip, valid_val=mask_val)
       image = image.masked_fill_(mask, 0)
     if not to_tensor:
       image = image.cpu().numpy()
+    end = time()
+    diff = end - start
+    print('get_masked_image: {:.3f}'.format(diff), flush=True) 
     return image
 
   def get_composite_image(self, cv, z_list, bbox, mip, to_tensor=True): 
@@ -446,6 +459,7 @@ class Aligner:
     normalizer = archive.preprocessor
     print('compute_field for {0} to {1}'.format(bbox.stringify(src_z),
                                                 bbox.stringify(tgt_z)))
+    print('pad: {}'.format(pad))
     padded_bbox = deepcopy(bbox)
     padded_bbox.uncrop(pad, mip=mip)
 
@@ -457,6 +471,8 @@ class Aligner:
                                 mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
                                 mask_val=tgt_mask_val,
                                 to_tensor=True, normalizer=normalizer)
+    print('src_patch.shape {}'.format(src_patch.shape))
+    print('tgt_patch.shape {}'.format(tgt_patch.shape))
 
     # model produces field in relative coordinates
     field = model(src_patch, tgt_patch)
