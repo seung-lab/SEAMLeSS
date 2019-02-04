@@ -25,7 +25,7 @@ def run(aligner, tasks):
       executor.map(fn, tasks)
   else:
     with LocalTaskQueue(queue_name=aligner.queue_name, parallel=1) as tq:
-      for task in ptasks:
+      for task in tasks:
         tq.insert(task, args=[ aligner ])
 
 class CopyTask(RegisteredTask):
