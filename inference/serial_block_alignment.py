@@ -131,9 +131,9 @@ if __name__ == '__main__':
   # Serial alignment script #
   ###########################
   # check for restart
-  copy_range = [r for r in copy_range if r > args.restart]
-  serial_range = [r for r in serial_range if r > args.restart]
-  vvote_range = [r for r in vvote_range if r > args.restart]
+  copy_range = [r for r in copy_range if r >= args.restart]
+  serial_range = [r for r in serial_range if r >= args.restart]
+  vvote_range = [r for r in vvote_range if r >= args.restart]
   
   # Copy first section
   batch = []
