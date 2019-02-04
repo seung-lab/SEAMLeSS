@@ -47,7 +47,7 @@ if __name__ == '__main__':
   parser.add_argument('--max_mip', type=int, default=9)
   parser.add_argument('--tgt_radius', type=int, default=3,
     help='int for number of sections to include in vector voting')
-  parser.add_argument('--max_displacement', 
+  parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
@@ -61,7 +61,7 @@ if __name__ == '__main__':
   # Simplify var names
   mip = args.mip
   max_mip = args.max_mip
-  pad = args.max_displacement
+  pad = args.pad
   src_mask_val = args.src_mask_val
   src_mask_mip = args.src_mask_mip
 
