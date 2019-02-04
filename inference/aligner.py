@@ -496,22 +496,12 @@ class Aligner:
                                mip, len(chunks)), flush=True)
     if self.distributed:
       if prefix == '':
-        prefix = '{}_{}'.format(mip, src_z)
+        prefix = '{}'.format(mip)
       batch = []
       for patch_bbox in chunks:
-        batch.append(tasks.ComputeFieldTask(model_path, src_cv, tgt_cv,
-                                                     field_cv, src_z, tgt_z, patch_bbox, 
-                                                     mip, pad, prefix)) 
-      self.upload_tasks(batch)
-    else:
-      def chunkwise(patch_bbox):
-        image = self.predict_image_chunk(model_path, src_cv, z, mip, patch_bbox)
-        image = image.cpu().numpy()
-        print("image size is", image.shape)
-        self.save_image(image, dst_cv, z, patch_bbox, mip)
-      self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
+        batch.append(tasks.PredictImgTask(model_path, src_cv, dst_cv, z, mip,
+                                          patch_bbox, prefix))
+    return batch
 
   def predict_image_chunk(self, model_path, src_cv, z, mip, bbox):
     archive = self.get_model_archive(model_path, readonly=2)
@@ -1225,40 +1215,21 @@ class Aligner:
 
   def compute_field_and_vector_vote(self, cm, model_path, src_cv, tgt_cv, vvote_field,
                           tgt_range, z, bbox, mip, pad, softmin_temp, prefix):
-    """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in TGT_RADIUS
-    Args:
-        z_range: list of z indices to be matches 
-        bbox: BoundingBox object for bounds of 2D region
-        forward_match: bool indicating whether to match from z to z-i
-          for i in range(tgt_radius)
-        reverse_match: bool indicating whether to match from z to z+i
-          for i in range(tgt_radius)
-        batch_size: (for distributed only) int describing how many sections to issue 
-          multi-match tasks for, before waiting for all tasks to complete
+    """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in
+    TGT_RADIUS and perform vetor voting
     """
 
     m = mip
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[m],
                                     cm.vec_voxel_offsets[m], mip=m,
                                     max_mip=cm.num_scales)
-    start = time()
-    print("tgt_range is", tgt_range)
-    if self.distributed:
-      for patch_bbox in chunks:
-          batch.append(tasks.ResAndComposeTask(model_path, src_cv, tgt_cv, z,
-                                               tgt_range, patch_bbox, mip,
-                                               vvote_field, pad, softmin_temp,
-                                              prefix))
-      self.upload_tasks(batch)
-    else:
-      def chunkwise(patch_bbox):
-          self.res_and_compose(model_path, src_cv, tgt_cv, z, tgt_range, patch_bbox,
-                              mip, vvote_field, pad, softmin_temp, prefix)
-      self.pool.map(chunkwise, chunks)
-
-    end = time()
-    print (": {} sec".format(end - start))
-
+    batch = []
+    for patch_bbox in chunks:
+        batch.append(tasks.ResAndComposeTask(model_path, src_cv, tgt_cv, z,
+                                            tgt_range, patch_bbox, mip,
+                                            vvote_field, pad, softmin_temp,
+                                            prefix))
+    return batch
 
   def generate_pairwise(self, z_range, bbox, forward_match, reverse_match, 
                               render_match=False, batch_size=1, wait=True):

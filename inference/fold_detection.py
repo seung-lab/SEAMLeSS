@@ -5,6 +5,12 @@ from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenanc
 from os.path import join
 from cloudmanager import CloudManager
 from time import time
+from tasks import run 
+
+def print_run(diff, n_tasks):
+  if n_tasks > 0:
+    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
+
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--model_path', type=str,
@@ -56,18 +62,24 @@ if __name__ == '__main__':
   dst = cm.create(join(args.dst_path, 'image'),
                   data_type='uint8', num_channels=1, fill_missing=True,
                   overwrite=True)
-  
-  chunks = a.break_into_chunks(bbox, chunk_size,
-                                 cm.dst_voxel_offsets[mip], mip=mip,
-                                 max_mip=cm.num_scales)
 
-  ###########################
-  # Serial alignment script #
-  ###########################
-  
-  n_chunks = len(chunks) 
+  batch =[]
   for z in full_range:
       print("fold detection for z={}".format(z))
-      a.fold_detection(cm, args.model_path, src, dst, z, mip, bbox,
-                       chunk_size);
+      t = a.perdict_image(cm, args.model_path, src, dst, z, mip, bbox,
+                      chunk_size);
+      batch.extend(t)
+  start = time()
+  run(a, batch)
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
+  start = time()
+  # wait 
+  n = len(batch)
+  prefix = mip
+  a.wait_for_queue_empty(dst.path, 'PreImg_done/{}'.format(prefix), n)
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
 
