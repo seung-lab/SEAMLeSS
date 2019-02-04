@@ -229,6 +229,8 @@ class Aligner:
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
     if normalizer is not None:
+      data = torch.from_numpy(data)
+      data = data.to(device=self.device)
       data = normalizer(data).reshape(data.shape)
     # convert to tensor if requested, or if up/downsampling required
     if to_tensor | (src_mip != dst_mip):
@@ -574,6 +576,7 @@ class Aligner:
       assert(field_mip >= image_mip)
       pad = 2**(image_mip+1)
       padded_bbox = deepcopy(bbox)
+      print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
       f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
                           to_tensor=True)
