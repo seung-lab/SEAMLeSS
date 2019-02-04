@@ -19,6 +19,8 @@ from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenanc
 from os.path import join
 from cloudmanager import CloudManager
 from time import time
+from tasks import run
+
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--model_path', type=str,
@@ -49,7 +51,7 @@ if __name__ == '__main__':
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
-  
+ 
   # Simplify var names
   mip = args.mip
   max_mip = args.max_mip
@@ -89,9 +91,6 @@ if __name__ == '__main__':
     dsts[block_start] = dst 
 
   # Create field CloudVolumes
-  no_vvote_field = cm.create(join(args.dst_path, 'field', str(1)), 
-                                  data_type='int16', num_channels=2,
-                                  fill_missing=True, overwrite=True)
   pair_fields = {}
   for z_offset in vvote_offsets:
     pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
@@ -101,93 +100,28 @@ if __name__ == '__main__':
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True)
 
-  chunks = a.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
-                                 cm.dst_voxel_offsets[mip], mip=mip, 
-                                 max_mip=cm.num_scales)
-
   ###########################
   # Serial alignment script #
   ###########################
   
-  n_chunks = len(chunks) 
 # Copy first section
-  s = time()
-  print("copy_range:", copy_range)
-  print("block range:", block_range)
-  print("vv range:", vvote_range)
-#  for block_offset in copy_range:
-#    prefix = block_offset
-#    for block_start in block_range:
-#      dst = dsts[block_start]
-#      z = block_start + block_offset 
-#      print('copying z={0}'.format(z))
-#      a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, wait=False, prefix=prefix)
-#
-#    # wait
-#    for block_start in block_range:
-#      dst = dsts[block_start]
-#      n = n_chunks
-#      a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
-#  e = time()
-#  print("--------copying sections needs {}".format(e-s))
-#
-#  s = time()
-#  print("no vv range:", no_vvote_range)
-#  # Align without vector voting
-#  for block_offset in no_vvote_range:
-#    z_offset = 1
-#    prefix = block_offset
-#    for block_start in block_range:
-#      dst = dsts[block_start]
-#      z = block_start + block_offset 
-#      a.compute_field(cm, args.model_path, src, dst, no_vvote_field, 
-#                          z, z+z_offset, bbox, mip, pad, wait=False, prefix=prefix)
-#    # wait 
-#    n = len(block_range) * n_chunks
-#    a.wait_for_queue_empty(no_vvote_field.path, 
-#        'compute_field_done/{}'.format(prefix), n)
-#
-#    for block_start in block_range:
-#      dst = dsts[block_start]
-#      z = block_start + block_offset 
-#      a.render(cm, src, no_vvote_field, dst, src_z=z, field_z=z, dst_z=z, 
-#                   bbox=bbox, src_mip=mip, field_mip=mip, wait=False, prefix=prefix)
-#    # wait
-#    for block_start in block_range:
-#      dst = dsts[block_start]
-#      n = n_chunks
-#      a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
-#
-#  e = time()
-#  print("-------Alignwithout vv needs {}".format(e-s))
 
   # Align with vector voting
   for block_offset in vvote_range:
     s = time()
     prefix = block_offset
+    batch = []
     for block_start in block_range:
       z = block_start + block_offset
-      a.calc_res_and_compose(cm, args.model_path, src, dst, vvote_field,
+      t = a.compute_field_and_vector_vote(cm, args.model_path, src, dst, vvote_field,
                              vvote_offsets, z, bbox, mip, pad,
-                             softmin_temp=-1, prefix=prefix) 
+                             softmin_temp=-1, prefix=prefix)
+      batch.extend(t)
     # wait 
+    run(a, batch)
+    print_run(diff, len(batch))
     n = len(block_range) * n_chunks
     a.wait_for_queue_empty(vvote_field.path,
         'res_and_compose/{}-{}/'.format(prefix, mip), n)
-
-#    for block_start in block_range:
-#      dst = dsts[block_start]
-#      z = block_start + block_offset
-#      a.render(cm, src, vvote_field, dst,
-#               src_z=z, field_z=z, dst_z=z,
-#               bbox=bbox, src_mip=mip, field_mip=mip, wait=True, prefix=prefix)
-#    # wait
-#    for block_start in block_range:
-#      dst = dsts[block_start]
-#      n = n_chunks
-#      a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
-#    e = time()
-#    print("-----Aligning with vv needs {}".format(e-s))
-
 
   # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
