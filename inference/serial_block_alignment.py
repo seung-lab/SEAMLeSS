@@ -23,7 +23,8 @@ from cloudmanager import CloudManager
 from tasks import run 
 
 def print_run(diff, n_tasks):
-  print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
+  if n_tasks > 0:
+    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
 
 if __name__ == '__main__':
   parser = get_argparser()
@@ -47,10 +48,11 @@ if __name__ == '__main__':
   parser.add_argument('--max_mip', type=int, default=9)
   parser.add_argument('--tgt_radius', type=int, default=3,
     help='int for number of sections to include in vector voting')
-  parser.add_argument('--max_displacement', 
+  parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
+  parser.add_argument('--restart', type=int, default=0)
   args = parse_args(parser)
   # Only compute matches to previous sections
   args.serial_operation = True
@@ -61,7 +63,7 @@ if __name__ == '__main__':
   # Simplify var names
   mip = args.mip
   max_mip = args.max_mip
-  pad = args.max_displacement
+  pad = args.pad
   src_mask_val = args.src_mask_val
   src_mask_mip = args.src_mask_mip
 
@@ -128,6 +130,10 @@ if __name__ == '__main__':
   ###########################
   # Serial alignment script #
   ###########################
+  # check for restart
+  copy_range = [r for r in copy_range if r >= args.restart]
+  serial_range = [r for r in serial_range if r >= args.restart]
+  vvote_range = [r for r in vvote_range if r >= args.restart]
   
   # Copy first section
   batch = []
@@ -140,8 +146,12 @@ if __name__ == '__main__':
       t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, mask_cv=src_mask_cv,
                      mask_mip=src_mask_mip, mask_val=src_mask_val, prefix=prefix)
       batch.extend(t)
-
+  print('Scheduling CopyTasks')
+  start = time()
   run(a, batch)
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
   # wait
   start = time()
   for block_offset in copy_range:
@@ -175,7 +185,12 @@ if __name__ == '__main__':
                           tgt_mask_val=src_mask_val, prefix=prefix)
       batch.extend(t)
 
+    print('Scheduling ComputeFieldTasks')
+    start = time()
     run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
     start = time()
     # wait 
     n = len(batch) 
@@ -195,7 +210,12 @@ if __name__ == '__main__':
                    mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
       batch.extend(t)
 
+    print('Scheduling RenderTasks')
+    start = time()
     run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
     start = time()
     # wait 
     for block_type in block_types:
@@ -227,7 +247,12 @@ if __name__ == '__main__':
                             tgt_mask_val=src_mask_val, prefix=prefix)
         batch.extend(t)
 
+    print('Scheduling ComputeFieldTasks')
+    start = time()
     run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
     start = time()
     # wait 
     for z_offset in vvote_offsets:
@@ -246,7 +271,12 @@ if __name__ == '__main__':
                         softmin_temp=-1, serial=True, prefix=prefix)
       batch.extend(t)
 
+    print('Scheduling VectorVoteTasks')
+    start = time()
     run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
     start = time()
     # wait 
     n = len(batch)
@@ -267,7 +297,12 @@ if __name__ == '__main__':
                    prefix=prefix)
       batch.extend(t)
 
+    print('Scheduling RenderTasks')
+    start = time()
     run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
     start = time()
     # wait
     for block_type in block_types:
