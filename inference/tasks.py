@@ -2,31 +2,31 @@ import boto3
 from time import time
 import json
 import tenacity
+from functools import partial
 from mipless_cloudvolume import deserialize_miplessCV as DCV
 from cloudvolume import Storage
 from cloudvolume.lib import scatter 
 from boundingbox import BoundingBox, deserialize_bbox
 
 from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue
+from concurrent.futures import ProcessPoolExecutor
 # from taskqueue.taskqueue import _scatter as scatter
+
+def remote_upload(queue_name, ptasks):
+  with TaskQueue(queue_name=queue_name) as tq:
+    for task in ptasks:
+      tq.insert(task)
 
 def run(aligner, tasks): 
   if aligner.distributed:
-    TQ = TaskQueue(queue_name=aligner.queue_name)
+    tasks = scatter(tasks, aligner.threads)
+    fn = partial(remote_upload, aligner.queue_name)
+    with ProcessPoolExecutor(max_workers=aligner.threads) as executor:
+      executor.map(fn, tasks)
   else:
-    TQ = LocalTaskQueue(queue_name=aligner.queue_name, parallel=1)
-
-  def multiprocess_upload(ptasks):
-    with TQ as tq:
+    with LocalTaskQueue(queue_name=aligner.queue_name, parallel=1) as tq:
       for task in ptasks:
         tq.insert(task, args=[ aligner ])
-  
-  if aligner.threads == 1:
-    multiprocess_upload(tasks)
-  else:
-    tasks = scatter(tasks, aligner.threads)
-    with concurrent.futures.ProcessPoolExecutor(max_workers=aligner.threads) as executor:
-      executor.map(multiprocess_upload, tasks)
 
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, 
