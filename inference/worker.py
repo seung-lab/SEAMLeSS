@@ -28,7 +28,6 @@ def run_aligner(args, stop_fn=None):
   with TaskQueue(queue_name=aligner.queue_name, queue_server='sqs', n_threads=0) as tq:
     tq.poll(execute_args=[aligner], stop_fn=stop_fn_with_parent_health_check, lease_seconds=25)
 
-
 def create_process(process_id, args):
   stop = Event()
   p = Process(target=run_aligner, args=(args, stop.is_set))
