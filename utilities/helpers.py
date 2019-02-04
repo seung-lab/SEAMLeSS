@@ -48,7 +48,7 @@ def cp(src, dst):
 
 @torch.no_grad()
 def load_model_from_dict(model, archive_params):
-    model_params = dict(model.named_parameters())
+    model_params = model.state_dict(keep_vars=True)
     model_keys = sorted(model_params.keys())
     archive_keys = sorted(archive_params.keys())
 
@@ -426,6 +426,58 @@ def time_function(f, name=None, on=False):
         print('{}: {} sec'.format(name, time.time() - start))
         return result
     return f_timed
+
+
+class TimeoutError(Exception):
+    """
+    Raised when a function takes longer than the allowed time.
+    """
+
+    def __init__(self, value="Timed Out"):
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
+def timeout(seconds, *args):
+    """
+    Simple decorator to stop a function after a specified time limit.
+    Adapted from
+    https://stackoverflow.com/questions/35490555/python-timeout-decorator
+
+    Example:
+        >>> @timeout(10)
+            def infloop():
+                while true:
+                    pass
+            infloop()
+            print('Exited the infinite loop!')
+    """
+    import signal
+    import time
+
+    def decorate(f):
+        def handler(signum, frame):
+            raise TimeoutError()
+
+        def new_f(*args, **kwargs):
+            old_handler = signal.signal(signal.SIGALRM, handler)
+            old_time_left = signal.alarm(seconds)
+            if 0 < old_time_left < seconds:  # never lengthen existing timer
+                signal.alarm(old_time_left)
+            start_time = time.time()
+            try:
+                result = f(*args, **kwargs)
+            finally:
+                if old_time_left > 0:  # deduct f's run time from saved timer
+                    old_time_left -= time.time() - start_time
+                signal.signal(signal.SIGALRM, old_handler)
+                signal.alarm(old_time_left if old_time_left > 0 else 0)
+            return result
+        new_f.__name__ = f.__name__
+        return new_f
+    return decorate
 
 
 def retry_enumerate(iterable, start=0):

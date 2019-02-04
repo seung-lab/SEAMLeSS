@@ -28,10 +28,10 @@ def rotate_and_scale(imslice, size=0.01, scale=0.01, grid=None):
             imslice = imslice.unsqueeze(0)
     if grid is None:
         if size is None:
-            theta = np.random.uniform(0, 2 * np.pi)
+            theta = random.uniform(0, 2 * np.pi)
         else:
-            theta = np.random.normal(0, size)
-        scale = np.random.normal(1, scale)
+            theta = random.normalvariate(0, size)
+        scale = random.normalvariate(1, scale)
         mat = torch.FloatTensor([[[np.cos(theta),-np.sin(theta),0],[np.sin(theta),np.cos(theta),0]]]) * scale
         grid = F.affine_grid(mat, imslice.size() if type(imslice) != list else imslice[0].size())
         # if (imslice.is_cuda if type(imslice) != list else imslice[0].is_cuda):
@@ -43,7 +43,7 @@ def rotate_and_scale(imslice, size=0.01, scale=0.01, grid=None):
     return output, grid
 
 def crack(imslice, width_range=(4,32)):
-    width = np.random.randint(width_range[0], width_range[1])
+    width = random.randint(width_range[0], width_range[1]-1)
     pos = [random.randint(imslice.size()[-1]//4,imslice.size()[-1]-imslice.size()[-1]//4)]
     prob = random.randint(4,10)
     left = random.randint(0,1) == 0
@@ -60,12 +60,12 @@ def crack(imslice, width_range=(4,32)):
             pos.pop()
             break
 
-    color_mean = np.random.uniform()
+    color_mean = random.uniform()
     outslice = imslice.clone()
     mask = Variable(torch.ones(outslice.size())).cuda()
     for idx, p in enumerate(pos):
         outslice.data[idx,:p-width] = outslice.data[idx,width:p]
-        color = torch.cuda.FloatTensor(np.random.normal(color_mean, 0.2, width)).clamp(min=0,max=1)
+        color = torch.cuda.FloatTensor(random.normalvariate(color_mean, 0.2, width)).clamp(min=0,max=1)
         if torch.max(outslice.data[idx,width:p]) > 0:
             outslice.data[idx,p-width:p] = color
         mask.data[idx,p-width:p] = 0
@@ -153,14 +153,14 @@ def gen_gradient(size, flip=None, period_median=25, peak=0.3, randomize_peak=Tru
         periods = 1
     grad = torch.zeros(size)
     if randomize_peak:
-        peak *= np.random.uniform(0,1)
+        peak *= random.uniform(0,1)
     for period in range(periods):
         for idx in range(size[-1] // periods):
             if period % 2 == 0:
                 grad[:,idx + period * (size[-1] // periods)] = (float(idx) / (size[-1] / periods)) * peak
             else:
                 grad[:,idx + period * (size[-1] // periods)] = peak - (float(idx) / (size[-1] / periods)) * peak
-    grad += np.random.normal(0, (torch.max(grad) + torch.min(grad)) / 2)
+    grad += random.normalvariate(0, (torch.max(grad) + torch.min(grad)) / 2)
     grad = Variable(grad)
     if flip:
         grad = grad.permute(1,0)
@@ -223,11 +223,11 @@ def aug_brightness(X, factor=2, mask=False, clamp=False):
         if clamp:
             X = X.clamp(min=1/255.,max=1)
 
-    f = np.random.uniform(1,factor)
+    f = random.uniform(1,factor)
     X = X * half(f, 1./f)
 
     if not clamp:
-        X = X + np.random.uniform(0,0.5)
+        X = X + random.uniform(0,0.5)
 
     X[zm] = 0
 
@@ -308,9 +308,9 @@ def aug_input(x, factor=2):
 
     for _ in range(gaussian_cutouts):
         mask = random_rect_mask(out.size()).squeeze(0).squeeze(0)
-        sigma = np.random.uniform(0.001,0.03)
-        # noise = Variable(torch.FloatTensor(np.random.normal(0,sigma,out.size()))).cuda()
-        noise = torch.FloatTensor(np.random.normal(0,sigma,out.size()))
+        sigma = random.uniform(0.001,0.03)
+        # noise = Variable(torch.FloatTensor(random.normalvariate(0,sigma,out.size()))).cuda()
+        noise = torch.FloatTensor(random.normalvariate(0,sigma,out.size()))
         if half():
             # randomly smooth the noise
             r = random.randint(1,20)
@@ -321,14 +321,14 @@ def aug_input(x, factor=2):
 
     for _ in range(contrast_cutouts):
         mask = random_rect_mask(out.size()).squeeze(0).squeeze(0)
-        f = np.random.uniform(1,factor)
+        f = random.uniform(1,factor)
         out[mask] = out[mask] * half(f,1./f)
 
     for _ in range(missing_cutouts):
         mask = random_rect_mask(out.size()).squeeze(0)
         missing_masks.append(mask)
         mask = mask.squeeze(0)
-        out[mask] = np.random.uniform(1/255.,1)
+        out[mask] = random.uniform(1/255.,1)
 
     out = aug_brightness(out, factor)
 

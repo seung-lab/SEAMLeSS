@@ -21,13 +21,17 @@ def _parse_args(args=None):
 
     parallel_group = parser.add_argument_group('parallelization')
     parallel_group.add_argument(
-        '--num_workers', type=int, default=1, metavar='W',
+        '--num_workers', type=int, default=None, metavar='W',
         help='Number of workers for the DataLoader',
     )
     parallel_group.add_argument(
         '--gpu_ids', type=str, default=None, metavar='X',
         help='GPUs to use during training, separated by commas. '
              'If not specified, the first unused GPU will be used.',
+    )
+    parallel_group.add_argument(
+        '--batch_size', type=int, default=None, metavar='SIZE',
+        help='Number of samples to be evaluated before each gradient update',
     )
 
     resume_help = ('Resume training a paused model '
@@ -57,7 +61,7 @@ def _parse_args(args=None):
     start_parser.add_argument(
         '--height',
         help='the number of mip levels to train',
-        type=int, default=7, metavar='H',
+        type=int, default=5, metavar='H',
     )
     start_parser.add_argument(
         '--feature_maps', '--feature_list', '--fm',
@@ -77,7 +81,7 @@ def _parse_args(args=None):
         metavar='LR', help='initial learning rate',
     )
     param_group.add_argument(
-        '--gamma', '--learning_rate_decay', default=0.1, type=float,
+        '--gamma', '--learning_rate_decay', default=1, type=float,
         metavar='DR', help='rate by which the learning rate decays',
     )
     param_group.add_argument(
@@ -115,11 +119,12 @@ def _parse_args(args=None):
     param_group.add_argument(
         '--wd', '--weight_decay', default=0, type=float,
         metavar='W', help='weight decay (default: 0)')
-    # param_group.add_argument(
-    #     '-A', '--skip_aug',
-    #     help='skip data augmentation (no cutouts, etc)',
-    #     action='store_true',
-    # )  # not implemented yet. Uncomment once implemented
+    param_group.add_argument(
+        '-A', '--skip_aug',
+        dest='skip_aug',
+        help='skip data augmentation (no cutouts, etc)',
+        action='store_true',
+    )  # TODO: not fully implemented yet.
     # param_group.add_argument(
     #     '--plan', type=str,
     #     help='path to a training plan',
@@ -129,10 +134,6 @@ def _parse_args(args=None):
         help='seed for initializing training. '
         'Triggers deterministic behavior if specified.',
     ).completer = (lambda **kwargs: [str(random.getrandbits(10))])
-    param_group.add_argument(
-        '--batch_size', type=int, default=1, metavar='SIZE',
-        help='Number of samples to be evaluated before each gradient update',
-    )
 
     loss_group = start_parser.add_argument_group('training loss')
     loss_type = loss_group.add_mutually_exclusive_group()
@@ -182,6 +183,12 @@ def _parse_args(args=None):
         help='Dataset to use for training (default: None)',
         type=str, required=True,
     )
+    data_group.add_argument(
+        '--num_samples', metavar='N',
+        help='Number of samples from the dataset to train on. '
+        'Default is all.',
+        type=int, default=None,
+    )
 
     checkpoint_group = start_parser.add_argument_group('checkpointing')
     checkpoint_group.add_argument(
@@ -224,6 +231,10 @@ def _parse_args(args=None):
         del args.interval
     if args.gpu_ids is None:
         args.gpu_ids = first_unused_gpu()
+    if args.num_workers is None:
+        args.num_workers = len(args.gpu_ids.split(','))
+    if 'batch_size' in args and args.batch_size is None:
+        args.batch_size = len(args.gpu_ids.split(','))
     if 'test_' in args.name:  # random names for rapid testing
         while '*' in args.name:  # all '*'s are replaced by a random hex digit
             args.name = args.name.replace(

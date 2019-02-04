@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import copy
 from utilities.helpers import gridsample_residual, upsample, downsample, load_model_from_dict
 
 
@@ -16,20 +15,15 @@ class Model(nn.Module):
     def __init__(self, feature_maps=None, encodings=True, *args, **kwargs):
         super().__init__()
         self.feature_maps = feature_maps
-        self.encode = EncodingPyramid(self.feature_maps, **kwargs) if encodings else None
+        self.encode = (EncodingPyramid(self.feature_maps, **kwargs)
+                       if encodings else None)
         self.align = AligningPyramid(self.feature_maps if encodings
                                      else [1]*len(feature_maps), **kwargs)
 
-    def __getitem__(self, index):
-        return self.submodule(index)
-
-    def __len__(self):
-        return self.height
-
     def forward(self, src, tgt, in_field=None, **kwargs):
         if self.encode:
-            src, tgt = self.encode(src, tgt)
-        field = self.align(src, tgt, in_field)
+            src, tgt = self.encode(src, tgt, **kwargs)
+        field = self.align(src, tgt, in_field, **kwargs)
         return field
 
     def load(self, path):
@@ -48,15 +42,21 @@ class Model(nn.Module):
         with path.open('wb') as f:
             torch.save(self.state_dict(), f)
 
+    def __len__(self):
+        return self.height
+
     @property
     def height(self):
         return len(self.feature_maps)
+
+    def __getitem__(self, index):
+        return self.submodule(index)
 
     def submodule(self, index):
         """
         Returns a submodule as indexed by `index`.
 
-        Submodules with lower indecies are intended to be trained earlier,
+        Submodules with lower indices are intended to be trained earlier,
         so this also decides the training order.
 
         `index` must be an int, a slice, or None.
@@ -68,6 +68,56 @@ class Model(nn.Module):
                              and index >= self.height):
             index = slice(self.height)
         return _SubmoduleView(self, index)
+
+    def train_level(self, level=slice(None), _index=slice(None)):
+        """
+        Set only a specific level of the submodule to training mode and
+        freeze all the other weights
+        """
+        for p in self.parameters():
+            p.requires_grad = False
+        if level == 'all':
+            for p in self.parameters():
+                p.requires_grad = True
+        elif level == 'lowest':
+            for p in self.align.list[_index][0].parameters():
+                p.requires_grad = True
+        elif level == 'highest':
+            for p in self.align.list[_index][-1].parameters():
+                p.requires_grad = True
+        else:
+            for p in self.align.list[_index][level].parameters():
+                p.requires_grad = True
+        return self
+
+    def init_level(self, level='lowest', _index=slice(None)):
+        """
+        Initialize the last level of the SubmoduleView by copying the trained
+        weights of the next to last level.
+        Whether the last level is the lowest or highest level is determined
+        by the `level` argument.
+        If the SubmoduleView has only one level, this does nothing.
+        """
+        # TODO: init encoders, handle different size aligners
+        if len(self.aligners) > 1:
+            if level == 'lowest':
+                state_dict = self.align.list[_index][1].state_dict()
+                self.align.list[_index][0].load_state_dict(state_dict)
+            elif level == 'highest':
+                state_dict = self.align.list[_index][-2].state_dict()
+                self.align.list[_index][-1].load_state_dict(state_dict)
+        return self
+
+    @property
+    def pixel_size_ratio(self, _index=slice(None)):
+        """
+        The ratio of the pixel size of the submodule's highest level to
+        the pixel size at its input level.
+        By assumption, each level of the network has equal ability, so this
+        is a measure of the power of the submodule to detect and correct
+        large misalignments in its input scale.
+        """
+        return 2**(self.height - 1)
 
 
 class Encoder(nn.Module):
@@ -87,7 +137,7 @@ class Encoder(nn.Module):
         )
         self.seq.apply(init_leaky_relu)
 
-    def forward(self, src, tgt):
+    def forward(self, src, tgt, **kwargs):
         return self.seq(src), self.seq(tgt)
 
 
@@ -116,11 +166,11 @@ class EncodingPyramid(nn.Module):
             in zip(self.feature_list[:-1], self.feature_list[1:])
         ])
 
-    def forward(self, src, tgt):
+    def forward(self, src, tgt, **kwargs):
         src_encodings = []
         tgt_encodings = []
         for module in self.list:
-            src, tgt = module(src, tgt)
+            src, tgt = module(src, tgt, **kwargs)
             src_encodings.append(src)
             tgt_encodings.append(tgt)
             src, tgt = downsample()(src), downsample()(tgt)
@@ -154,7 +204,7 @@ class Aligner(nn.Module):
         )
         self.seq.apply(init_leaky_relu)
 
-    def forward(self, src, tgt):
+    def forward(self, src, tgt, **kwargs):
         if src.shape[1] != tgt.shape[1]:
             raise ValueError('Cannot align src and tgt of different shapes. '
                              'src: {}, tgt: {}'.format(src.shape, tgt.shape))
@@ -197,62 +247,15 @@ class AligningPyramid(nn.Module):
         self.feature_list = list(feature_list)
         self.list = nn.ModuleList([Aligner(ch) for ch in feature_list])
 
-    def forward(self, src_input, tgt_input, accum_field=None):
-        for i in reversed(range(len(self.feature_list))):
+    def forward(self, src_input, tgt_input, accum_field=None,
+                _index=slice(None), **kwargs):
+        prev_level = None
+        for i, aligner in zip(reversed(range(len(self.list))[_index]),
+                              reversed(self.list[_index])):
             if isinstance(src_input, list) and isinstance(tgt_input, list):
                 src, tgt = src_input[i], tgt_input[i]
             else:
                 src, tgt = downsample(i)(src_input), downsample(i)(tgt_input)
-            if accum_field is not None:
-                accum_field = (upsample()(accum_field.permute(0, 3, 1, 2))
-                               .permute(0, 2, 3, 1))
-                src = gridsample_residual(src, accum_field,
-                                          padding_mode='border')
-            factor = 2 / src.shape[-1]  # scale to [-1,1]
-            res_field = self.list[i](src, tgt) * factor
-            if accum_field is not None:
-                resampled = gridsample_residual(
-                    accum_field.permute(0, 3, 1, 2), res_field,
-                    padding_mode='border').permute(0, 2, 3, 1)
-                accum_field = res_field + resampled
-            else:
-                accum_field = res_field
-        return accum_field
-
-
-class _SubmoduleView(nn.Module):
-    """
-    Returns a view into a sequence of aligners of a model.
-    This is useful for training and testing.
-    """
-
-    def __init__(self, model, index):
-        super().__init__()
-        if isinstance(index, int):
-            index = slice(index, index+1)
-        self.levels = range(model.height)[index]
-        self.encoders = model.encode.list if model.encode else None
-        self.aligners = model.align.list[index]
-
-    def forward(self, src, tgt, accum_field=None):
-        # encode
-        if self.encoders:
-            src_stack, tgt_stack = [], []
-            for module in self.encoders:
-                src, tgt = module(src, tgt)
-                src_stack.append(src)
-                tgt_stack.append(tgt)
-                src, tgt = downsample()(src), downsample()(tgt)
-        else:
-            src_stack, tgt_stack = src, tgt
-
-        # align
-        prev_level = None
-        for i, aligner in zip(reversed(self.levels), reversed(self.aligners)):
-            if isinstance(src_stack, list) and isinstance(tgt_stack, list):
-                src, tgt = src_stack[i], tgt_stack[i]
-            else:
-                src, tgt = downsample(i)(src_stack), downsample(i)(tgt_stack)
             if prev_level is not None:
                 accum_field = (upsample(prev_level - i)
                                (accum_field.permute(0, 3, 1, 2))
@@ -260,7 +263,7 @@ class _SubmoduleView(nn.Module):
                 src = gridsample_residual(src, accum_field,
                                           padding_mode='border')
             factor = 2 / src.shape[-1]  # scale to [-1,1]
-            res_field = aligner(src, tgt) * factor
+            res_field = aligner(src, tgt, **kwargs) * factor
             if accum_field is not None:
                 resampled = gridsample_residual(
                     accum_field.permute(0, 3, 1, 2), res_field,
@@ -274,57 +277,42 @@ class _SubmoduleView(nn.Module):
                        .permute(0, 2, 3, 1))
         return accum_field
 
-    def train_level(self, level=slice(None)):
-        """
-        Set only a specific level of the submodule to training mode and
-        freeze all the other weights
-        """
-        for p in self.parameters():
-            p.requires_grad = False
-        for p in self.aligners[0].parameters():
-            p.requires_grad = True
-        if level == 'all':
-            for p in self.parameters():
-                p.requires_grad = True
-        elif level == 'lowest':
-            for p in self.aligners[0].parameters():
-                p.requires_grad = True
-        elif level == 'highest':
-            for p in self.aligners[-1].parameters():
-                p.requires_grad = True
-        else:
-            for p in self.aligners[level].parameters():
-                p.requires_grad = True
-        return self
 
-    def init_level(self, level='lowest'):
-        """
-        Initialize the last level of the SubmoduleView by copying the trained
-        weights of the next to last level.
-        Whether the last level is the lowest or highest level is determined
-        by the `level` argument.
-        If the SubmoduleView has only one level, this does nothing.
-        """
-        # TODO: init encoders, handle different size aligners
-        if len(self.aligners) > 1:
-            if level == 'lowest':
-                state_dict = self.aligners[1].state_dict()
-                self.aligners[0].load_state_dict(state_dict)
-            elif level == 'highest':
-                state_dict = self.aligners[-2].state_dict()
-                self.aligners[-1].load_state_dict(state_dict)
-        return self
+class _SubmoduleView(nn.Module):
+    """
+    Returns a view into a sequence of aligners of a model.
+    This is useful for training and testing.
+    """
+
+    def __init__(self, model, index):
+        super().__init__()
+        if isinstance(index, int):
+            index = slice(index, index+1)
+        self.model = model
+        self.index = index
+
+    def forward(self, *args, **kwargs):
+        kwargs.update(_index=self.index)
+        return self.model.forward(*args, **kwargs)
+
+    def train_level(self, *args, **kwargs):
+        kwargs.update(_index=self.index)
+        return self.model.train_level(*args, **kwargs)
+
+    def init_level(self, *args, **kwargs):
+        kwargs.update(_index=self.index)
+        return self.model.init_level(*args, **kwargs)
 
     @property
-    def pixel_size_ratio(self):
-        """
-        The ratio of the pixel size of the submodule's highest level to
-        the pixel size at its input level.
-        By assumption, each level of the network has equal ability, so this
-        is a measure of the power of the submodule to detect and correct
-        large misalignments in its input scale.
-        """
-        return 2**(self.levels[-1])
+    def pixel_size_ratio(self, _index=slice(None)):
+        return 2**(range(self.height)[_index][-1])
+
+    def __len__(self):
+        return self.height
+
+    @property
+    def height(self):
+        return len(self.model.height)
 
 
 def init_leaky_relu(m, a=None):
@@ -344,36 +332,3 @@ def init_leaky_relu(m, a=None):
     if a is None:
         a = nn.modules.activation.LeakyReLU().negative_slope
     nn.init.kaiming_uniform_(m.weight, a=a)
-
-
-# helper functions kept around temporarily... TODO: remove
-
-def copy_aligner(self, id_from, id_to):
-    """
-    Copy the kernel weights from one aligner module to another
-    """
-    if min(id_from, id_to) < 0 or max(id_from, id_to) >= self.height:
-        raise IndexError('Values {} --> {} out of bounds for size {}.'
-                         .format(id_from, id_to, self.height))
-    state_dict = self.align.list[id_from].state_dict()
-    self.align.list[id_to].load_state_dict(state_dict)
-
-
-def shift_aligners(self):
-    """
-    Shift the kernel weights up one aligner and make a copy of the lowest
-    """
-    for i in range(self.height-1, 1, -1):
-        self.align.list[i] = self.align.list[i-1]
-    self.align.list[1] = copy.deepcopy(self.align.list[0])
-
-
-def copy_encoder(self, id_from, id_to):
-    """
-    Copy the kernel weights from one encoder module to another
-    """
-    if min(id_from, id_to) < 0 or max(id_from, id_to) >= self.height:
-        raise IndexError('Values {} --> {} out of bounds for size {}.'
-                         .format(id_from, id_to, self.height))
-    state_dict = self.encode.list[id_from].state_dict()
-    self.encode.list[id_to].load_state_dict(state_dict)
