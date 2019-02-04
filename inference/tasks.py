@@ -257,7 +257,7 @@ class ComposeTask(RegisteredTask):
         print('Marked finished at {}'.format(path))
       end = time()
       diff = end - start
-      print('VectorVoteTask: {:.3f} s'.format(diff))
+      print('ComposeTask: {:.3f} s'.format(diff))
 
 class CPCTask(RegisteredTask):
   def __init__(self, src_cv, tgt_cv, dst_cv, src_z, tgt_z, patch_bbox, 
