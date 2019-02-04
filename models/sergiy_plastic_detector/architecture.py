@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import copy
-from masker import Masker
+from .masker import Masker
 
 
 class Model(nn.Module):

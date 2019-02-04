@@ -2,13 +2,24 @@ from aligner import Aligner, BoundingBox
 from getpass import getuser
 import argparse
 
+def positive_int(val):
+  ival = int(val)
+  if ival <= 0:
+    raise argparse.ArgumentTypeError("Positive integer expected, got %s" % val)
+  return ival
+
 def get_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument('--queue_name', type=str, default=None)
+  parser.add_argument('--processes', type=positive_int, default=1,
+     help='no. of processes to use on a single worker (useful to bypass GKE GPU limit)')
   parser.add_argument('--threads', type=int, default=1,
      help='no. of threads to use in scheduling chunks (locally & distributed)')
   parser.add_argument('--task_batch_size', type=int, default=1,
      help='no. of tasks to group together for a single worker')
+  parser.add_argument('--dry_run', 
+     help='prevent task executes, but allow task print outs',
+     action='store_true')
   return parser
 
 def parse_args(parser, arg_string=''):
