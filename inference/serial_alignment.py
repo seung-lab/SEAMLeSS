@@ -26,7 +26,7 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--max_displacement', 
+  parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
   args = parse_args(parser)
@@ -40,7 +40,7 @@ if __name__ == '__main__':
 
   mip = args.mip
   max_mip = args.max_mip
-  pad = args.max_displacement
+  pad = args.pad
   copy_z = z_range[2]
   no_vvote_range = z_range[0:2][::-1]
   vvote_range = z_range[3:]

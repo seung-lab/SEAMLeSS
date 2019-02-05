@@ -7,6 +7,7 @@ import numpy as np
 import yaml
 import datetime
 from pathlib import Path
+import filecmp
 import importlib
 import pandas as pd
 
@@ -15,12 +16,6 @@ from utilities.helpers import cp
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: 402
-
-
-# Key directories: `models_location` is where all the archives are stored
-git_root = Path(subprocess.check_output('git rev-parse --show-toplevel'
-                                        .split()).strip().decode("utf-8"))
-models_location = git_root / 'models/'
 
 
 class ModelArchive(object):
@@ -65,35 +60,14 @@ class ModelArchive(object):
         >>> new_model.save()  # save the updated state of the new model to disk
     """
 
-    @classmethod
-    def model_exists(cls, name):
-        """
-        Returns whether a trained model of this name exists
-        """
-        cls._check_name(name)
-        return (models_location / name).is_dir()
-
-    @classmethod
-    def _check_name(cls, name):
-        """
-        Checks a proposed name for formatting irregularities.
-        Checking this prevents accidentally writing to arbitrary
-        file locations.
-        """
-        if not len(name):
-            raise ValueError('Model name must have non-zero length.')
-        if not name.replace('_', '').isalnum():
-            raise ValueError('Malformated name: {}\n'
-                             'Model name can only contain alphanumeric '
-                             'characters and underscores _.'.format(name))
-
     def __init__(self, name, readonly=True, *args, **kwargs):
-        self._check_name(name)  # check name formatting
+        name, directory = self._resolve_model(name)
         self._name = name
+        self.directory = directory
         self.readonly = readonly
-        self.directory = models_location / self._name
         self.intermediate_models = self.directory / 'intermediate_models/'
         self.debug_outputs = self.directory / 'debug_outputs/'
+        self.last_training_record = self.directory / '.last_training_record'
         self.paths = {
             # the model's trained weights
             'weights': self.directory / 'weights.pt',
@@ -125,7 +99,7 @@ class ModelArchive(object):
         self._current_debug_directory = None
         self._seed = None
 
-        if ModelArchive.model_exists(name):
+        if self._exists():
             self._load(*args, **kwargs)
         elif not self.readonly:
             self._create(*args, **kwargs)
@@ -147,28 +121,38 @@ class ModelArchive(object):
             print('Writing to exisiting model archive: {}'.format(self._name))
         else:
             print('Reading from exisiting model archive: {}'.format(self._name))
-        assert self.directory.is_dir() and self.paths['commit'].exists()
+        assert self.directory.is_dir()
+
+        if not self.readonly:
+            # ensure directories exist
+            self.intermediate_models.mkdir(exist_ok=True)
+            self.debug_outputs.mkdir(exist_ok=True)
+            self.last_training_record.mkdir(exist_ok=True)
 
         # check for matching commits
         # this can prevent errors arising from working on the wrong git branch
         saved_commit = self.commit
-        current_commit = subprocess.check_output('git rev-parse HEAD'
-                                                 .split()).strip()
-        if int(saved_commit, 16) != int(current_commit, 16):
-            print('Warning: The repository has changed since this '
-                  'net was last trained.')
-            if not self.readonly:
-                print('Continuing may overwrite the archive by '
-                      'running the new code. If this was the intent, '
-                      'then it might not be a problem.'
-                      '\nIf not, exit the process and return to the '
-                      'old commit by running `git checkout {}`'
-                      '\nDo you wish to proceed?  [y/N]'
-                      .format(saved_commit))
-                if input().lower() not in {'yes', 'y'}:
-                    print('Exiting')
-                    sys.exit()
-                print('OK, proceeding...')
+        if saved_commit is not None:
+            try:
+                current_commit = subprocess.check_output('git rev-parse HEAD'
+                                                         .split()).strip()
+            except subprocess.CalledProcessError:
+                current_commit = 0
+            if int(saved_commit, 16) != int(current_commit, 16):
+                print('Warning: The repository has changed since this '
+                      'net was last trained.')
+                if not self.readonly:
+                    print('Continuing may overwrite the archive by '
+                          'running the new code. If this was the intent, '
+                          'then it might not be a problem.'
+                          '\nIf not, exit the process and return to the '
+                          'old commit by running `git checkout {}`'
+                          '\nDo you wish to proceed?  [y/N]'
+                          .format(saved_commit))
+                    if input().lower() not in {'yes', 'y'}:
+                        print('Exiting')
+                        sys.exit()
+                    print('OK, proceeding...')
 
         # load the model, optimizer, and state variables
         self._load_state_vars(*args, **kwargs)
@@ -187,6 +171,7 @@ class ModelArchive(object):
         self.directory.mkdir()
         self.intermediate_models.mkdir()
         self.debug_outputs.mkdir()
+        self.last_training_record.mkdir()
 
         # create archive files
         for filename in [
@@ -202,9 +187,9 @@ class ModelArchive(object):
             self.paths[key].touch(exist_ok=False)
 
         # copy the architecture and objective definitions into the archive
-        cp(git_root/'training'/'architecture.py', self.paths['architecture'])
-        cp(git_root/'training'/'objective.py', self.paths['objective'])
-        cp(git_root/'training'/'preprocessor.py', self.paths['preprocessor'])
+        cp(git_root()/'training'/'architecture.py', self.paths['architecture'])
+        cp(git_root()/'training'/'objective.py', self.paths['objective'])
+        cp(git_root()/'training'/'preprocessor.py', self.paths['preprocessor'])
 
         # record the status of the git repository
         with self.paths['commit'].open(mode='wb') as f:
@@ -247,7 +232,7 @@ class ModelArchive(object):
         The new model's training history is copied from the old model
         and appended to.
         """
-        if self.model_exists(name):
+        if self._exists():
             raise ValueError('The model "{}" already exists.'.format(name))
         new_archive = type(self)(name, readonly=False,
                                  weights_file=self.paths['weights'],
@@ -265,6 +250,44 @@ class ModelArchive(object):
         tempfile.unlink()  # delete the temporary file
 
         return new_archive
+
+    @classmethod
+    def _resolve_model(cls, model_path):
+        """
+        Find the model referenced by `model_path`.
+        If `model_path` is the path to an existing directory, this
+        directory is used.
+        Otherwise, find a model by that name in the repository's `models`
+        directory.
+        """
+        model_path = Path(model_path).absolute()
+        name = model_path.stem
+        if model_path.is_dir():
+            directory = model_path
+        else:
+            root = git_root()
+            if root is None:
+                root = Path()
+            directory = root / 'models' / name
+        return name, directory
+
+    @classmethod
+    def model_exists(cls, model_path):
+        """
+        Returns whether a trained model of this name or path exists.
+        If `model_path` is the path to an existing directory, this
+        directory is checked.
+        Otherwise, a model by that name is searched for in the repository's
+        `models` directory.
+        """
+        _, directory = cls._resolve_model(model_path)
+        return directory.is_dir()
+
+    def _exists(self):
+        """
+        Returns whether this trained model already exists
+        """
+        return self.directory.is_dir()
 
     @property
     def name(self):
@@ -353,7 +376,8 @@ class ModelArchive(object):
         If the model is untrained, loads a newly initialized model.
         """
         self._architecture = importlib.import_module(
-            '{}.{}.architecture'.format(models_location.stem, self._name))
+            '{}.{}.architecture'.format(self.directory.parent.stem,
+                                        self._name))
         self._model = self._architecture.Model(*args, **kwargs)
         if self.paths['weights'].exists():
             self._model.load(self.paths['weights'])
@@ -377,7 +401,8 @@ class ModelArchive(object):
         """
         if self.paths['objective'].exists():
             self._objective = importlib.import_module(
-                '{}.{}.objective'.format(models_location.stem, self._name))
+                '{}.{}.objective'.format(self.directory.parent.stem,
+                                         self._name))
         else:
             return None
         self._loss = self._objective.Objective(*args, **kwargs)
@@ -393,7 +418,8 @@ class ModelArchive(object):
         """
         if self.paths['preprocessor'].exists():
             preprocessor = importlib.import_module(
-                '{}.{}.preprocessor'.format(models_location.stem, self._name))
+                '{}.{}.preprocessor'.format(self.directory.parent.stem,
+                                            self._name))
         else:
             return None
         self._preprocessor = preprocessor.Preprocessor(*args, **kwargs)
@@ -487,6 +513,48 @@ class ModelArchive(object):
         cp(self.paths['state_vars'], check_dir)
         cp(self.paths['plot'], check_dir)
 
+    def record_training_session(self):
+        """
+        Records a new training session with the updated parameters.
+        """
+        if self.readonly:
+            raise ReadOnlyError(self._name)
+        tracked = [
+            'architecture.py',
+            'objective.py',
+            'preprocessor.py',
+            'state_vars.yaml'
+        ]
+        _, changed, error = filecmp.cmpfiles(
+            str(self.last_training_record), str(self.directory), tracked)
+        if len(changed + error) == 0:
+            return
+        with self.paths['plan'].open(mode='a') as f:
+            f.writelines('\nAt epoch {}, iteration {}:\n'.format(
+                self.state_vars.epoch, self.state_vars.iteration))
+            f.writelines('Time: {}\n'.format(datetime.datetime.now()))
+            f.writelines('Commit: {}\n'.format(self.commit))
+            f.writelines(' '.join(sys.argv) + '\n')
+        with self.paths['plan'].open(mode='ab') as f:
+            for filename in changed + error:
+                if filename in changed:
+                    subprocess.call(
+                        'diff -u'
+                        ' -I \\s*\"*epoch\"*:\\s'
+                        ' -I \\s*\"*iteration\"*:\\s'
+                        ' -I \\s*\"*initialized_list\"*:\\s'
+                        ' -I \\s*\"*levels\"*:\\s'.split()
+                        + [
+                            str(self.last_training_record.expanduser()),
+                            str(self.paths[filename.split('.')[0]]
+                                .expanduser())
+                        ], stdout=f)
+        for filename in tracked:
+            if (self.last_training_record / filename).is_file():
+                (self.last_training_record / filename).unlink()
+            cp(self.paths[filename.split('.')[0]],
+               self.last_training_record / filename)
+
     def new_debug_directory(self):
         """
         Creates a new subdirectory for debugging outputs.
@@ -563,6 +631,8 @@ class ModelArchive(object):
         epoch = self._state_vars.epoch
         gamma = self._state_vars.gamma
         gamma_step = self._state_vars.gamma_step
+        if gamma == 1:
+            return
         self._state_vars.lr = (self._state_vars.start_lr
                                * (gamma ** (epoch // gamma_step)))
         for param_group in self._optimizer.param_groups:
@@ -589,7 +659,17 @@ class ModelArchive(object):
         data.plot(title='Training loss for {}'.format(self._name))
         with self.paths['plot'].open('wb') as f:
             plt.savefig(f)
-        cp(self.paths['plot'], self._current_debug_directory)
+
+
+def git_root():
+    """
+    Return the root directory of the current git repository, if available
+    """
+    try:
+        return Path(subprocess.check_output('git rev-parse --show-toplevel'
+                                            .split()).strip().decode("utf-8"))
+    except subprocess.CalledProcessError:
+        return None
 
 
 def set_seed(seed):

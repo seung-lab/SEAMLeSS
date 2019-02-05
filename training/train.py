@@ -69,7 +69,6 @@ from arguments import parse_args  # keep first for fast args access
 import os
 import sys
 import time
-import warnings
 import datetime
 import math
 import random
@@ -85,7 +84,7 @@ from utilities.archive import ModelArchive
 from utilities.helpers import (gridsample_residual, save_chunk,
                                dvl as save_vectors,
                                upsample, downsample, AverageMeter,
-                               retry_enumerate)
+                               retry_enumerate, cp)
 
 
 def main():
@@ -106,32 +105,31 @@ def main():
     train_transform = transforms.Compose([
         stack_dataset.ToFloatTensor(),
         archive.preprocessor,
+    ] + [
         stack_dataset.RandomRotateAndScale(),
         stack_dataset.RandomFlip(),
-        stack_dataset.Split(),
-    ])
+    ] if not state_vars.skip_aug else [])
     train_dataset = stack_dataset.compile_dataset(
-        state_vars.training_set_path, transform=train_transform)
+        state_vars.training_set_path, transform=train_transform,
+        num_samples=state_vars.num_samples)
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=state_vars.batch_size,
         shuffle=(train_sampler is None), num_workers=args.num_workers,
-        pin_memory=True, sampler=train_sampler)
+        pin_memory=(state_vars.validation_set_path is None),
+        sampler=train_sampler)
 
     # set up validation data if present
     if state_vars.validation_set_path:
         val_transform = transforms.Compose([
             stack_dataset.ToFloatTensor(),
             archive.preprocessor,
-            stack_dataset.RandomRotateAndScale(),
-            stack_dataset.RandomFlip(),
-            stack_dataset.Split(),
         ])
         validation_dataset = stack_dataset.compile_dataset(
             state_vars.validation_set_path, transform=val_transform)
         val_loader = torch.utils.data.DataLoader(
             validation_dataset, batch_size=1,
-            shuffle=False, num_workers=0, pin_memory=True)
+            shuffle=False, num_workers=0, pin_memory=False)
     else:
         val_loader = None
 
@@ -207,12 +205,12 @@ def train(train_loader, archive, epoch):
         data_time.update(time.time() - start_time)
 
         # compute output and loss
-        src, tgt, truth = prepare_input(sample, max_displacement=max_disp)
+        src, tgt, rest = prepare_input(sample, max_displacement=max_disp)
         prediction = submodule(src, tgt)
-        if truth is not None:
-            loss = archive.loss(prediction=prediction, truth=truth)
+        if state_vars.supervised:
+            loss = archive.loss(prediction=prediction, truth=rest)
         else:
-            loss = archive.loss(src, tgt, prediction=prediction)
+            loss = archive.loss(src, tgt, prediction=prediction, masks=rest)
         loss = loss.mean()  # average across a batch if present
 
         # compute gradient and do optimizer step
@@ -231,7 +229,7 @@ def train(train_loader, archive, epoch):
 
         # debugging, logging, and checkpointing
         if (state_vars.checkpoint_time
-                and i % state_vars.checkpoint_time == 0):
+                and i % state_vars.checkpoint_time == 0 and i != 0):
             archive.create_checkpoint(epoch=epoch, iteration=i)
         if state_vars.log_time and i % state_vars.log_time == 0:
             archive.log([
@@ -251,7 +249,9 @@ def train(train_loader, archive, epoch):
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses))
         if state_vars.vis_time and i % state_vars.vis_time == 0:
-            create_debug_outputs(archive, src, tgt, prediction, truth)
+            create_debug_outputs(archive, src, tgt, prediction, truth=None, masks=rest)
+        elif i % 50:
+            archive.visualize_loss('Training Loss', 'Validation Loss')
 
         start_time = time.time()
     return losses.avg
@@ -361,14 +361,15 @@ def prepare_input(sample, supervised=None, max_displacement=2):
     if supervised is None:
         supervised = state_vars.supervised
     if supervised:
-        src = sample['src'].cuda()
+        src = sample[0, 0:1].cuda()
         truth_field = random_field(src.shape, max_displacement=max_displacement)
         tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
+        return src, tgt, truth_field
     else:
-        src = sample['src'].cuda()
-        tgt = sample['tgt'].cuda()
-        truth_field = None
-    return src, tgt, truth_field
+        src = sample[:, 0:1].cuda()
+        tgt = sample[:, 1:2].cuda()
+        masks = sample[:, 2:]
+        return src, tgt, masks
 
 
 @torch.no_grad()
@@ -396,7 +397,7 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
 
 
 @torch.no_grad()
-def create_debug_outputs(archive, src, tgt, prediction, truth):
+def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
     """
     Creates a subdirectory exports any debugging outputs to that directory.
     """
@@ -415,12 +416,15 @@ def create_debug_outputs(archive, src, tgt, prediction, truth):
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
         save_chunk(warped_src[0:1, ...], str(stack_dir / 'warped_src'))
         archive.visualize_loss('Training Loss', 'Validation Loss')
+        cp(archive.paths['plot'], debug_dir)
         save_vectors(prediction[0:1, ...].detach(),
-                     str(debug_dir / 'prediction'))
+                     str(debug_dir / 'prediction'), mag=30)
+        save_chunk((prediction[0:1, ...].detach()**2).sum(3).unsqueeze(0),
+                   str(debug_dir / 'prediction_img'), norm=False)
         if truth is not None:
             save_vectors(truth[0:1, ...].detach(),
-                         str(debug_dir / 'ground_truth'))
-        masks = archive._objective.gen_masks(src, tgt, prediction)
+                         str(debug_dir / 'ground_truth'), mag=30)
+        masks = archive._objective.prepare_masks(src, tgt, masks)
         for k, v in masks.items():
             if v is not None and len(v) > 0:
                 save_chunk(v[0][0:1, ...], str(debug_dir / k))
@@ -471,6 +475,8 @@ def load_archive(args):
             'validation_set_path':
                 Path(args.validation_set).expanduser() if args.validation_set
                 else None,
+            'skip_aug': args.skip_aug,
+            'num_samples': args.num_samples,
             'supervised': args.supervised,
             'encodings': args.encodings,
             'batch_size': args.batch_size,
@@ -500,6 +506,9 @@ def load_archive(args):
                              .format(args.name))
         archive = ModelArchive(args.name, readonly=False)
         archive.state_vars['gpus'] = args.gpu_ids
+
+    # record a training session
+    archive.record_training_session()
 
     # redirect output through the archive
     sys.stdout = archive.out

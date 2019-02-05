@@ -1,0 +1,325 @@
+
+At epoch 0, iteration None:
+Time: 2019-01-25 12:18:57.272151
+Commit: e1bd0ccd5f6ee6066f69ad003a02f11398f6448e
+./train.py start test_encodings_all_samples_a** --training_set /usr/people/bnehoran/training_data/minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5 --height 5 --seed 5432 -u --lr 0.0000005 --lambda1 3000 --plan all --encodings --vis 100
+
+At epoch 4, iteration 27:
+Time: 2019-01-25 12:29:26.704904
+Commit: e1bd0ccd5f6ee6066f69ad003a02f11398f6448e
+./train.py resume test_encodings_all_samples_a2e
+
+At epoch 31, iteration 7:
+Time: 2019-01-25 13:28:49.659722
+Commit: e1bd0ccd5f6ee6066f69ad003a02f11398f6448e
+./train.py resume test_encodings_all_samples_a2e
+--- /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_a2e/.last_training_record/state_vars.yaml	2019-01-25 12:29:26.788301615 -0800
++++ /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_a2e/state_vars.yaml	2019-01-25 13:27:35.225707882 -0800
+@@ -6,10 +6,10 @@
+ feature_maps: [12, 12, 12, 12, 12]
+ gamma: 1
+ gamma_step: 30
+-gpus: '3'
++gpus: '0'
+ height: 5
+-initialized_list: [true, true, false, false, false]
+-iteration: 27
++initialized_list: [true, true, true, true, true]
++iteration: 7
+ lambda1: 3000.0
+ levels: !!python/object/apply:builtins.slice [null, null, null]
+ log_time: 1
+
+At epoch 94, iteration 74:
+Time: 2019-01-25 15:43:56.128031
+Commit: e1bd0ccd5f6ee6066f69ad003a02f11398f6448e
+./train.py resume test_encodings_all_samples_a2e
+
+At epoch 94, iteration 255:
+Time: 2019-01-25 15:49:03.705737
+Commit: e1bd0ccd5f6ee6066f69ad003a02f11398f6448e
+./train.py resume test_encodings_all_samples_a2e
+
+At epoch 94, iteration 1565:
+Time: 2019-01-25 16:23:19.917666
+Commit: e1bd0ccd5f6ee6066f69ad003a02f11398f6448e
+./train.py resume test_encodings_all_samples_a2e
+--- /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_a2e/.last_training_record/state_vars.yaml	2019-01-25 15:49:03.801302848 -0800
++++ /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_a2e/state_vars.yaml	2019-01-25 16:21:40.834400179 -0800
+@@ -1,5 +1,5 @@
+ batch_size: 1
+-checkpoint_time: 100
++checkpoint_time: 10000
+ encodings: true
+ epoch: 94
+ epochs_per_mip: 4
+@@ -24,5 +24,5 @@
+ training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, bnehoran,
+   training_data, minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5]
+ validation_set_path: null
+-vis_time: 100
++vis_time: 10000
+ wd: 0
+
+At epoch 98, iteration 3127:
+Time: 2019-01-28 10:29:35.076943
+Commit: e1bd0ccd5f6ee6066f69ad003a02f11398f6448e
+./train.py resume test_encodings_all_samples_a2e
+
+At epoch 288, iteration None:
+Time: 2019-01-28 18:45:14.232651
+Commit: 571d285bb9abaa40896a799f4df202c4b00d5041
+./train.py --gpu_ids 2,3,4,5,6,7 resume test_encodings_all_samples_mGPU_c2e
+--- /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-01-28 18:28:30.000000000 -0800
++++ /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-01-28 18:42:07.304501242 -0800
+@@ -13,13 +13,13 @@
+ lambda1: 3000.0
+ levels: null
+ log_time: 1
+-lr: 5.0e-07
+-name: test_encodings_all_samples_a2e
++lr: 3.0e-06
++name: test_encodings_all_samples_mGPU_c2e
+ num_epochs: 1000000
+ penalty: lap
+ plan: all
+ seed: 5432
+-start_lr: 5.0e-07
++start_lr: 3.0e-06
+ supervised: false
+ training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, bnehoran,
+   training_data, minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5]
+
+At epoch 485, iteration 44:
+Time: 2019-01-29 09:22:23.982324
+Commit: 571d285bb9abaa40896a799f4df202c4b00d5041
+./train.py --gpu_ids 2,3,4,5,6,7 resume test_encodings_all_samples_mGPU_c2e
+--- /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-01-28 18:45:14.290511799 -0800
++++ /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-01-29 04:29:35.756791230 -0800
+@@ -6,12 +6,12 @@
+ feature_maps: [12, 12, 12, 12, 12]
+ gamma: 1
+ gamma_step: 30
+-gpus: '0'
++gpus: 2,3,4,5,6,7
+ height: 5
+ initialized_list: [true, true, true, true, true]
+-iteration: null
++iteration: 44
+ lambda1: 3000.0
+-levels: null
++levels: !!python/object/apply:builtins.slice [null, null, null]
+ log_time: 1
+ lr: 3.0e-06
+ name: test_encodings_all_samples_mGPU_c2e
+
+At epoch 487, iteration 85:
+Time: 2019-01-29 09:30:52.074378
+Commit: 571d285bb9abaa40896a799f4df202c4b00d5041
+./train.py --gpu_ids 2,3,4,5,6,7 resume test_encodings_all_samples_mGPU_c2e
+--- /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-01-29 09:22:24.069580456 -0800
++++ /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-01-29 09:30:37.966872947 -0800
+@@ -13,13 +13,13 @@
+ lambda1: 3000.0
+ levels: !!python/object/apply:builtins.slice [null, null, null]
+ log_time: 1
+-lr: 3.0e-06
++lr: 3.0e-05
+ name: test_encodings_all_samples_mGPU_c2e
+ num_epochs: 1000000
+ penalty: lap
+ plan: all
+ seed: 5432
+-start_lr: 3.0e-06
++start_lr: 3.0e-05
+ supervised: false
+ training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, bnehoran,
+   training_data, minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5]
+
+At epoch 574, iteration 70:
+Time: 2019-01-29 14:02:42.908104
+Commit: 9513e59ed4c100dc092dd5cf50016d140c82b3f1
+./train.py --gpu_ids 2,3,4,5,6,7 resume test_encodings_all_samples_mGPU_c2e
++ fix rotation augmentation bug
+
+At epoch 595, iteration 10:
+Time: 2019-01-29 15:08:44.994125
+Commit: 9513e59ed4c100dc092dd5cf50016d140c82b3f1
+./train.py --num_workers 6 --gpu_ids 2,3,4,5,6,7 resume test_encodings_all_samples_mGPU_c2e
+--- /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-01-29 14:02:42.991268296 -0800
++++ /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-01-29 15:07:52.529451203 -0800
+@@ -1,7 +1,7 @@
+-batch_size: 1
++batch_size: 6
+ checkpoint_time: 10000
+ encodings: true
+-epoch: 574
++epoch: 595
+ epochs_per_mip: 4
+ feature_maps: [12, 12, 12, 12, 12]
+ gamma: 1
+
+At epoch 664, iteration 2:
+Time: 2019-01-29 16:17:29.794781
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 18 --gpu_ids 2,3,4,5,6,7 resume test_encodings_all_samples_mGPU_c2e
+
+At epoch 664, iteration 25:
+Time: 2019-01-29 16:20:02.328470
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 18 --gpu_ids 2,3,4,5,6,7 resume test_encodings_all_samples_mGPU_c2e
+--- /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-01-29 16:17:29.878627440 -0800
++++ /usr/people/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-01-29 16:19:44.728092481 -0800
+@@ -9,8 +9,8 @@
+ gpus: 2,3,4,5,6,7
+ height: 5
+ initialized_list: [true, true, true, true, true]
+-iteration: 2
+-lambda1: 3000.0
++iteration: 25
++lambda1: 30000.0
+ levels: !!python/object/apply:builtins.slice [null, null, null]
+ log_time: 1
+ lr: 3.0e-05
+
+At epoch 682, iteration 43:
+Time: 2019-01-29 20:54:39.771336
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 12 --gpu_ids 2,3,4,5,6,7 resume test_encodings_all_samples_mGPU_c2e
+
+At epoch 704, iteration None:
+Time: 2019-01-30 09:37:49.381477
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 12 --gpu_ids 2,3,4,5,6,7 resume test_encodings_all_samples_mGPU_c2e
+
+At epoch 704, iteration 64:
+Time: 2019-01-30 11:15:58.059354
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 12 --gpu_ids 2,3,4,5,6,7 resume test_encodings_all_samples_mGPU_c2e
+
+At epoch 704, iteration 134:
+Time: 2019-02-01 02:05:24.984454
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 32 --gpu_ids 0,1,2,3 resume test_encodings_all_samples_mGPU_c2e
+
+At epoch 704, iteration 678:
+Time: 2019-02-01 02:28:28.376384
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 32 --gpu_ids 0,1,2,3 resume test_encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-02-01 02:05:24.982478244 +0000
++++ /home/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-02-01 02:28:15.832518364 +0000
+@@ -9,20 +9,20 @@
+ gpus: 0,1,2,3
+ height: 5
+ initialized_list: [true, true, true, true, true]
+-iteration: 134
++iteration: 678
+ lambda1: 300000.0
+ levels: !!python/object/apply:builtins.slice [null, null, null]
+ log_time: 1
+-lr: 3.0e-04
++lr: 0.0003
+ name: test_encodings_all_samples_mGPU_c2e
+ num_epochs: 1000000
+ penalty: lap
+ plan: all
+ seed: 5432
+-start_lr: 3.0e-04
++start_lr: 0.0003
+ supervised: false
+-training_set_path: !!python/object/apply:pathlib.PosixPath [/, home, bnehoran,
+-  training_data, minnie_mip4_annotated_major_folds_curriculum_45x6x1536.h5]
++training_set_path: !!python/object/apply:pathlib.PosixPath [/, home, bnehoran, training_data,
++  minnie_mip4_annotated_prep_major_folds_curriculum_45x6x1536.h5]
+ validation_set_path: null
+ vis_time: 10000
+ wd: 0
+
+At epoch 704, iteration 730:
+Time: 2019-02-01 02:31:14.755217
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 32 --gpu_ids 0,1,2,3 resume test_encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-02-01 02:28:28.465274513 +0000
++++ /home/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-02-01 02:31:06.030705814 +0000
+@@ -1,4 +1,4 @@
+-batch_size: 4
++batch_size: 8
+ checkpoint_time: 10000
+ encodings: true
+ epoch: 704
+
+At epoch 705, iteration 56:
+Time: 2019-02-01 02:37:07.619282
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 32 --gpu_ids 0,1,2,3 resume test_encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-02-01 02:31:14.843233300 +0000
++++ /home/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-02-01 02:36:16.805307719 +0000
+@@ -1,7 +1,7 @@
+-batch_size: 8
++batch_size: 4
+ checkpoint_time: 10000
+ encodings: true
+-epoch: 704
++epoch: 705
+ epochs_per_mip: 4
+ feature_maps: [12, 12, 12, 12, 12]
+ gamma: 1
+
+At epoch 710, iteration None:
+Time: 2019-02-01 17:25:37.204654
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 32 --gpu_ids 0,1,2,3 resume test_encodings_all_samples_mGPU_c2e
+
+At epoch 714, iteration None:
+Time: 2019-02-01 22:51:07.457528
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 32 --gpu_ids 0,1,2,3 resume test_encodings_all_samples_mGPU_c2e
+
+At epoch 718, iteration None:
+Time: 2019-02-02 02:02:14.994684
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 32 --gpu_ids 0,1,2,3 resume test_encodings_all_samples_mGPU_c2e
+
+At epoch 722, iteration None:
+Time: 2019-02-02 06:01:16.754105
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 32 --gpu_ids 0,1,2,3 resume test_encodings_all_samples_mGPU_c2e
+
+At epoch 726, iteration None:
+Time: 2019-02-02 14:57:53.177357
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 32 --gpu_ids 0,1,2,3 resume test_encodings_all_samples_mGPU_c2e
+
+At epoch 730, iteration None:
+Time: 2019-02-03 02:21:46.127147
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 12 --gpu_ids 1,2,3 resume test_encodings_all_samples_mGPU_c2e
+
+At epoch 731, iteration 363:
+Time: 2019-02-03 04:19:36.602995
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 20 --gpu_ids 1,2,3 resume test_encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-02-03 02:21:46.230630391 +0000
++++ /home/bnehoran/SEAMLeSS/models/test_encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-02-03 04:17:38.802906189 +0000
+@@ -1,17 +1,17 @@
+ batch_size: 4
+ checkpoint_time: 10000
+ encodings: true
+-epoch: 730
++epoch: 731
+ epochs_per_mip: 4
+ feature_maps: [12, 12, 12, 12, 12]
+ gamma: 1
+ gamma_step: 30
+-gpus: 0,1,2,3
++gpus: 1,2,3
+ height: 5
+ initialized_list: [true, true, true, true, true]
+-iteration: null
++iteration: 363
+ lambda1: 300000.0
+-levels: null
++levels: !!python/object/apply:builtins.slice [null, null, null]
+ log_time: 1
+ lr: 0.0003
+ name: test_encodings_all_samples_mGPU_c2e
