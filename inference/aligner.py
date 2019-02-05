@@ -1126,7 +1126,7 @@ class Aligner:
           #fields.append(f)
       fields = [i.to(device=self.device) for i in fields]
       #print("device is ", fields[0].device)
-      field = vector_vote(fields, T=softmin_temp)
+      field = vector_vote(fields, softmin_temp=softmin_temp)
       field = field.data.cpu().numpy()
       self.save_field(field, write_F_cv, z, bbox, mip, relative=False)
 

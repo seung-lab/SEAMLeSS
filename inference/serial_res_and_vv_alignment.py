@@ -21,6 +21,10 @@ from cloudmanager import CloudManager
 from time import time
 from tasks import run
 
+def print_run(diff, n_tasks):
+  if n_tasks > 0:
+    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
+
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--model_path', type=str,
@@ -118,9 +122,12 @@ if __name__ == '__main__':
                              softmin_temp=-1, prefix=prefix)
       batch.extend(t)
     # wait 
+    start = time()
     run(a, batch)
+    end = time()
+    diff = end - start
     print_run(diff, len(batch))
-    n = len(block_range) * n_chunks
+    n = len(batch)
     a.wait_for_queue_empty(vvote_field.path,
         'res_and_compose/{}-{}/'.format(prefix, mip), n)
 
