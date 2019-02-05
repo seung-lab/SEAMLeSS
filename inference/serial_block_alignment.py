@@ -124,7 +124,7 @@ if __name__ == '__main__':
 
   chunks = a.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                  cm.dst_voxel_offsets[mip], mip=mip, 
-                                 max_mip=cm.num_scales)
+                                 max_mip=cm.max_mip)
   n_chunks = len(chunks)
 
   ###########################
