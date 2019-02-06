@@ -1,32 +1,32 @@
 import boto3
-import time
+from time import time
 import json
 import tenacity
+from functools import partial
 from mipless_cloudvolume import deserialize_miplessCV as DCV
 from cloudvolume import Storage
 from cloudvolume.lib import scatter 
 from boundingbox import BoundingBox, deserialize_bbox
 
 from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue
+from concurrent.futures import ProcessPoolExecutor
 # from taskqueue.taskqueue import _scatter as scatter
+
+def remote_upload(queue_name, ptasks):
+  with TaskQueue(queue_name=queue_name) as tq:
+    for task in ptasks:
+      tq.insert(task)
 
 def run(aligner, tasks): 
   if aligner.distributed:
-    TQ = TaskQueue(queue_name=aligner.queue_name)
-  else:
-    TQ = LocalTaskQueue(queue_name=aligner.queue_name, parallel=1)
-
-  def multiprocess_upload(ptasks):
-    with TQ as tq:
-      for task in ptasks:
-        tq.insert(task, args=[ aligner ])
-  
-  if aligner.threads == 1:
-    multiprocess_upload(tasks)
-  else:
     tasks = scatter(tasks, aligner.threads)
-    with concurrent.futures.ProcessPoolExecutor(max_workers=aligner.threads) as executor:
-      executor.map(multiprocess_upload, tasks)
+    fn = partial(remote_upload, aligner.queue_name)
+    with ProcessPoolExecutor(max_workers=aligner.threads) as executor:
+      executor.map(fn, tasks)
+  else:
+    with LocalTaskQueue(queue_name=aligner.queue_name, parallel=1) as tq:
+      for task in tasks:
+        tq.insert(task, args=[ aligner ])
 
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, 
@@ -51,9 +51,11 @@ class CopyTask(RegisteredTask):
     print("\nCopy\n"
           "src {}\n"
           "dst {}\n"
+          "mask {}, val {}, MIP{}\n"
           "z={} to z={}\n"
-          "MIP{}\n".format(src_cv, dst_cv, src_z, dst_z, mip), flush=True)
-
+          "MIP{}\n".format(src_cv, dst_cv, mask_cv, mask_val, mask_mip, 
+                            src_z, dst_z, mip), flush=True)
+    start = time()
     if not aligner.dry_run:
       if is_field:
         field =  aligner.get_field(src_cv, src_z, patch_bbox, mip, relative=False,
@@ -69,12 +71,17 @@ class CopyTask(RegisteredTask):
           path = 'copy_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
           stor.put_file(path, '')
           print('Marked finished at {}'.format(path))
+      end = time()
+      diff = end - start
+      print(':{:.3f} s'.format(diff))
 
 class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
-                     patch_bbox, mip, pad, prefix):
+                     patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
+                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix):
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
-                                 patch_bbox, mip, pad, prefix)
+                     patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
+                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -86,24 +93,43 @@ class ComputeFieldTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
     pad = self.pad
+    src_mask_cv = None 
+    if self.src_mask_cv:
+      src_mask_cv = DCV(self.src_mask_cv)
+    src_mask_mip = self.src_mask_mip
+    src_mask_val = self.src_mask_val
+    tgt_mask_cv = None 
+    if self.tgt_mask_cv:
+      tgt_mask_cv = DCV(self.tgt_mask_cv)
+    tgt_mask_mip = self.tgt_mask_mip
+    tgt_mask_val = self.tgt_mask_val
     prefix = self.prefix
     print("\nCompute field\n"
           "model {}\n"
           "src {}\n"
           "tgt {}\n"
           "field {}\n"
+          "src_mask {}, val {}, MIP{}\n"
+          "tgt_mask {}, val {}, MIP{}\n"
           "z={} to z={}\n"
-          "MIP{}\n".format(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
-                           mip), flush=True)
+          "MIP{}\n".format(model_path, src_cv, tgt_cv, field_cv, src_mask_cv, src_mask_val,
+                           src_mask_mip, tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
+                           src_z, tgt_z, mip), flush=True)
+    start = time()
     if not aligner.dry_run:
       field = aligner.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z, 
-      			 patch_bbox, mip, pad)
+      		                          patch_bbox, mip, pad, 
+                                          src_mask_cv, src_mask_mip, src_mask_val,
+                                          tgt_mask_cv, tgt_mask_mip, tgt_mask_val)
       field = field.data.cpu().numpy()
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       with Storage(field_cv.path) as stor:
         path = 'compute_field_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))
         stor.put_file(path, '')
         print('Marked finished at {}'.format(path))
+      end = time()
+      diff = end - start
+      print('ComputeFieldTask: {:.3f} s'.format(diff))
 
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
@@ -134,6 +160,7 @@ class RenderTask(RegisteredTask):
           "z={3} to z={4}\n"
           "MIP{5} to MIP{6}\n".format(src_cv, field_cv, dst_cv, 
                               src_z, dst_z, field_mip, src_mip), flush=True)
+    start = time()
     if not aligner.dry_run:
       image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z, 
                                      patch_bbox, src_mip, field_mip, 
@@ -145,6 +172,9 @@ class RenderTask(RegisteredTask):
         path = 'render_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
         stor.put_file(path, '')
         print('Marked finished at {}'.format(path))
+      end = time()
+      diff = end - start
+      print('RenderTask: {:.3f} s'.format(diff))
 
 class VectorVoteTask(RegisteredTask):
   def __init__(self, pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, 
@@ -172,6 +202,7 @@ class VectorVoteTask(RegisteredTask):
           "serial={}\n".format(pairwise_cvs.keys(), vvote_cv, z, 
                               mip, inverse, softmin_temp, serial),
                               flush=True)
+    start = time()
     if not aligner.dry_run:
       field = aligner.vector_vote_chunk(pairwise_cvs, vvote_cv, z, patch_bbox, mip, 
                        inverse=inverse, softmin_temp=softmin_temp, 
@@ -182,6 +213,9 @@ class VectorVoteTask(RegisteredTask):
         path = 'vector_vote_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
         stor.put_file(path, '')
         print('Marked finished at {}'.format(path))
+      end = time()
+      diff = end - start
+      print('VectorVoteTask: {:.3f} s'.format(diff))
 
 class ComposeTask(RegisteredTask):
   def __init__(self, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
@@ -211,6 +245,7 @@ class ComposeTask(RegisteredTask):
           "dst_MIP {}\n"
           "factor={}\n".format(f_cv, g_cv, f_z, g_z, f_mip, g_mip, dst_cv, 
                                dst_mip, factor), flush=True)
+    start = time()
     if not aligner.dry_run:
       h = aligner.get_composed_field(f_cv, g_cv, f_z, g_z, patch_bbox, 
                                    f_mip, g_mip, dst_mip, factor)
@@ -220,6 +255,9 @@ class ComposeTask(RegisteredTask):
         path = 'compose_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
         stor.put_file(path, '')
         print('Marked finished at {}'.format(path))
+      end = time()
+      diff = end - start
+      print('ComposeTask: {:.3f} s'.format(diff))
 
 class CPCTask(RegisteredTask):
   def __init__(self, src_cv, tgt_cv, dst_cv, src_z, tgt_z, patch_bbox, 

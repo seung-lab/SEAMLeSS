@@ -1,0 +1,28 @@
+batch_size: 1
+checkpoint_time: 100
+encodings: false
+epoch: 102
+epochs_per_mip: 4
+feature_maps: [12, 12, 12, 12, 12, 12, 12]
+gamma: 0.1
+gamma_step: 6000
+gpus: '1'
+height: 7
+initialized_list: [true, true, true, true, true, true, true]
+iteration: 500
+lambda1: 0.1
+levels: 2
+log_time: 1
+lr: 0.0005
+name: test_minnie_cf_detector_89
+num_epochs: 1000000
+penalty: lap
+plan: random_one
+seed: 1328
+start_lr: 0.0005
+supervised: true
+training_set_path: !!python/object/apply:pathlib.PosixPath [/, usr, people, bnehoran,
+  training_data, cf_masks_minnie_mip2_cleaned.h5]
+validation_set_path: null
+vis_time: 50
+wd: 0

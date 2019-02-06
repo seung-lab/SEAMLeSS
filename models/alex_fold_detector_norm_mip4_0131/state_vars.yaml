@@ -1,0 +1,100 @@
+name: alex_fold_detector_norm_mip4_0131
+imgs_intv: 500
+pretrain: None
+gpu_ids: ['4', '5', '6', '7']
+train_data: <dataset.Dataset object at 0x7fc8db6acda0>
+out_spec: ['mask']
+warm_up: 100
+eval_iter: 50
+exp_name: Fold detector
+batch_size: 4
+avgs_intv: 100
+model_dir: /usr/people/jabae/seungmount/research/Alex/folddetection/exp/fold_detector_norm_mip4_0131/model/
+chkpt_intv: 2000
+n_train: 1611
+num_workers: 4
+net: >
+  UNet(
+    (conv_in): ConvBlock(
+      (conv1): Conv2d(1, 16, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv2): Conv2d(16, 16, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv3): Conv2d(16, 16, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    )
+    (dconv1): DownConvBlock(
+      (maxpool): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (conv1): Conv2d(16, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv2): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv3): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (norm): BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (dconv2): DownConvBlock(
+      (maxpool): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (conv1): Conv2d(32, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv3): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (norm): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (dconv3): DownConvBlock(
+      (maxpool): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (conv1): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv3): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (norm): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (dconv4): DownConvBlock(
+      (maxpool): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (conv1): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv3): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (norm): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (uconv1): UpConvBlock(
+      (upconv): UpConv2x2(
+        (conv): Conv2d(256, 128, kernel_size=(2, 2), stride=(1, 1))
+      )
+      (conv1): Conv2d(256, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv3): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (norm): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (uconv2): UpConvBlock(
+      (upconv): UpConv2x2(
+        (conv): Conv2d(128, 64, kernel_size=(2, 2), stride=(1, 1))
+      )
+      (conv1): Conv2d(128, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv3): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (norm): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (uconv3): UpConvBlock(
+      (upconv): UpConv2x2(
+        (conv): Conv2d(64, 32, kernel_size=(2, 2), stride=(1, 1))
+      )
+      (conv1): Conv2d(64, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv2): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv3): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (norm): BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (uconv4): UpConvBlock(
+      (upconv): UpConv2x2(
+        (conv): Conv2d(32, 16, kernel_size=(2, 2), stride=(1, 1))
+      )
+      (conv1): Conv2d(32, 16, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv2): Conv2d(16, 16, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (conv3): Conv2d(16, 16, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (norm): BatchNorm2d(16, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (conv_out): Conv2d(16, 1, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+  )
+log_dir: /usr/people/jabae/seungmount/research/Alex/folddetection/exp/fold_detector_norm_mip4_0131/log/
+chkpt_num: 0
+eval_intv: 1000
+val_data: <dataset.Dataset object at 0x7fc8db6acd68>
+train_augment: ['flip', 'rotate90']
+val_augment: []
+lr: 0.0005
+mip: 2
+no_eval: True
+exp_dir: /usr/people/jabae/seungmount/research/Alex/folddetection/exp/fold_detector_norm_mip4_0131/
+in_spec: ['image']
+max_epoch: 350
