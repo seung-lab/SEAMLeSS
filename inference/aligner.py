@@ -480,13 +480,13 @@ class Aligner:
     field = field[:,pad:-pad,pad:-pad,:]
     return field
 
-  def perdict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
+  def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
                     chunk_size, prefix=''):
     start = time()
     chunks = self.break_into_chunks(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.num_scales)
-    print("\nfold detect\n"
+    print("\npredict image\n"
           "model {}\n"
           "src {}\n"
           "dst {}\n"
@@ -498,7 +498,7 @@ class Aligner:
       prefix = '{}'.format(mip)
     batch = []
     for patch_bbox in chunks:
-      batch.append(tasks.PredictImgTask(model_path, src_cv, dst_cv, z, mip,
+      batch.append(tasks.PredictImageTask(model_path, src_cv, dst_cv, z, mip,
                                         patch_bbox, prefix))
     return batch
 
