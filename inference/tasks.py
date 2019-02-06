@@ -28,7 +28,7 @@ def run(aligner, tasks):
       for task in tasks:
         tq.insert(task, args=[ aligner ])
 
-class PredictImgTask(RegisteredTask):
+class PredictImageTask(RegisteredTask):
   def __init__(self, model_path, src_cv, dst_cv, z, mip, bbox, prefix):
     super().__init__(model_path, src_cv, dst_cv, z, mip, bbox, prefix)
 
@@ -50,7 +50,7 @@ class PredictImgTask(RegisteredTask):
     aligner.save_image(image, dst_cv, z, patch_bbox, mip)
 
     with Storage(dst_cv.path) as stor:
-        path = 'PreImg_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
+        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
         stor.put_file(path, '')
         print('Marked finished at {}'.format(path))
     end = time()
