@@ -574,8 +574,9 @@ class Aligner:
          warped image with shape of bbox at MIP image_mip
       """
       assert(field_mip >= image_mip)
-      pad = 2**(image_mip+1)
+      pad = 128
       padded_bbox = deepcopy(bbox)
+      print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
       f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
                           to_tensor=True)
@@ -751,7 +752,7 @@ class Aligner:
     """
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 
-                                    max_mip=cm.max_mip)
+                                    max_mip=cm.num_scales)
     if prefix == '':
       prefix = '{}_{}'.format(mip, dst_z)
     batch = []
@@ -785,7 +786,7 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 
-                                    max_mip=cm.max_mip)
+                                    max_mip=cm.num_scales)
     if prefix == '':
       prefix = '{}_{}_{}'.format(mip, src_z, tgt_z)
     batch = []
@@ -823,7 +824,7 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[src_mip],
                                     cm.dst_voxel_offsets[src_mip], mip=src_mip, 
-                                    max_mip=cm.max_mip)
+                                    max_mip=cm.num_scales)
     if prefix == '':
       prefix = '{}_{}_{}'.format(src_mip, src_z, dst_z)
     batch = []
