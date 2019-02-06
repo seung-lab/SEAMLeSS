@@ -168,7 +168,7 @@ if __name__ == '__main__':
   diff = end - start
   print_run(diff, len(batch))
 
-  # Align without vector voting
+# Align without vector voting
   for block_offset in serial_range:
     z_offset = serial_offsets[block_offset] 
     serial_field = serial_fields[z_offset]
@@ -285,7 +285,7 @@ if __name__ == '__main__':
     end = time()
     diff = end - start
     print_run(diff, len(batch))
-    
+
     batch = []
     for i, block_start in enumerate(block_range):
       block_type = block_types[i % 2]
