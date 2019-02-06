@@ -338,3 +338,30 @@ At epoch 744, iteration None:
 Time: 2019-02-04 18:12:52.874368
 Commit: bf646f20f81fc817f2486ab26897b2395f857b13
 ./train.py --num_workers 30 --gpu_ids 1,2,3 resume encodings_all_samples_mGPU_c2e
+
+At epoch 748, iteration None:
+Time: 2019-02-05 00:47:01.196339
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 resume encodings_all_samples_mGPU_c2e
+
+At epoch 750, iteration None:
+Time: 2019-02-05 08:24:31.833850
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 resume encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-02-05 00:47:01.235307403 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-02-05 05:57:44.043691275 +0000
+@@ -1,12 +1,12 @@
+ batch_size: 4
+ checkpoint_time: 10000
+ encodings: true
+-epoch: 748
++epoch: 750
+ epochs_per_mip: 4
+ feature_maps: [12, 12, 12, 12, 12]
+ gamma: 1
+ gamma_step: 30
+-gpus: 1,2,3
++gpus: 0,1,2,3
+ height: 5
+ initialized_list: [true, true, true, true, true]
+ iteration: null

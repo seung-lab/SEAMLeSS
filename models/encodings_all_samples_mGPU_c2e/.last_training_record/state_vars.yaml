@@ -1,12 +1,12 @@
 batch_size: 4
 checkpoint_time: 10000
 encodings: true
-epoch: 744
+epoch: 750
 epochs_per_mip: 4
 feature_maps: [12, 12, 12, 12, 12]
 gamma: 1
 gamma_step: 30
-gpus: 1,2,3
+gpus: 0,1,2,3
 height: 5
 initialized_list: [true, true, true, true, true]
 iteration: null
