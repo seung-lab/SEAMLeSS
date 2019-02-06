@@ -25,6 +25,7 @@ class CloudManager():
                                  batch_mip)
     self.provenance = provenance
     self.num_scales = len(self.info['scales'])
+    self.max_mip = max_mip
     self.dst_chunk_sizes = []
     self.dst_voxel_offsets = []
     self.vec_chunk_sizes = [] 
@@ -74,6 +75,7 @@ class CloudManager():
     each_factor = Vec(2,2,1)
     factor = Vec(2**m,2**m,1)
     for k in range(m, max_mip+1):
+      print('Adding MIP{} to info file for new CloudVolumes'.format(k), flush=True)
       src_cv.add_scale(factor)
       factor *= each_factor
       chunksize = src_info['scales'][-2]['chunk_sizes'][0] // each_factor
