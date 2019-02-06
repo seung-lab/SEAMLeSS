@@ -365,3 +365,23 @@ Commit: bf646f20f81fc817f2486ab26897b2395f857b13
  height: 5
  initialized_list: [true, true, true, true, true]
  iteration: null
+
+At epoch 750, iteration 6972:
+Time: 2019-02-06 01:35:13.763294
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 resume encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-02-06 01:32:22.319812799 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-02-06 01:32:44.561145006 +0000
+@@ -9,9 +9,9 @@
+ gpus: 0,1,2,3
+ height: 5
+ initialized_list: [true, true, true, true, true]
+-iteration: null
+-lambda1: 300000.0
+-levels: null
++iteration: 6972
++lambda1: 3000000.0
++levels: !!python/object/apply:builtins.slice [null, null, null]
+ log_time: 1
+ lr: 0.0003
+ name: test_encodings_all_samples_mGPU_c2e
