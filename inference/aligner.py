@@ -49,7 +49,7 @@ class Aligner:
     if queue_name:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
     
-    self.chunk_size = (1024, 1024)
+    # self.chunk_size = (1024, 1024)
     self.device = torch.device('cuda')
 
     self.model_archives = {}
@@ -75,8 +75,8 @@ class Aligner:
        mip: int for MIP level at which bbox is defined
        max_mip: int for the maximum MIP level at which the bbox is valid
     """
-    if chunk_size[0] > self.chunk_size[0] or chunk_size[1] > self.chunk_size[1]:
-      chunk_size = self.chunk_size 
+    # if chunk_size[0] > self.chunk_size[0] or chunk_size[1] > self.chunk_size[1]:
+    #   chunk_size = self.chunk_size 
 
     raw_x_range = bbox.x_range(mip=mip)
     raw_y_range = bbox.y_range(mip=mip)
@@ -290,6 +290,7 @@ class Aligner:
     #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
     if to_uint8:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
+    print('patch.sum {}'.format(np.sum(patch)))
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
 
   def save_image_batch(self, cv, z_range, float_patch, bbox, mip, to_uint8=True):
@@ -500,7 +501,9 @@ class Aligner:
     archive = self.get_model_archive(model_path, readonly=2)
     model = archive.model
     image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
+    print('image.shape {}'.format(image.shape))
     new_image = model(image)
+    print('sum(image) {}'.format(torch.sum(new_image)))
     return new_image
 
 

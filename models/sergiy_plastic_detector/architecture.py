@@ -24,6 +24,7 @@ class Model(nn.Module):
     def forward(self, img, mip_in=8,
                 encodings=False, **kwargs):
         img = torch.cuda.FloatTensor(img).unsqueeze(0).unsqueeze(0) / 255. - 0.5
+        # img = img / 255. - 0.5
         img_down   = nn.functional.avg_pool2d(img, (2, 2))
         img_down   = nn.functional.avg_pool2d(img_down, (2, 2))
         img_down_t = img_down#.transpose(2, 3)
@@ -31,7 +32,10 @@ class Model(nn.Module):
         mask_down    = mask_down_t#.transpose(2, 3)
         mask_down    = nn.functional.interpolate(mask_down, scale_factor=2)
         mask         = nn.functional.interpolate(mask_down, scale_factor=2)
-        bool_mask    = mask[0, 0].unsqueeze(-1).unsqueeze(-1).cpu().detach().numpy() > 0.9
+        # bool_mask    = mask[0, 0].unsqueeze(-1).unsqueeze(-1).cpu().detach().numpy() > 0.9
+        bool_mask    = mask > 0.9
+        print('bool_mask.sum {}'.format(torch.sum(bool_mask)))
+        print('bool_mask.mas {}'.format(torch.max(bool_mask)))
         return bool_mask
 
     def load(self, path):
