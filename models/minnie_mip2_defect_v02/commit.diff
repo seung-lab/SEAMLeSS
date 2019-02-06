@@ -1,0 +1,845 @@
+2e7499777ceaef6cccc5468d9319788a1622bcd0
+fine-align
+diff --git a/training/architecture.py b/training/architecture.py
+index 88cc922..e05df83 100644
+--- a/training/architecture.py
++++ b/training/architecture.py
+@@ -1,7 +1,8 @@
+ import torch
+ import torch.nn as nn
+-import copy
+-from utilities.helpers import gridsample_residual, upsample, downsample, load_model_from_dict
++import torch.nn.functional as F
++import numpy as np
++from utilities.helpers import load_model_from_dict
+ 
+ 
+ class Model(nn.Module):
+@@ -13,12 +14,10 @@ class Model(nn.Module):
+     `feature_maps` is the number of feature maps per encoding layer
+     """
+ 
+-    def __init__(self, feature_maps=None, encodings=True, *args, **kwargs):
++    def __init__(self, *args, **kwargs):
+         super().__init__()
+-        self.feature_maps = feature_maps
+-        self.encode = EncodingPyramid(self.feature_maps, **kwargs) if encodings else None
+-        self.align = AligningPyramid(self.feature_maps if encodings
+-                                     else [1]*len(feature_maps), **kwargs)
++        self.encode = UNet()
++        self.forward = self.encode.forward
+ 
+     def __getitem__(self, index):
+         return self.submodule(index)
+@@ -26,19 +25,13 @@ class Model(nn.Module):
+     def __len__(self):
+         return self.height
+ 
+-    def forward(self, src, tgt, in_field=None, **kwargs):
+-        if self.encode:
+-            src, tgt = self.encode(src, tgt)
+-        field = self.align(src, tgt, in_field)
+-        return field
+-
+     def load(self, path):
+         """
+         Loads saved weights into the model
+         """
+         with path.open('rb') as f:
+             weights = torch.load(f)
+-        load_model_from_dict(self, weights)
++        load_model_from_dict(self.encode, weights)
+         return self
+ 
+     def save(self, path):
+@@ -46,11 +39,11 @@ class Model(nn.Module):
+         Saves the model weights to a file
+         """
+         with path.open('wb') as f:
+-            torch.save(self.state_dict(), f)
++            torch.save(self.encode.state_dict(), f)
+ 
+     @property
+     def height(self):
+-        return len(self.feature_maps)
++        return 1
+ 
+     def submodule(self, index):
+         """
+@@ -64,316 +57,143 @@ class Model(nn.Module):
+         If `index` is None or greater than the height, the submodule
+         returned contains the whole model.
+         """
+-        if index is None or (isinstance(index, int)
+-                             and index >= self.height):
+-            index = slice(self.height)
+-        return _SubmoduleView(self, index)
++        return self
+ 
++    def train_level(self, *args, **kwargs):
++        return self
+ 
+-class Encoder(nn.Module):
+-    """
+-    Module that implements a two-convolution siamese encoder.
+-    These can be stacked to build an encoding pyramid.
+-    """
++    def init_level(self, *args, **kwargs):
++        return self
+ 
+-    def __init__(self, infm, outfm, k=3):
+-        super().__init__()
+-        p = (k-1)//2
+-        self.seq = nn.Sequential(
+-            nn.Conv2d(infm, outfm, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(outfm, outfm, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-        )
+-        self.seq.apply(init_leaky_relu)
+ 
+-    def forward(self, src, tgt):
+-        return self.seq(src), self.seq(tgt)
++# helper operations
++def conv3x3(in_channels, out_channels):
++    return nn.Conv2d(in_channels, out_channels,
++                     kernel_size=3, stride=1, padding=1, bias=True)
+ 
+ 
+-class EncodingPyramid(nn.Module):
+-    """
+-    A stack of siamese encoders with one Encoder module at each mip level.
+-    It takes a pair of images and returns a list of encodings, one for
+-    each element of `feature_list`
+-
+-    `feature_list` should be a list of integers, each of which specifies
+-    the number of feature maps at a particular mip level.
+-    For example,
+-        >>> EncodingPyramid([2, 4, 8, 16])
+-    creates a pyramid with four Encoder modules, with 2, 4, 8, and 16
+-    feature maps respectively.
+-    `input_fm` is the number of input feature maps, and should remain 1
+-    for normal image inputs.
+-    """
++def maxpool2x2():
++    return nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+ 
+-    def __init__(self, feature_list, input_fm=1, **kwargs):
+-        super().__init__()
+-        self.feature_list = [input_fm] + list(feature_list)
+-        self.list = nn.ModuleList([
+-            Encoder(infm, outfm)
+-            for infm, outfm
+-            in zip(self.feature_list[:-1], self.feature_list[1:])
+-        ])
+-
+-    def forward(self, src, tgt):
+-        src_encodings = []
+-        tgt_encodings = []
+-        for module in self.list:
+-            src, tgt = module(src, tgt)
+-            src_encodings.append(src)
+-            tgt_encodings.append(tgt)
+-            src, tgt = downsample()(src), downsample()(tgt)
+-        return src_encodings, tgt_encodings
+-
+-
+-class Aligner(nn.Module):
+-    """
+-    Module that takes a pair of images as input and outputs a vector field
+-    that can be used to transform one to the other.
+ 
+-    While the output of the module has the standard shape for input to
+-    the PyTorch gridsampler, the units of the field is pixels in order
+-    to be agnostic to the size of the input images.
+-    """
++class UpConv2x2(nn.Module):
++    def __init__(self, channels):
++        super(UpConv2x2, self).__init__()
++        self.conv = nn.Conv2d(channels, channels // 2,
++            kernel_size=2, stride=1, padding=0, bias=True)
+ 
+-    def __init__(self, channels=1, k=7):
+-        super().__init__()
+-        p = (k-1)//2
+-        self.channels = channels
+-        self.seq = nn.Sequential(
+-            nn.Conv2d(channels * 2, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 16, k, padding=p),
+-            nn.LeakyReLU(inplace=True),
+-            nn.Conv2d(16, 2, k, padding=p),
+-        )
+-        self.seq.apply(init_leaky_relu)
+-
+-    def forward(self, src, tgt):
+-        if src.shape[1] != tgt.shape[1]:
+-            raise ValueError('Cannot align src and tgt of different shapes. '
+-                             'src: {}, tgt: {}'.format(src.shape, tgt.shape))
+-        elif src.shape[1] % self.channels != 0:
+-            raise ValueError('Number of channels does not divide stack size. '
+-                             '{} channels for {}'
+-                             .format(self.channels, src.shape))
+-        if src.shape[1] == self.channels:
+-            stack = torch.cat((src, tgt), dim=1)
+-            field = self.seq(stack).permute(0, 2, 3, 1)
+-            return field
+-        else:  # stack of encodings
+-            fields = []
+-            for pair in zip(src.split(self.channels, dim=1),
+-                            tgt.split(self.channels, dim=1)):
+-                stack = torch.cat(pair, dim=1)
+-                fields.append(self.seq(stack).permute(0, 2, 3, 1))
+-            return sum(fields) / len(fields)
+-
+-
+-class AligningPyramid(nn.Module):
+-    """
+-    A stack of Aligner modules with one Aligner at each mip level.
+-    It takes a pair of images and produces a vector field which maps from
+-    the first image, the source, to the second image, the target.
+-
+-    If `src_input` and `tgt_input` are lists, then they are taken to be
+-    precomputed encodings or downsamples of the respective images.
+-
+-    `feature_list` should be a list of integers, each of which specifies
+-    the number of feature maps at a particular mip level.
+-    For example,
+-        >>> AligningPyramid([2, 4, 8, 16])
+-    creates a pyramid with four Aligner modules, with 2, 4, 8, and 16
+-    feature maps respectively.
+-    """
++    def forward(self, x):
++        x = F.interpolate(x, scale_factor=2, mode='nearest')
++        x = F.pad(x, (0,1,0,1))
++        x = self.conv(x)
++        return x
+ 
+-    def __init__(self, feature_list, **kwargs):
+-        super().__init__()
+-        self.feature_list = list(feature_list)
+-        self.list = nn.ModuleList([Aligner(ch) for ch in feature_list])
+-
+-    def forward(self, src_input, tgt_input, accum_field=None):
+-        for i in reversed(range(len(self.feature_list))):
+-            if isinstance(src_input, list) and isinstance(tgt_input, list):
+-                src, tgt = src_input[i], tgt_input[i]
+-            else:
+-                src, tgt = downsample(i)(src_input), downsample(i)(tgt_input)
+-            if accum_field is not None:
+-                accum_field = (upsample()(accum_field.permute(0, 3, 1, 2))
+-                               .permute(0, 2, 3, 1))
+-                src = gridsample_residual(src, accum_field,
+-                                          padding_mode='border')
+-            factor = 2 / src.shape[-1]  # scale to [-1,1]
+-            res_field = self.list[i](src, tgt) * factor
+-            if accum_field is not None:
+-                resampled = gridsample_residual(
+-                    accum_field.permute(0, 3, 1, 2), res_field,
+-                    padding_mode='border').permute(0, 2, 3, 1)
+-                accum_field = res_field + resampled
+-            else:
+-                accum_field = res_field
+-        return accum_field
+-
+-
+-class _SubmoduleView(nn.Module):
+-    """
+-    Returns a view into a sequence of aligners of a model.
+-    This is useful for training and testing.
+-    """
+ 
+-    def __init__(self, model, index):
+-        super().__init__()
+-        if isinstance(index, int):
+-            index = slice(index, index+1)
+-        self.levels = range(model.height)[index]
+-        self.encoders = model.encode.list if model.encode else None
+-        self.aligners = model.align.list[index]
+-
+-    def forward(self, src, tgt, accum_field=None):
+-        # encode
+-        if self.encoders:
+-            src_stack, tgt_stack = [], []
+-            for module in self.encoders:
+-                src, tgt = module(src, tgt)
+-                src_stack.append(src)
+-                tgt_stack.append(tgt)
+-                src, tgt = downsample()(src), downsample()(tgt)
+-        else:
+-            src_stack, tgt_stack = src, tgt
+-
+-        # align
+-        prev_level = None
+-        for i, aligner in zip(reversed(self.levels), reversed(self.aligners)):
+-            if isinstance(src_stack, list) and isinstance(tgt_stack, list):
+-                src, tgt = src_stack[i], tgt_stack[i]
+-            else:
+-                src, tgt = downsample(i)(src_stack), downsample(i)(tgt_stack)
+-            if prev_level is not None:
+-                accum_field = (upsample(prev_level - i)
+-                               (accum_field.permute(0, 3, 1, 2))
+-                               .permute(0, 2, 3, 1))
+-                src = gridsample_residual(src, accum_field,
+-                                          padding_mode='border')
+-            factor = 2 / src.shape[-1]  # scale to [-1,1]
+-            res_field = aligner(src, tgt) * factor
+-            if accum_field is not None:
+-                resampled = gridsample_residual(
+-                    accum_field.permute(0, 3, 1, 2), res_field,
+-                    padding_mode='border').permute(0, 2, 3, 1)
+-                accum_field = res_field + resampled
+-            else:
+-                accum_field = res_field
+-            prev_level = i
+-        accum_field = (upsample(prev_level)
+-                       (accum_field.permute(0, 3, 1, 2))
+-                       .permute(0, 2, 3, 1))
+-        return accum_field
+-
+-    def train_level(self, level=slice(None)):
+-        """
+-        Set only a specific level of the submodule to training mode and
+-        freeze all the other weights
+-        """
+-        for p in self.parameters():
+-            p.requires_grad = False
+-        for p in self.aligners[0].parameters():
+-            p.requires_grad = True
+-        if level == 'all':
+-            for p in self.parameters():
+-                p.requires_grad = True
+-        elif level == 'lowest':
+-            for p in self.aligners[0].parameters():
+-                p.requires_grad = True
+-        elif level == 'highest':
+-            for p in self.aligners[-1].parameters():
+-                p.requires_grad = True
+-        else:
+-            for p in self.aligners[level].parameters():
+-                p.requires_grad = True
+-        return self
++def concat(xh, xv):
++    return torch.cat([xh, xv], dim=1)
+ 
+-    def init_level(self, level='lowest'):
+-        """
+-        Initialize the last level of the SubmoduleView by copying the trained
+-        weights of the next to last level.
+-        Whether the last level is the lowest or highest level is determined
+-        by the `level` argument.
+-        If the SubmoduleView has only one level, this does nothing.
+-        """
+-        # TODO: init encoders, handle different size aligners
+-        if len(self.aligners) > 1:
+-            if level == 'lowest':
+-                state_dict = self.aligners[1].state_dict()
+-                self.aligners[0].load_state_dict(state_dict)
+-            elif level == 'highest':
+-                state_dict = self.aligners[-2].state_dict()
+-                self.aligners[-1].load_state_dict(state_dict)
+-        return self
+ 
+-    @property
+-    def pixel_size_ratio(self):
++# unet blocks
++class ConvBlock(nn.Module):
++    def __init__(self, in_channels, out_channels):
+         """
+-        The ratio of the pixel size of the submodule's highest level to
+-        the pixel size at its input level.
+-        By assumption, each level of the network has equal ability, so this
+-        is a measure of the power of the submodule to detect and correct
+-        large misalignments in its input scale.
++        Args:
++            in_channels: number of channels in input (1st) feature map
++            out_channels: number of channels in output feature maps
+         """
+-        return 2**(self.levels[-1])
+-
+-
+-def init_leaky_relu(m, a=None):
+-    """
+-    Initialize to account for the default negative slope of LeakyReLU.
+-    PyTorch's LeakyReLU by defualt has a slope of 0.01 for negative
+-    values, but the default initialization for Conv2d uses
+-    `kaiming_uniform_` with `a=math.sqrt(5)`. (ref: https://goo.gl/Bx3wdS)
+-    Instead, this initializes according to He, K. et al. (2015).
+-    (ref https://goo.gl/hH6qaM)
+-
+-    If `a` is given it uses that as the negative slope. If it is None,
+-    the default for LeakyReLU is used.
+-    """
+-    if not isinstance(m, torch.nn.Conv2d):
+-        return
+-    if a is None:
+-        a = nn.modules.activation.LeakyReLU().negative_slope
+-    nn.init.kaiming_uniform_(m.weight, a=a)
+-
+-
+-# helper functions kept around temporarily... TODO: remove
+-
+-def copy_aligner(self, id_from, id_to):
+-    """
+-    Copy the kernel weights from one aligner module to another
+-    """
+-    if min(id_from, id_to) < 0 or max(id_from, id_to) >= self.height:
+-        raise IndexError('Values {} --> {} out of bounds for size {}.'
+-                         .format(id_from, id_to, self.height))
+-    state_dict = self.align.list[id_from].state_dict()
+-    self.align.list[id_to].load_state_dict(state_dict)
++        super(ConvBlock, self).__init__()
++        self.conv1 = conv3x3(in_channels, out_channels)
++        self.conv2 = conv3x3(out_channels, out_channels)
++        self.conv3 = conv3x3(out_channels, out_channels)
+ 
++    def forward(self, x):
++        x = F.relu(self.conv1(x))
++        x = F.relu(self.conv2(x))
++        x = F.relu(self.conv3(x))
++        return x
+ 
+-def shift_aligners(self):
+-    """
+-    Shift the kernel weights up one aligner and make a copy of the lowest
+-    """
+-    for i in range(self.height-1, 1, -1):
+-        self.align.list[i] = self.align.list[i-1]
+-    self.align.list[1] = copy.deepcopy(self.align.list[0])
+ 
++class DownConvBlock(nn.Module):
++    def __init__(self, in_channels, out_channels):
++        """
++        Args:
++            in_channels: number of channels in input (1st) feature map
++            out_channels: number of channels in output feature maps
++        """
++        super(DownConvBlock, self).__init__()
++        self.maxpool = maxpool2x2()
++        self.conv1 = conv3x3(in_channels, out_channels)
++        self.conv2 = conv3x3(out_channels, out_channels)
++        self.conv3 = conv3x3(out_channels, out_channels)
++
++    def forward(self, x):
++        x = self.maxpool(x)
++        x = F.relu(self.conv1(x))
++        x = F.relu(self.conv2(x))
++        x = F.relu(self.conv3(x))
++        return x
++
++
++class UpConvBlock(nn.Module):
++    def __init__(self, in_channels, out_channels):
++        """
++        Args:
++            in_channels: number of channels in input (1st) feature map
++            out_channels: number of channels in output feature maps
++        """
++        super(UpConvBlock, self).__init__()
++        self.upconv = UpConv2x2(in_channels)
++        self.conv1 = conv3x3(in_channels, out_channels)
++        self.conv2 = conv3x3(out_channels, out_channels)
++        self.conv3 = conv3x3(out_channels, out_channels)
+ 
+-def copy_encoder(self, id_from, id_to):
+-    """
+-    Copy the kernel weights from one encoder module to another
+-    """
+-    if min(id_from, id_to) < 0 or max(id_from, id_to) >= self.height:
+-        raise IndexError('Values {} --> {} out of bounds for size {}.'
+-                         .format(id_from, id_to, self.height))
+-    state_dict = self.encode.list[id_from].state_dict()
+-    self.encode.list[id_to].load_state_dict(state_dict)
++    def forward(self, xh, xv):
++        """
++        Args:
++            xh: torch Variable, activations from same resolution feature maps (gray arrow in diagram)
++            xv: torch Variable, activations from lower resolution feature maps (green arrow in diagram)
++        """
++        xv = self.upconv(xv)
++        x = concat(xh, xv)
++        x = F.relu(self.conv1(x))
++        x = F.relu(self.conv2(x))
++        x = F.relu(self.conv3(x))
++        return x
++
++
++class UNet(nn.Module):
++    def __init__(self):
++        super(UNet, self).__init__()
++        fs = [16,32,64,128,256]
++        self.conv_in = ConvBlock(1, fs[0])
++        self.dconv1 = DownConvBlock(fs[0], fs[1])
++        self.dconv2 = DownConvBlock(fs[1], fs[2])
++        self.dconv3 = DownConvBlock(fs[2], fs[3])
++        self.dconv4 = DownConvBlock(fs[3], fs[4])
++
++        self.uconv1 = UpConvBlock(fs[4], fs[3])
++        self.uconv2 = UpConvBlock(fs[3], fs[2])
++        self.uconv3 = UpConvBlock(fs[2], fs[1])
++        self.uconv4 = UpConvBlock(fs[1], fs[0])
++        self.conv_out = conv3x3(fs[0], 2)
++
++        self._initialize_weights()
++
++    def forward(self, x):
++        x1 = self.conv_in(x)
++        x2 = self.dconv1(x1)
++        x3 = self.dconv2(x2)
++        x4 = self.dconv3(x3)
++        x5 = self.dconv4(x4)
++        x6 = self.uconv1(x4, x5)
++        x7 = self.uconv2(x3, x6)
++        x8 = self.uconv3(x2, x7)
++        x9 = self.uconv4(x1, x8)
++        x10 = self.conv_out(x9)
++        return x10
++
++    def _initialize_weights(self):
++        conv_modules = [m for m in self.modules() if isinstance(m, nn.Conv2d)]
++        for m in conv_modules:
++            n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
++            m.weight.data.normal_(0, np.sqrt(2. / n))
+diff --git a/training/objective.py b/training/objective.py
+index cc85cdd..12e4575 100644
+--- a/training/objective.py
++++ b/training/objective.py
+@@ -1,8 +1,4 @@
+-import torch
+ import torch.nn as nn
+-from utilities import masklib
+-from training.loss import smoothness_penalty
+-from utilities.helpers import gridsample_residual
+ 
+ 
+ class Objective(nn.Module):
+@@ -24,140 +20,14 @@ class Objective(nn.Module):
+     depend on the model's specific architecture.
+     """
+ 
+-    def __init__(self, *args, supervised=True, function=None, **kwargs):
+-        super().__init__()
+-        if function is not None:
+-            if callable(function):
+-                self.function = function
+-            else:
+-                raise TypeError('Cannot use {} as an objective function. '
+-                                'Must be a callable.'.format(type(function)))
+-        elif supervised:
+-            self.function = SupervisedLoss(*args, **kwargs)
+-        else:
+-            self.function = SelfSupervisedLoss(*args, **kwargs)
+-
+-    def forward(self, *args, **kwargs):
+-        return self.function(*args, **kwargs)
+-
+-
+-class ValidationObjective(Objective):
+-    """
+-    Calculates a validation objective function on the net's outputs.
+-
+-    This is currently set to simply be the self-supervised loss,
+-    but this could be changed here to Pearson correlation or some
+-    other measure without affecting the training objective.
+-    """
+-
+-    def __init__(self, *args, **kwargs):
+-        kwargs['supervised'] = False
+-        super().__init__(*args, **kwargs)
+-
+-
+-class SupervisedLoss(nn.Module):
+-    """
+-    Calculates a supervised loss based on the mean squared error with
+-    the ground truth vector field.
+-    """
+-
+     def __init__(self, *args, **kwargs):
+         super().__init__()
+ 
+-    def forward(self, prediction, truth):  # TODO: use masks
+-        truth = truth.to(prediction.device)
+-        return ((prediction - truth) ** 2).mean()
+-
+-
+-class SelfSupervisedLoss(nn.Module):
+-    """
+-    Calculates a self-supervised loss based on
+-    (a) the mean squared error between the source and target images
+-    (b) the smoothness of the vector field
+-
+-    The masks are used to ignore or reduce the loss values in certain regions
+-    of the images and vector field.
+-
+-    If `MSE(a, b)` is the mean squared error of two images, and `Penalty(f)`
+-    is the smoothness penalty of a vector field, the loss is calculated
+-    roughly as
+-        >>> loss = MSE(src, tgt) + lambda1 * Penalty(prediction)
+-    """
+-
+-    def __init__(self, penalty, lambda1, *args, **kwargs):
+-        super().__init__()
+-        self.field_penalty = smoothness_penalty(penalty)
+-        self.lambda1 = lambda1
+-
+-    def forward(self, src, tgt, prediction):
+-        masks = gen_masks(src, tgt, prediction)
+-        src_masks = masks['src_masks']
+-        tgt_masks = masks['tgt_masks']
+-        src_field_masks = masks['src_field_masks']
+-        tgt_field_masks = masks['tgt_field_masks']
+-
+-        src, tgt = src.to(prediction.device), tgt.to(prediction.device)
+-
+-        src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
+-        image_loss_map = (src_warped - tgt)**2
+-        if src_masks or tgt_masks:
+-            image_weights = torch.ones_like(image_loss_map)
+-            if src_masks is not None:
+-                for mask in src_masks:
+-                    mask = gridsample_residual(mask, prediction,
+-                                               padding_mode='border')
+-                    image_loss_map = image_loss_map * mask
+-                    image_weights = image_weights * mask
+-            if tgt_masks is not None:
+-                for mask in tgt_masks:
+-                    image_loss_map = image_loss_map * mask
+-                    image_weights = image_weights * mask
+-            mse_loss = image_loss_map.sum() / image_weights.sum()
+-        else:
+-            mse_loss = image_loss_map.mean()
+-
+-        field_loss_map = self.field_penalty([prediction])
+-        if src_field_masks or tgt_field_masks:
+-            field_weights = torch.ones_like(field_loss_map)
+-            if src_field_masks is not None:
+-                for mask in src_field_masks:
+-                    mask = gridsample_residual(mask, prediction,
+-                                               padding_mode='border')
+-                    field_loss_map = field_loss_map * mask
+-                    field_weights = field_weights * mask
+-            if tgt_field_masks is not None:
+-                for mask in tgt_field_masks:
+-                    field_loss_map = field_loss_map * mask
+-                    field_weights = field_weights * mask
+-            field_loss = field_loss_map.sum() / field_weights.sum()
+-        else:
+-            field_loss = field_loss_map.mean()
+-
+-        loss = (mse_loss + self.lambda1 * field_loss) / 25000
+-        return loss
+-
+-
+-@torch.no_grad()
+-def gen_masks(src, tgt, prediction=None, threshold=10):
+-    """
+-    Returns masks with which to weight the loss function
+-    """
+-    if prediction is not None:
+-        src, tgt = src.to(prediction.device), tgt.to(prediction.device)
+-    src, tgt = (src * 255).to(torch.uint8), (tgt * 255).to(torch.uint8)
+-
+-    src_mask, tgt_mask = torch.ones_like(src), torch.ones_like(tgt)
+-
+-    src_mask_zero, tgt_mask_zero = (src < threshold), (tgt < threshold)
+-    src_mask_five = masklib.dilate(src_mask_zero, radius=3)
+-    tgt_mask_five = masklib.dilate(tgt_mask_zero, radius=3)
+-    src_mask[src_mask_five], tgt_mask[tgt_mask_five] = 5, 5
+-    src_mask[src_mask_zero], tgt_mask[tgt_mask_zero] = 0, 0
++    def forward(self, prediction, cracks, folds):  # TODO: use masks
++        cracks = cracks.to(prediction.device)
++        folds = folds.to(prediction.device)
++        return ((prediction[:, 0:1] - cracks) ** 2
++                + (prediction[:, 1:2] - folds) ** 2).mean()
+ 
+-    src_field_mask, tgt_field_mask = torch.ones_like(src), torch.ones_like(tgt)
+-    src_field_mask[src_mask_zero], tgt_field_mask[tgt_mask_zero] = 0, 0
+ 
+-    return {'src_masks': [src_mask.float()],
+-            'tgt_masks': [tgt_mask.float()],
+-            'src_field_masks': [src_field_mask.float()],
+-            'tgt_field_masks': [tgt_field_mask.float()]}
++ValidationObjective = Objective
+diff --git a/training/stack_dataset.py b/training/stack_dataset.py
+index 4eef133..4b019c2 100644
+--- a/training/stack_dataset.py
++++ b/training/stack_dataset.py
+@@ -98,20 +98,13 @@ class StackDataset(Dataset):
+ 
+     def __init__(self, stack, transform=None):
+         self.stack = stack
+-        self.N = len(stack) - 1
+         self.transform = transform
+ 
+     def __len__(self):
+-        # 2*(len(stack)-1) consecutive image pairs
+-        return 2*self.N
++        return 1
+ 
+     def __getitem__(self, k):
+-        # match i -> i+1 if k < N, else match i -> i-1
+-        i = k % self.N
+-        X = self.stack[i:i+2]
+-        if k >= self.N:
+-            X = np.flip(X, 0)
+-        X = X.copy()  # prevent modifying the dataset
++        X = self.stack.copy()  # prevent modifying the dataset
+         if self.transform:
+             X = self.transform(X)
+         return X
+diff --git a/training/train.py b/training/train.py
+index 7bfa1a1..2167ca9 100755
+--- a/training/train.py
++++ b/training/train.py
+@@ -108,7 +108,7 @@ def main():
+         archive.preprocessor,
+         stack_dataset.RandomRotateAndScale(),
+         stack_dataset.RandomFlip(),
+-        stack_dataset.Split(),
++        # stack_dataset.Split(),
+     ])
+     train_dataset = stack_dataset.compile_dataset(
+         state_vars.training_set_path, transform=train_transform)
+@@ -125,7 +125,7 @@ def main():
+             archive.preprocessor,
+             stack_dataset.RandomRotateAndScale(),
+             stack_dataset.RandomFlip(),
+-            stack_dataset.Split(),
++            # stack_dataset.Split(),
+         ])
+         validation_dataset = stack_dataset.compile_dataset(
+             state_vars.validation_set_path, transform=val_transform)
+@@ -194,7 +194,6 @@ def train(train_loader, archive, epoch):
+     init_submodule(submodule)
+     print('training levels: {}'
+           .format(list(range(state_vars.height))[state_vars.levels]))
+-    max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
+ 
+     start_time = time.time()
+     start_iter = 0 if state_vars.iteration is None else state_vars.iteration
+@@ -207,12 +206,9 @@ def train(train_loader, archive, epoch):
+         data_time.update(time.time() - start_time)
+ 
+         # compute output and loss
+-        src, tgt, truth = prepare_input(sample, max_displacement=max_disp)
+-        prediction = submodule(src, tgt)
+-        if truth is not None:
+-            loss = archive.loss(prediction=prediction, truth=truth)
+-        else:
+-            loss = archive.loss(src, tgt, prediction=prediction)
++        src, cracks, folds = prepare_input(sample)
++        prediction = submodule(src)
++        loss = archive.loss(prediction=prediction, cracks=cracks, folds=folds)
+         loss = loss.mean()  # average across a batch if present
+ 
+         # compute gradient and do optimizer step
+@@ -251,7 +247,7 @@ def train(train_loader, archive, epoch):
+                       epoch, i, len(train_loader), batch_time=batch_time,
+                       data_time=data_time, loss=losses))
+         if state_vars.vis_time and i % state_vars.vis_time == 0:
+-            create_debug_outputs(archive, src, tgt, prediction, truth)
++            create_debug_outputs(archive, src, cracks, folds, prediction)
+ 
+         start_time = time.time()
+     return losses.avg
+@@ -354,21 +350,12 @@ def init_submodule(submodule):
+ @torch.no_grad()
+ def prepare_input(sample, supervised=None, max_displacement=2):
+     """
+-    Formats the input received from the data loader and produces a
+-    ground truth vector field if supervised.
+-    If `supervised` is None, it uses the value specified in state_vars
++    Formats the input received from the data loader.
+     """
+-    if supervised is None:
+-        supervised = state_vars.supervised
+-    if supervised:
+-        src = sample['src'].cuda()
+-        truth_field = random_field(src.shape, max_displacement=max_displacement)
+-        tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
+-    else:
+-        src = sample['src'].cuda()
+-        tgt = sample['tgt'].cuda()
+-        truth_field = None
+-    return src, tgt, truth_field
++    src = sample[:, 0:1].cuda()
++    cracks = sample[:, 1:2].cuda()
++    folds = sample[:, 2:3].cuda()
++    return src, cracks, folds
+ 
+ 
+ @torch.no_grad()
+@@ -396,7 +383,7 @@ def random_field(shape, max_displacement=2, num_downsamples=7):
+ 
+ 
+ @torch.no_grad()
+-def create_debug_outputs(archive, src, tgt, prediction, truth):
++def create_debug_outputs(archive, src, cracks, folds, prediction):
+     """
+     Creates a subdirectory exports any debugging outputs to that directory.
+     """
+@@ -404,26 +391,17 @@ def create_debug_outputs(archive, src, tgt, prediction, truth):
+         debug_dir = archive.new_debug_directory()
+         stack_dir = debug_dir / 'stack'
+         stack_dir.mkdir()
++        archive.visualize_loss('Training Loss', 'Validation Loss')
+         save_chunk(src[0:1, ...], str(debug_dir / 'src'))
+         save_chunk(src[0:1, ...], str(stack_dir / 'src'))
+-        save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt'))
+-        save_chunk(tgt[0:1, ...], str(stack_dir / 'tgt'))
+-        warped_src = gridsample_residual(
+-            src[0:1, ...],
+-            prediction[0:1, ...].detach().to(src.device),
+-            padding_mode='zeros')
+-        save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
+-        save_chunk(warped_src[0:1, ...], str(stack_dir / 'warped_src'))
+-        archive.visualize_loss('Training Loss', 'Validation Loss')
+-        save_vectors(prediction[0:1, ...].detach(),
+-                     str(debug_dir / 'prediction'))
+-        if truth is not None:
+-            save_vectors(truth[0:1, ...].detach(),
+-                         str(debug_dir / 'ground_truth'))
+-        masks = archive._objective.gen_masks(src, tgt, prediction)
+-        for k, v in masks.items():
+-            if v is not None and len(v) > 0:
+-                save_chunk(v[0][0:1, ...], str(debug_dir / k))
++        save_chunk(cracks[0:1, ...], str(debug_dir / 'cracks'))
++        save_chunk(cracks[0:1, ...], str(stack_dir / 'cracks'))
++        save_chunk(folds[0:1, ...], str(debug_dir / 'folds'))
++        save_chunk(folds[0:1, ...], str(stack_dir / 'folds'))
++        save_chunk(prediction[0:1, 0:1, ...], str(debug_dir / 'crack_prediction'))
++        save_chunk(prediction[0:1, 0:1, ...], str(stack_dir / 'crack_prediction'))
++        save_chunk(prediction[0:1, 1:2, ...], str(debug_dir / 'fold_prediction'))
++        save_chunk(prediction[0:1, 1:2, ...], str(stack_dir / 'fold_prediction'))
+     except Exception as e:
+         # Don't raise the exception, since visualization issues
+         # should not stop training. Just warn the user and go on.
+diff --git a/utilities/archive.py b/utilities/archive.py
+index 9b76603..bc03fd4 100644
+--- a/utilities/archive.py
++++ b/utilities/archive.py
+@@ -205,6 +205,7 @@ class ModelArchive(object):
+         cp(git_root/'training'/'architecture.py', self.paths['architecture'])
+         cp(git_root/'training'/'objective.py', self.paths['objective'])
+         cp(git_root/'training'/'preprocessor.py', self.paths['preprocessor'])
++        cp(git_root/'training'/'defect_net'/'basil_defect_unet18070201.pth', self.paths['weights'])
+ 
+         # record the status of the git repository
+         with self.paths['commit'].open(mode='wb') as f:
+@@ -383,8 +384,10 @@ class ModelArchive(object):
+         self._loss = self._objective.Objective(*args, **kwargs)
+         self._val_loss = self._objective.ValidationObjective(*args, **kwargs)
+         if not self.readonly:
+-            self._loss = torch.nn.DataParallel(self._loss.cuda())
+-            self._val_loss = torch.nn.DataParallel(self._val_loss.cuda())
++            # self._loss = torch.nn.DataParallel(self._loss.cuda())
++            # self._val_loss = torch.nn.DataParallel(self._val_loss.cuda())
++            self._loss = self._loss.cuda()
++            self._val_loss = self._val_loss.cuda()
+         return self._objective
+ 
+     def _load_preprocessor(self, *args, **kwargs):
