@@ -67,7 +67,7 @@ if __name__ == '__main__':
   prefix = str(mip)
   for z in full_range:
       print("fold detection for z={}".format(z))
-      t = a.perdict_image(cm, args.model_path, src, dst, z, mip, bbox,
+      t = a.predict_image(cm, args.model_path, src, dst, z, mip, bbox,
                       chunk_size, prefix);
       batch.extend(t)
   start = time()
@@ -78,7 +78,7 @@ if __name__ == '__main__':
   start = time()
   # wait 
   n = len(batch)
-  a.wait_for_queue_empty(dst.path, 'PreImg_done/{}'.format(prefix), n)
+  a.wait_for_queue_empty(dst.path, 'predict_image_done/{}'.format(prefix), n)
   end = time()
   diff = end - start
   print_run(diff, len(batch))
