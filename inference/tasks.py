@@ -28,6 +28,36 @@ def run(aligner, tasks):
       for task in tasks:
         tq.insert(task, args=[ aligner ])
 
+class PredictImageTask(RegisteredTask):
+  def __init__(self, model_path, src_cv, dst_cv, z, mip, bbox, prefix):
+    super().__init__(model_path, src_cv, dst_cv, z, mip, bbox, prefix)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
+    z = self.z
+    patch_bbox = deserialize_bbox(self.bbox)
+    mip = self.mip
+    prefix = self.prefix
+    print("\nPredict Image\n"
+          "src {}\n"
+          "dst {}\n"
+          "at z={}\n"
+          "MIP{}\n".format(src_cv, dst_cv, z, mip), flush=True)
+    start = time()
+    image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox)
+    image = image.cpu().numpy()
+    aligner.save_image(image, dst_cv, z, patch_bbox, mip)
+
+    with Storage(dst_cv.path) as stor:
+        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
+    end = time()
+    diff = end - start
+    print(':{:.3f} s'.format(diff))
+
+
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, 
                is_field, mask_cv, mask_mip, mask_val, prefix):
@@ -453,18 +483,25 @@ class RenderLowMipTask(RegisteredTask):
     aligner.pool.map(chunkwise, patches)
 
 class ResAndComposeTask(RegisteredTask):
-  def __init__(self, z, forward, reverse, patch_bbox, mip, w_cv):
-    super().__init__(z, forward, reverse, patch_bbox, mip, w_cv)
+  def __init__(self, model_path, src_cv, tgt_cv, z, tgt_range, patch_bbox, mip,
+               w_cv, pad, softmin_temp, prefix):
+    super().__init__(model_path, src_cv, tgt_cv, z, tgt_range, patch_bbox, mip,
+               w_cv, pad, softmin_temp, prefix)
 
   def execute(self, aligner):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     w_cv = DCV(self.w_cv)
-    aligner.res_and_compose(
-      self.z, self.forward, self.reverse, 
-      patch_bbox, self.mip, w_cv
-    )
+    src_cv = DCV(self.src_cv)
+    tgt_cv = DCV(self.tgt_cv)
+    print("self tgt_range is", self.tgt_range)
+    aligner.res_and_compose(self.model_path, src_cv, tgt_cv, self.z,
+                            self.tgt_range, patch_bbox, self.mip, w_cv,
+                            self.pad, self.softmin_temp)
     with Storage(w_cv.path) as stor:
-        stor.put_file('res_and_compose/'+str(self.mip)+'/'+str(self.z)+'/'+patch_bbox.__str__(), '')
+      path = 'res_and_compose/{}-{}/{}'.format(self.prefix, self.mip,
+                                               patch_bbox.stringify(self.z))
+      stor.put_file(path, '')
+      print('Marked finished at {}'.format(path))
 
 class UpsampleRenderRechunkTask(RegisteredTask):
   def __init__(
