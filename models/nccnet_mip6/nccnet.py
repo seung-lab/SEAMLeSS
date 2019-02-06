@@ -1,12 +1,9 @@
 import numpy as np
-
-__weights_dict = dict()
-
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+__weights_dict = dict()
 
 def load_weights(weight_file):
     if weight_file == None:
@@ -19,7 +16,7 @@ def load_weights(weight_file):
 
     return weights_dict
 
-class KitModel(): #nn.Module
+class KitModel(nn.Module):
 
 
     def __init__(self, weight_file):
