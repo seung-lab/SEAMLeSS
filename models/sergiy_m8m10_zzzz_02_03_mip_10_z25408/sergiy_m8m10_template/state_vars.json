@@ -1,0 +1,22 @@
+{
+  "batch_size": 1,
+  "checkpoint_time": 100,
+  "epoch": null,
+  "epochs_per_mip": 30,
+  "gamma": 0.1,
+  "gamma_step": 30,
+  "height": 3,
+  "iteration": null,
+  "lambda1": 100000.0,
+  "log_time": 1,
+  "lr": 0.0005,
+  "name": "sergiy_rollback_pyramid",
+  "num_epochs": 1000000,
+  "penalty": "jacob",
+  "start_lr": 0.0005,
+  "supervised": false,
+  "training_set_path": "/usr/people/bnehoran/training_data/minnie_sniped_mip8_640px_train.h5",
+  "validation_set_path": "/usr/people/bnehoran/training_data/minnie_sniped_mip8_640px_val.h5",
+  "vis_time": 50,
+  "wd": 0
+}
