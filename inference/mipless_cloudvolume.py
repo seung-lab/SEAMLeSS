@@ -1,13 +1,26 @@
 from cloudvolume import CloudVolume, Storage
 import json
 
-def deserialize_miplessCV(s, cache={}):
+def deserialize_miplessCV_old(s, cache={}):
     if s in cache:
       return cache[s]
     else:
       contents = json.loads(s)
       mcv = MiplessCloudVolume(contents['path'], mkdir=contents['mkdir'],
                                **contents['kwargs'])
+      cache[s] = mcv
+      return mcv
+
+def deserialize_miplessCV(s, cache={}):
+    cv_kwargs = {'bounded': False, 'progress': False,
+              'autocrop': False, 'non_aligned_writes': False,
+              'cdn_cache': False}
+    if s in cache:
+      return cache[s]
+    else:
+      contents = json.loads(s)
+      mcv = MiplessCloudVolume(contents['path'], mkdir=False,
+                               fill_missing=True, **cv_kwargs)
       cache[s] = mcv
       return mcv
 
@@ -27,8 +40,8 @@ class MiplessCloudVolume():
   def serialize(self):
       contents = {
           "path" : self.path,
-          "mkdir" : self.mkdir,
-          "kwargs": self.kwargs,
+        #  "mkdir" : self.mkdir,
+        #  "kwargs": self.kwargs,
       }
       s = json.dumps(contents)
       return s

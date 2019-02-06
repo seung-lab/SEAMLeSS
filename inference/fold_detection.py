@@ -62,6 +62,8 @@ if __name__ == '__main__':
   dst = cm.create(join(args.dst_path, 'image'),
                   data_type='uint8', num_channels=1, fill_missing=True,
                   overwrite=True)
+  dst[mip]
+  print(dst.path)
 
   batch =[]
   prefix = str(mip)
