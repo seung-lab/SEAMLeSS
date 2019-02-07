@@ -32,6 +32,8 @@ class MiplessCloudVolume():
     self.mkdir = mkdir 
     self.kwargs = kwargs
     self.cvs = {}
+    if self.mkdir:
+        self.store_info()
 
   # def exists(self):
   #   s = Storage(self.path)
@@ -45,13 +47,18 @@ class MiplessCloudVolume():
       }
       s = json.dumps(contents)
       return s
-  
+
+  def store_info(self):
+    tmp_cv = CloudVolume(self.path, **self.kwargs)
+    tmp_cv.commit_info()
+    tmp_cv.commit_provenance()
+
   def create(self, mip):
     print('Creating CloudVolume for {0} at MIP{1}'.format(self.path, mip))
     self.cvs[mip] = CloudVolume(self.path, mip=mip, **self.kwargs)
-    if self.mkdir:
-      self.cvs[mip].commit_info()
-      self.cvs[mip].commit_provenance()
+    #if self.mkdir:
+    #  self.cvs[mip].commit_info()
+    #  self.cvs[mip].commit_provenance()
 
   def __getitem__(self, mip):
     if mip not in self.cvs:
