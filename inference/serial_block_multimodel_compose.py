@@ -46,6 +46,7 @@ if __name__ == '__main__':
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
+  chunk_size = 1024
   
   # Simplify var names
   mip = args.mip
@@ -87,7 +88,8 @@ if __name__ == '__main__':
            model_lookup[z] = model_path
 
   # Create CloudVolume Manager
-  cm = CloudManager(args.src_path, max_mip, pad, provenance)
+  cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
+                    size_chunk=chunk_size, batch_mip=mip)
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
@@ -134,6 +136,7 @@ if __name__ == '__main__':
                                  cm.dst_voxel_offsets[mip], mip=mip, 
                                  max_mip=cm.max_mip)
   n_chunks = len(chunks)
+  print(n_chunks)
 
   ###########################
   # Serial alignment script #
