@@ -407,11 +407,12 @@ if __name__ == '__main__':
 
     print('Scheduling render for block_start {}, block {} / {}'.format(block_start, i, 
                                                                     len(block_range[1:])))
-    start = time()
-    run(a, batch)
-    end = time()
-    diff = end - start
-    print_run(diff, len(batch))
+    if len(batch) > 0:
+      start = time()
+      run(a, batch)
+      end = time()
+      diff = end - start
+      print_run(diff, len(batch))
 
 
   # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
