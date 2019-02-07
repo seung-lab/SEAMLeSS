@@ -2,20 +2,30 @@ import torch
 
 r'''
 Example usage:
-    f1,p1 = get_fft_power2(torch.tensor(x[:8,:8,0]))  # 8x8 block in slice 1
+    f1,p1 = get_fft_power2(torch.tensor(x[:8,:8,0]))  # 8x8 block in slice 0
     f2,p2 = get_fft_power2(torch.tensor(x[:8,:8,1]))  # 8x8 block in slice 1
     return get_hp_fcorr(f1, p1, f2, p2)
 '''
 
 def get_fft_power2(block):
     f = torch.rfft(block, 2, normalized=True, onesided=True) # currently 2-channel tensor rather than "ComplexFloat"
-    p = torch.sum(f*f, dim=-1) #torch.pow()
+    # remove redundant components in one-sided DFT (avoid double counting them)
+    onesided = f.shape[-2]   # note the last dim is for complex number
+    f[..., onesided:, 0, :] = 0
+    f[..., onesided:, -1, :] = 0
+    p = torch.sum(f*f, dim=-1)
     return f,p
 
 def cut_low_freq(fmask, cutoff_1d = 0, cutoff_2d = 0):
     fmask[..., 0:1+cutoff_1d, :] = 0
+    if cutoff_1d>0:
+        fmask[..., -cutoff_1d:, :] = 0
     fmask[..., :, 0:1+cutoff_1d] = 0
+
     fmask[..., 0:1+cutoff_2d, 0:1+cutoff_2d] = 0
+    if cutoff_2d>0:
+        fmask[..., -cutoff_2d:, 0:1+cutoff_2d] = 0
+
     return fmask
 
 def corr_coef(a, b):
