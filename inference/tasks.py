@@ -162,10 +162,10 @@ class ComputeFieldTask(RegisteredTask):
       print('ComputeFieldTask: {:.3f} s'.format(diff))
 
 class RenderTask(RegisteredTask):
-  def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
-                     field_mip, mask_cv, mask_mip, mask_val, prefix):
+  def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
+               field_mip, mask_cv, mask_mip, mask_val, prefix, use_cpu=False):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
-                     field_mip, mask_cv, mask_mip, mask_val, prefix)
+                     field_mip, mask_cv, mask_mip, mask_val, prefix, use_cpu)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
@@ -192,10 +192,10 @@ class RenderTask(RegisteredTask):
                               src_z, dst_z, field_mip, src_mip), flush=True)
     start = time()
     if not aligner.dry_run:
-      image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z, 
-                                     patch_bbox, src_mip, field_mip, 
+      image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
+                                     patch_bbox, src_mip, field_mip,
                                      mask_cv=mask_cv, mask_mip=mask_mip,
-                                     mask_val=mask_val)
+                                     mask_val=mask_val, use_cpu=self.use_cpu)
       image = image.cpu().numpy()
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
       with Storage(dst_cv.path) as stor:

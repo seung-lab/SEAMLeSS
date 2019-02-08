@@ -583,10 +583,10 @@ class Aligner:
     invf = invf.data.cpu().numpy() 
     self.save_field(dst_cv, z, invf, bbox, mip, relative=True, as_int16=as_int16) 
 
-  def cloudsample_image(self, image_cv, field_cv, image_z, field_z, 
-                              bbox, image_mip, field_mip, 
-                              mask_cv=None, mask_mip=0, mask_val=0,
-                              as_int16=True):
+  def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
+                        bbox, image_mip, field_mip, mask_cv=None,
+                        mask_mip=0, mask_val=0, as_int16=True,
+                        use_cpu=False):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:
@@ -601,6 +601,8 @@ class Aligner:
       Returns:
          warped image with shape of bbox at MIP image_mip
       """
+      if use_cpu:
+          self.device = 'cpu'
       assert(field_mip >= image_mip)
       pad = 2**(image_mip+1)
       padded_bbox = deepcopy(bbox)
@@ -826,7 +828,7 @@ class Aligner:
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
                    bbox, src_mip, field_mip, mask_cv=None, mask_mip=0, 
-                   mask_val=0, prefix=''):
+                   mask_val=0, prefix='', use_cpu=False):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -858,7 +860,7 @@ class Aligner:
     for chunk in chunks:
       batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z, 
                        field_z, dst_z, chunk, src_mip, field_mip, mask_cv, 
-                       mask_mip, mask_val, prefix))
+                       mask_mip, mask_val, prefix, use_cpu))
     return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip, 
