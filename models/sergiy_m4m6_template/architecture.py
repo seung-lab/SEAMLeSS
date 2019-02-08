@@ -26,7 +26,7 @@ class Model(nn.Module):
     def __getitem__(self, index):
         return self.submodule(index)
 
-    def forward(self, src, tgt, in_field=None, plastic_mask=None, mip_in=6,
+    def forward(self, src, tgt, in_field=None, plastic_mask=None, mip_in=4,
                 encodings=False, **kwargs):
         stack = torch.cat((src, tgt), 1)
         if encodings:
