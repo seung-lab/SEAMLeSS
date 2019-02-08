@@ -492,11 +492,13 @@ def retry_enumerate(iterable, start=0, max_time=3600):
     import time
     retries = 0
     seconds = 0
-    while seconds < max_time:
+    while True:
         try:
             return enumerate(iterable, start=start)
         except OSError:
             seconds = 2 ** retries
+            if seconds >= max_time:
+                raise
             print('Low on memory. Retrying in {} sec.'.format(seconds))
             time.sleep(seconds)
             retries += 1
