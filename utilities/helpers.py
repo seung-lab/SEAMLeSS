@@ -485,23 +485,23 @@ def timeout(seconds, *args):
     return decorate
 
 
-def retry_enumerate(iterable, start=0):
+def retry_enumerate(iterable, start=0, max_time=3600):
     """
     Wrapper around enumerate that retries if memory is unavailable.
     """
     import time
     retries = 0
-    while True:
-        iterator = None
+    seconds = 0
+    while seconds < max_time:
         try:
-            iterator = enumerate(iterable, start=start)
+            return enumerate(iterable, start=start)
         except OSError:
             seconds = 2 ** retries
-            warnings.warn('Low on memory. Retrying in {} sec.'.format(seconds))
+            print('Low on memory. Retrying in {} sec.'.format(seconds))
             time.sleep(seconds)
             retries += 1
             continue
-        return iterator
+
 
 def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   """Compute the inverse vector field of residual field U by optimization
@@ -548,4 +548,3 @@ def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   V.requires_grad = False
   print('Final cost @ t={0}: {1}'.format(currt, costs[-1].item()))
   return V
-
