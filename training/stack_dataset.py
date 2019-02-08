@@ -61,7 +61,8 @@ class Transform(object):
         """Disable the Transform if the condition is false
         """
         if not condition:
-            self.__call__ = lambda x: x
+            self.__call__ = lambda self, x: x
+        return self
 
 
 class ToFloatTensor(Transform):
