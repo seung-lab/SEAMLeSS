@@ -115,7 +115,7 @@ def main():
     ])
     train_dataset = stack_dataset.compile_dataset(
         state_vars.training_set_path, transform=train_transform,
-        num_samples=state_vars.num_samples)
+        num_samples=state_vars.num_samples, repeats=state_vars.repeats)
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=state_vars.batch_size,
@@ -483,6 +483,7 @@ def load_archive(args):
                 else None,
             'skip_aug': args.skip_aug,
             'num_samples': args.num_samples,
+            'repeats': args.repeats,
             'supervised': args.supervised,
             'encodings': args.encodings,
             'batch_size': args.batch_size,
@@ -512,6 +513,8 @@ def load_archive(args):
                              .format(args.name))
         archive = ModelArchive(args.name, readonly=False)
         archive.state_vars['gpus'] = args.gpu_ids
+        archive.state_vars['batch_size'] = args.batch_size
+        archive.state_vars['repeats'] = args.repeats
 
     # record a training session
     archive.record_training_session()

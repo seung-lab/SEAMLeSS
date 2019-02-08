@@ -5,15 +5,17 @@ import torch
 from torch.utils.data import Dataset, ConcatDataset
 
 from aug import aug_input, rotate_and_scale, random_translation
-from utilities.helpers import (upsample, downsample, gridsample_residual, 
+from utilities.helpers import (upsample, downsample, gridsample_residual,
                                dotdict)
 
 
-def compile_dataset(*h5_paths, transform=None, num_samples=None):
+def compile_dataset(*h5_paths, transform=None, num_samples=None, repeats=1):
     datasets = []
     for h5_path in h5_paths:
         h5f = h5py.File(h5_path, 'r')
-        ds = [StackDataset(v, transform=transform, num_samples=num_samples) for v in h5f.values()]
+        ds = [StackDataset(v, transform=transform, num_samples=num_samples,
+                           repeats=repeats)
+              for v in h5f.values()]
         datasets.extend(ds)
     return ConcatDataset(datasets)
 
@@ -25,14 +27,15 @@ class StackDataset(Dataset):
         stack (4D ndarray): 1xZxHxW image array
     """
 
-    def __init__(self, stack, transform=None, num_samples=None):
+    def __init__(self, stack, transform=None, num_samples=None, repeats=1):
         self.stack = stack
         self.N = (num_samples
                   if num_samples and num_samples < len(stack) else len(stack))
         self.transform = transform
+        self.repeats = repeats
 
     def __len__(self):
-        return 2*len(self.stack)
+        return 2*len(self.stack) * self.repeats
 
     def __getitem__(self, id):
         X = self.stack[id % self.N].copy()  # prevent modifying the dataset

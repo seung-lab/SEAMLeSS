@@ -33,6 +33,10 @@ def _parse_args(args=None):
         '--batch_size', type=int, default=None, metavar='SIZE',
         help='Number of samples to be evaluated before each gradient update',
     )
+    parallel_group.add_argument(
+        '--repeats', type=int, default=1, metavar='FACTOR',
+        help='Number of times each sample is seen during one training epoch',
+    )
 
     resume_help = ('Resume training a paused model '
                    'using the saved training parameters.')
