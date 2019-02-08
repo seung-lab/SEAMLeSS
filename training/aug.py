@@ -71,27 +71,30 @@ def crack(imslice, width_range=(4,32)):
         mask.data[idx,p-width:p] = 0
     return outslice, mask
 
-def random_translation(src, max_displacement=2**6):
+def random_translation(src, max_displacement=2**6, offset=None):
     """Shift src by x & y up to max_displacement, keeping src size
 
     Args:
     * img: 2D array
     """
     dst = torch.zeros(src.size())
-    d = int(max_displacement / (2. * np.sqrt(2)))
-    xoff = weighted_draw(1,d) * half(1,-1)
-    yoff = weighted_draw(1,d) * half(1,-1)
+    if offset is None:
+        d = int(max_displacement / (2. * np.sqrt(2)))
+        xoff = weighted_draw(1,d) * half(1,-1)
+        yoff = weighted_draw(1,d) * half(1,-1)
+    else:
+        (xoff, yoff) = offset
     if xoff >= 0:
         if yoff >= 0:
-            dst[xoff:,yoff:] = src[:-xoff,:-yoff]
+            dst[..., xoff:, yoff:] = src[..., :-xoff, :-yoff]
         else:
-            dst[xoff:,:yoff] = src[:-xoff,-yoff:]
+            dst[..., xoff:, :yoff] = src[..., :-xoff, -yoff:]
     else:
         if yoff >= 0:
-            dst[:xoff,yoff:] = src[-xoff:,:-yoff]
+            dst[..., :xoff, yoff:] = src[..., -xoff:, :-yoff]
         else:
-            dst[:xoff,:yoff] = src[-xoff:,-yoff:]
-    return dst
+            dst[..., :xoff, :yoff] = src[..., -xoff:, -yoff:]
+    return dst, offset
 
 def jitter_stacks(Xs, max_displacement=2**6, min_cut=32):
     assert len(Xs) > 0
@@ -277,7 +280,7 @@ def weighted_draw(l,h,exp=2, wf=None, max_factor=4):
     if max_factor is not None and max(weights) / min(weights) > max_factor:
         weights += (max(weights) - max_factor * min(weights)) / (max_factor - 1)
     weights /= np.sum(weights)
-    return np.random.choice(vals, p=weights)
+    return random.choice(vals, p=weights)
 
 def random_rect_mask(size):
     dimx = random.randint(1,size[-2]//2)
