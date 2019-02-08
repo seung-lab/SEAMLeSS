@@ -65,7 +65,7 @@ def crack(imslice, width_range=(4,32)):
     mask = Variable(torch.ones(outslice.size())).cuda()
     for idx, p in enumerate(pos):
         outslice.data[idx,:p-width] = outslice.data[idx,width:p]
-        color = torch.cuda.FloatTensor(random.normalvariate(color_mean, 0.2, width)).clamp(min=0,max=1)
+        color = torch.cuda.FloatTensor(np.random.normal(color_mean, 0.2, width)).clamp(min=0,max=1)
         if torch.max(outslice.data[idx,width:p]) > 0:
             outslice.data[idx,p-width:p] = color
         mask.data[idx,p-width:p] = 0
@@ -312,8 +312,8 @@ def aug_input(x, factor=2):
     for _ in range(gaussian_cutouts):
         mask = random_rect_mask(out.size()).squeeze(0).squeeze(0)
         sigma = random.uniform(0.001,0.03)
-        # noise = Variable(torch.FloatTensor(random.normalvariate(0,sigma,out.size()))).cuda()
-        noise = torch.FloatTensor(random.normalvariate(0,sigma,out.size()))
+        # noise = Variable(torch.FloatTensor(np.random.normal(0,sigma,out.size()))).cuda()
+        noise = torch.FloatTensor(np.random.normal(0,sigma,out.size()))
         if half():
             # randomly smooth the noise
             r = random.randint(1,20)
