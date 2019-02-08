@@ -368,15 +368,15 @@ def create_debug_outputs(archive, sample, prediction, id):
         stack_dir.mkdir(exist_ok=True)
         src, tgt = sample.src.image, sample.tgt.image
         save_chunk(src[0:1, ...], str(debug_dir / 'src_{}'.format(id)))
-        cp(debug_dir / 'src_{}'.format(id), stack_dir)
+        cp(debug_dir / 'src_{}.png'.format(id), stack_dir)
         save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt_{}'.format(id)))
-        cp(debug_dir / 'tgt_{}'.format(id), stack_dir)
+        cp(debug_dir / 'tgt_{}.png'.format(id), stack_dir)
         warped_src = gridsample_residual(
             src[0:1, ...],
             prediction[0:1, ...].detach().to(src.device),
             padding_mode='zeros')
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
-        cp(debug_dir / 'warped_src', stack_dir)
+        cp(debug_dir / 'warped_src.png', stack_dir)
         archive.visualize_loss('Training Loss', 'Validation Loss')
         cp(archive.paths.plot, debug_dir)  # make a copy of the training curve
         save_vectors(prediction[0:1, ...].detach(),
