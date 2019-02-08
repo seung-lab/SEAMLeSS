@@ -383,7 +383,7 @@ def create_debug_outputs(archive, sample, prediction, id):
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
         cp(debug_dir / 'warped_src.png', stack_dir)
         archive.visualize_loss('Training Loss', 'Validation Loss')
-        cp(archive.paths.plot, debug_dir)  # make a copy of the training curve
+        cp(archive.paths['plot'], debug_dir)  # make a copy of the training curve
         save_vectors(prediction[0:1, ...].detach(),
                      str(debug_dir / 'prediction'), mag=30)
         save_chunk((prediction[0:1, ...].detach()**2).sum(3).unsqueeze(0),
