@@ -280,7 +280,7 @@ def weighted_draw(l,h,exp=2, wf=None, max_factor=4):
     if max_factor is not None and max(weights) / min(weights) > max_factor:
         weights += (max(weights) - max_factor * min(weights)) / (max_factor - 1)
     weights /= np.sum(weights)
-    return random.choice(vals, p=weights)
+    return np.random.choice(vals, p=weights)
 
 def random_rect_mask(size):
     dimx = random.randint(1,size[-2]//2)
