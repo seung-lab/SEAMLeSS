@@ -382,7 +382,9 @@ def create_debug_outputs(archive, sample, prediction, id):
         masks = archive._objective.prepare_masks(sample)
         for k, v in masks.items():
             if v is not None and len(v) > 0:
-                save_chunk(v[0][0:1, ...], str(debug_dir / k))
+                for i in len(v):
+                    save_chunk(v[i][0:1, ...],
+                               str(debug_dir / '{}_{}'.format(k, i)))
     except Exception as e:
         # Don't raise the exception, since visualization issues
         # should not stop training. Just warn the user and go on.
