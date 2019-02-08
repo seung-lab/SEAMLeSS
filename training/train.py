@@ -83,7 +83,7 @@ import stack_dataset
 from utilities.archive import ModelArchive
 from utilities.helpers import (gridsample_residual, save_chunk,
                                dvl as save_vectors, AverageMeter,
-                               retry_enumerate, cp)
+                               retry_enumerate, cp, dotdict)
 
 
 def main():
@@ -208,6 +208,7 @@ def train(train_loader, archive, epoch):
         if i >= len(train_loader):
             break
         state_vars.iteration = i
+        sample = dotdict(sample)
 
         # measure data loading time
         data_time.update(time.time() - start_time)
