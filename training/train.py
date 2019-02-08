@@ -196,7 +196,7 @@ def train(train_loader, archive, epoch):
 
     start_time = time.time()
     start_iter = 0 if state_vars.iteration is None else state_vars.iteration
-    for i, sample in retry_enumerate(train_loader, start_iter):
+    for i, (sample, id) in retry_enumerate(train_loader, start_iter):
         if i >= len(train_loader):
             break
         state_vars.iteration = i
@@ -241,13 +241,14 @@ def train(train_loader, archive, epoch):
             ])
             print('{0}\t'
                   'Epoch: {1} [{2}/{3}]\t'
+                  'Sample: {id}\t'
                   'Loss {loss.val:12.10f} ({loss.avg:.10f})\t'
                   'BatchTime {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'DataTime {data_time.val:.3f} ({data_time.avg:.3f})\t'
                   .format(
                       state_vars.name,
                       epoch, i, len(train_loader), batch_time=batch_time,
-                      data_time=data_time, loss=losses))
+                      data_time=data_time, loss=losses, id=id))
         if state_vars.vis_time and i % state_vars.vis_time == 0:
             create_debug_outputs(archive, src, tgt, prediction, truth=None, masks=rest)
         elif i % 50:
@@ -267,7 +268,7 @@ def validate(val_loader, archive, epoch):
 
     # compute output and loss
     start_time = time.time()
-    for i, sample in retry_enumerate(val_loader):
+    for i, (sample, id) in retry_enumerate(val_loader):
         print('{0}\t'
               'Validation: [{1}/{2}]\t'
               .format(state_vars.name, i, len(val_loader)), end='\r')

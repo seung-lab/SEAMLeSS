@@ -34,15 +34,15 @@ class StackDataset(Dataset):
     def __len__(self):
         return 2*len(self.stack)
 
-    def __getitem__(self, k):
-        # match i -> i+1 if k < N, else match i -> i-1
-        X = self.stack[k % self.N].copy()  # prevent modifying the dataset
-        if k % 2*self.N >= self.N:  # flip source and target
+    def __getitem__(self, id):
+        X = self.stack[id % self.N].copy()  # prevent modifying the dataset
+        if id % 2*self.N >= self.N:  # flip source and target
+            # match i -> i+1 if id < N, else match i+1 -> i
             s, t, sc, tc, sf, tf = X.copy()
             X[0:6] = t, s, tc, sc, tf, sf
         if self.transform:
             X = self.transform(X)
-        return X
+        return X, id
 
 
 ############################################################################
