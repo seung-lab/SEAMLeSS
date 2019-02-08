@@ -324,7 +324,7 @@ def gridsample_residual(source, residual, padding_mode):
 
 @torch.no_grad()
 def _create_identity_grid(size, device):
-    if device == 'cpu':  # identity affine transform
+    if 'cpu' in str(device):  # identity affine transform
         id_theta = torch.FloatTensor([[[1, 0, 0],
                                        [0, 1, 0]]])
     else:
