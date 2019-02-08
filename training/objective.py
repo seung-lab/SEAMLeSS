@@ -116,6 +116,7 @@ class SelfSupervisedLoss(nn.Module):
             mse_loss = image_loss_map.sum() / image_weights.sum()
         else:
             mse_loss = image_loss_map.mean()
+        sample.image_loss_map = image_loss_map
 
         field_loss_map = self.field_penalty([prediction])
         if src_field_masks or tgt_field_masks:
@@ -133,6 +134,7 @@ class SelfSupervisedLoss(nn.Module):
             field_loss = field_loss_map.sum() / field_weights.sum()
         else:
             field_loss = field_loss_map.mean()
+        sample.field_loss_map = field_loss_map
 
         loss = (mse_loss + self.lambda1 * field_loss)
         return loss

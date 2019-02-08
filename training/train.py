@@ -376,6 +376,10 @@ def create_debug_outputs(archive, sample, prediction, id):
                      str(debug_dir / 'prediction'), mag=30)
         save_chunk((prediction[0:1, ...].detach()**2).sum(3).unsqueeze(0),
                    str(debug_dir / 'prediction_img'), norm=False)
+        if 'image_loss_map' in sample:
+            save_chunk(sample.image_loss_map, str(debug_dir/'image_loss_map'))
+        if 'field_loss_map' in sample:
+            save_chunk(sample.field_loss_map, str(debug_dir/'field_loss_map'))
         if 'truth' in sample:
             save_vectors(sample.truth[0:1, ...].detach(),
                          str(debug_dir / 'ground_truth'), mag=30)
