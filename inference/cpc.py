@@ -15,7 +15,6 @@ if __name__ == '__main__':
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--src_info_path', type=str, default='',
     help='str to existing CloudVolume path to use as template for new CloudVolumes')
-  parser.add_argument('--dst_path', type=str)
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
   parser.add_argument('--bbox_stop', nargs=3, type=int,
@@ -58,28 +57,28 @@ if __name__ == '__main__':
     data_type = 'float32'
   
   # Create dst CloudVolumes for each block, since blocks will overlap by 3 sections
-  dst = cm.create(join(args.dst_path, 'cpc', '{}_{}'.format(args.src_mip, args.dst_mip)), 
+  dst = cm.create(join(args.src_path, 'cpc', '{}_{}'.format(args.src_mip, args.dst_mip),
+                       '{}'.format(args.z_offset)), 
                   data_type=data_type, num_channels=1, fill_missing=True, 
                   overwrite=True)
 
   ##############
   # CPC script #
   ##############
-  
-  # Copy first section
+  k = 0
   batch = []
   prefix = ''
   for z in z_range:
     t = a.cpc(cm, src, src, dst, z, z+args.z_offset, bbox, 
                   args.src_mip, args.dst_mip, norm=not args.unnormalized, prefix=prefix)
     batch.extend(t)
+    k += 1
+    if k >= 100:
+      print('Scheduling CPC for {} tasks'.format(len(batch)))
+      run(a, batch)
+      batch = []
+      k = 0
 
   run(a, batch)
-  # wait
-  start = time()
-  n = len(batch) 
-  a.wait_for_queue_empty(dst.path, 'cpc_done/{}'.format(prefix), n)
-  end = time()
-  diff = end - start
-  print_run(diff, len(batch))
+  print('Finished scheduling. Watch queue for finish.')
 

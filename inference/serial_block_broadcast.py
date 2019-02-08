@@ -30,6 +30,8 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
+  parser.add_argument('--tgt_radius', type=int, default=3,
+    help='int for number of sections to include in vector voting')
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
@@ -48,8 +50,8 @@ if __name__ == '__main__':
 
   # Compile ranges
   block_range = range(args.bbox_start[2], args.bbox_stop[2], args.block_size)
-  overlap = 3
-  copy_range = range(args.block_size+overlap)
+  overlap = args.tgt_radius 
+  copy_range = range(overlap, args.block_size+overlap)
   broadcast_range = range(overlap-1, args.block_size+overlap)
 
   # Create CloudVolume Manager
@@ -106,6 +108,7 @@ if __name__ == '__main__':
 
   # Render out the images from the copied field
   batch = []
+  block_start = block_range[0]
   prefix = block_start
   for block_offset in copy_range: 
     z = block_start + block_offset 
@@ -113,36 +116,45 @@ if __name__ == '__main__':
                  bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
     batch.extend(t)
 
-  run(a, batch)
+  print('Scheduling render for copied range')
   start = time()
-  # wait
-  a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), len(batch))
+  run(a, batch)
   end = time()
   diff = end - start
   print_run(diff, len(batch))
 
   # Compose next block with last vector field from the previous composed block
-  for block_start in block_range[1:]:
+  prefix = '' 
+  start = time()
+  for i, block_start in enumerate(block_range[1:]):
     batch = []
     z_broadcast = block_start + overlap - 1
-    prefix = block_start
     for block_offset in broadcast_range[1:]:
       # decay the composition over the length of the block
       br = float(broadcast_range[-1])
       factor = (br - block_offset) / (br - broadcast_range[1])
       z = block_start + block_offset
-      t = a.compose(cm, dst_field, src_field, dst_field, z_broadcast, z, z, 
+      t = a.compose(cm, src_field, src_field, dst_field, z_broadcast, z, z, 
                     bbox, mip, mip, mip, factor, prefix=prefix)
       batch.extend(t)
 
-    run(a, batch)
+    print('Scheduling compose for block_start {}, block {} / {}'.format(block_start, i, 
+                                                                    len(block_range[1:])))
     start = time()
-    # wait
-    a.wait_for_queue_empty(dst_field.path, 'compose_done/{}'.format(prefix), len(batch))
+    run(a, batch)
     end = time()
     diff = end - start
     print_run(diff, len(batch))
+  # wait
+  n = n_chunks * len(block_range[1:]) * len(broadcast_range[1:])
+  a.wait_for_queue_empty(dst_field.path, 'compose_done/{}'.format(prefix), n)
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
 
+  prefix = ''
+  start = time()
+  for i, block_start in enumerate(block_range[1:]):
     batch = []
     for block_offset in broadcast_range[1:]: 
       z = block_start + block_offset 
@@ -150,13 +162,12 @@ if __name__ == '__main__':
                    bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
       batch.extend(t)
 
-    run(a, batch)
+    print('Scheduling render for block_start {}, block {} / {}'.format(block_start, i, 
+                                                                    len(block_range[1:])))
     start = time()
-    # wait 
-    a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), len(batch))
+    run(a, batch)
     end = time()
     diff = end - start
     print_run(diff, len(batch))
-
 
   # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)

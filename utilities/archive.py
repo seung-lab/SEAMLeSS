@@ -60,7 +60,7 @@ class ModelArchive(object):
         >>> new_model.save()  # save the updated state of the new model to disk
     """
 
-    def __init__(self, name, readonly=True, *args, **kwargs):
+    def __init__(self, name, readonly=1, *args, **kwargs):
         name, directory = self._resolve_model(name)
         self._name = name
         self.directory = directory
@@ -383,10 +383,14 @@ class ModelArchive(object):
             self._model.load(self.paths['weights'])
 
         # set model to eval or train mode
-        if self.readonly:
+        if self.readonly==1:
             for p in self._model.parameters():
                 p.requires_grad = False
             self._model.eval().cuda()
+        elif self.readonly==2:
+            for p in self._model.parameters():
+                p.requires_grad = False
+            self._model.train().cuda()
         else:
             for p in self._model.parameters():
                 p.requires_grad = True
@@ -659,6 +663,17 @@ class ModelArchive(object):
         data.plot(title='Training loss for {}'.format(self._name))
         with self.paths['plot'].open('wb') as f:
             plt.savefig(f)
+
+
+def git_root():
+    """
+    Return the root directory of the current git repository, if available
+    """
+    try:
+        return Path(subprocess.check_output('git rev-parse --show-toplevel'
+                                            .split()).strip().decode("utf-8"))
+    except subprocess.CalledProcessError:
+        return None
 
 
 def git_root():

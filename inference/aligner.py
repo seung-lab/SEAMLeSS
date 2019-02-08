@@ -116,7 +116,7 @@ class Aligner:
   # IO methods #
   ##############
 
-  def get_model_archive(self, model_path):
+  def get_model_archive(self, model_path, readonly=1):
     """Load a model stored in the repo with its relative path
 
     TODO: evict old models from self.models
@@ -134,7 +134,7 @@ class Aligner:
       print('Adding model {0} to the cache'.format(model_path), flush=True)
       path = Path(model_path)
       model_name = path.stem
-      archive = ModelArchive(model_name)
+      archive = ModelArchive(model_name, readonly)
       self.model_archives[model_path] = archive
       return archive
 
@@ -229,6 +229,8 @@ class Aligner:
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
     if normalizer is not None:
+      data = torch.from_numpy(data)
+      data = data.to(device=self.device)
       data = normalizer(data).reshape(data.shape)
     # convert to tensor if requested, or if up/downsampling required
     if to_tensor | (src_mip != dst_mip):
@@ -480,6 +482,28 @@ class Aligner:
     field = field[:,pad:-pad,pad:-pad,:]
     return field
 
+  def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
+                    chunk_size, prefix=''):
+    start = time()
+    chunks = self.break_into_chunks(bbox, chunk_size,
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.num_scales)
+    if prefix == '':
+      prefix = '{}'.format(mip)
+    batch = []
+    for patch_bbox in chunks:
+      batch.append(tasks.PredictImageTask(model_path, src_cv, dst_cv, z, mip,
+                                        patch_bbox, prefix))
+    return batch
+
+  def predict_image_chunk(self, model_path, src_cv, z, mip, bbox):
+    archive = self.get_model_archive(model_path, readonly=2)
+    model = archive.model
+    image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
+    new_image = model(image)
+    return new_image
+
+
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
                         inverse=False, softmin_temp=-1, serial=True):
     """Compute consensus vector field using pairwise vector fields with earlier sections. 
@@ -572,8 +596,9 @@ class Aligner:
          warped image with shape of bbox at MIP image_mip
       """
       assert(field_mip >= image_mip)
-      pad = 2**(image_mip+1)
+      pad = 128
       padded_bbox = deepcopy(bbox)
+      print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
       f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
                           to_tensor=True)
@@ -1081,24 +1106,24 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def res_and_compose(self, z, forward_match, reverse_match, bbox, mip, write_F_cv):
-      tgt_range = []
+  def res_and_compose(self, model_path, src_cv, tgt_cv, z, tgt_range, bbox,
+                      mip, write_F_cv, pad, softmin_temp, prefix=""):
       T = 2**mip
-      if forward_match:
-        tgt_range.extend(range(self.tgt_range[-1], 0, -1)) 
-      if reverse_match:
-        tgt_range.extend(range(self.tgt_range[0], 0, 1)) 
       fields = []
       for z_offset in tgt_range:
-          if z_offset != 0:
-            src_z = z
-            tgt_z = src_z - z_offset
-            #print("------------------zoffset is", z_offset)
-            f = self.get_residual(src_z, tgt_z, bbox, mip)
-            fields.append(f) 
-      field = vector_vote(fields, T=T)
-      field = field.data.cpu().numpy() 
-      self.save_field(write_F_cv, z, field, bbox, mip, relative=False, as_int16=as_int16)
+          src_z = z
+          tgt_z = src_z - z_offset
+          print("calc res for src {} and tgt {}".format(src_z, tgt_z))
+          f = self.compute_field_chunk(model_path, src_cv, tgt_cv, src_z,
+                                       tgt_z, bbox, mip, pad)
+          #print("--------f shape is ---", f.shape)
+          fields.append(f.cpu().data)
+          #fields.append(f)
+      fields = [i.to(device=self.device) for i in fields]
+      #print("device is ", fields[0].device)
+      field = vector_vote(fields, softmin_temp=softmin_temp)
+      field = field.data.cpu().numpy()
+      self.save_field(field, write_F_cv, z, bbox, mip, relative=False)
 
   def downsample_range(self, cv, z_range, bbox, source_mip, target_mip):
     """Downsample a range of sections, downsampling a given MIP across all sections
@@ -1182,6 +1207,23 @@ class Aligner:
       end = time()
       print (": {} sec".format(end - start))
 
+  def compute_field_and_vector_vote(self, cm, model_path, src_cv, tgt_cv, vvote_field,
+                          tgt_range, z, bbox, mip, pad, softmin_temp, prefix):
+    """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in
+    TGT_RADIUS and perform vetor voting
+    """
+
+    m = mip
+    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[m],
+                                    cm.vec_voxel_offsets[m], mip=m,
+                                    max_mip=cm.num_scales)
+    batch = []
+    for patch_bbox in chunks:
+        batch.append(tasks.ResAndComposeTask(model_path, src_cv, tgt_cv, z,
+                                            tgt_range, patch_bbox, mip,
+                                            vvote_field, pad, softmin_temp,
+                                            prefix))
+    return batch
 
   def generate_pairwise(self, z_range, bbox, forward_match, reverse_match, 
                               render_match=False, batch_size=1, wait=True):
