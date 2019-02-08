@@ -395,3 +395,8 @@ At epoch 753, iteration None:
 Time: 2019-02-07 19:48:17.929771
 Commit: bf646f20f81fc817f2486ab26897b2395f857b13
 ./train.py --num_workers 30 --gpu_ids 0,1,2,3 resume encodings_all_samples_mGPU_c2e
+
+At epoch 754, iteration None:
+Time: 2019-02-07 22:57:56.841423
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 resume encodings_all_samples_mGPU_c2e
