@@ -53,19 +53,22 @@ class StackDataset(Dataset):
 ############################################################################
 
 
-class Transform(object):
-    """Superclass for tensor transforms
+class OnlyIf(object):
+    """Wrapper transform that applies the underlying only if a
+    condition is true
     """
 
-    def only_if(self, condition):
-        """Disable the Transform if the condition is false
-        """
-        if not condition:
-            self.__call__ = lambda self, x: x
-        return self
+    def __init__(self, transform, condition):
+        self.transform = transform
+        self.condition = condition
+
+    def __call__(self, X):
+        if not self.condition:
+            return X
+        return self.transform(X)
 
 
-class ToFloatTensor(Transform):
+class ToFloatTensor(object):
     """Convert ndarray to FloatTensor
     """
 
@@ -73,7 +76,7 @@ class ToFloatTensor(Transform):
         return torch.from_numpy(X).to(torch.float)
 
 
-class Preprocess(Transform):
+class Preprocess(object):
     """Preprocess the input images to standardize contrast
     """
 
@@ -86,7 +89,7 @@ class Preprocess(Transform):
         return X
 
 
-class RandomRotateAndScale(Transform):
+class RandomRotateAndScale(object):
     """Randomly rotate & scale src and tgt images
     """
 
@@ -96,7 +99,7 @@ class RandomRotateAndScale(Transform):
         return X.squeeze()
 
 
-class RandomFlip(Transform):
+class RandomFlip(object):
     """Randomly flip src & tgt images
     """
 
@@ -108,7 +111,7 @@ class RandomFlip(Transform):
         return X
 
 
-class Split(Transform):
+class Split(object):
     """Split sample into a (src, tgt) pair
     """
 
@@ -125,7 +128,7 @@ class Split(Transform):
         })
 
 
-class RandomTranslation(Transform):
+class RandomTranslation(object):
     """Randomly translate src & tgt images separately
     """
 
@@ -146,7 +149,7 @@ class RandomTranslation(Transform):
         return X
 
 
-class RandomField(Transform):
+class RandomField(object):
     """Genenerates a random vector field smoothed by bilinear interpolation.
 
     The vectors generated will have values representing displacements of
@@ -176,7 +179,7 @@ class RandomField(Transform):
         return X
 
 
-class RandomAugmentation(Transform):
+class RandomAugmentation(object):
     """Apply random Gaussian noise, cutouts, & brightness adjustment
     """
 
@@ -194,7 +197,7 @@ class RandomAugmentation(Transform):
         return X
 
 
-class ToDevice(Transform):
+class ToDevice(object):
     """Move tensors to a specific device
     """
 

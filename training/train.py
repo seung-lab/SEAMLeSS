@@ -104,12 +104,17 @@ def main():
     train_transform = transforms.Compose([
         stack_dataset.ToFloatTensor(),
         stack_dataset.Preprocess(archive.preprocessor),
-        stack_dataset.RandomRotateAndScale().only_if(not state_vars.skip_aug),
-        stack_dataset.RandomFlip().only_if(not state_vars.skip_aug),
+        stack_dataset.OnlyIf(stack_dataset.RandomRotateAndScale(),
+                             not state_vars.skip_aug),
+        stack_dataset.OnlyIf(stack_dataset.RandomFlip(),
+                             not state_vars.skip_aug),
         stack_dataset.Split(),
-        stack_dataset.RandomTranslation(20).only_if(not state_vars.skip_aug),
-        stack_dataset.RandomField().only_if(state_vars.supervised),
-        stack_dataset.RandomAugmentation().only_if(not state_vars.skip_aug),
+        stack_dataset.OnlyIf(stack_dataset.RandomTranslation(20),
+                             not state_vars.skip_aug),
+        stack_dataset.OnlyIf(stack_dataset.RandomField(),
+                             state_vars.supervised),
+        stack_dataset.OnlyIf(stack_dataset.RandomAugmentation(),
+                             not state_vars.skip_aug),
         stack_dataset.ToDevice(),
     ])
     train_dataset = stack_dataset.compile_dataset(
