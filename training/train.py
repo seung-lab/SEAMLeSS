@@ -104,11 +104,15 @@ def main():
     # set up training data
     train_transform = transforms.Compose([
         stack_dataset.ToFloatTensor(),
-        archive.preprocessor,
-    ] + [
-        stack_dataset.RandomRotateAndScale(),
-        stack_dataset.RandomFlip(),
-    ] if not state_vars.skip_aug else [])
+        stack_dataset.Preprocess(archive.preprocessor),
+        stack_dataset.RandomRotateAndScale().only_if(not state_vars.skip_aug),
+        stack_dataset.RandomFlip().only_if(not state_vars.skip_aug),
+        stack_dataset.Split(),
+        stack_dataset.RandomTranslation(20).only_if(not state_vars.skip_aug),
+        stack_dataset.RandomAugmentation().only_if(not state_vars.skip_aug),
+        stack_dataset.RandomField().only_if(state_vars.supervised),
+        stack_dataset.ToDevice(),
+    ])
     train_dataset = stack_dataset.compile_dataset(
         state_vars.training_set_path, transform=train_transform,
         num_samples=state_vars.num_samples)
@@ -123,7 +127,8 @@ def main():
     if state_vars.validation_set_path:
         val_transform = transforms.Compose([
             stack_dataset.ToFloatTensor(),
-            archive.preprocessor,
+            stack_dataset.Preprocess(archive.preprocessor),
+            stack_dataset.Split(),
         ])
         validation_dataset = stack_dataset.compile_dataset(
             state_vars.validation_set_path, transform=val_transform)
