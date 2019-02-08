@@ -366,6 +366,7 @@ def create_debug_outputs(archive, sample, prediction, id):
         debug_dir = archive.new_debug_directory(exist_ok=True)
         stack_dir = debug_dir / 'stack'
         stack_dir.mkdir(exist_ok=True)
+        sample = stack_dataset.ToDevice('cuda')(sample)
         src, tgt = sample.src.image, sample.tgt.image
         save_chunk(src[0:1, ...], str(debug_dir / 'src_{}'.format(id)))
         # cp(debug_dir / 'src_{}.png'.format(id), stack_dir)
@@ -398,7 +399,7 @@ def create_debug_outputs(archive, sample, prediction, id):
         masks = archive._objective.prepare_masks(sample)
         for k, v in masks.items():
             if v is not None and len(v) > 0:
-                for i in len(v):
+                for i in range(len(v)):
                     save_chunk(v[i][0:1, ...],
                                str(debug_dir / '{}_{}'.format(k, i)))
     except Exception as e:
