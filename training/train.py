@@ -82,8 +82,7 @@ from pathlib import Path
 import stack_dataset
 from utilities.archive import ModelArchive
 from utilities.helpers import (gridsample_residual, save_chunk,
-                               dvl as save_vectors,
-                               upsample, downsample, AverageMeter,
+                               dvl as save_vectors, AverageMeter,
                                retry_enumerate, cp)
 
 
@@ -197,7 +196,6 @@ def train(train_loader, archive, epoch):
     init_submodule(submodule)
     print('training levels: {}'
           .format(list(range(state_vars.height))[state_vars.levels]))
-    max_disp = submodule.module.pixel_size_ratio * 2  # correct 2-pixel disp
 
     start_time = time.time()
     start_iter = 0 if state_vars.iteration is None else state_vars.iteration
@@ -210,12 +208,8 @@ def train(train_loader, archive, epoch):
         data_time.update(time.time() - start_time)
 
         # compute output and loss
-        src, tgt, rest = prepare_input(sample, max_displacement=max_disp)
-        prediction = submodule(src, tgt)
-        if state_vars.supervised:
-            loss = archive.loss(prediction=prediction, truth=rest)
-        else:
-            loss = archive.loss(src, tgt, prediction=prediction, masks=rest)
+        prediction = submodule(sample.src.aug, sample.tgt.aug)
+        loss = archive.loss(sample, prediction=prediction)
         loss = loss.mean()  # average across a batch if present
 
         # compute gradient and do optimizer step
@@ -255,7 +249,7 @@ def train(train_loader, archive, epoch):
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses, id=id))
         if state_vars.vis_time and i % state_vars.vis_time == 0:
-            create_debug_outputs(archive, src, tgt, prediction, truth=None, masks=rest)
+            create_debug_outputs(archive, sample, prediction, id)
         elif i % 50:
             archive.visualize_loss('Training Loss', 'Validation Loss')
 
@@ -277,16 +271,15 @@ def validate(val_loader, archive, epoch):
         print('{0}\t'
               'Validation: [{1}/{2}]\t'
               .format(state_vars.name, i, len(val_loader)), end='\r')
-        src, tgt, truth = prepare_input(sample, supervised=False)
-        prediction = submodule(src, tgt)
-        loss = archive.val_loss(src, tgt, prediction=prediction)
+        prediction = submodule(sample.src.image, sample.tgt.image)
+        loss = archive.val_loss(sample, prediction=prediction)
         losses.update(loss.item())
 
     # measure elapsed time
     batch_time = (time.time() - start_time)
 
     # debugging outputs and printing
-    create_debug_outputs(archive, src, tgt, prediction, truth)
+    create_debug_outputs(archive, sample, prediction)
     print('{0}\t'
           'Validation: [{1}/{1}]\t'
           'Loss {loss.avg:.10f}\t\t\t'
@@ -358,79 +351,35 @@ def init_submodule(submodule):
 
 
 @torch.no_grad()
-def prepare_input(sample, supervised=None, max_displacement=2):
-    """
-    Formats the input received from the data loader and produces a
-    ground truth vector field if supervised.
-    If `supervised` is None, it uses the value specified in state_vars
-    """
-    if supervised is None:
-        supervised = state_vars.supervised
-    if supervised:
-        src = sample[0, 0:1].cuda()
-        truth_field = random_field(src.shape, max_displacement=max_displacement)
-        tgt = gridsample_residual(src, truth_field, padding_mode='zeros')
-        return src, tgt, truth_field
-    else:
-        src = sample[:, 0:1].cuda()
-        tgt = sample[:, 1:2].cuda()
-        masks = sample[:, 2:]
-        return src, tgt, masks
-
-
-@torch.no_grad()
-def random_field(shape, max_displacement=2, num_downsamples=7):
-    """
-    Genenerates a random vector field smoothed by bilinear interpolation.
-
-    The vectors generated will have values representing displacements of
-    between (approximately) `-max_displacement` and `max_displacement` pixels
-    at the size dictated by `shape`.
-    The actual values, however, will be scaled to the spatial transformer
-    standard, where -1 and 1 represent the edges of the image.
-
-    `num_downsamples` dictates the block size for the random field.
-    Each block will have size `2**num_downsamples`.
-    """
-    zero = torch.zeros(shape, device='cuda')
-    zero = torch.cat([zero, zero.clone()], 1)
-    smaller = downsample(num_downsamples)(zero)
-    std = max_displacement / shape[-2] / math.sqrt(2)
-    field = torch.nn.init.normal_(smaller, mean=0, std=std)
-    field = upsample(num_downsamples)(field)
-    result = field.permute(0, 2, 3, 1)
-    return result
-
-
-@torch.no_grad()
-def create_debug_outputs(archive, src, tgt, prediction, truth, masks):
+def create_debug_outputs(archive, sample, prediction, id):
     """
     Creates a subdirectory exports any debugging outputs to that directory.
     """
     try:
-        debug_dir = archive.new_debug_directory()
+        debug_dir = archive.new_debug_directory(exists_ok=True)
         stack_dir = debug_dir / 'stack'
-        stack_dir.mkdir()
-        save_chunk(src[0:1, ...], str(debug_dir / 'src'))
-        save_chunk(src[0:1, ...], str(stack_dir / 'src'))
-        save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt'))
-        save_chunk(tgt[0:1, ...], str(stack_dir / 'tgt'))
+        stack_dir.mkdir(exists_ok=True)
+        src, tgt = sample.src.image, sample.tgt.image
+        save_chunk(src[0:1, ...], str(debug_dir / 'src_{}'.format(id)))
+        cp(debug_dir / 'src_{}'.format(id), stack_dir)
+        save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt_{}'.format(id)))
+        cp(debug_dir / 'tgt_{}'.format(id), stack_dir)
         warped_src = gridsample_residual(
             src[0:1, ...],
             prediction[0:1, ...].detach().to(src.device),
             padding_mode='zeros')
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
-        save_chunk(warped_src[0:1, ...], str(stack_dir / 'warped_src'))
+        cp(debug_dir / 'warped_src', stack_dir)
         archive.visualize_loss('Training Loss', 'Validation Loss')
-        cp(archive.paths['plot'], debug_dir)
+        cp(archive.paths.plot, debug_dir)  # make a copy of the training curve
         save_vectors(prediction[0:1, ...].detach(),
                      str(debug_dir / 'prediction'), mag=30)
         save_chunk((prediction[0:1, ...].detach()**2).sum(3).unsqueeze(0),
                    str(debug_dir / 'prediction_img'), norm=False)
-        if truth is not None:
-            save_vectors(truth[0:1, ...].detach(),
+        if 'truth' in sample:
+            save_vectors(sample.truth[0:1, ...].detach(),
                          str(debug_dir / 'ground_truth'), mag=30)
-        masks = archive._objective.prepare_masks(src, tgt, masks)
+        masks = archive._objective.prepare_masks(sample)
         for k, v in masks.items():
             if v is not None and len(v) > 0:
                 save_chunk(v[0][0:1, ...], str(debug_dir / k))
