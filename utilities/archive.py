@@ -11,7 +11,7 @@ import filecmp
 import importlib
 import pandas as pd
 
-from utilities.helpers import cp
+from utilities.helpers import cp, dotdict
 
 import matplotlib
 matplotlib.use('Agg')
@@ -734,13 +734,6 @@ class FileLog:
     def flush(self):
         self.terminal_out.flush()
         self.file.flush()
-
-
-class dotdict(dict):
-    """Allow accessing dict elements with dot notation"""
-    __getattr__ = dict.get
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
 
 
 class ReadOnlyError(AttributeError):
