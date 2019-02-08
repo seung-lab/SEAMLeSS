@@ -146,24 +146,6 @@ class RandomTranslation(Transform):
         return X
 
 
-class RandomAugmentation(Transform):
-    """Apply random Gaussian noise, cutouts, & brightness adjustment
-    """
-
-    def __init__(self, factor=2):
-        self.factor = factor
-
-    def __call__(self, X):
-        src, tgt = X.src.image.clone(), X.tgt.image.clone()
-        src_aug, src_aug_masks = aug_input(src)
-        tgt_aug, tgt_aug_masks = aug_input(tgt)
-        X.src.aug = src_aug
-        X.tgt.aug = tgt_aug
-        X.src.aug_masks = src_aug_masks
-        X.tgt.aug_masks = tgt_aug_masks
-        return X
-
-
 class RandomField(Transform):
     """Genenerates a random vector field smoothed by bilinear interpolation.
 
@@ -192,6 +174,24 @@ class RandomField(Transform):
         for k in X.tgt:
             X.tgt[k] = gridsample_residual(
                 X.src[k], X.truth, padding_mode='zeros')
+        return X
+
+
+class RandomAugmentation(Transform):
+    """Apply random Gaussian noise, cutouts, & brightness adjustment
+    """
+
+    def __init__(self, factor=2):
+        self.factor = factor
+
+    def __call__(self, X):
+        src, tgt = X.src.image.clone(), X.tgt.image.clone()
+        src_aug, src_aug_masks = aug_input(src)
+        tgt_aug, tgt_aug_masks = aug_input(tgt)
+        X.src.aug = src_aug
+        X.tgt.aug = tgt_aug
+        X.src.aug_masks = src_aug_masks
+        X.tgt.aug_masks = tgt_aug_masks
         return X
 
 

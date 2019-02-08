@@ -108,8 +108,8 @@ def main():
         stack_dataset.RandomFlip().only_if(not state_vars.skip_aug),
         stack_dataset.Split(),
         stack_dataset.RandomTranslation(20).only_if(not state_vars.skip_aug),
-        stack_dataset.RandomAugmentation().only_if(not state_vars.skip_aug),
         stack_dataset.RandomField().only_if(state_vars.supervised),
+        stack_dataset.RandomAugmentation().only_if(not state_vars.skip_aug),
         stack_dataset.ToDevice(),
     ])
     train_dataset = stack_dataset.compile_dataset(
