@@ -206,7 +206,7 @@ def gen_tiles(size, dim=None, min_count=6, max_count=32, peak=0.5):
     return tiles
 
 def check_data_range(X, eps=1e-6, factor=1):
-    mi, ma = torch.min(X).data[0], torch.max(X).data[0]
+    mi, ma = torch.min(X).item(), torch.max(X).item()
     assert mi >= -eps and ma <= factor + eps, 'Data must fall in range [0,1] ({}, {})'.format(mi, ma)
 
 def aug_brightness(X, factor=2, mask=False, clamp=False):

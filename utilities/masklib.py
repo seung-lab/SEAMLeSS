@@ -54,6 +54,6 @@ def contract(mask, radius, binary=True, ceil=True, return_sum=False):
             contracted = torch.ceil(contracted)
         contracted = contracted.byte()
     if return_sum:
-        return contracted.detach(), torch.sum(contracted).data[0] <= 0
+        return contracted.detach(), torch.sum(contracted).item() <= 0
     else:
         return contracted.detach()
