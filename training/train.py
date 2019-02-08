@@ -115,7 +115,7 @@ def main():
                              state_vars.supervised),
         stack_dataset.OnlyIf(stack_dataset.RandomAugmentation(),
                              not state_vars.skip_aug),
-        stack_dataset.ToDevice(),
+        stack_dataset.ToDevice('cpu'),
     ])
     train_dataset = stack_dataset.compile_dataset(
         state_vars.training_set_path, transform=train_transform,
