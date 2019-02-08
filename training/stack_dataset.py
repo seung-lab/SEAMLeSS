@@ -163,11 +163,10 @@ class RandomField(Transform):
         self.num_downsamples = num_downsamples
 
     def __call__(self, X):
-        shape = X.src.image.shape
-        zero = torch.zeros(shape, device='cuda')
+        zero = torch.zeros_like(X.src.image)
         zero = torch.cat([zero, zero.clone()], 1)
         smaller = downsample(self.num_downsamples)(zero)
-        std = self.max_displacement / shape[-2] / math.sqrt(2)
+        std = self.max_displacement / zero.shape[-2] / math.sqrt(2)
         field = torch.nn.init.normal_(smaller, mean=0, std=std)
         field = upsample(self.num_downsamples)(field)
         X.truth = field.permute(0, 2, 3, 1)
