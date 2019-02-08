@@ -192,8 +192,8 @@ class RandomAugmentation(object):
         tgt_aug, tgt_aug_masks = aug_input(tgt.squeeze(0))
         X.src.aug = src_aug.unsqueeze(0)
         X.tgt.aug = tgt_aug.unsqueeze(0)
-        X.src.aug_masks = src_aug_masks.unsqueeze(0)
-        X.tgt.aug_masks = tgt_aug_masks.unsqueeze(0)
+        X.src.aug_masks = [m.unsqueeze(0) for m in src_aug_masks]
+        X.tgt.aug_masks = [m.unsqueeze(0) for m in tgt_aug_masks]
         return X
 
 
