@@ -513,7 +513,7 @@ class ModelArchive(object):
                 check_dir = check_dir / 'new_checkpoint'
             else:
                 print('OK, overwriting...')
-        check_dir.mkdir(exists_ok=True)
+        check_dir.mkdir(exist_ok=True)
         cp(self.paths['weights'], check_dir)
         cp(self.paths['optimizer'], check_dir)
         cp(self.paths['prand'], check_dir)
@@ -562,7 +562,7 @@ class ModelArchive(object):
             cp(self.paths[filename.split('.')[0]],
                self.last_training_record / filename)
 
-    def new_debug_directory(self, exists_ok=False):
+    def new_debug_directory(self, exist_ok=False):
         """
         Creates a new subdirectory for debugging outputs.
 
@@ -577,10 +577,10 @@ class ModelArchive(object):
         else:
             dirname = 'e{}_val'.format(self._state_vars.epoch)
         debug_directory = self.debug_outputs / dirname
-        if not exists_ok and debug_directory.is_dir():
+        if not exist_ok and debug_directory.is_dir():
             raise FileExistsError('The debug directory {} already exists.'
                                   .format(debug_directory))
-        debug_directory.mkdir(exists_ok=exists_ok)
+        debug_directory.mkdir(exist_ok=exist_ok)
         self._current_debug_directory = debug_directory
         return self._current_debug_directory
 

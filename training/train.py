@@ -361,9 +361,9 @@ def create_debug_outputs(archive, sample, prediction, id):
     Creates a subdirectory exports any debugging outputs to that directory.
     """
     try:
-        debug_dir = archive.new_debug_directory(exists_ok=True)
+        debug_dir = archive.new_debug_directory(exist_ok=True)
         stack_dir = debug_dir / 'stack'
-        stack_dir.mkdir(exists_ok=True)
+        stack_dir.mkdir(exist_ok=True)
         src, tgt = sample.src.image, sample.tgt.image
         save_chunk(src[0:1, ...], str(debug_dir / 'src_{}'.format(id)))
         cp(debug_dir / 'src_{}'.format(id), stack_dir)
