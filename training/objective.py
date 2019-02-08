@@ -105,14 +105,22 @@ class SelfSupervisedLoss(nn.Module):
             image_weights = torch.ones_like(image_loss_map)
             if src_masks is not None:
                 for mask in src_masks:
-                    mask = gridsample_residual(mask, prediction,
-                                               padding_mode='border')
-                    image_loss_map = image_loss_map * mask
-                    image_weights = image_weights * mask
+                    try:
+                        mask = gridsample_residual(mask, prediction,
+                                                   padding_mode='border')
+                        image_loss_map = image_loss_map * mask
+                        image_weights = image_weights * mask
+                    except Exception as e:
+                        print('Source mask failed: {}: {}'.format(e.__class__.__name__, e))
+                        print('mask shape:', mask.shape)
             if tgt_masks is not None:
                 for mask in tgt_masks:
-                    image_loss_map = image_loss_map * mask
-                    image_weights = image_weights * mask
+                    try:
+                        image_loss_map = image_loss_map * mask
+                        image_weights = image_weights * mask
+                    except Exception as e:
+                        print('Target mask failed: {}: {}'.format(e.__class__.__name__, e))
+                        print('mask shape:', mask.shape)
             mse_loss = image_loss_map.sum() / image_weights.sum()
         else:
             mse_loss = image_loss_map.mean()
@@ -123,14 +131,22 @@ class SelfSupervisedLoss(nn.Module):
             field_weights = torch.ones_like(field_loss_map)
             if src_field_masks is not None:
                 for mask in src_field_masks:
-                    mask = gridsample_residual(mask, prediction,
-                                               padding_mode='border')
-                    field_loss_map = field_loss_map * mask
-                    field_weights = field_weights * mask
+                    try:
+                        mask = gridsample_residual(mask, prediction,
+                                                   padding_mode='border')
+                        field_loss_map = field_loss_map * mask
+                        field_weights = field_weights * mask
+                    except Exception as e:
+                        print('Source field mask failed: {}: {}'.format(e.__class__.__name__, e))
+                        print('mask shape:', mask.shape)
             if tgt_field_masks is not None:
                 for mask in tgt_field_masks:
-                    field_loss_map = field_loss_map * mask
-                    field_weights = field_weights * mask
+                    try:
+                        field_loss_map = field_loss_map * mask
+                        field_weights = field_weights * mask
+                    except Exception as e:
+                        print('Target field mask failed: {}: {}'.format(e.__class__.__name__, e))
+                        print('mask shape:', mask.shape)
             field_loss = field_loss_map.sum() / field_weights.sum()
         else:
             field_loss = field_loss_map.mean()
@@ -205,8 +221,8 @@ def prepare_masks(sample, threshold=0.7):
     # coefficient on the defect:
     src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
 
-    src_aug_masks = [1.0 - m for m in sample.src.aug_masks]
-    tgt_aug_masks = [1.0 - m for m in sample.tgt.aug_masks]
+    src_aug_masks = [1.0 - m.float() for m in sample.src.aug_masks]
+    tgt_aug_masks = [1.0 - m.float() for m in sample.tgt.aug_masks]
 
     return {'src_masks': [src_weights.float()] + src_aug_masks,
             'tgt_masks': [tgt_weights.float()] + tgt_aug_masks,
