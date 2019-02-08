@@ -188,12 +188,12 @@ class RandomAugmentation(object):
 
     def __call__(self, X):
         src, tgt = X.src.image.clone(), X.tgt.image.clone()
-        src_aug, src_aug_masks = aug_input(src)
-        tgt_aug, tgt_aug_masks = aug_input(tgt)
-        X.src.aug = src_aug
-        X.tgt.aug = tgt_aug
-        X.src.aug_masks = src_aug_masks
-        X.tgt.aug_masks = tgt_aug_masks
+        src_aug, src_aug_masks = aug_input(src.squeeze(0))
+        tgt_aug, tgt_aug_masks = aug_input(tgt.squeeze(0))
+        X.src.aug = src_aug.unsqueeze(0)
+        X.tgt.aug = tgt_aug.unsqueeze(0)
+        X.src.aug_masks = src_aug_masks.unsqueeze(0)
+        X.tgt.aug_masks = tgt_aug_masks.unsqueeze(0)
         return X
 
 
