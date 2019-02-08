@@ -28,14 +28,14 @@ for z in starts:
     subprocess.Popen("cp -r {} {}".format(args.template, net_dir), shell=True)
 
 
-    for m in [10]:
+    for m in [6, 4]:
         file_name = "{}_module{}.pth.tar".format(name, m)
         file_path = os.path.join(src_weights_dir, file_name)
         tgt_path = os.path.join(tgt_weights_dir, "module{}.pth.tar".format(m))
         print ("cp {} {}".format(file_path, tgt_weights_dir))
         subprocess.Popen("cp {} {}".format(file_path, tgt_path), shell=True)
 
-    for m in [8]:
+    for m in []:
         file_name = "serial_x1_module{}.pth.tar".format(m)
         file_path = os.path.join(src_weights_dir, file_name)
         tgt_path = os.path.join(tgt_weights_dir, "module{}.pth.tar".format(m))
