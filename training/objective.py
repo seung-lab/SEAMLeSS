@@ -64,8 +64,8 @@ class SupervisedLoss(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
 
-    def forward(self, prediction, truth):  # TODO: use masks
-        truth = truth.to(prediction.device)
+    def forward(self, sample, prediction):  # TODO: use masks
+        truth = sample.truth.to(prediction.device)
         return ((prediction - truth) ** 2).mean() * 25000
 
 
@@ -89,14 +89,15 @@ class SelfSupervisedLoss(nn.Module):
         self.field_penalty = smoothness_penalty(penalty)
         self.lambda1 = lambda1
 
-    def forward(self, src, tgt, prediction, masks=None):
-        masks = prepare_masks(src, tgt, masks)
+    def forward(self, sample, prediction):
+        masks = prepare_masks(sample)
         src_masks = masks['src_masks']
         tgt_masks = masks['tgt_masks']
         src_field_masks = masks['src_field_masks']
         tgt_field_masks = masks['tgt_field_masks']
 
-        src, tgt = src.to(prediction.device), tgt.to(prediction.device)
+        src = sample.src.image.to(prediction.device)
+        tgt = sample.tgt.image.to(prediction.device)
 
         src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
         image_loss_map = (src_warped - tgt)**2
@@ -151,7 +152,7 @@ def gen_masks(src, tgt, threshold=10):
 
 
 @torch.no_grad()
-def prepare_masks(src, tgt, masks=None, threshold=0.7):
+def prepare_masks(sample, threshold=0.7):
     """
     Returns properly formatted masks with which to weight the loss function.
     If masks is None, this calls gen_masks to generate them.
@@ -169,15 +170,15 @@ def prepare_masks(src, tgt, masks=None, threshold=0.7):
     field_coef1 = 0.01, 0.01
     field_radius1 = 10
 
+    src, tgt = sample.src.image, sample.tgt.image
     src_weights, tgt_weights = torch.ones_like(src), torch.ones_like(tgt)
     src_field_weights = torch.ones_like(src)
     tgt_field_weights = torch.ones_like(tgt)
-    if masks is None or masks.nelement() == 0:
+    if sample.src.fold_mask is None or len(sample.src.fold_mask) == 0:
         src_defects, tgt_defects = gen_masks(src, tgt, threshold)
     else:
-        masks = masks.cuda()
-        src_defects = masks[:, 2:3] > threshold
-        tgt_defects = masks[:, 3:4] > threshold
+        src_defects = sample.src.fold_mask > threshold
+        tgt_defects = sample.tgt.fold_mask > threshold
 
     # Tissue (MSE) masks
     src_mask_0 = masklib.dilate(src_defects, radius=tissue_radius0)
@@ -202,7 +203,10 @@ def prepare_masks(src, tgt, masks=None, threshold=0.7):
     # coefficient on the defect:
     src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
 
-    return {'src_masks': [src_weights.float()],
-            'tgt_masks': [tgt_weights.float()],
+    src_aug_masks = [1.0 - m for m in sample.src.aug_masks]
+    tgt_aug_masks = [1.0 - m for m in sample.tgt.aug_masks]
+
+    return {'src_masks': [src_weights.float()] + src_aug_masks,
+            'tgt_masks': [tgt_weights.float()] + tgt_aug_masks,
             'src_field_masks': [src_field_weights.float()],
             'tgt_field_masks': [tgt_field_weights.float()]}
