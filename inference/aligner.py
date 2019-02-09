@@ -57,8 +57,6 @@ class Aligner:
     self.sqs = None
     self.queue_url = None
     if queue_name:
-      self.sqs = boto3.client('sqs', region_name='us-east-1')
-      self.queue_url  = self.sqs.get_queue_url(QueueName=self.queue_name)["QueueUrl"]
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
     
     self.chunk_size = (1024, 1024)
@@ -1466,6 +1464,8 @@ class Aligner:
     return all(i == 0 for i in responses)
 
   def wait_for_sqs_empty(self):
+    self.sqs = boto3.client('sqs', region_name='us-east-1')
+    self.queue_url  = self.sqs.get_queue_url(QueueName=self.queue_name)["QueueUrl"]
     print("\nSQS Wait")
     print("No. of messages / No. not visible")
     sleep(5)
