@@ -628,7 +628,7 @@ class Aligner:
          warped image with shape of bbox at MIP image_mip
       """
       assert(field_mip >= image_mip)
-      pad = 2**(image_mip+1)
+      pad = 256
       padded_bbox = deepcopy(bbox)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
