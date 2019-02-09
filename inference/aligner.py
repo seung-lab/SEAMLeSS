@@ -482,7 +482,7 @@ class Aligner:
       mask_cv: MiplessCloudVolume with mask to be used for both src & tgt image
       
     Returns:
-      field with MIP0 residuals with the shape of bbox at MIP mip
+      field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
     archive = self.get_model_archive(model_path)
     model = archive.model
@@ -516,15 +516,22 @@ class Aligner:
     # significantly - only incrementing the GPU lock here should be sufficient.
     if self.gpu_lock is not None:
       self.gpu_lock.acquire()
+      print("Process {} acquired GPU lock".format(os.getpid()))
 
-    field = model(src_patch, tgt_patch)
-
-    if self.gpu_lock is not None:
-      self.gpu_lock.release()
+    print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
 
     # model produces field in relative coordinates
+    field = model(src_patch, tgt_patch)
+    print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
     field = self.rel_to_abs_residual(field, mip)
     field = field[:,pad:-pad,pad:-pad,:]
+    field = field.data.cpu().numpy()
+
+    print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+    if self.gpu_lock is not None:
+      print("Process {} releasing GPU lock".format(os.getpid()))
+      self.gpu_lock.release()
+
     return field
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
