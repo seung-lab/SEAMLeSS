@@ -181,28 +181,41 @@ class Aligner:
     print('get_masked_image: {:.3f}'.format(diff), flush=True) 
     return image
 
-  def get_composite_image(self, cv, z_list, bbox, mip, to_tensor=True): 
-    """Collapse 3D image into a 2D image, replacing black pixels in the first 
-        z slice with the nearest nonzero pixel in other slices.
-    
+  def get_composite_image(self, image_cv, z_list, bbox, image_mip,
+                                mask_cv, mask_mip, mask_val,
+                                to_tensor=True, normalizer=None):
+    """Collapse a stack of 2D image into a single 2D image, by consecutively
+        replacing black pixels (0) in the image of the first z_list entry with
+        non-black pixels from of the consecutive z_list entries images.
+
     Args:
-       cv: MiplessCloudVolume where images are stored
-       z_list: list of ints that will be processed in order 
+       image_cv: MiplessCloudVolume where images are stored
+       z_list: list of image indices processed in the given order
        bbox: BoundingBox defining data range
-       mip: int MIP level of the data to process
-       adjust_contrast: output will be normalized
+       image_mip: int MIP level of the image data to process
+       mask_cv: MiplessCloudVolume where masks are stored, or None if no mask
+        should be used
+       mask_mip: int MIP level of the mask, ignored if ``mask_cv`` is None
+       mask_val: The mask value that specifies regions to be blackened, ignored
+        if ``mask_cv`` is None.
        to_tensor: output will be torch.tensor
-       #TODO normalizer: callable function to adjust the contrast of the image
+       #TODO normalizer: callable function to adjust the contrast of each image
     """
-    z_start = np.min(z_range)
-    z_stop = np.max(z_range)+1
-    z_range = range(z_start, z_stop) 
-    img = self.get_data_range(cv, z_range, bbox, src_mip=mip, dst_mip=mip)
-    z = z_list[0]
-    o = img[z-z_start, ...]
+
+    # Retrieve image stack
+    assert len(z_list) > 0
+
+    combined = self.get_masked_image(image_cv, z_list[0], bbox, image_mip,
+                                     mask_cv, mask_mip, mask_val,
+                                     to_tensor=to_tensor, normalizer=normalizer)
     for z in z_list[1:]:
-      o[o <= 1] = img[z-z_start, ...][o <= 1]
-    return o
+      tmp = self.get_masked_image(image_cv, z, bbox, image_mip,
+                                  mask_cv, mask_mip, mask_val,
+                                  to_tensor=to_tensor, normalizer=normalizer)
+      black_mask = combined == 0
+      combined[black_mask] = tmp[black_mask]
+
+    return combined
 
   def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
                      to_tensor=True, normalizer=None):
@@ -439,7 +452,8 @@ class Aligner:
 
   def compute_field_chunk(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad, 
                           src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
-                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0):
+                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
+                          tgt_alt_z=None):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
     Args:
@@ -465,11 +479,19 @@ class Aligner:
     padded_bbox = deepcopy(bbox)
     padded_bbox.uncrop(pad, mip=mip)
 
+    tgt_z = [tgt_z]
+    if tgt_alt_z is not None:
+      try:
+        tgt_z.extend(tgt_alt_z)
+      except TypeError:
+        tgt_z.append(tgt_alt_z)
+      print('alternative target slices:', tgt_alt_z)
+
     src_patch = self.get_masked_image(src_cv, src_z, padded_bbox, mip,
                                 mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                 mask_val=src_mask_val,
                                 to_tensor=True, normalizer=normalizer)
-    tgt_patch = self.get_masked_image(tgt_cv, tgt_z, padded_bbox, mip,
+    tgt_patch = self.get_composite_image(tgt_cv, tgt_z, padded_bbox, mip,
                                 mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
                                 mask_val=tgt_mask_val,
                                 to_tensor=True, normalizer=normalizer)
