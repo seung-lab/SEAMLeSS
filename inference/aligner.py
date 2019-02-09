@@ -37,6 +37,14 @@ from utilities.archive import ModelArchive
 import torch.nn as nn
 from taskqueue import TaskQueue
 import tasks
+import tenacity
+import boto3
+
+retry = tenacity.retry(
+  reraise=True, 
+  stop=tenacity.stop_after_attempt(7), 
+  wait=tenacity.wait_full_jitter(0.5, 60.0),
+)
 
 class Aligner:
   def __init__(self, threads=1, queue_name=None, task_batch_size=1, 
@@ -46,7 +54,11 @@ class Aligner:
     self.distributed = (queue_name != None)
     self.queue_name = queue_name
     self.task_queue = None
+    self.sqs = None
+    self.queue_url = None
     if queue_name:
+      self.sqs = boto3.client('sqs', region_name='us-east-1')
+      self.queue_url  = self.sqs.get_queue_url(QueueName=self.queue_name)["QueueUrl"]
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
     
     self.chunk_size = (1024, 1024)
@@ -116,7 +128,7 @@ class Aligner:
   # IO methods #
   ##############
 
-  def get_model_archive(self, model_path, readonly=1):
+  def get_model_archive(self, model_path):
     """Load a model stored in the repo with its relative path
 
     TODO: evict old models from self.models
@@ -134,7 +146,7 @@ class Aligner:
       print('Adding model {0} to the cache'.format(model_path), flush=True)
       path = Path(model_path)
       model_name = path.stem
-      archive = ModelArchive(model_name, readonly)
+      archive = ModelArchive(model_name)
       self.model_archives[model_path] = archive
       return archive
 
@@ -482,28 +494,6 @@ class Aligner:
     field = field[:,pad:-pad,pad:-pad,:]
     return field
 
-  def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
-                    chunk_size, prefix=''):
-    start = time()
-    chunks = self.break_into_chunks(bbox, chunk_size,
-                                    cm.dst_voxel_offsets[mip], mip=mip,
-                                    max_mip=cm.num_scales)
-    if prefix == '':
-      prefix = '{}'.format(mip)
-    batch = []
-    for patch_bbox in chunks:
-      batch.append(tasks.PredictImageTask(model_path, src_cv, dst_cv, z, mip,
-                                        patch_bbox, prefix))
-    return batch
-
-  def predict_image_chunk(self, model_path, src_cv, z, mip, bbox):
-    archive = self.get_model_archive(model_path, readonly=2)
-    model = archive.model
-    image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
-    new_image = model(image)
-    return new_image
-
-
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
                         inverse=False, softmin_temp=-1, serial=True):
     """Compute consensus vector field using pairwise vector fields with earlier sections. 
@@ -596,7 +586,7 @@ class Aligner:
          warped image with shape of bbox at MIP image_mip
       """
       assert(field_mip >= image_mip)
-      pad = 128
+      pad = 2**(image_mip+1)
       padded_bbox = deepcopy(bbox)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
@@ -1106,24 +1096,24 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def res_and_compose(self, model_path, src_cv, tgt_cv, z, tgt_range, bbox,
-                      mip, write_F_cv, pad, softmin_temp, prefix=""):
+  def res_and_compose(self, z, forward_match, reverse_match, bbox, mip, write_F_cv):
+      tgt_range = []
       T = 2**mip
+      if forward_match:
+        tgt_range.extend(range(self.tgt_range[-1], 0, -1)) 
+      if reverse_match:
+        tgt_range.extend(range(self.tgt_range[0], 0, 1)) 
       fields = []
       for z_offset in tgt_range:
-          src_z = z
-          tgt_z = src_z - z_offset
-          print("calc res for src {} and tgt {}".format(src_z, tgt_z))
-          f = self.compute_field_chunk(model_path, src_cv, tgt_cv, src_z,
-                                       tgt_z, bbox, mip, pad)
-          #print("--------f shape is ---", f.shape)
-          fields.append(f.cpu().data)
-          #fields.append(f)
-      fields = [i.to(device=self.device) for i in fields]
-      #print("device is ", fields[0].device)
-      field = vector_vote(fields, softmin_temp=softmin_temp)
-      field = field.data.cpu().numpy()
-      self.save_field(field, write_F_cv, z, bbox, mip, relative=False)
+          if z_offset != 0:
+            src_z = z
+            tgt_z = src_z - z_offset
+            #print("------------------zoffset is", z_offset)
+            f = self.get_residual(src_z, tgt_z, bbox, mip)
+            fields.append(f) 
+      field = vector_vote(fields, T=T)
+      field = field.data.cpu().numpy() 
+      self.save_field(write_F_cv, z, field, bbox, mip, relative=False, as_int16=as_int16)
 
   def downsample_range(self, cv, z_range, bbox, source_mip, target_mip):
     """Downsample a range of sections, downsampling a given MIP across all sections
@@ -1207,23 +1197,6 @@ class Aligner:
       end = time()
       print (": {} sec".format(end - start))
 
-  def compute_field_and_vector_vote(self, cm, model_path, src_cv, tgt_cv, vvote_field,
-                          tgt_range, z, bbox, mip, pad, softmin_temp, prefix):
-    """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in
-    TGT_RADIUS and perform vetor voting
-    """
-
-    m = mip
-    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[m],
-                                    cm.vec_voxel_offsets[m], mip=m,
-                                    max_mip=cm.num_scales)
-    batch = []
-    for patch_bbox in chunks:
-        batch.append(tasks.ResAndComposeTask(model_path, src_cv, tgt_cv, z,
-                                            tgt_range, patch_bbox, mip,
-                                            vvote_field, pad, softmin_temp,
-                                            prefix))
-    return batch
 
   def generate_pairwise(self, z_range, bbox, forward_match, reverse_match, 
                               render_match=False, batch_size=1, wait=True):
@@ -1455,3 +1428,24 @@ class Aligner:
               lst = stor.list_files(prefix=prefix+str(z))
               i += sum(1 for _ in lst)
       return i == chunks_len
+  @retry
+  def sqs_is_empty(self):
+    # hashtag hackerlife
+    attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
+    responses = []
+    for i in range(3):
+      response = self.sqs.get_queue_attributes(QueueUrl=self.queue_url,
+                                               AttributeNames=attribute_names)
+      for a in attribute_names:
+        responses.append(int(response['Attributes'][a]))
+      print('{}     '.format(responses[-2:]), end="\r", flush=True)
+      if i < 2:
+        sleep(1)
+    return all(i == 0 for i in responses)
+
+  def wait_for_sqs_empty(self):
+    print("\nSQS Wait")
+    print("No. of messages / No. not visible")
+    sleep(5)
+    while not self.sqs_is_empty():
+      sleep(1)
