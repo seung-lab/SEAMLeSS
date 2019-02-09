@@ -19,6 +19,8 @@ def get_argparser():
      help='no. of threads to use in scheduling chunks (locally & distributed)')
   parser.add_argument('--task_batch_size', type=int, default=1,
      help='no. of tasks to group together for a single worker')
+  parser.add_argument('--lease_seconds', type=int, default=30,
+     help='no. of seconds that polling will lease a task before it becomes visible again')
   parser.add_argument('--dry_run', 
      help='prevent task executes, but allow task print outs',
      action='store_true')
