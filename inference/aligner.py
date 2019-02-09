@@ -71,6 +71,8 @@ class Aligner:
     self.task_batch_size = task_batch_size
     self.dry_run = dry_run
 
+    self.gpu_lock = kwargs.get('gpu_lock', None)  # multiprocessing.Semaphore
+
   ##########################
   # Chunking & BoundingBox #
   ##########################
@@ -510,8 +512,17 @@ class Aligner:
     print('src_patch.shape {}'.format(src_patch.shape))
     print('tgt_patch.shape {}'.format(tgt_patch.shape))
 
-    # model produces field in relative coordinates
+    # Running the model is the only part that will increase memory consumption
+    # significantly - only incrementing the GPU lock here should be sufficient.
+    if self.gpu_lock is not None:
+      self.gpu_lock.acquire()
+
     field = model(src_patch, tgt_patch)
+
+    if self.gpu_lock is not None:
+      self.gpu_lock.release()
+
+    # model produces field in relative coordinates
     field = self.rel_to_abs_residual(field, mip)
     field = field[:,pad:-pad,pad:-pad,:]
     return field
