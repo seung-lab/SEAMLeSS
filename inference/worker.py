@@ -107,6 +107,8 @@ if __name__ == '__main__':
             create_process(process_id, aligner_args)
         elif p.exitcode != 0:
           # Worker got killed unexpectedly - probably an uncaught exception.
+          # TODO: If the worker got killed by force while using a gpu_lock
+          # we could run into a deadlock.
           print("Process {} terminated with code {}. Restarting...".format(process_id, p.exitcode))
           create_process(process_id, aligner_args)
         else:

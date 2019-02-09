@@ -518,19 +518,23 @@ class Aligner:
       self.gpu_lock.acquire()
       print("Process {} acquired GPU lock".format(os.getpid()))
 
-    print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+    try:
+      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
 
-    # model produces field in relative coordinates
-    field = model(src_patch, tgt_patch)
-    print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
-    field = self.rel_to_abs_residual(field, mip)
-    field = field[:,pad:-pad,pad:-pad,:]
-    field = field.data.cpu().numpy()
+      # model produces field in relative coordinates
+      field = model(src_patch, tgt_patch)
+      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+      field = self.rel_to_abs_residual(field, mip)
+      field = field[:,pad:-pad,pad:-pad,:]
+      field = field.data.cpu().numpy()
+      # clear unused, cached memory so that other processes can allocate it
+      torch.cuda.empty_cache()
 
-    print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
-    if self.gpu_lock is not None:
-      print("Process {} releasing GPU lock".format(os.getpid()))
-      self.gpu_lock.release()
+      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+    finally:
+      if self.gpu_lock is not None:
+        print("Process {} releasing GPU lock".format(os.getpid()))
+        self.gpu_lock.release()
 
     return field
 
