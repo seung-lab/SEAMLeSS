@@ -2,7 +2,7 @@ import atexit
 import os
 import signal
 import sys
-from multiprocessing import Event, Process
+from multiprocessing import Event, Process, Semaphore
 from time import sleep, time
 
 from taskqueue import TaskQueue
@@ -80,6 +80,7 @@ if __name__ == '__main__':
   parser = get_argparser()
   aligner_args = parse_args(parser)
   process_count = aligner_args.processes
+  gpu_process_count = aligner_args.gpu_processes or process_count
 
   if process_count == 1:
     run_aligner(aligner_args)
@@ -88,6 +89,9 @@ if __name__ == '__main__':
     signal.signal(signal.SIGTERM, cleanup_processes)
 
     print("Preparing {} processes...".format(process_count))
+    print("GPU will be shared by up to {} processes".format(gpu_process_count))
+
+    aligner_args.gpu_lock = Semaphore(gpu_process_count)
     for process_id in range(process_count):
       create_process(process_id, aligner_args)
 
@@ -103,6 +107,8 @@ if __name__ == '__main__':
             create_process(process_id, aligner_args)
         elif p.exitcode != 0:
           # Worker got killed unexpectedly - probably an uncaught exception.
+          # TODO: If the worker got killed by force while using a gpu_lock
+          # we could run into a deadlock.
           print("Process {} terminated with code {}. Restarting...".format(process_id, p.exitcode))
           create_process(process_id, aligner_args)
         else:

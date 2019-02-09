@@ -12,7 +12,9 @@ def get_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument('--queue_name', type=str, default=None)
   parser.add_argument('--processes', type=positive_int, default=1,
-     help='no. of processes to use on a single worker (useful to bypass GKE GPU limit)')
+     help='no. of processes to spawn on a single worker')
+  parser.add_argument('--gpu_processes', type=positive_int, default=None,
+     help='max no. of processes that might share the GPU at any given time')
   parser.add_argument('--threads', type=int, default=1,
      help='no. of threads to use in scheduling chunks (locally & distributed)')
   parser.add_argument('--task_batch_size', type=int, default=1,
