@@ -40,6 +40,8 @@ if __name__ == '__main__':
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   parser.add_argument('--restart', type=int, default=0)
+  parser.add_argument('--use_sqs_wait', action='store_true',
+    help='wait for SQS to return that its queue is empty; incurs fixed 30s for initial wait')
   args = parse_args(parser)
   # Only compute matches to previous sections
   args.serial_operation = True
@@ -141,283 +143,307 @@ if __name__ == '__main__':
   print(cm.dst_voxel_offsets[mip])
   print(n_chunks)
 
-  # ###########################
-  # # Serial alignment script #
-  # ###########################
-  # # check for restart
-  # copy_range = [r for r in copy_range if r >= args.restart]
-  # serial_range = [r for r in serial_range if r >= args.restart]
-  # vvote_range = [r for r in vvote_range if r >= args.restart]
-  # 
-  # # Copy first section
-  # batch = []
-  # for block_offset in copy_range:
-  #   prefix = block_offset
-  #   for i, block_start in enumerate(block_range):
-  #     block_type = block_types[i % 2]
-  #     dst = dsts[block_type]
-  #     z = block_start + block_offset 
-  #     t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, mask_cv=src_mask_cv,
-  #                    mask_mip=src_mask_mip, mask_val=src_mask_val, prefix=prefix)
-  #     batch.extend(t)
-  # print('Scheduling CopyTasks')
-  # start = time()
-  # run(a, batch)
-  # end = time()
-  # diff = end - start
-  # print_run(diff, len(batch))
-  # # wait
-  # start = time()
-  # for block_offset in copy_range:
-  #   prefix = block_offset
-  #   for block_type in block_types:
-  #     dst = dsts[block_type]
-  #     if block_type == 'even':
-  #       # there may be more even than odd blocks
-  #       n = n_chunks * int(math.ceil(len(block_range) / 2))
-  #     else:
-  #       n = n_chunks * (len(block_range) // 2)
-  #     a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
-  # end = time()
-  # diff = end - start
-  # print_run(diff, len(batch))
+  ###########################
+  # Serial alignment script #
+  ###########################
+  # check for restart
+  copy_range = [r for r in copy_range if r >= args.restart]
+  serial_range = [r for r in serial_range if r >= args.restart]
+  vvote_range = [r for r in vvote_range if r >= args.restart]
+  
+  # Copy first section
+  batch = []
+  for block_offset in copy_range:
+    prefix = block_offset
+    for i, block_start in enumerate(block_range):
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
+      z = block_start + block_offset 
+      t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, mask_cv=src_mask_cv,
+                     mask_mip=src_mask_mip, mask_val=src_mask_val, prefix=prefix)
+      batch.extend(t)
+  print('Scheduling CopyTasks')
+  start = time()
+  run(a, batch)
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
+  # wait
+  start = time()
+  if args.use_sqs_wait:
+    a.wait_for_sqs_empty()
+  else:
+    for block_offset in copy_range:
+      prefix = block_offset
+      for block_type in block_types:
+        dst = dsts[block_type]
+        if block_type == 'even':
+          # there may be more even than odd blocks
+          n = n_chunks * int(math.ceil(len(block_range) / 2))
+        else:
+          n = n_chunks * (len(block_range) // 2)
+        a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
 
-  # # Align without vector voting
-  # for block_offset in serial_range:
-  #   z_offset = serial_offsets[block_offset] 
-  #   serial_field = serial_fields[z_offset]
-  #   batch = []
-  #   prefix = block_offset
-  #   for i, block_start in enumerate(block_range):
-  #     block_type = block_types[i % 2]
-  #     dst = dsts[block_type]
-  #     z = block_start + block_offset 
-  #     model_path = model_lookup[z]
-  #     t = a.compute_field(cm, model_path, src, dst, serial_field, 
-  #                         z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
-  #                         src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-  #                         tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-  #                         tgt_mask_val=src_mask_val, prefix=prefix)
-  #     batch.extend(t)
+  # Align without vector voting
+  for block_offset in serial_range:
+    z_offset = serial_offsets[block_offset] 
+    serial_field = serial_fields[z_offset]
+    batch = []
+    prefix = block_offset
+    for i, block_start in enumerate(block_range):
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
+      z = block_start + block_offset 
+      model_path = model_lookup[z]
+      t = a.compute_field(cm, model_path, src, dst, serial_field, 
+                          z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
+                          src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                          tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+                          tgt_mask_val=src_mask_val, prefix=prefix)
+      batch.extend(t)
 
-  #   print('Scheduling ComputeFieldTasks')
-  #   start = time()
-  #   run(a, batch)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
-  #   start = time()
-  #   # wait 
-  #   n = len(batch) 
-  #   a.wait_for_queue_empty(serial_field.path, 
-  #       'compute_field_done/{}'.format(prefix), n)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
+    print('Scheduling ComputeFieldTasks')
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+    start = time()
+    # wait 
+    if args.use_sqs_wait:
+      a.wait_for_sqs_empty()
+    else:
+      n = len(batch) 
+      a.wait_for_queue_empty(serial_field.path, 
+          'compute_field_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
-  #   batch = []
-  #   for i, block_start in enumerate(block_range):
-  #     block_type = block_types[i % 2]
-  #     dst = dsts[block_type]
-  #     z = block_start + block_offset 
-  #     t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
-  #                  bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
-  #                  mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
-  #     batch.extend(t)
+    batch = []
+    for i, block_start in enumerate(block_range):
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
+      z = block_start + block_offset 
+      t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
+                   bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
+                   mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
+      batch.extend(t)
 
-  #   print('Scheduling RenderTasks')
-  #   start = time()
-  #   run(a, batch)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
-  #   start = time()
-  #   # wait 
-  #   for block_type in block_types:
-  #     dst = dsts[block_type]
-  #     if block_type == 'even':
-  #       # there may be more even than odd blocks
-  #       n = n_chunks * int(math.ceil(len(block_range) / 2))
-  #     else:
-  #       n = n_chunks * (len(block_range) // 2)
-  #     a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
+    print('Scheduling RenderTasks')
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+    start = time()
+    # wait 
+    if args.use_sqs_wait:
+      a.wait_for_sqs_empty()
+    else:
+      for block_type in block_types:
+        dst = dsts[block_type]
+        if block_type == 'even':
+          # there may be more even than odd blocks
+          n = n_chunks * int(math.ceil(len(block_range) / 2))
+        else:
+          n = n_chunks * (len(block_range) // 2)
+        a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
-  # # Align with vector voting
-  # for block_offset in vvote_range:
-  #   batch = []
-  #   prefix = block_offset
-  #   for i, block_start in enumerate(block_range):
-  #     block_type = block_types[i % 2]
-  #     dst = dsts[block_type]
-  #     z = block_start + block_offset 
-  #     model_path = model_lookup[z]
-  #     for z_offset in vvote_offsets:
-  #       field = pair_fields[z_offset]
-  #       t = a.compute_field(cm, model_path, src, dst, field, 
-  #                           z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
-  #                           src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-  #                           tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-  #                           tgt_mask_val=src_mask_val, prefix=prefix)
-  #       batch.extend(t)
+  # Align with vector voting
+  for block_offset in vvote_range:
+    batch = []
+    prefix = block_offset
+    for i, block_start in enumerate(block_range):
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
+      z = block_start + block_offset 
+      model_path = model_lookup[z]
+      for z_offset in vvote_offsets:
+        field = pair_fields[z_offset]
+        t = a.compute_field(cm, model_path, src, dst, field, 
+                            z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
+                            src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                            tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+                            tgt_mask_val=src_mask_val, prefix=prefix)
+        batch.extend(t)
 
-  #   print('Scheduling ComputeFieldTasks')
-  #   start = time()
-  #   run(a, batch)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
-  #   start = time()
-  #   # wait 
-  #   for z_offset in vvote_offsets:
-  #     field = pair_fields[z_offset]
-  #     n = len(block_range) * n_chunks
-  #     a.wait_for_queue_empty(field.path, 
-  #         'compute_field_done/{}'.format(prefix), n)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
+    print('Scheduling ComputeFieldTasks')
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+    start = time()
+    # wait 
+    if args.use_sqs_wait:
+      a.wait_for_sqs_empty()
+    else:
+      for z_offset in vvote_offsets:
+        field = pair_fields[z_offset]
+        n = len(block_range) * n_chunks
+        a.wait_for_queue_empty(field.path, 
+            'compute_field_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
-  #   batch = []
-  #   for block_start in block_range:
-  #     z = block_start + block_offset 
-  #     t = a.vector_vote(cm, pair_fields, vvote_field, z, bbox, mip, inverse=False, 
-  #                       softmin_temp=-1, serial=True, prefix=prefix)
-  #     batch.extend(t)
+    batch = []
+    for block_start in block_range:
+      z = block_start + block_offset 
+      t = a.vector_vote(cm, pair_fields, vvote_field, z, bbox, mip, inverse=False, 
+                        softmin_temp=-1, serial=True, prefix=prefix)
+      batch.extend(t)
 
-  #   print('Scheduling VectorVoteTasks')
-  #   start = time()
-  #   run(a, batch)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
-  #   start = time()
-  #   # wait 
-  #   n = len(batch)
-  #   a.wait_for_queue_empty(vvote_field.path, 
-  #       'vector_vote_done/{}'.format(prefix), n)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
+    print('Scheduling VectorVoteTasks')
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+    start = time()
+    # wait 
+    if args.use_sqs_wait:
+      a.wait_for_sqs_empty()
+    else:
+      n = len(batch)
+      a.wait_for_queue_empty(vvote_field.path, 
+          'vector_vote_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
-  #   batch = []
-  #   for i, block_start in enumerate(block_range):
-  #     block_type = block_types[i % 2]
-  #     dst = dsts[block_type]
-  #     z = block_start + block_offset 
-  #     t = a.render(cm, src, vvote_field, dst, 
-  #                  src_z=z, field_z=z, dst_z=z, bbox=bbox, src_mip=mip, field_mip=mip, 
-  #                  mask_cv=src_mask_cv, mask_val=src_mask_val, mask_mip=src_mask_mip,
-  #                  prefix=prefix)
-  #     batch.extend(t)
+    batch = []
+    for i, block_start in enumerate(block_range):
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
+      z = block_start + block_offset 
+      t = a.render(cm, src, vvote_field, dst, 
+                   src_z=z, field_z=z, dst_z=z, bbox=bbox, src_mip=mip, field_mip=mip, 
+                   mask_cv=src_mask_cv, mask_val=src_mask_val, mask_mip=src_mask_mip,
+                   prefix=prefix)
+      batch.extend(t)
 
-  #   print('Scheduling RenderTasks')
-  #   start = time()
-  #   run(a, batch)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
-  #   start = time()
-  #   # wait
-  #   for block_type in block_types:
-  #     dst = dsts[block_type]
-  #     if block_type == 'even':
-  #       # there may be more even than odd blocks
-  #       n = n_chunks * int(math.ceil(len(block_range) / 2))
-  #     else:
-  #       n = n_chunks * (len(block_range) // 2)
-  #     a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
+    print('Scheduling RenderTasks')
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+    start = time()
+    # wait
+    if args.use_sqs_wait:
+      a.wait_for_sqs_empty()
+    else:
+      for block_type in block_types:
+        dst = dsts[block_type]
+        if block_type == 'even':
+          # there may be more even than odd blocks
+          n = n_chunks * int(math.ceil(len(block_range) / 2))
+        else:
+          n = n_chunks * (len(block_range) // 2)
+        a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
-  # ###########################
-  # # Serial broadcast script #
-  # ###########################
-  # 
-  # n_chunks = len(chunks) 
-  # # Copy vector field of first block
-  # batch = []
-  # block_start = block_range[0]
-  # prefix = block_start
-  # for block_offset in copy_field_range: 
-  #   z = block_start + block_offset
-  #   t = a.copy(cm, vvote_field, compose_field, z, z, bbox, mip, is_field=True, prefix=prefix)
-  #   batch.extend(t)
+  ###########################
+  # Serial broadcast script #
+  ###########################
+  
+  n_chunks = len(chunks) 
+  # Copy vector field of first block
+  batch = []
+  block_start = block_range[0]
+  prefix = block_start
+  for block_offset in copy_field_range: 
+    z = block_start + block_offset
+    t = a.copy(cm, vvote_field, compose_field, z, z, bbox, mip, is_field=True, prefix=prefix)
+    batch.extend(t)
 
-  # run(a, batch)
-  # start = time()
-  # # wait
-  # a.wait_for_queue_empty(compose_field.path, 'copy_done/{}'.format(prefix), len(batch))
-  # end = time()
-  # diff = end - start
-  # print_run(diff, len(batch))
+  run(a, batch)
+  start = time()
+  # wait
+  if args.use_sqs_wait:
+    a.wait_for_sqs_empty()
+  else:
+    a.wait_for_queue_empty(compose_field.path, 'copy_done/{}'.format(prefix), len(batch))
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
 
-  # # Render out the images from the copied field
-  # batch = []
-  # block_start = block_range[0]
-  # prefix = block_start
-  # for block_offset in copy_field_range: 
-  #   z = block_start + block_offset 
-  #   t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
-  #                bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
-  #   batch.extend(t)
+  # Render out the images from the copied field
+  batch = []
+  block_start = block_range[0]
+  prefix = block_start
+  for block_offset in copy_field_range: 
+    z = block_start + block_offset 
+    t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
+                 bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+    batch.extend(t)
 
-  # print('Scheduling render for copied range')
-  # start = time()
-  # run(a, batch)
-  # end = time()
-  # diff = end - start
-  # print_run(diff, len(batch))
+  print('Scheduling render for copied range')
+  start = time()
+  run(a, batch)
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
 
-  # # Compose next block with last vector field from the previous composed block
-  # prefix = '' 
-  # start = time()
-  # for i, block_start in enumerate(block_range[1:]):
-  #   batch = []
-  #   z_broadcast = block_start + overlap - 1
-  #   for block_offset in broadcast_field_range[1:]:
-  #     # decay the composition over the length of the block
-  #     br = float(broadcast_field_range[-1])
-  #     factor = (br - block_offset) / (br - broadcast_field_range[1])
-  #     z = block_start + block_offset
-  #     t = a.compose(cm, vvote_field, vvote_field, compose_field, z_broadcast, z, z, 
-  #                   bbox, mip, mip, mip, factor, prefix=prefix)
-  #     batch.extend(t)
+  # Compose next block with last vector field from the previous composed block
+  prefix = '' 
+  start = time()
+  for i, block_start in enumerate(block_range[1:]):
+    batch = []
+    z_broadcast = block_start + overlap - 1
+    for block_offset in broadcast_field_range[1:]:
+      # decay the composition over the length of the block
+      br = float(broadcast_field_range[-1])
+      factor = (br - block_offset) / (br - broadcast_field_range[1])
+      z = block_start + block_offset
+      t = a.compose(cm, vvote_field, vvote_field, compose_field, z_broadcast, z, z, 
+                    bbox, mip, mip, mip, factor, prefix=prefix)
+      batch.extend(t)
 
-  #   print('Scheduling compose for block_start {}, block {} / {}'.format(block_start, i, 
-  #                                                                   len(block_range[1:])))
-  #   start = time()
-  #   run(a, batch)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
-  # # wait
-  # n = n_chunks * len(block_range[1:]) * len(broadcast_field_range[1:])
-  # a.wait_for_queue_empty(compose_field.path, 'compose_done/{}'.format(prefix), n)
-  # end = time()
-  # diff = end - start
-  # print_run(diff, len(batch))
+    print('Scheduling compose for block_start {}, block {} / {}'.format(block_start, i, 
+                                                                    len(block_range[1:])))
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+  # wait
+  if args.use_sqs_wait:
+    a.wait_for_sqs_empty()
+  else:
+    n = n_chunks * len(block_range[1:]) * len(broadcast_field_range[1:])
+    a.wait_for_queue_empty(compose_field.path, 'compose_done/{}'.format(prefix), n)
+  end = time()
+  diff = end - start
+  print_run(diff, len(batch))
 
-  # prefix = ''
-  # start = time()
-  # for i, block_start in enumerate(block_range[1:]):
-  #   batch = []
-  #   for block_offset in broadcast_field_range[1:]: 
-  #     z = block_start + block_offset 
-  #     t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
-  #                  bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
-  #     batch.extend(t)
+  prefix = ''
+  start = time()
+  for i, block_start in enumerate(block_range[1:]):
+    batch = []
+    for block_offset in broadcast_field_range[1:]: 
+      z = block_start + block_offset 
+      t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
+                   bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+      batch.extend(t)
 
-  #   print('Scheduling render for block_start {}, block {} / {}'.format(block_start, i, 
-  #                                                                   len(block_range[1:])))
-  #   start = time()
-  #   run(a, batch)
-  #   end = time()
-  #   diff = end - start
-  #   print_run(diff, len(batch))
+    print('Scheduling render for block_start {}, block {} / {}'.format(block_start, i, 
+                                                                    len(block_range[1:])))
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
 
   # # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
