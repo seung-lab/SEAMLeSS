@@ -26,12 +26,6 @@ if __name__ == '__main__':
     help='Value of of mask that indicates DO NOT mask')
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--mip', type=int)
-  parser.add_argument('--bbox_start', nargs=3, type=int,
-    help='bbox origin, 3-element int list')
-  parser.add_argument('--bbox_stop', nargs=3, type=int,
-    help='bbox origin+shape, 3-element int list')
-  parser.add_argument('--bbox_mip', type=int, default=0,
-    help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
   parser.add_argument('--tgt_radius', type=int, default=3,
     help='int for number of sections to include in vector voting')
@@ -46,10 +40,9 @@ if __name__ == '__main__':
   # Only compute matches to previous sections
   args.serial_operation = True
   a = get_aligner(args)
-  bbox = get_bbox(args)
   provenance = get_provenance(args)
   chunk_size = 1024
-  
+
   # Simplify var names
   mip = args.mip
   max_mip = args.max_mip
@@ -57,8 +50,38 @@ if __name__ == '__main__':
   src_mask_val = args.src_mask_val
   src_mask_mip = args.src_mask_mip
 
+  # Create CloudVolume Manager
+  cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
+                    size_chunk=chunk_size, batch_mip=mip)
+  
+  # compile bbox & model lookup per z index
+  bbox_lookup = {}
+  model_lookup = {}
+  z_min = math.inf
+  z_max = -math.inf
+  with open(args.model_lookup) as f:
+    reader = csv.reader(f, delimiter=',')
+    for k, r in enumerate(reader):
+       if k != 0:
+         x_start = int(r[0])
+         y_start = int(r[1])
+         z_start = int(r[2])
+         x_stop  = int(r[3])
+         y_stop  = int(r[4])
+         z_stop  = int(r[5])
+         bbox_mip = int(r[6])
+         model_path = join('..', 'models', r[7])
+         bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
+         if z_start < z_min:
+           z_min = z_start
+         if z_stop > z_max:
+           z_max= z_stop
+         for z in range(z_start, z_stop):
+           bbox_lookup[z] = bbox 
+           model_lookup[z] = model_path
+
   # Compile ranges
-  block_range = range(args.bbox_start[2], args.bbox_stop[2], args.block_size)
+  block_range = range(z_min, z_max, args.block_size)
   overlap = args.tgt_radius
   full_range = range(args.block_size + overlap)
 
@@ -76,22 +99,6 @@ if __name__ == '__main__':
   print('vvote_range {}'.format(vvote_range))
   print('serial_offsets {}'.format(serial_offsets))
   print('vvote_offsets {}'.format(vvote_offsets))
-
-  # compile model lookup per z index
-  model_lookup = {}
-  with open(args.model_lookup) as f:
-    reader = csv.reader(f, delimiter=',')
-    for k, r in enumerate(reader):
-       if k != 0:
-         z_start = int(r[0])
-         z_stop = int(r[1])
-         model_path = join('..', 'models', r[2])
-         for z in range(z_start, z_stop):
-           model_lookup[z] = model_path
-
-  # Create CloudVolume Manager
-  cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=chunk_size, batch_mip=mip)
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
@@ -134,9 +141,6 @@ if __name__ == '__main__':
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True)
 
-  chunks = a.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
-                                 cm.dst_voxel_offsets[mip], mip=mip, 
-                                 max_mip=cm.max_mip)
   n_chunks = len(chunks)
 
   ###########################
@@ -149,14 +153,20 @@ if __name__ == '__main__':
   
   # Copy first section
   batch = []
+  task_counter = {}
   for block_offset in copy_range:
     prefix = block_offset
     for i, block_start in enumerate(block_range):
       block_type = block_types[i % 2]
       dst = dsts[block_type]
       z = block_start + block_offset 
+      bbox = bbox_lookup[z]
       t = a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, mask_cv=src_mask_cv,
                      mask_mip=src_mask_mip, mask_val=src_mask_val, prefix=prefix)
+      k = (prefix, dst.path)
+      if k not in task_counter:
+        task_counter[k] = 0
+      task_counter += len(t)
       batch.extend(t)
   print('Scheduling CopyTasks')
   start = time()
@@ -169,16 +179,8 @@ if __name__ == '__main__':
   if args.use_sqs_wait:
     a.wait_for_sqs_empty()
   else:
-    for block_offset in copy_range:
-      prefix = block_offset
-      for block_type in block_types:
-        dst = dsts[block_type]
-        if block_type == 'even':
-          # there may be more even than odd blocks
-          n = n_chunks * int(math.ceil(len(block_range) / 2))
-        else:
-          n = n_chunks * (len(block_range) // 2)
-        a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
+    for (prefix, path), n in task_counter.items():
+      a.wait_for_queue_empty(path, 'copy_done/{}'.format(prefix), n)
   end = time()
   diff = end - start
   print_run(diff, len(batch))
@@ -194,6 +196,7 @@ if __name__ == '__main__':
       dst = dsts[block_type]
       z = block_start + block_offset 
       model_path = model_lookup[z]
+      bbox = bbox_lookup[z]
       t = a.compute_field(cm, model_path, src, dst, serial_field, 
                           z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
                           src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
@@ -220,6 +223,7 @@ if __name__ == '__main__':
     print_run(diff, len(batch))
 
     batch = []
+    task_counter = {}
     for i, block_start in enumerate(block_range):
       block_type = block_types[i % 2]
       dst = dsts[block_type]
@@ -227,6 +231,10 @@ if __name__ == '__main__':
       t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
                    bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
                    mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
+      k = (prefix, dst.path)
+      if k not in task_counter:
+        task_counter[k] = 0
+      task_counter += len(t)
       batch.extend(t)
 
     print('Scheduling RenderTasks')
@@ -240,14 +248,8 @@ if __name__ == '__main__':
     if args.use_sqs_wait:
       a.wait_for_sqs_empty()
     else:
-      for block_type in block_types:
-        dst = dsts[block_type]
-        if block_type == 'even':
-          # there may be more even than odd blocks
-          n = n_chunks * int(math.ceil(len(block_range) / 2))
-        else:
-          n = n_chunks * (len(block_range) // 2)
-        a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+      for (prefix, path), n in task_counter.items():
+        a.wait_for_queue_empty(path, 'render_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
     print_run(diff, len(batch))
@@ -255,6 +257,7 @@ if __name__ == '__main__':
   # Align with vector voting
   for block_offset in vvote_range:
     batch = []
+    task_counter = {}
     prefix = block_offset
     for i, block_start in enumerate(block_range):
       block_type = block_types[i % 2]
@@ -269,6 +272,10 @@ if __name__ == '__main__':
                             tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
                             tgt_mask_val=src_mask_val, prefix=prefix)
         batch.extend(t)
+        k = (prefix, field.path)
+        if k not in task_counter:
+          task_counter[k] = 0
+        task_counter += len(t)
 
     print('Scheduling ComputeFieldTasks')
     start = time()
@@ -281,11 +288,8 @@ if __name__ == '__main__':
     if args.use_sqs_wait:
       a.wait_for_sqs_empty()
     else:
-      for z_offset in vvote_offsets:
-        field = pair_fields[z_offset]
-        n = len(block_range) * n_chunks
-        a.wait_for_queue_empty(field.path, 
-            'compute_field_done/{}'.format(prefix), n)
+      for (prefix, path), n in task_counter.items():
+        a.wait_for_queue_empty(path, 'compute_field_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
     print_run(diff, len(batch))
@@ -316,6 +320,7 @@ if __name__ == '__main__':
     print_run(diff, len(batch))
 
     batch = []
+    task_counter = {}
     for i, block_start in enumerate(block_range):
       block_type = block_types[i % 2]
       dst = dsts[block_type]
@@ -325,6 +330,10 @@ if __name__ == '__main__':
                    mask_cv=src_mask_cv, mask_val=src_mask_val, mask_mip=src_mask_mip,
                    prefix=prefix)
       batch.extend(t)
+      k = (prefix, dst.path)
+      if k not in task_counter:
+        task_counter[k] = 0
+      task_counter += len(t)
 
     print('Scheduling RenderTasks')
     start = time()
@@ -337,14 +346,8 @@ if __name__ == '__main__':
     if args.use_sqs_wait:
       a.wait_for_sqs_empty()
     else:
-      for block_type in block_types:
-        dst = dsts[block_type]
-        if block_type == 'even':
-          # there may be more even than odd blocks
-          n = n_chunks * int(math.ceil(len(block_range) / 2))
-        else:
-          n = n_chunks * (len(block_range) // 2)
-        a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+      for (prefix, path), n in task_counter.items():
+        a.wait_for_queue_empty(path, 'render_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
     print_run(diff, len(batch))
@@ -353,7 +356,6 @@ if __name__ == '__main__':
   # Serial broadcast script #
   ###########################
   
-  n_chunks = len(chunks) 
   # Copy vector field of first block
   batch = []
   block_start = block_range[0]
@@ -392,6 +394,7 @@ if __name__ == '__main__':
   print_run(diff, len(batch))
 
   # Compose next block with last vector field from the previous composed block
+  n_tasks = 0
   prefix = '' 
   start = time()
   for i, block_start in enumerate(block_range[1:]):
@@ -405,8 +408,9 @@ if __name__ == '__main__':
       t = a.compose(cm, vvote_field, vvote_field, compose_field, z_broadcast, z, z, 
                     bbox, mip, mip, mip, factor, prefix=prefix)
       batch.extend(t)
+      n_tasks += len(t)
 
-    print('Scheduling compose for block_start {}, block {} / {}'.format(block_start, i, 
+    print('Scheduling compose for block_start {}, block {} / {}'.format(block_start, i+1, 
                                                                     len(block_range[1:])))
     start = time()
     run(a, batch)
@@ -417,8 +421,7 @@ if __name__ == '__main__':
   if args.use_sqs_wait:
     a.wait_for_sqs_empty()
   else:
-    n = n_chunks * len(block_range[1:]) * len(broadcast_field_range[1:])
-    a.wait_for_queue_empty(compose_field.path, 'compose_done/{}'.format(prefix), n)
+    a.wait_for_queue_empty(compose_field.path, 'compose_done/{}'.format(prefix), n_tasks)
   end = time()
   diff = end - start
   print_run(diff, len(batch))
@@ -433,7 +436,7 @@ if __name__ == '__main__':
                    bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
       batch.extend(t)
 
-    print('Scheduling render for block_start {}, block {} / {}'.format(block_start, i, 
+    print('Scheduling render for block_start {}, block {} / {}'.format(block_start, i+1, 
                                                                     len(block_range[1:])))
     start = time()
     run(a, batch)
