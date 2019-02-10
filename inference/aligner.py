@@ -1469,7 +1469,8 @@ class Aligner:
       n = 0
       while not empty:
         if n > 0:
-          sleep(1.75)
+          # sleep(1.75)
+          sleep(5)
         with Storage(path) as stor:
             lst = stor.list_files(prefix=prefix)
         i = sum(1 for _ in lst)
