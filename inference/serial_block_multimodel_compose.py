@@ -27,6 +27,8 @@ if __name__ == '__main__':
     help='Value of of mask that indicates DO NOT mask')
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--mip', type=int)
+  parser.add_argument('--z_start', type=int)
+  parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
   parser.add_argument('--tgt_radius', type=int, default=3,
     help='int for number of sections to include in vector voting')
@@ -58,8 +60,6 @@ if __name__ == '__main__':
   # compile bbox & model lookup per z index
   bbox_lookup = {}
   model_lookup = {}
-  z_min = math.inf
-  z_max = -math.inf
   with open(args.model_lookup) as f:
     reader = csv.reader(f, delimiter=',')
     for k, r in enumerate(reader):
@@ -73,16 +73,12 @@ if __name__ == '__main__':
          bbox_mip = int(r[6])
          model_path = join('..', 'models', r[7])
          bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
-         if z_start < z_min:
-           z_min = z_start
-         if z_stop > z_max:
-           z_max= z_stop
          for z in range(z_start, z_stop):
            bbox_lookup[z] = bbox 
            model_lookup[z] = model_path
 
   # Compile ranges
-  block_range = range(z_min, z_max, args.block_size)
+  block_range = range(args.z_start, args.z_stop, args.block_size)
   overlap = args.tgt_radius
   full_range = range(args.block_size + overlap)
 
