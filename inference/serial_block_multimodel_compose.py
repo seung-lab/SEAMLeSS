@@ -8,6 +8,7 @@ from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenanc
 from os.path import join
 from cloudmanager import CloudManager
 from tasks import run 
+from boundingbox import BoundingBox
 
 def print_run(diff, n_tasks):
   if n_tasks > 0:
@@ -141,8 +142,6 @@ if __name__ == '__main__':
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True)
 
-  n_chunks = len(chunks)
-
   ###########################
   # Serial alignment script #
   ###########################
@@ -166,7 +165,7 @@ if __name__ == '__main__':
       k = (prefix, dst.path)
       if k not in task_counter:
         task_counter[k] = 0
-      task_counter += len(t)
+      task_counter[k] += len(t)
       batch.extend(t)
   print('Scheduling CopyTasks')
   start = time()
@@ -235,7 +234,7 @@ if __name__ == '__main__':
       k = (prefix, dst.path)
       if k not in task_counter:
         task_counter[k] = 0
-      task_counter += len(t)
+      task_counter[k] += len(t)
       batch.extend(t)
 
     print('Scheduling RenderTasks')
@@ -277,7 +276,7 @@ if __name__ == '__main__':
         k = (prefix, field.path)
         if k not in task_counter:
           task_counter[k] = 0
-        task_counter += len(t)
+        task_counter[k] += len(t)
 
     print('Scheduling ComputeFieldTasks')
     start = time()
@@ -337,7 +336,7 @@ if __name__ == '__main__':
       k = (prefix, dst.path)
       if k not in task_counter:
         task_counter[k] = 0
-      task_counter += len(t)
+      task_counter[k] += len(t)
 
     print('Scheduling RenderTasks')
     start = time()
