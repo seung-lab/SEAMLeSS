@@ -228,6 +228,7 @@ if __name__ == '__main__':
       block_type = block_types[i % 2]
       dst = dsts[block_type]
       z = block_start + block_offset 
+      bbox = bbox_lookup[z]
       t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
                    bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
                    mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
@@ -263,6 +264,7 @@ if __name__ == '__main__':
       block_type = block_types[i % 2]
       dst = dsts[block_type]
       z = block_start + block_offset 
+      bbox = bbox_lookup[z]
       model_path = model_lookup[z]
       for z_offset in vvote_offsets:
         field = pair_fields[z_offset]
@@ -297,6 +299,7 @@ if __name__ == '__main__':
     batch = []
     for block_start in block_range:
       z = block_start + block_offset 
+      bbox = bbox_lookup[z]
       t = a.vector_vote(cm, pair_fields, vvote_field, z, bbox, mip, inverse=False, 
                         serial=True, prefix=prefix)
       batch.extend(t)
@@ -325,6 +328,7 @@ if __name__ == '__main__':
       block_type = block_types[i % 2]
       dst = dsts[block_type]
       z = block_start + block_offset 
+      bbox = bbox_lookup[z]
       t = a.render(cm, src, vvote_field, dst, 
                    src_z=z, field_z=z, dst_z=z, bbox=bbox, src_mip=mip, field_mip=mip, 
                    mask_cv=src_mask_cv, mask_val=src_mask_val, mask_mip=src_mask_mip,
@@ -362,6 +366,7 @@ if __name__ == '__main__':
   prefix = block_start
   for block_offset in copy_field_range: 
     z = block_start + block_offset
+    bbox = bbox_lookup[z]
     t = a.copy(cm, vvote_field, compose_field, z, z, bbox, mip, is_field=True, prefix=prefix)
     batch.extend(t)
 
@@ -382,6 +387,7 @@ if __name__ == '__main__':
   prefix = block_start
   for block_offset in copy_field_range: 
     z = block_start + block_offset 
+    bbox = bbox_lookup[z]
     t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
                  bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
     batch.extend(t)
@@ -405,6 +411,7 @@ if __name__ == '__main__':
       br = float(broadcast_field_range[-1])
       factor = (br - block_offset) / (br - broadcast_field_range[1])
       z = block_start + block_offset
+      bbox = bbox_lookup[z]
       t = a.compose(cm, vvote_field, vvote_field, compose_field, z_broadcast, z, z, 
                     bbox, mip, mip, mip, factor, prefix=prefix)
       batch.extend(t)
@@ -432,6 +439,7 @@ if __name__ == '__main__':
     batch = []
     for block_offset in broadcast_field_range[1:]: 
       z = block_start + block_offset 
+      bbox = bbox_lookup[z]
       t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
                    bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
       batch.extend(t)
