@@ -40,6 +40,8 @@ if __name__ == '__main__':
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   parser.add_argument('--restart', type=int, default=0)
+  parser.add_argument('--use_sqs_wait', action='store_true',
+    help='wait for SQS to return that its queue is empty; incurs fixed 30s for initial wait')
   args = parse_args(parser)
   # Only compute matches to previous sections
   args.serial_operation = True
@@ -136,7 +138,6 @@ if __name__ == '__main__':
                                  cm.dst_voxel_offsets[mip], mip=mip, 
                                  max_mip=cm.max_mip)
   n_chunks = len(chunks)
-  print(n_chunks)
 
   ###########################
   # Serial alignment script #
@@ -165,16 +166,19 @@ if __name__ == '__main__':
   print_run(diff, len(batch))
   # wait
   start = time()
-  for block_offset in copy_range:
-    prefix = block_offset
-    for block_type in block_types:
-      dst = dsts[block_type]
-      if block_type == 'even':
-        # there may be more even than odd blocks
-        n = n_chunks * int(math.ceil(len(block_range) / 2))
-      else:
-        n = n_chunks * (len(block_range) // 2)
-      a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
+  if args.use_sqs_wait:
+    a.wait_for_sqs_empty()
+  else:
+    for block_offset in copy_range:
+      prefix = block_offset
+      for block_type in block_types:
+        dst = dsts[block_type]
+        if block_type == 'even':
+          # there may be more even than odd blocks
+          n = n_chunks * int(math.ceil(len(block_range) / 2))
+        else:
+          n = n_chunks * (len(block_range) // 2)
+        a.wait_for_queue_empty(dst.path, 'copy_done/{}'.format(prefix), n)
   end = time()
   diff = end - start
   print_run(diff, len(batch))
@@ -205,9 +209,12 @@ if __name__ == '__main__':
     print_run(diff, len(batch))
     start = time()
     # wait 
-    n = len(batch) 
-    a.wait_for_queue_empty(serial_field.path, 
-        'compute_field_done/{}'.format(prefix), n)
+    if args.use_sqs_wait:
+      a.wait_for_sqs_empty()
+    else:
+      n = len(batch) 
+      a.wait_for_queue_empty(serial_field.path, 
+          'compute_field_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
     print_run(diff, len(batch))
@@ -230,14 +237,17 @@ if __name__ == '__main__':
     print_run(diff, len(batch))
     start = time()
     # wait 
-    for block_type in block_types:
-      dst = dsts[block_type]
-      if block_type == 'even':
-        # there may be more even than odd blocks
-        n = n_chunks * int(math.ceil(len(block_range) / 2))
-      else:
-        n = n_chunks * (len(block_range) // 2)
-      a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+    if args.use_sqs_wait:
+      a.wait_for_sqs_empty()
+    else:
+      for block_type in block_types:
+        dst = dsts[block_type]
+        if block_type == 'even':
+          # there may be more even than odd blocks
+          n = n_chunks * int(math.ceil(len(block_range) / 2))
+        else:
+          n = n_chunks * (len(block_range) // 2)
+        a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
     print_run(diff, len(batch))
@@ -268,11 +278,14 @@ if __name__ == '__main__':
     print_run(diff, len(batch))
     start = time()
     # wait 
-    for z_offset in vvote_offsets:
-      field = pair_fields[z_offset]
-      n = len(block_range) * n_chunks
-      a.wait_for_queue_empty(field.path, 
-          'compute_field_done/{}'.format(prefix), n)
+    if args.use_sqs_wait:
+      a.wait_for_sqs_empty()
+    else:
+      for z_offset in vvote_offsets:
+        field = pair_fields[z_offset]
+        n = len(block_range) * n_chunks
+        a.wait_for_queue_empty(field.path, 
+            'compute_field_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
     print_run(diff, len(batch))
@@ -292,9 +305,12 @@ if __name__ == '__main__':
     print_run(diff, len(batch))
     start = time()
     # wait 
-    n = len(batch)
-    a.wait_for_queue_empty(vvote_field.path, 
-        'vector_vote_done/{}'.format(prefix), n)
+    if args.use_sqs_wait:
+      a.wait_for_sqs_empty()
+    else:
+      n = len(batch)
+      a.wait_for_queue_empty(vvote_field.path, 
+          'vector_vote_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
     print_run(diff, len(batch))
@@ -318,14 +334,17 @@ if __name__ == '__main__':
     print_run(diff, len(batch))
     start = time()
     # wait
-    for block_type in block_types:
-      dst = dsts[block_type]
-      if block_type == 'even':
-        # there may be more even than odd blocks
-        n = n_chunks * int(math.ceil(len(block_range) / 2))
-      else:
-        n = n_chunks * (len(block_range) // 2)
-      a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
+    if args.use_sqs_wait:
+      a.wait_for_sqs_empty()
+    else:
+      for block_type in block_types:
+        dst = dsts[block_type]
+        if block_type == 'even':
+          # there may be more even than odd blocks
+          n = n_chunks * int(math.ceil(len(block_range) / 2))
+        else:
+          n = n_chunks * (len(block_range) // 2)
+        a.wait_for_queue_empty(dst.path, 'render_done/{}'.format(prefix), n)
     end = time()
     diff = end - start
     print_run(diff, len(batch))
@@ -347,7 +366,10 @@ if __name__ == '__main__':
   run(a, batch)
   start = time()
   # wait
-  a.wait_for_queue_empty(compose_field.path, 'copy_done/{}'.format(prefix), len(batch))
+  if args.use_sqs_wait:
+    a.wait_for_sqs_empty()
+  else:
+    a.wait_for_queue_empty(compose_field.path, 'copy_done/{}'.format(prefix), len(batch))
   end = time()
   diff = end - start
   print_run(diff, len(batch))
@@ -392,8 +414,11 @@ if __name__ == '__main__':
     diff = end - start
     print_run(diff, len(batch))
   # wait
-  n = n_chunks * len(block_range[1:]) * len(broadcast_field_range[1:])
-  a.wait_for_queue_empty(compose_field.path, 'compose_done/{}'.format(prefix), n)
+  if args.use_sqs_wait:
+    a.wait_for_sqs_empty()
+  else:
+    n = n_chunks * len(block_range[1:]) * len(broadcast_field_range[1:])
+    a.wait_for_queue_empty(compose_field.path, 'compose_done/{}'.format(prefix), n)
   end = time()
   diff = end - start
   print_run(diff, len(batch))
@@ -410,12 +435,11 @@ if __name__ == '__main__':
 
     print('Scheduling render for block_start {}, block {} / {}'.format(block_start, i, 
                                                                     len(block_range[1:])))
-    if len(batch) > 0:
-      start = time()
-      run(a, batch)
-      end = time()
-      diff = end - start
-      print_run(diff, len(batch))
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
 
-  # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
+  # # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)

@@ -10,9 +10,15 @@ parser.add_argument('--template', type=str, default="sergiy_m8m10_template")
 parser.add_argument('--name_template', type=str, default="zzzz_02_03_mip_10_z{}")
 parser.add_argument('--prefix', type=str, default="sergiy_m8m10_")
 parser.add_argument('--mips', type=list, default=[8, 10])
+parser.add_argument('--section', type=int, default=None)
 args = parser.parse_args()
 
-for z in range(8000, 26500, 1024):
+if args.section == None:
+    starts = range(8000, 28000, 1024)
+else:
+    starts = [args.section]
+
+for z in starts:
     print ("z == {}".format(z))
     name = args.name_template.format(z)
 
