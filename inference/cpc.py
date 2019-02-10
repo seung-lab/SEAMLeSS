@@ -26,7 +26,7 @@ if __name__ == '__main__':
   parser.add_argument('--dst_mip', type=int,
     help='int for output MIP, which will dictate the size of the block used')
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--max_displacement', 
+  parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
   parser.add_argument('--z_offset', type=int, default=-1,
@@ -43,7 +43,7 @@ if __name__ == '__main__':
   
   # Simplify var names
   max_mip = args.max_mip
-  pad = args.max_displacement
+  pad = args.pad
 
   # Compile ranges
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
