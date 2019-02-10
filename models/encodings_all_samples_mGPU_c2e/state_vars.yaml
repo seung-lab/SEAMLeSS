@@ -1,7 +1,7 @@
 batch_size: 4
 checkpoint_time: 10000
 encodings: true
-epoch: 755
+epoch: 768
 epochs_per_mip: 4
 feature_maps: [12, 12, 12, 12, 12]
 gamma: 1
@@ -18,6 +18,7 @@ name: test_encodings_all_samples_mGPU_c2e
 num_epochs: 1000000
 penalty: lap
 plan: all
+repeats: 144
 seed: 5432
 start_lr: 0.0003
 supervised: false
