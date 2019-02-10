@@ -7,6 +7,7 @@ import numpy as np
 import yaml
 import datetime
 from pathlib import Path
+import filecmp
 import importlib
 import pandas as pd
 
@@ -66,6 +67,7 @@ class ModelArchive(object):
         self.readonly = readonly
         self.intermediate_models = self.directory / 'intermediate_models/'
         self.debug_outputs = self.directory / 'debug_outputs/'
+        self.last_training_record = self.directory / '.last_training_record'
         self.paths = {
             # the model's trained weights
             'weights': self.directory / 'weights.pt',
@@ -121,6 +123,12 @@ class ModelArchive(object):
             print('Reading from exisiting model archive: {}'.format(self._name))
         assert self.directory.is_dir()
 
+        if not self.readonly:
+            # ensure directories exist
+            self.intermediate_models.mkdir(exist_ok=True)
+            self.debug_outputs.mkdir(exist_ok=True)
+            self.last_training_record.mkdir(exist_ok=True)
+
         # check for matching commits
         # this can prevent errors arising from working on the wrong git branch
         saved_commit = self.commit
@@ -163,6 +171,7 @@ class ModelArchive(object):
         self.directory.mkdir()
         self.intermediate_models.mkdir()
         self.debug_outputs.mkdir()
+        self.last_training_record.mkdir()
 
         # create archive files
         for filename in [
@@ -508,6 +517,48 @@ class ModelArchive(object):
         cp(self.paths['state_vars'], check_dir)
         cp(self.paths['plot'], check_dir)
 
+    def record_training_session(self):
+        """
+        Records a new training session with the updated parameters.
+        """
+        if self.readonly:
+            raise ReadOnlyError(self._name)
+        tracked = [
+            'architecture.py',
+            'objective.py',
+            'preprocessor.py',
+            'state_vars.yaml'
+        ]
+        _, changed, error = filecmp.cmpfiles(
+            str(self.last_training_record), str(self.directory), tracked)
+        if len(changed + error) == 0:
+            return
+        with self.paths['plan'].open(mode='a') as f:
+            f.writelines('\nAt epoch {}, iteration {}:\n'.format(
+                self.state_vars.epoch, self.state_vars.iteration))
+            f.writelines('Time: {}\n'.format(datetime.datetime.now()))
+            f.writelines('Commit: {}\n'.format(self.commit))
+            f.writelines(' '.join(sys.argv) + '\n')
+        with self.paths['plan'].open(mode='ab') as f:
+            for filename in changed + error:
+                if filename in changed:
+                    subprocess.call(
+                        'diff -u'
+                        ' -I \\s*\"*epoch\"*:\\s'
+                        ' -I \\s*\"*iteration\"*:\\s'
+                        ' -I \\s*\"*initialized_list\"*:\\s'
+                        ' -I \\s*\"*levels\"*:\\s'.split()
+                        + [
+                            str(self.last_training_record.expanduser()),
+                            str(self.paths[filename.split('.')[0]]
+                                .expanduser())
+                        ], stdout=f)
+        for filename in tracked:
+            if (self.last_training_record / filename).is_file():
+                (self.last_training_record / filename).unlink()
+            cp(self.paths[filename.split('.')[0]],
+               self.last_training_record / filename)
+
     def new_debug_directory(self):
         """
         Creates a new subdirectory for debugging outputs.
@@ -584,6 +635,8 @@ class ModelArchive(object):
         epoch = self._state_vars.epoch
         gamma = self._state_vars.gamma
         gamma_step = self._state_vars.gamma_step
+        if gamma == 1:
+            return
         self._state_vars.lr = (self._state_vars.start_lr
                                * (gamma ** (epoch // gamma_step)))
         for param_group in self._optimizer.param_groups:
@@ -610,7 +663,28 @@ class ModelArchive(object):
         data.plot(title='Training loss for {}'.format(self._name))
         with self.paths['plot'].open('wb') as f:
             plt.savefig(f)
-        cp(self.paths['plot'], self._current_debug_directory)
+
+
+def git_root():
+    """
+    Return the root directory of the current git repository, if available
+    """
+    try:
+        return Path(subprocess.check_output('git rev-parse --show-toplevel'
+                                            .split()).strip().decode("utf-8"))
+    except subprocess.CalledProcessError:
+        return None
+
+
+def git_root():
+    """
+    Return the root directory of the current git repository, if available
+    """
+    try:
+        return Path(subprocess.check_output('git rev-parse --show-toplevel'
+                                            .split()).strip().decode("utf-8"))
+    except subprocess.CalledProcessError:
+        return None
 
 
 def git_root():

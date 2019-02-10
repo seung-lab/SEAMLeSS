@@ -1,0 +1,5 @@
+Model: test_minnie_cf_detector_89
+Time: 2019-01-11 19:37:52.001604
+Commit: 2e7499777ceaef6cccc5468d9319788a1622bcd0
+./train.py start test_minnie_cf_detector_** --training_set /usr/people/bnehoran/training_data/cf_masks_minnie_mip2.h5 --seed 1328 --lr 0.0005
+

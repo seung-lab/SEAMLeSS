@@ -1,0 +1,1 @@
+./train.py start test_minnie_cf_detector_** --training_set /usr/people/bnehoran/training_data/cf_masks_minnie_mip2.h5 --seed 1328 --lr 0.0005

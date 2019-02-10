@@ -4,6 +4,7 @@ numpy
 scikit-image
 matplotlib
 cloud-volume==0.45.0
+fpzip==1.1.2
 h5py
 moviepy
 neuroglancer
@@ -16,4 +17,4 @@ opencv-python
 setuptools>=34.0.0
 pyyaml
 task-queue
-fpzip==1.1.2
+imageio==2.4.1

@@ -28,7 +28,7 @@ def run(aligner, tasks):
       for task in tasks:
         tq.insert(task, args=[ aligner ])
 
-class PredictImgTask(RegisteredTask):
+class PredictImageTask(RegisteredTask):
   def __init__(self, model_path, src_cv, dst_cv, z, mip, bbox, prefix):
     super().__init__(model_path, src_cv, dst_cv, z, mip, bbox, prefix)
 
@@ -50,7 +50,7 @@ class PredictImgTask(RegisteredTask):
     aligner.save_image(image, dst_cv, z, patch_bbox, mip)
 
     with Storage(dst_cv.path) as stor:
-        path = 'PreImg_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
+        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
         stor.put_file(path, '')
         print('Marked finished at {}'.format(path))
     end = time()
@@ -148,10 +148,9 @@ class ComputeFieldTask(RegisteredTask):
     start = time()
     if not aligner.dry_run:
       field = aligner.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z, 
-      		                          patch_bbox, mip, pad, 
+                                          patch_bbox, mip, pad, 
                                           src_mask_cv, src_mask_mip, src_mask_val,
                                           tgt_mask_cv, tgt_mask_mip, tgt_mask_val)
-      field = field.data.cpu().numpy()
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       with Storage(field_cv.path) as stor:
         path = 'compute_field_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))

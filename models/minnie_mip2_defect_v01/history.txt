@@ -1,0 +1,5 @@
+Model: test_one_slice_lr0_0005_10
+Time: 2019-01-11 23:08:16.881382
+Commit: 695315cc3acc29dc30c0dda168641fa7cc3368dd
+./train.py start test_one_slice_lr0_0005_** --training_set /usr/people/bnehoran/training_data/cf_masks_minnie_mip2_cleaned.h5 --seed 455 --lr 0.0005
+
