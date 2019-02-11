@@ -1,90 +1,102 @@
 import sys
 import torch
-from args import get_argparser, parse_args, get_aligner, get_bbox
+import json
+from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
+from cloudvolume import CloudVolume
+from cloudmanager import CloudManager
 
 if __name__ == '__main__':
   parser = get_argparser()
-  parser.add_argument('--align_start',
-    help='align without vector voting the 2nd & 3rd sections, otherwise copy them', action='store_true')
+  parser.add_argument('--model_path', type=str,
+    help='relative path to the ModelArchive to use for computing fields')
+  parser.add_argument('--src_path', type=str)
+  parser.add_argument('--src_mask_path', type=str, default='',
+    help='CloudVolume path of mask to use with src images; default None')
+  parser.add_argument('--src_mask_mip', type=int, default=8,
+    help='MIP of source mask')
+  parser.add_argument('--src_mask_val', type=int, default=1,
+    help='Value of of mask that indicates DO NOT mask')
+  parser.add_argument('--dst_path', type=str)
+  parser.add_argument('--mip', type=int)
+  parser.add_argument('--bbox_start', nargs=3, type=int,
+    help='bbox origin, 3-element int list')
+  parser.add_argument('--bbox_stop', nargs=3, type=int,
+    help='bbox origin+shape, 3-element int list')
+  parser.add_argument('--bbox_mip', type=int, default=0,
+    help='MIP level at which bbox_start & bbox_stop are specified')
+  parser.add_argument('--max_mip', type=int, default=9)
+  parser.add_argument('--pad', 
+    help='the size of the largest displacement expected; should be 2^high_mip', 
+    type=int, default=2048)
   args = parse_args(parser)
-  args.tgt_path = join(args.dst_path, 'image')
   # only compute matches to previous sections
   args.serial_operation = True
   a = get_aligner(args)
   bbox = get_bbox(args)
+  provenance = get_provenance(args)
 
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
-  a.dst[0].add_composed_cv(args.bbox_start[2], inverse=False)
-  field_k = a.dst[0].get_composed_key(args.bbox_start[2], inverse=False)
-  field_cv= a.dst[0].for_read(field_k)
-  dst_cv = a.dst[0].for_write('dst_img')
-  z_offset = 1
-  uncomposed_field_cv = a.dst[z_offset].for_read('field')
 
   mip = args.mip
-  composed_range = z_range[3:]
-  if args.align_start:
-    copy_range = z_range[0:1]
-    uncomposed_range = z_range[1:3]
-  else:
-    copy_range = z_range[0:3]
-    uncomposed_range = z_range[0:0]
+  max_mip = args.max_mip
+  pad = args.pad
+  copy_z = z_range[2]
+  no_vvote_range = z_range[0:2][::-1]
+  vvote_range = z_range[3:]
+
+  info = CloudManager.create_info(CloudVolume(args.src_path), 
+                                  max_mip, pad)
+  cm = CloudManager(info, provenance)
+  src_cv = cm.create(args.src_path, data_type='uint8', num_channels=1,
+                     fill_missing=True, overwrite=False)
+  dst_cv = cm.create(join(args.dst_path, 'image'), data_type='uint8', 
+                     num_channels=1, fill_missing=True, overwrite=True)
+  src_mask_cv = None
+  tgt_mask_cv = None
+  if args.src_mask_path:
+    src_mask_cv = cm.create(args.src_mask_path, data_type='uint8', num_channels=1,
+                               fill_missing=True, overwrite=True)
+    tgt_mask_cv = src_mask_cv
+
+  no_vvote_field_cv = cm.create(join(args.dst_path, 'field', str(1)), 
+                                  data_type='int16', num_channels=2,
+                                  fill_missing=True, overwrite=True)
+  pairwise_field_cvs = {}
+  pairwise_offsets = [-3,-2,-1]
+  for z_offset in pairwise_offsets:
+    pairwise_field_cvs[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
+                                         data_type='int16', num_channels=2,
+                                         fill_missing=True, overwrite=True)
+  vvote_field_cv = cm.create(join(args.dst_path, 'field', 'vvote_{0}'.format(copy_z)), 
+                                  data_type='int16', num_channels=2,
+                                  fill_missing=True, overwrite=True)
 
   # copy first section
-  for z in copy_range:
-    print('Copying z={0}'.format(z))
-    a.copy_section(z, dst_cv, z, bbox, mip)
-    a.downsample(dst_cv, z, bbox, a.render_low_mip, a.render_high_mip)
+  print('copying z={0}'.format(copy_z))
+  a.copy(cm, src_cv, dst_cv, copy_z, copy_z, bbox, mip, is_field=False, wait=True)
+
   # align without vector voting
-  for z in uncomposed_range:
+  for z in no_vvote_range:
     print('compute residuals without vector voting z={0}'.format(z))
-    src_z = z
-    tgt_z = z-1
-    a.compute_section_pair_residuals(src_z, tgt_z, bbox)
-  #  a.render_section_all_mips(src_z, uncomposed_field_cv, src_z,
-  #                            dst_cv, src_z, bbox, mip) 
-    a.render(src_z, uncomposed_field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
-    a.downsample(dst_cv, src_z - 1, bbox, a.render_low_mip, a.render_high_mip)
+    a.compute_field(cm, args.model_path, src_cv, dst_cv, no_vvote_field_cv, 
+                        z, z+1, bbox, mip, pad, wait=True)
+    a.render(cm, src_cv, no_vvote_field_cv, dst_cv, 
+                 src_z=z, field_z=z, dst_z=z, 
+                 bbox=bbox, src_mip=mip, field_mip=mip, wait=True)
 
-#a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip)
   # align with vector voting
-  for z in composed_range:
-      print('generate pairwise with vector voting z={0}'.format(z))
-      a.generate_pairwise([z], bbox, forward_match=True, reverse_match=False, 
-                          render_match=False)
-      print('compose pairwise with vector voting z={0}'.format(z))
-      a.compose_pairwise([z], args.bbox_start[2], bbox, mip, forward_compose=True,
-                         inverse_compose=False)
-      src_z = z
-      print('Aligning with vector voting z={0}'.format(z))
-      a.render(src_z, field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
-      print('Downsample z={0}'.format(z-1))
-      a.downsample(dst_cv, src_z -1, bbox, a.render_low_mip, a.render_high_mip)
+  for z in vvote_range:
+    for z_offset in pairwise_offsets:
+      field_cv = pairwise_field_cvs[z_offset]
+      a.compute_field(cm, args.model_path, src_cv, dst_cv, field_cv, 
+                          z, z+z_offset, bbox, mip, pad, wait=False)
+    a.vector_vote(cm, pairwise_field_cvs, vvote_field_cv, z, bbox, mip, 
+                      inverse=False, softmin_temp=-1, serial=True, wait=True)
+    a.render(cm, src_cv, vvote_field_cv, dst_cv, 
+                 src_z=z, field_z=z, dst_z=z, 
+                 bbox=bbox, src_mip=mip, field_mip=mip, wait=True)
 
-  print('Downsample z={0}'.format(composed_range[-1]))
-  a.downsample(dst_cv, composed_range[-1], bbox, a.render_low_mip, a.render_high_mip)
+  # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
 
-
-
-  #vvblock = 20
-  #for z_block in range(composed_range.start, composed_range.stop, vvblock):
-  #    z_block_range = range(z_block, min(composed_range.stop, z_block + vvblock))
-  #    print('generate pairwise with vector voting z={0}:{1}'.format(z_block_range.start,
-  #                                                                  z_block_range.stop))
-  #    a.generate_pairwise(z_block_range, bbox, render_match=False)
-  #    print('compose pairwise with vector voting z={0}:{1}'.format(z_block_range.start,
-  #                                                                 z_block_range.stop))
-  #    a.compose_pairwise(z_block_range, args.bbox_start[2], bbox, mip,
-  #                       forward_compose=True,
-  #                       inverse_compose=False)
-  #    for z in z_block_range:
-  #        print('Aligning with vector voting z={0}'.format(z))
-  #        src_z = z
-  #        a.render(src_z, field_cv, src_z, dst_cv, src_z, bbox, a.render_low_mip)
-  #        #a.render_section_all_mips(z, field_cv, z, dst_cv, z, bbox, mip)
-  #    for z in z_block_range:
-  #        print('Downsample z={0}'.format(z))
-  #        src_z = z
-  #        a.downsample(dst_cv, src_z, bbox, a.render_low_mip, a.render_high_mip)
 

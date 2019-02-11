@@ -3,7 +3,8 @@ torchvision
 numpy
 scikit-image
 matplotlib
-cloud-volume
+cloud-volume==0.45.0
+fpzip==1.1.2
 h5py
 moviepy
 neuroglancer
@@ -15,4 +16,5 @@ pandas
 opencv-python
 setuptools>=34.0.0
 pyyaml
-python-jsonschema-objects==0.3.3
+task-queue
+imageio==2.4.1

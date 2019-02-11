@@ -18,7 +18,7 @@ back to their own CloudVolumes.
 
 ## Parameters  
 
-## Workflows  
+## Workflows 
 
 ## Distributed operation  
 SEAMLeSS has been designed for distributed operation across a cluster. We have 
@@ -37,21 +37,34 @@ for instructions on obtaining them, and storing them in JSON format.
 ### Setting up Kubernetes  
 * Install [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) 
 on your local workstation.
-* Create a GPU cluster. We recommend the following parameters:  
+* Create a GPU cluster. We recommend the following parameters (based on the `GPU Accelerated Computing` template in GKE):
 
 ```
 Master version >= 1.10.9-gke.5 (default) 
 Two node pools:
-1. micro pool (single node)
-   Machine type: f1-micro
-2. gpu pool (as many nodes as desired)
-   Container-Optimized OS (cos) (default)
-   Cores: 1 vCPU
-   Memory: 3.75 GB
+1. micro pool
+   Number of nodes: 3
+   Machine type: g1-small
+   Boot disk size: 10 GB
+2. gpu pool
+   Number of nodes: as many as you like
+   Container-Optimized OS (cos) 1.11.5-gke.5 or higher
+   Cores: 8 vCPU
+   Memory: 30 GB
    Number of GPUs: 1
-   GPU type: NVIDIA Tesla K80
+   GPU type: NVIDIA Tesla K80 or T4
    Boot disk size: 16 GB
    Access scopes: 'Allow full access to all Cloud APIs'
+   Enable preemptible nodes: True
+
+Advanced options
+* VPC-native, Enable VPC-native: True
+```
+
+We have a template script to create a cluster that you can use:
+
+```
+./docker/create_cluster.sh [CLUSTER NAME] [NO. OF NODES IN GPU POOL]
 ```
 
 * Connect to your cluster.  
@@ -69,8 +82,6 @@ Your service account credentials for gcloud as a JSON are needed:
 ```
 kubectl create secret generic secrets --from-file=$HOME/.cloudvolume/secrets/google-secret.json
 ```
-
-As are your AWS credentials, which are passed through as a [YAML file](https://kubernetes.io/docs/concepts/configuration/secret/#creating-a-secret-manually).
 
 * Create a deployment for your cluster.  
 
