@@ -26,7 +26,7 @@ from normalizer import Normalizer
 from temporal_regularization import create_field_bump
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
                               np_downsample, invert, compose_fields, upsample_field, \
-                              is_identity, cpc, vector_vote
+                              is_identity, cpc, vector_vote, get_affine_field
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -332,7 +332,6 @@ class Aligner:
   #######################
   # Field IO + handlers #
   #######################
-
   def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True, as_int16=True):
     """Retrieve vector field from CloudVolume.
 
@@ -612,30 +611,41 @@ class Aligner:
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z, 
                               bbox, image_mip, field_mip, 
                               mask_cv=None, mask_mip=0, mask_val=0,
-                              as_int16=True):
+                              affine=None):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:
-         z: int for section index to warp
-         image_cv: MiplessCloudVolume storing the image
-         field_cv: MiplessCloudVolume storing the vector field
-         bbox: BoundingBox for output region to be warped
-         image_mip: int for MIP of the image
-         field_mip: int for MIP of the vector field; must be >= image_mip.
-          If field_mip > image_mip, the field will be upsampled.
+        z: int for section index to warp
+        image_cv: MiplessCloudVolume storing the image
+        field_cv: MiplessCloudVolume storing the vector field
+        bbox: BoundingBox for output region to be warped
+        image_mip: int for MIP of the image
+        field_mip: int for MIP of the vector field; must be >= image_mip.
+         If field_mip > image_mip, the field will be upsampled.
+        aff: 2x3 ndarray defining affine transform at MIP0 with which to precondition
+         the field. If None, then will be ignored (treated as the identity).
 
       Returns:
-         warped image with shape of bbox at MIP image_mip
+        warped image with shape of bbox at MIP image_mip
       """
       assert(field_mip >= image_mip)
       pad = 256
       padded_bbox = deepcopy(bbox)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
-      f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
-                          to_tensor=True)
-      x_range = bbox.x_range(mip=0)
-      y_range = bbox.y_range(mip=0)
+      if affine is not None:
+        f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=True,
+                            to_tensor=True)
+        offset = padded_bbox.get_offset(mip=0)
+        scale = 2**field_mip
+        size = f.shape[-2]
+        aff = get_affine_field(affine, offset, scale, size, self.device)
+        aff = self.abs_to_rel_residual(aff, padded_bbox, field_mip)
+        f = compose_fields(f, aff)
+        f = self.rel_to_abs_residual(f, field_mip)
+      else:
+        f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
+                            to_tensor=True)
       if is_identity(f):
         image = self.get_image(image_cv, image_z, bbox, image_mip,
                                to_tensor=True, normalizer=None)
@@ -853,7 +863,7 @@ class Aligner:
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
                    bbox, src_mip, field_mip, mask_cv=None, mask_mip=0, 
-                   mask_val=0, prefix=''):
+                   mask_val=0, affine=None, prefix=''):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -872,6 +882,7 @@ class Aligner:
        mask_mip: int for MIP level at which source mask is stored
        mask_val: int for pixel value in the mask that should be zero-filled
        wait: bool indicating whether to wait for all tasks must finish before proceeding
+       affine: 2x3 ndarray for preconditioning affine to use (default: None means identity)
        prefix: str used to write "finished" files for each task 
         (only used for distributed)
     """
@@ -885,7 +896,7 @@ class Aligner:
     for chunk in chunks:
       batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z, 
                        field_z, dst_z, chunk, src_mip, field_mip, mask_cv, 
-                       mask_mip, mask_val, prefix))
+                       mask_mip, mask_val, affine, prefix))
     return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip, 
