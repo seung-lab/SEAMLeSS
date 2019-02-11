@@ -406,14 +406,16 @@ class Enc(nn.Module):
             :, idx*ingroup_size:(idx+1)*ingroup_size]))
             for idx in range(ngroups)]
         out1 = torch.cat(input_groups, 1)
+        del input_groups
         input_groups2 = [self.f(self.c2(out1[
             :, idx*self.outfm:(idx+1)*self.outfm])) for idx in range(ngroups)]
+        del out1
         out2 = torch.cat(input_groups2, 1)
 
-        if vis is not None:
-            visinput1, visinput2 = gif_prep(out1), gif_prep(out2)
-            gif(vis + '_out1_' + str(self.infm), visinput1)
-            gif(vis + '_out2_' + str(self.infm), visinput2)
+        # if vis is not None:
+        #     visinput1, visinput2 = gif_prep(out1), gif_prep(out2)
+        #     gif(vis + '_out1_' + str(self.infm), visinput1)
+        #     gif(vis + '_out2_' + str(self.infm), visinput2)
 
         return out2
 

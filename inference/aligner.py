@@ -37,6 +37,14 @@ from utilities.archive import ModelArchive
 import torch.nn as nn
 from taskqueue import TaskQueue
 import tasks
+import tenacity
+import boto3
+
+retry = tenacity.retry(
+  reraise=True, 
+  stop=tenacity.stop_after_attempt(7), 
+  wait=tenacity.wait_full_jitter(0.5, 60.0),
+)
 
 class Aligner:
   def __init__(self, threads=1, queue_name=None, task_batch_size=1, 
@@ -46,6 +54,8 @@ class Aligner:
     self.distributed = (queue_name != None)
     self.queue_name = queue_name
     self.task_queue = None
+    self.sqs = None
+    self.queue_url = None
     if queue_name:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
     
@@ -58,6 +68,8 @@ class Aligner:
     self.threads = threads
     self.task_batch_size = task_batch_size
     self.dry_run = dry_run
+
+    self.gpu_lock = kwargs.get('gpu_lock', None)  # multiprocessing.Semaphore
 
   ##########################
   # Chunking & BoundingBox #
@@ -181,28 +193,41 @@ class Aligner:
     print('get_masked_image: {:.3f}'.format(diff), flush=True) 
     return image
 
-  def get_composite_image(self, cv, z_list, bbox, mip, to_tensor=True): 
-    """Collapse 3D image into a 2D image, replacing black pixels in the first 
-        z slice with the nearest nonzero pixel in other slices.
-    
+  def get_composite_image(self, image_cv, z_list, bbox, image_mip,
+                                mask_cv, mask_mip, mask_val,
+                                to_tensor=True, normalizer=None):
+    """Collapse a stack of 2D image into a single 2D image, by consecutively
+        replacing black pixels (0) in the image of the first z_list entry with
+        non-black pixels from of the consecutive z_list entries images.
+
     Args:
-       cv: MiplessCloudVolume where images are stored
-       z_list: list of ints that will be processed in order 
+       image_cv: MiplessCloudVolume where images are stored
+       z_list: list of image indices processed in the given order
        bbox: BoundingBox defining data range
-       mip: int MIP level of the data to process
-       adjust_contrast: output will be normalized
+       image_mip: int MIP level of the image data to process
+       mask_cv: MiplessCloudVolume where masks are stored, or None if no mask
+        should be used
+       mask_mip: int MIP level of the mask, ignored if ``mask_cv`` is None
+       mask_val: The mask value that specifies regions to be blackened, ignored
+        if ``mask_cv`` is None.
        to_tensor: output will be torch.tensor
-       #TODO normalizer: callable function to adjust the contrast of the image
+       #TODO normalizer: callable function to adjust the contrast of each image
     """
-    z_start = np.min(z_range)
-    z_stop = np.max(z_range)+1
-    z_range = range(z_start, z_stop) 
-    img = self.get_data_range(cv, z_range, bbox, src_mip=mip, dst_mip=mip)
-    z = z_list[0]
-    o = img[z-z_start, ...]
+
+    # Retrieve image stack
+    assert len(z_list) > 0
+
+    combined = self.get_masked_image(image_cv, z_list[0], bbox, image_mip,
+                                     mask_cv, mask_mip, mask_val,
+                                     to_tensor=to_tensor, normalizer=normalizer)
     for z in z_list[1:]:
-      o[o <= 1] = img[z-z_start, ...][o <= 1]
-    return o
+      tmp = self.get_masked_image(image_cv, z, bbox, image_mip,
+                                  mask_cv, mask_mip, mask_val,
+                                  to_tensor=to_tensor, normalizer=normalizer)
+      black_mask = combined == 0
+      combined[black_mask] = tmp[black_mask]
+
+    return combined
 
   def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
                      to_tensor=True, normalizer=None):
@@ -229,6 +254,8 @@ class Aligner:
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
     if normalizer is not None:
+      data = torch.from_numpy(data)
+      data = data.to(device=self.device)
       data = normalizer(data).reshape(data.shape)
     # convert to tensor if requested, or if up/downsampling required
     if to_tensor | (src_mip != dst_mip):
@@ -437,7 +464,8 @@ class Aligner:
 
   def compute_field_chunk(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad, 
                           src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
-                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0):
+                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
+                          tgt_alt_z=None):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
     Args:
@@ -452,7 +480,7 @@ class Aligner:
       mask_cv: MiplessCloudVolume with mask to be used for both src & tgt image
       
     Returns:
-      field with MIP0 residuals with the shape of bbox at MIP mip
+      field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
     archive = self.get_model_archive(model_path)
     model = archive.model
@@ -463,21 +491,49 @@ class Aligner:
     padded_bbox = deepcopy(bbox)
     padded_bbox.uncrop(pad, mip=mip)
 
+    tgt_z = [tgt_z]
+    if tgt_alt_z is not None:
+      try:
+        tgt_z.extend(tgt_alt_z)
+      except TypeError:
+        tgt_z.append(tgt_alt_z)
+      print('alternative target slices:', tgt_alt_z)
+
     src_patch = self.get_masked_image(src_cv, src_z, padded_bbox, mip,
                                 mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                 mask_val=src_mask_val,
                                 to_tensor=True, normalizer=normalizer)
-    tgt_patch = self.get_masked_image(tgt_cv, tgt_z, padded_bbox, mip,
+    tgt_patch = self.get_composite_image(tgt_cv, tgt_z, padded_bbox, mip,
                                 mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
                                 mask_val=tgt_mask_val,
                                 to_tensor=True, normalizer=normalizer)
     print('src_patch.shape {}'.format(src_patch.shape))
     print('tgt_patch.shape {}'.format(tgt_patch.shape))
 
-    # model produces field in relative coordinates
-    field = model(src_patch, tgt_patch)
-    field = self.rel_to_abs_residual(field, mip)
-    field = field[:,pad:-pad,pad:-pad,:]
+    # Running the model is the only part that will increase memory consumption
+    # significantly - only incrementing the GPU lock here should be sufficient.
+    if self.gpu_lock is not None:
+      self.gpu_lock.acquire()
+      print("Process {} acquired GPU lock".format(os.getpid()))
+
+    try:
+      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+
+      # model produces field in relative coordinates
+      field = model(src_patch, tgt_patch)
+      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+      field = self.rel_to_abs_residual(field, mip)
+      field = field[:,pad:-pad,pad:-pad,:]
+      field = field.data.cpu().numpy()
+      # clear unused, cached memory so that other processes can allocate it
+      torch.cuda.empty_cache()
+
+      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+    finally:
+      if self.gpu_lock is not None:
+        print("Process {} releasing GPU lock".format(os.getpid()))
+        self.gpu_lock.release()
+
     return field
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
@@ -572,8 +628,9 @@ class Aligner:
          warped image with shape of bbox at MIP image_mip
       """
       assert(field_mip >= image_mip)
-      pad = 2**(image_mip+1)
+      pad = 256
       padded_bbox = deepcopy(bbox)
+      print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
       f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
                           to_tensor=True)
@@ -749,7 +806,7 @@ class Aligner:
     """
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 
-                                    max_mip=cm.num_scales)
+                                    max_mip=cm.max_mip)
     if prefix == '':
       prefix = '{}_{}'.format(mip, dst_z)
     batch = []
@@ -783,7 +840,7 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 
-                                    max_mip=cm.num_scales)
+                                    max_mip=cm.max_mip)
     if prefix == '':
       prefix = '{}_{}_{}'.format(mip, src_z, tgt_z)
     batch = []
@@ -821,7 +878,7 @@ class Aligner:
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[src_mip],
                                     cm.dst_voxel_offsets[src_mip], mip=src_mip, 
-                                    max_mip=cm.num_scales)
+                                    max_mip=cm.max_mip)
     if prefix == '':
       prefix = '{}_{}_{}'.format(src_mip, src_z, dst_z)
     batch = []
@@ -1413,3 +1470,26 @@ class Aligner:
               lst = stor.list_files(prefix=prefix+str(z))
               i += sum(1 for _ in lst)
       return i == chunks_len
+  @retry
+  def sqs_is_empty(self):
+    # hashtag hackerlife
+    attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
+    responses = []
+    for i in range(3):
+      response = self.sqs.get_queue_attributes(QueueUrl=self.queue_url,
+                                               AttributeNames=attribute_names)
+      for a in attribute_names:
+        responses.append(int(response['Attributes'][a]))
+      print('{}     '.format(responses[-2:]), end="\r", flush=True)
+      if i < 2:
+        sleep(1)
+    return all(i == 0 for i in responses)
+
+  def wait_for_sqs_empty(self):
+    self.sqs = boto3.client('sqs', region_name='us-east-1')
+    self.queue_url  = self.sqs.get_queue_url(QueueName=self.queue_name)["QueueUrl"]
+    print("\nSQS Wait")
+    print("No. of messages / No. not visible")
+    sleep(5)
+    while not self.sqs_is_empty():
+      sleep(1)
