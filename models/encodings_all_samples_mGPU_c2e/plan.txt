@@ -913,3 +913,8 @@ At epoch 777, iteration None:
 Time: 2019-02-11 12:14:15.281287
 Commit: 71176c34b0368522ea002469f1bf8688683e7723
 ./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 778, iteration None:
+Time: 2019-02-11 15:56:13.390361
+Commit: 370a904a60af1d7b04a86d3ca403afb95cf2b269
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
