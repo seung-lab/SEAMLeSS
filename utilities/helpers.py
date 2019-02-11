@@ -622,7 +622,7 @@ def compute_distance(U, V):
   N = pow(D, 2)
   return pow(torch.sum(N, 3), 0.5).unsqueeze(0)
 
-def vector_vote(fields, softmin_temp=1):
+def vector_vote(fields, softmin_temp):
   """Produce a single, consensus vector field from a set of vector fields
 
   Args:
@@ -632,6 +632,7 @@ def vector_vote(fields, softmin_temp=1):
   Returns:
     single vector field
   """
+  print('softmin_temp {}'.format(softmin_temp))
   n = len(fields)
   assert(n % 2 == 1)
   # majority
