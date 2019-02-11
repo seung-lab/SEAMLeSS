@@ -25,6 +25,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: 402
 plt.switch_backend('agg')
 import matplotlib.cm as cm  # noqa: 402
+from copy import deepcopy
 
 def compose_functions(fseq):
     def compose(f1, f2):
@@ -366,6 +367,42 @@ def identity_grid(size, cache=False, device=None):
     return I.to(device)
 identity_grid._identities = {}
 
+def get_affine_field(aff, offset, scale, size, device):
+  """Create a residual field for an affine transform within bbox
+
+  Args:
+    aff: 2x3 ndarray defining affine transform at MIP0
+    offset: iterable with MIP0 offset
+    scale: factor to scale from MIP0
+    size: either an `int` or a `torch.Size` of the form
+     `(N, C, H, W)`. `H` and `W` must be the same (a square tensor).
+     `N` and `C` are ignored.
+
+  Returns:
+    field torch tensor for affine field within bbox as MIP0 absolute residuals
+     
+    Note: the affine matrix defines the transformation that warps to destination
+     to the source, such that,
+     ```
+     \vec{x_s} = A \vec{x_d}
+     ```
+     where x_s is a point in the source image, x_d a point in the destination image,
+     and A is the affine matrix. The field returned will be defined over the 
+     destination image. So the matrix A should define the location in the source
+     image that contribute to a pixel in the destination image.
+  """
+  A = torch.cuda.FloatTensor(np.concatenate([aff, [[0,0,1]]], axis=0), device=device) 
+  B = torch.cuda.FloatTensor([[scale, 0, offset[0]],
+                              [0, scale, offset[1]],
+                              [0, 0, 1]], device=device) 
+  Bi = torch.cuda.FloatTensor([[1., 0, -offset[0]],
+                              [0, 1., -offset[1]],
+                              [0, 0, 1]], device=device) 
+  theta = torch.mm(Bi, torch.mm(A, B))[:2].unsqueeze(0)
+  print('get_affine_field \n{}'.format(theta.cpu().numpy()))
+  M = F.affine_grid(theta, torch.Size((1,1,size,size)))
+  M *= (size - 1) / size # rescale the grid provided by PyTorch
+  return M - identity_grid(M.shape, device=M.device)
 
 class AverageMeter(object):
     """
