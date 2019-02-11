@@ -138,10 +138,6 @@ if __name__ == '__main__':
                                  cm.dst_voxel_offsets[mip], mip=mip, 
                                  max_mip=cm.max_mip)
   n_chunks = len(chunks)
-  print(mip)
-  print(cm.dst_chunk_sizes[mip])
-  print(cm.dst_voxel_offsets[mip])
-  print(n_chunks)
 
   ###########################
   # Serial alignment script #
