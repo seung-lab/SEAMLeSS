@@ -275,6 +275,7 @@ def validate(val_loader, archive, epoch):
     # compute output and loss
     start_time = time.time()
     for i, (sample, id) in retry_enumerate(val_loader):
+        sample = dotdict(sample)
         print('{0}\t'
               'Validation: [{1}/{2}]\t'
               .format(state_vars.name, i, len(val_loader)), end='\r')
