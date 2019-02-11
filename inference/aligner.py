@@ -536,7 +536,7 @@ class Aligner:
     return field
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
-                        inverse=False, softmin_temp=-1, serial=True):
+                        inverse=False, serial=True):
     """Compute consensus vector field using pairwise vector fields with earlier sections. 
 
     Vector voting requires that vector fields be composed to a common section
@@ -573,7 +573,7 @@ class Aligner:
           G_z = z+z_offset
           F = self.get_composed_field(G_cv, f_cv, G_z, f_z, bbox, mip, mip, mip)
       fields.append(F)
-    return vector_vote(fields, softmin_temp=softmin_temp)
+    return vector_vote(fields, softmin_temp=2**mip)
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
     """Compute the inverse vector field for a given bbox 
@@ -900,8 +900,7 @@ class Aligner:
     return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip, 
-                        inverse=False, softmin_temp=-1, serial=True, 
-                        prefix=''):
+                        inverse=False, serial=True, prefix=''):
     """Compute consensus field from a set of vector fields
 
     Note: 
@@ -914,7 +913,6 @@ class Aligner:
        z: int for section index to be vector voted 
        bbox: BoundingBox for region where all fields will be loaded/written
        mip: int for MIP level of fields
-       softmin_temp: softmin temperature (default will be 2**mip)
        inverse: bool indicating if pairwise fields are to be treated as inverse fields 
        serial: bool indicating to if a previously composed field is 
         not necessary
@@ -930,8 +928,7 @@ class Aligner:
     batch = []
     for chunk in chunks:
       batch.append(tasks.VectorVoteTask(deepcopy(pairwise_cvs), vvote_cv, z,
-                                        chunk, mip, inverse, softmin_temp, 
-                                        serial, prefix))
+                                        chunk, mip, inverse, serial, prefix))
     return batch
 
   def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 

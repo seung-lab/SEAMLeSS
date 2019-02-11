@@ -333,8 +333,13 @@ def gridsample_residual(source, residual, padding_mode):
 
 @torch.no_grad()
 def _create_identity_grid(size, device):
-    id_theta = torch.cuda.FloatTensor([[[1,0,0],[0,1,0]]], device=device) # identity affine transform
-    I = F.affine_grid(id_theta,torch.Size((1,1,size,size)))
+    if 'cpu' in str(device):  # identity affine transform
+        id_theta = torch.FloatTensor([[[1, 0, 0],
+                                       [0, 1, 0]]])
+    else:
+        id_theta = torch.cuda.FloatTensor([[[1, 0, 0],
+                                            [0, 1, 0]]], device=device)
+    I = F.affine_grid(id_theta, torch.Size((1, 1, size, size)))
     I *= (size - 1) / size # rescale the identity provided by PyTorch
     return I
 
@@ -403,6 +408,19 @@ def get_affine_field(aff, offset, scale, size, device):
   M = F.affine_grid(theta, torch.Size((1,1,size,size)))
   M *= (size - 1) / size # rescale the grid provided by PyTorch
   return M - identity_grid(M.shape, device=M.device)
+
+class dotdict(dict):
+    """Allow accessing dict elements with dot notation"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for k, v in self.items():
+            if isinstance(v, dict):
+                self[k] = dotdict(v)
+
 
 class AverageMeter(object):
     """
@@ -517,23 +535,25 @@ def timeout(seconds, *args):
     return decorate
 
 
-def retry_enumerate(iterable, start=0):
+def retry_enumerate(iterable, start=0, max_time=3600):
     """
     Wrapper around enumerate that retries if memory is unavailable.
     """
     import time
     retries = 0
+    seconds = 0
     while True:
-        iterator = None
         try:
-            iterator = enumerate(iterable, start=start)
+            return enumerate(iterable, start=start)
         except OSError:
             seconds = 2 ** retries
-            warnings.warn('Low on memory. Retrying in {} sec.'.format(seconds))
+            if seconds >= max_time:
+                raise
+            print('Low on memory. Retrying in {} sec.'.format(seconds))
             time.sleep(seconds)
             retries += 1
             continue
-        return iterator
+
 
 def dilate_mask(mask, radius=5):
   return skmaximum(np.squeeze(mask).astype(np.uint8), skdisk(radius)).reshape(mask.shape).astype(np.bool)
@@ -639,7 +659,7 @@ def compute_distance(U, V):
   N = pow(D, 2)
   return pow(torch.sum(N, 3), 0.5).unsqueeze(0)
 
-def vector_vote(fields, softmin_temp=1):
+def vector_vote(fields, softmin_temp):
   """Produce a single, consensus vector field from a set of vector fields
 
   Args:
@@ -649,6 +669,7 @@ def vector_vote(fields, softmin_temp=1):
   Returns:
     single vector field
   """
+  print('softmin_temp {}'.format(softmin_temp))
   n = len(fields)
   assert(n % 2 == 1)
   # majority

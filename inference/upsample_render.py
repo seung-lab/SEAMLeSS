@@ -1,14 +1,11 @@
 import sys
-import torch
-import json
-import math
 import csv
-from time import time, sleep
+from time import time
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
 import numpy as np
 from cloudmanager import CloudManager
-from tasks import run 
+from tasks import run
 
 def print_run(diff, n_tasks):
   if n_tasks > 0:
@@ -33,18 +30,13 @@ if __name__ == '__main__':
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
-  parser.add_argument('--block_size', type=int, default=10)
-  parser.add_argument('--use_sqs_wait', action='store_true',
-    help='wait for SQS to return that its queue is empty; incurs fixed 30s for initial wait')
   args = parse_args(parser)
-  # Only compute matches to previous sections
-  args.serial_operation = True
+  # only compute matches to previous sections
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
   chunk_size = 1024
-  
-  # Simplify var names
+
   src_mip = args.src_mip
   field_mip = args.field_mip
   max_mip = args.max_mip
@@ -93,9 +85,12 @@ if __name__ == '__main__':
     t = a.render(cm, src, field, dst, z, z, z, bbox, src_mip, field_mip, 
                    affine=affine, prefix=prefix)
     batch.extend(t)
-  print('Scheduling RenderTasks')
+
   start = time()
+  print('Scheduling RenderTasks')
   run(a, batch)
+  # wait
+  a.wait_for_sqs_empty()
   end = time()
   diff = end - start
   print_run(diff, len(batch))
