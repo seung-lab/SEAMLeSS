@@ -323,3 +323,593 @@ Commit: bf646f20f81fc817f2486ab26897b2395f857b13
  log_time: 1
  lr: 0.0003
  name: test_encodings_all_samples_mGPU_c2e
+
+At epoch 736, iteration None:
+Time: 2019-02-03 17:07:40.536664
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 1,2,3 resume encodings_all_samples_mGPU_c2e
+
+At epoch 740, iteration None:
+Time: 2019-02-04 05:23:33.022869
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 1,2,3 resume encodings_all_samples_mGPU_c2e
+
+At epoch 744, iteration None:
+Time: 2019-02-04 18:12:52.874368
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 1,2,3 resume encodings_all_samples_mGPU_c2e
+
+At epoch 748, iteration None:
+Time: 2019-02-05 00:47:01.196339
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 resume encodings_all_samples_mGPU_c2e
+
+At epoch 750, iteration None:
+Time: 2019-02-05 08:24:31.833850
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 resume encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-02-05 00:47:01.235307403 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-02-05 05:57:44.043691275 +0000
+@@ -1,12 +1,12 @@
+ batch_size: 4
+ checkpoint_time: 10000
+ encodings: true
+-epoch: 748
++epoch: 750
+ epochs_per_mip: 4
+ feature_maps: [12, 12, 12, 12, 12]
+ gamma: 1
+ gamma_step: 30
+-gpus: 1,2,3
++gpus: 0,1,2,3
+ height: 5
+ initialized_list: [true, true, true, true, true]
+ iteration: null
+
+At epoch 750, iteration 6972:
+Time: 2019-02-06 01:35:13.763294
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 resume encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-02-06 01:32:22.319812799 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-02-06 01:32:44.561145006 +0000
+@@ -9,9 +9,9 @@
+ gpus: 0,1,2,3
+ height: 5
+ initialized_list: [true, true, true, true, true]
+-iteration: null
+-lambda1: 300000.0
+-levels: null
++iteration: 6972
++lambda1: 3000000.0
++levels: !!python/object/apply:builtins.slice [null, null, null]
+ log_time: 1
+ lr: 0.0003
+ name: test_encodings_all_samples_mGPU_c2e
+
+At epoch 752, iteration None:
+Time: 2019-02-06 18:12:50.413335
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 resume encodings_all_samples_mGPU_c2e
+
+At epoch 753, iteration None:
+Time: 2019-02-07 19:48:17.929771
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 resume encodings_all_samples_mGPU_c2e
+
+At epoch 754, iteration None:
+Time: 2019-02-07 22:57:56.841423
+Commit: bf646f20f81fc817f2486ab26897b2395f857b13
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration None:
+Time: 2019-02-08 11:29:08.462303
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/objective.py	2019-02-08 11:26:48.584712663 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/objective.py	2019-02-08 06:28:23.004311607 +0000
+@@ -64,8 +64,8 @@
+     def __init__(self, *args, **kwargs):
+         super().__init__()
+ 
+-    def forward(self, prediction, truth):  # TODO: use masks
+-        truth = truth.to(prediction.device)
++    def forward(self, sample, prediction):  # TODO: use masks
++        truth = sample.truth.to(prediction.device)
+         return ((prediction - truth) ** 2).mean() * 25000
+ 
+ 
+@@ -89,14 +89,15 @@
+         self.field_penalty = smoothness_penalty(penalty)
+         self.lambda1 = lambda1
+ 
+-    def forward(self, src, tgt, prediction, masks=None):
+-        masks = prepare_masks(src, tgt, masks)
++    def forward(self, sample, prediction):
++        masks = prepare_masks(sample)
+         src_masks = masks['src_masks']
+         tgt_masks = masks['tgt_masks']
+         src_field_masks = masks['src_field_masks']
+         tgt_field_masks = masks['tgt_field_masks']
+ 
+-        src, tgt = src.to(prediction.device), tgt.to(prediction.device)
++        src = sample.src.image.to(prediction.device)
++        tgt = sample.tgt.image.to(prediction.device)
+ 
+         src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
+         image_loss_map = (src_warped - tgt)**2
+@@ -115,6 +116,7 @@
+             mse_loss = image_loss_map.sum() / image_weights.sum()
+         else:
+             mse_loss = image_loss_map.mean()
++        sample.image_loss_map = image_loss_map
+ 
+         field_loss_map = self.field_penalty([prediction])
+         if src_field_masks or tgt_field_masks:
+@@ -132,6 +134,7 @@
+             field_loss = field_loss_map.sum() / field_weights.sum()
+         else:
+             field_loss = field_loss_map.mean()
++        sample.field_loss_map = field_loss_map
+ 
+         loss = (mse_loss + self.lambda1 * field_loss)
+         return loss
+@@ -151,7 +154,7 @@
+ 
+ 
+ @torch.no_grad()
+-def prepare_masks(src, tgt, masks=None, threshold=0.7):
++def prepare_masks(sample, threshold=0.7):
+     """
+     Returns properly formatted masks with which to weight the loss function.
+     If masks is None, this calls gen_masks to generate them.
+@@ -169,15 +172,15 @@
+     field_coef1 = 0.01, 0.01
+     field_radius1 = 10
+ 
++    src, tgt = sample.src.image, sample.tgt.image
+     src_weights, tgt_weights = torch.ones_like(src), torch.ones_like(tgt)
+     src_field_weights = torch.ones_like(src)
+     tgt_field_weights = torch.ones_like(tgt)
+-    if masks is None or masks.nelement() == 0:
++    if sample.src.fold_mask is None or len(sample.src.fold_mask) == 0:
+         src_defects, tgt_defects = gen_masks(src, tgt, threshold)
+     else:
+-        masks = masks.cuda()
+-        src_defects = masks[:, 2:3] > threshold
+-        tgt_defects = masks[:, 3:4] > threshold
++        src_defects = sample.src.fold_mask > threshold
++        tgt_defects = sample.tgt.fold_mask > threshold
+ 
+     # Tissue (MSE) masks
+     src_mask_0 = masklib.dilate(src_defects, radius=tissue_radius0)
+@@ -202,7 +205,10 @@
+     # coefficient on the defect:
+     src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
+ 
+-    return {'src_masks': [src_weights.float()],
+-            'tgt_masks': [tgt_weights.float()],
++    src_aug_masks = [1.0 - m for m in sample.src.aug_masks]
++    tgt_aug_masks = [1.0 - m for m in sample.tgt.aug_masks]
++
++    return {'src_masks': [src_weights.float()] + src_aug_masks,
++            'tgt_masks': [tgt_weights.float()] + tgt_aug_masks,
+             'src_field_masks': [src_field_weights.float()],
+             'tgt_field_masks': [tgt_field_weights.float()]}
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/preprocessor.py	2019-02-08 11:26:48.584712663 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/preprocessor.py	2019-02-08 06:28:23.004311607 +0000
+@@ -19,7 +19,7 @@
+                                      tileGridSize=tileGridSize)
+ 
+     def forward(self, X, *args, **kwargs):
+-        for i in range(2):
++        for i in range(X.shape[-3]):
+             mask = self.gen_mask(X[..., i, :, :])
+             X[..., i, :, :] = self.normalize(X[..., i, :, :], mask=mask)
+             X[..., i, :, :] = self.contrast(X[..., i, :, :], mask=mask)
+
+At epoch 755, iteration 313:
+Time: 2019-02-08 11:46:10.111199
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-02-08 11:29:08.765108064 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-02-08 11:45:37.456328374 +0000
+@@ -9,15 +9,16 @@
+ gpus: 0,1,2,3
+ height: 5
+ initialized_list: [true, true, true, true, true]
+-iteration: null
++iteration: 313
+ lambda1: 3000000.0
+-levels: null
++levels: !!python/object/apply:builtins.slice [null, null, null]
+ log_time: 1
+ lr: 0.0003
+ name: test_encodings_all_samples_mGPU_c2e
+ num_epochs: 1000000
+ penalty: lap
+ plan: all
++repeats: 144
+ seed: 5432
+ start_lr: 0.0003
+ supervised: false
+
+At epoch 755, iteration 706:
+Time: 2019-02-08 12:06:50.320309
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/objective.py	2019-02-08 11:46:10.190289668 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/objective.py	2019-02-08 11:50:42.826624985 +0000
+@@ -205,8 +205,8 @@
+     # coefficient on the defect:
+     src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
+ 
+-    src_aug_masks = [1.0 - m for m in sample.src.aug_masks]
+-    tgt_aug_masks = [1.0 - m for m in sample.tgt.aug_masks]
++    src_aug_masks = [1.0 - m.float() for m in sample.src.aug_masks]
++    tgt_aug_masks = [1.0 - m.float() for m in sample.tgt.aug_masks]
+ 
+     return {'src_masks': [src_weights.float()] + src_aug_masks,
+             'tgt_masks': [tgt_weights.float()] + tgt_aug_masks,
+
+At epoch 755, iteration 864:
+Time: 2019-02-08 12:15:57.722542
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration 939:
+Time: 2019-02-08 12:20:57.695632
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration 1300:
+Time: 2019-02-08 12:40:03.532763
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration 1464:
+Time: 2019-02-08 12:49:22.726178
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration 1717:
+Time: 2019-02-08 13:03:12.038455
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration 2087:
+Time: 2019-02-08 13:22:41.757165
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration 2389:
+Time: 2019-02-08 13:39:01.445052
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration 2502:
+Time: 2019-02-08 13:45:44.727043
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration 2507:
+Time: 2019-02-08 13:47:19.022485
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration 2934:
+Time: 2019-02-08 14:10:18.660433
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration 3168:
+Time: 2019-02-08 14:23:05.932611
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 755, iteration 3198:
+Time: 2019-02-08 14:26:07.956945
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration None:
+Time: 2019-02-08 14:29:28.610785
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 107:
+Time: 2019-02-08 14:35:58.213006
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 406:
+Time: 2019-02-08 14:52:25.516988
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 764:
+Time: 2019-02-08 15:11:57.013282
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 1209:
+Time: 2019-02-08 15:35:55.664484
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 1353:
+Time: 2019-02-08 15:44:09.135303
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 1463:
+Time: 2019-02-08 15:50:46.780363
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 1677:
+Time: 2019-02-08 16:02:42.292752
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 1819:
+Time: 2019-02-08 16:10:51.967093
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 1876:
+Time: 2019-02-08 16:14:51.422821
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 2158:
+Time: 2019-02-08 16:30:17.952208
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 2544:
+Time: 2019-02-08 16:51:04.651322
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 2992:
+Time: 2019-02-08 17:15:10.599316
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 756, iteration 3068:
+Time: 2019-02-08 17:20:11.727599
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 757, iteration None:
+Time: 2019-02-08 17:30:00.810399
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 757, iteration 630:
+Time: 2019-02-08 18:03:44.320469
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 757, iteration 639:
+Time: 2019-02-08 18:05:35.212358
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 757, iteration 823:
+Time: 2019-02-08 18:15:59.035998
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 757, iteration 937:
+Time: 2019-02-08 18:23:00.577639
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 757, iteration 1687:
+Time: 2019-02-08 19:03:13.109523
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 757, iteration 1731:
+Time: 2019-02-08 19:06:48.804249
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 757, iteration 1737:
+Time: 2019-02-08 19:08:27.037606
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 757, iteration 2246:
+Time: 2019-02-08 19:35:56.919750
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 757, iteration 2259:
+Time: 2019-02-08 19:37:58.050085
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 758, iteration None:
+Time: 2019-02-08 20:34:53.242481
+Commit: 4524bf10fe1e9cb0f9b00e8c83ded023a82835d6
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/objective.py	2019-02-08 19:37:58.141757081 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/objective.py	2019-02-08 20:20:48.467692926 +0000
+@@ -105,14 +105,22 @@
+             image_weights = torch.ones_like(image_loss_map)
+             if src_masks is not None:
+                 for mask in src_masks:
+-                    mask = gridsample_residual(mask, prediction,
+-                                               padding_mode='border')
+-                    image_loss_map = image_loss_map * mask
+-                    image_weights = image_weights * mask
++                    try:
++                        mask = gridsample_residual(mask, prediction,
++                                                   padding_mode='border')
++                        image_loss_map = image_loss_map * mask
++                        image_weights = image_weights * mask
++                    except Exception as e:
++                        print('Source mask failed: {}: {}'.format(e.__class__.__name__, e))
++                        print('mask shape:', mask.shape)
+             if tgt_masks is not None:
+                 for mask in tgt_masks:
+-                    image_loss_map = image_loss_map * mask
+-                    image_weights = image_weights * mask
++                    try:
++                        image_loss_map = image_loss_map * mask
++                        image_weights = image_weights * mask
++                    except Exception as e:
++                        print('Target mask failed: {}: {}'.format(e.__class__.__name__, e))
++                        print('mask shape:', mask.shape)
+             mse_loss = image_loss_map.sum() / image_weights.sum()
+         else:
+             mse_loss = image_loss_map.mean()
+@@ -123,14 +131,22 @@
+             field_weights = torch.ones_like(field_loss_map)
+             if src_field_masks is not None:
+                 for mask in src_field_masks:
+-                    mask = gridsample_residual(mask, prediction,
+-                                               padding_mode='border')
+-                    field_loss_map = field_loss_map * mask
+-                    field_weights = field_weights * mask
++                    try:
++                        mask = gridsample_residual(mask, prediction,
++                                                   padding_mode='border')
++                        field_loss_map = field_loss_map * mask
++                        field_weights = field_weights * mask
++                    except Exception as e:
++                        print('Source field mask failed: {}: {}'.format(e.__class__.__name__, e))
++                        print('mask shape:', mask.shape)
+             if tgt_field_masks is not None:
+                 for mask in tgt_field_masks:
+-                    field_loss_map = field_loss_map * mask
+-                    field_weights = field_weights * mask
++                    try:
++                        field_loss_map = field_loss_map * mask
++                        field_weights = field_weights * mask
++                    except Exception as e:
++                        print('Target field mask failed: {}: {}'.format(e.__class__.__name__, e))
++                        print('mask shape:', mask.shape)
+             field_loss = field_loss_map.sum() / field_weights.sum()
+         else:
+             field_loss = field_loss_map.mean()
+
+At epoch 759, iteration None:
+Time: 2019-02-08 23:32:57.118863
+Commit: 6087f0e51c3d332202b2679a4fceecbf3a6007e0
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 760, iteration None:
+Time: 2019-02-09 02:32:07.687621
+Commit: 6087f0e51c3d332202b2679a4fceecbf3a6007e0
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 761, iteration None:
+Time: 2019-02-09 05:32:48.954965
+Commit: 6087f0e51c3d332202b2679a4fceecbf3a6007e0
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 762, iteration None:
+Time: 2019-02-09 08:37:40.147954
+Commit: 6087f0e51c3d332202b2679a4fceecbf3a6007e0
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 763, iteration None:
+Time: 2019-02-09 11:43:02.796234
+Commit: 6087f0e51c3d332202b2679a4fceecbf3a6007e0
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 764, iteration None:
+Time: 2019-02-09 14:51:23.893314
+Commit: 6087f0e51c3d332202b2679a4fceecbf3a6007e0
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 765, iteration None:
+Time: 2019-02-09 18:00:27.360261
+Commit: 6087f0e51c3d332202b2679a4fceecbf3a6007e0
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 766, iteration None:
+Time: 2019-02-09 21:12:11.805684
+Commit: 6087f0e51c3d332202b2679a4fceecbf3a6007e0
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 767, iteration None:
+Time: 2019-02-10 00:26:26.944384
+Commit: 6087f0e51c3d332202b2679a4fceecbf3a6007e0
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 768, iteration None:
+Time: 2019-02-10 05:20:18.399294
+Commit: 71176c34b0368522ea002469f1bf8688683e7723
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-02-10 00:26:27.036485944 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-02-10 03:58:31.350286297 +0000
+@@ -10,17 +10,17 @@
+ height: 5
+ initialized_list: [true, true, true, true, true]
+ iteration: null
+-lambda1: 3000000.0
++lambda1: 10000000.0
+ levels: null
+ log_time: 1
+-lr: 0.0003
++lr: 0.003
+ name: test_encodings_all_samples_mGPU_c2e
+ num_epochs: 1000000
+ penalty: lap
+ plan: all
+ repeats: 144
+ seed: 5432
+-start_lr: 0.0003
++start_lr: 0.003
+ supervised: false
+ training_set_path: !!python/object/apply:pathlib.PosixPath [/, home, bnehoran, training_data,
+   minnie_mip4_annotated_prep_major_folds_curriculum_45x6x1536.h5]
+
+At epoch 769, iteration None:
+Time: 2019-02-10 08:38:15.218351
+Commit: 71176c34b0368522ea002469f1bf8688683e7723
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 770, iteration None:
+Time: 2019-02-10 11:57:31.027092
+Commit: 71176c34b0368522ea002469f1bf8688683e7723
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 771, iteration None:
+Time: 2019-02-10 15:19:11.505490
+Commit: 71176c34b0368522ea002469f1bf8688683e7723
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 772, iteration None:
+Time: 2019-02-10 18:44:13.181977
+Commit: 71176c34b0368522ea002469f1bf8688683e7723
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 773, iteration None:
+Time: 2019-02-10 22:08:32.034531
+Commit: 71176c34b0368522ea002469f1bf8688683e7723
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 774, iteration None:
+Time: 2019-02-11 01:37:20.625011
+Commit: 71176c34b0368522ea002469f1bf8688683e7723
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 775, iteration None:
+Time: 2019-02-11 05:05:34.588469
+Commit: 71176c34b0368522ea002469f1bf8688683e7723
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 776, iteration None:
+Time: 2019-02-11 08:40:26.986583
+Commit: 71176c34b0368522ea002469f1bf8688683e7723
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 777, iteration None:
+Time: 2019-02-11 12:14:15.281287
+Commit: 71176c34b0368522ea002469f1bf8688683e7723
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e

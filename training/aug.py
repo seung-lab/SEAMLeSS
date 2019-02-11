@@ -65,33 +65,36 @@ def crack(imslice, width_range=(4,32)):
     mask = Variable(torch.ones(outslice.size())).cuda()
     for idx, p in enumerate(pos):
         outslice.data[idx,:p-width] = outslice.data[idx,width:p]
-        color = torch.cuda.FloatTensor(random.normalvariate(color_mean, 0.2, width)).clamp(min=0,max=1)
+        color = torch.cuda.FloatTensor(np.random.normal(color_mean, 0.2, width)).clamp(min=0,max=1)
         if torch.max(outslice.data[idx,width:p]) > 0:
             outslice.data[idx,p-width:p] = color
         mask.data[idx,p-width:p] = 0
     return outslice, mask
 
-def random_translation(src, max_displacement=2**6):
+def random_translation(src, max_displacement=2**6, offset=None):
     """Shift src by x & y up to max_displacement, keeping src size
 
     Args:
     * img: 2D array
     """
     dst = torch.zeros(src.size())
-    d = int(max_displacement / (2. * np.sqrt(2)))
-    xoff = weighted_draw(1,d) * half(1,-1)
-    yoff = weighted_draw(1,d) * half(1,-1)
+    if offset is None:
+        d = int(max_displacement / (2. * np.sqrt(2)))
+        xoff = weighted_draw(1,d) * half(1,-1)
+        yoff = weighted_draw(1,d) * half(1,-1)
+    else:
+        (xoff, yoff) = offset
     if xoff >= 0:
         if yoff >= 0:
-            dst[xoff:,yoff:] = src[:-xoff,:-yoff]
+            dst[..., xoff:, yoff:] = src[..., :-xoff, :-yoff]
         else:
-            dst[xoff:,:yoff] = src[:-xoff,-yoff:]
+            dst[..., xoff:, :yoff] = src[..., :-xoff, -yoff:]
     else:
         if yoff >= 0:
-            dst[:xoff,yoff:] = src[-xoff:,:-yoff]
+            dst[..., :xoff, yoff:] = src[..., -xoff:, :-yoff]
         else:
-            dst[:xoff,:yoff] = src[-xoff:,-yoff:]
-    return dst
+            dst[..., :xoff, :yoff] = src[..., -xoff:, -yoff:]
+    return dst, offset
 
 def jitter_stacks(Xs, max_displacement=2**6, min_cut=32):
     assert len(Xs) > 0
@@ -203,7 +206,7 @@ def gen_tiles(size, dim=None, min_count=6, max_count=32, peak=0.5):
     return tiles
 
 def check_data_range(X, eps=1e-6, factor=1):
-    mi, ma = torch.min(X).data[0], torch.max(X).data[0]
+    mi, ma = torch.min(X).item(), torch.max(X).item()
     assert mi >= -eps and ma <= factor + eps, 'Data must fall in range [0,1] ({}, {})'.format(mi, ma)
 
 def aug_brightness(X, factor=2, mask=False, clamp=False):
@@ -309,8 +312,8 @@ def aug_input(x, factor=2):
     for _ in range(gaussian_cutouts):
         mask = random_rect_mask(out.size()).squeeze(0).squeeze(0)
         sigma = random.uniform(0.001,0.03)
-        # noise = Variable(torch.FloatTensor(random.normalvariate(0,sigma,out.size()))).cuda()
-        noise = torch.FloatTensor(random.normalvariate(0,sigma,out.size()))
+        # noise = Variable(torch.FloatTensor(np.random.normal(0,sigma,out.size()))).cuda()
+        noise = torch.FloatTensor(np.random.normal(0,sigma,out.size()))
         if half():
             # randomly smooth the noise
             r = random.randint(1,20)

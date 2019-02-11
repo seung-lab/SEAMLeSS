@@ -15,7 +15,6 @@ if __name__ == '__main__':
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--src_info_path', type=str, default='',
     help='str to existing CloudVolume path to use as template for new CloudVolumes')
-  parser.add_argument('--dst_path', type=str)
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
   parser.add_argument('--bbox_stop', nargs=3, type=int,
@@ -27,7 +26,7 @@ if __name__ == '__main__':
   parser.add_argument('--dst_mip', type=int,
     help='int for output MIP, which will dictate the size of the block used')
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--max_displacement', 
+  parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
   parser.add_argument('--z_offset', type=int, default=-1,
@@ -44,7 +43,7 @@ if __name__ == '__main__':
   
   # Simplify var names
   max_mip = args.max_mip
-  pad = args.max_displacement
+  pad = args.pad
 
   # Compile ranges
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -58,28 +57,28 @@ if __name__ == '__main__':
     data_type = 'float32'
   
   # Create dst CloudVolumes for each block, since blocks will overlap by 3 sections
-  dst = cm.create(join(args.dst_path, 'cpc', '{}_{}'.format(args.src_mip, args.dst_mip)), 
+  dst = cm.create(join(args.src_path, 'cpc', '{}_{}'.format(args.src_mip, args.dst_mip),
+                       '{}'.format(args.z_offset)), 
                   data_type=data_type, num_channels=1, fill_missing=True, 
                   overwrite=True)
 
   ##############
   # CPC script #
   ##############
-  
-  # Copy first section
+  k = 0
   batch = []
   prefix = ''
   for z in z_range:
     t = a.cpc(cm, src, src, dst, z, z+args.z_offset, bbox, 
                   args.src_mip, args.dst_mip, norm=not args.unnormalized, prefix=prefix)
     batch.extend(t)
+    k += 1
+    if k >= 100:
+      print('Scheduling CPC for {} tasks'.format(len(batch)))
+      run(a, batch)
+      batch = []
+      k = 0
 
   run(a, batch)
-  # wait
-  start = time()
-  n = len(batch) 
-  a.wait_for_queue_empty(dst.path, 'cpc_done/{}'.format(prefix), n)
-  end = time()
-  diff = end - start
-  print_run(diff, len(batch))
+  print('Finished scheduling. Watch queue for finish.')
 
