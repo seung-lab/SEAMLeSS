@@ -70,6 +70,11 @@ class BoundingBox:
     self.m0_y = (int(ys), int(ye))
     self.m0_x_size = int(xe - xs)
     self.m0_y_size = int(ye - ys)
+ 
+  def get_offset(self, mip=0):
+    scale_factor = 2**mip
+    return (floor(self.m0_x[0] / scale_factor) + floor(self.m0_x_size / 2 / scale_factor),
+            floor(self.m0_y[0] / scale_factor) + floor(self.m0_y_size / 2 / scale_factor))
 
   def x_range(self, mip):
     assert(mip <= self.max_mip)
