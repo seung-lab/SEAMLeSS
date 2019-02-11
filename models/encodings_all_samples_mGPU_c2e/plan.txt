@@ -918,3 +918,29 @@ At epoch 778, iteration None:
 Time: 2019-02-11 15:56:13.390361
 Commit: 370a904a60af1d7b04a86d3ca403afb95cf2b269
 ./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 779, iteration None:
+Time: 2019-02-11 19:54:47.363102
+Commit: c2ca2cd175316d9bd2f817e1f9f62ba0f698be89
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 779, iteration 2415:
+Time: 2019-02-11 22:44:11.686170
+Commit: c2ca2cd175316d9bd2f817e1f9f62ba0f698be89
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/state_vars.yaml	2019-02-11 22:39:28.942375950 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/state_vars.yaml	2019-02-11 22:43:46.245779964 +0000
+@@ -24,6 +24,7 @@
+ supervised: false
+ training_set_path: !!python/object/apply:pathlib.PosixPath [/, home, bnehoran, training_data,
+   minnie_mip4_annotated_prep_major_folds_curriculum_45x6x1536.h5]
+-validation_set_path: null
++validation_set_path: !!python/object/apply:pathlib.PosixPath [/, home, bnehoran, training_data,
++  minnie_1536_v002_train_mip4_annotated_folds_filtered.h5]
+ vis_time: 10000
+ wd: 0
+
+At epoch 779, iteration 3024:
+Time: 2019-02-11 23:25:11.682402
+Commit: c2ca2cd175316d9bd2f817e1f9f62ba0f698be89
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
