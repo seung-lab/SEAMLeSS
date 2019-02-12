@@ -68,6 +68,7 @@ class Aligner:
     self.threads = threads
     self.task_batch_size = task_batch_size
     self.dry_run = dry_run
+    self.eps = 1e-6
 
     self.gpu_lock = kwargs.get('gpu_lock', None)  # multiprocessing.Semaphore
 
@@ -449,7 +450,7 @@ class Aligner:
     return rel_residual
 
   def avg_field(self, field):
-    favg = field.sum() / torch.nonzero(field).size(0)
+    favg = field.sum() / (torch.nonzero(field).size(0) + self.eps)
     return favg
 
   def profile_field(self, field):
