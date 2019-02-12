@@ -257,7 +257,20 @@ class Aligner:
     if normalizer is not None:
       data = torch.from_numpy(data)
       data = data.to(device=self.device)
-      data = normalizer(data).reshape(data.shape)
+
+      if self.gpu_lock is not None:
+        self.gpu_lock.acquire()
+        print("Process {} acquired GPU lock for normalizer".format(os.getpid()))
+      try:
+        print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))  
+        data = normalizer(data).reshape(data.shape)
+        torch.cuda.empty_cache()
+        print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+      finally:
+        if self.gpu_lock is not None:
+          print("Process {} releasing GPU lock for normalizer".format(os.getpid()))
+          self.gpu_lock.release()              
+
     # convert to tensor if requested, or if up/downsampling required
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
