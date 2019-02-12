@@ -254,10 +254,6 @@ class Aligner:
     data = np.transpose(data, (2,3,0,1))
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
-    if normalizer is not None:
-      data = torch.from_numpy(data)
-      data = data.to(device=self.device)
-      data = normalizer(data).reshape(data.shape)
     # convert to tensor if requested, or if up/downsampling required
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
@@ -502,11 +498,11 @@ class Aligner:
     src_patch = self.get_masked_image(src_cv, src_z, padded_bbox, mip,
                                 mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                 mask_val=src_mask_val,
-                                to_tensor=True, normalizer=normalizer)
+                                to_tensor=False, normalizer=None)
     tgt_patch = self.get_composite_image(tgt_cv, tgt_z, padded_bbox, mip,
                                 mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
                                 mask_val=tgt_mask_val,
-                                to_tensor=True, normalizer=normalizer)
+                                to_tensor=False, normalizer=None)
     print('src_patch.shape {}'.format(src_patch.shape))
     print('tgt_patch.shape {}'.format(tgt_patch.shape))
 
@@ -519,6 +515,13 @@ class Aligner:
     try:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
 
+      if normalizer is not None:
+        src_patch = torch.from_numpy(src_patch)
+        src_patch = src_patch.to(device=self.device)
+        src_patch = normalizer(src_patch).reshape(src_patch.shape)
+        tgt_patch = torch.from_numpy(tgt_patch)
+        tgt_patch = tgt_patch.to(device=self.device)
+        tgt_patch = normalizer(tgt_patch).reshape(tgt_patch.shape)
       # model produces field in relative coordinates
       field = model(src_patch, tgt_patch)
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
