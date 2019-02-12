@@ -274,7 +274,7 @@ if __name__ == '__main__':
           task_counter[k] = 0
         task_counter[k] += len(t)
 
-    print('Scheduling ComputeFieldTasks')
+    print('\nScheduling ComputeFieldTasks')
     start = time()
     run(a, batch)
     end = time()
@@ -283,6 +283,7 @@ if __name__ == '__main__':
     start = time()
     # wait 
     if args.use_sqs_wait:
+      print('block offset {}'.format(block_offset))
       a.wait_for_sqs_empty()
     else:
       for (prefix, path), n in task_counter.items():
@@ -299,7 +300,7 @@ if __name__ == '__main__':
                         serial=True, prefix=prefix)
       batch.extend(t)
 
-    print('Scheduling VectorVoteTasks')
+    print('\nScheduling VectorVoteTasks')
     start = time()
     run(a, batch)
     end = time()
@@ -308,6 +309,7 @@ if __name__ == '__main__':
     start = time()
     # wait 
     if args.use_sqs_wait:
+      print('block offset {}'.format(block_offset))
       a.wait_for_sqs_empty()
     else:
       n = len(batch)
@@ -334,7 +336,7 @@ if __name__ == '__main__':
         task_counter[k] = 0
       task_counter[k] += len(t)
 
-    print('Scheduling RenderTasks')
+    print('\nScheduling RenderTasks')
     start = time()
     run(a, batch)
     end = time()
@@ -343,6 +345,7 @@ if __name__ == '__main__':
     start = time()
     # wait
     if args.use_sqs_wait:
+      print('block offset {}'.format(block_offset))
       a.wait_for_sqs_empty()
     else:
       for (prefix, path), n in task_counter.items():
