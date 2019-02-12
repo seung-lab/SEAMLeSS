@@ -374,10 +374,16 @@ def create_debug_outputs(archive, sample, prediction, id=0):
         save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt_{}'.format(id)))
         # cp(debug_dir / 'tgt_{}.png'.format(id), stack_dir)
         src_aug, tgt_aug = sample.src.aug, sample.tgt.aug
-        save_chunk(src_aug[0:1, ...], str(debug_dir / 'src_aug_{}'.format(id)))
-        cp(debug_dir / 'src_aug_{}.png'.format(id), stack_dir)
-        save_chunk(tgt_aug[0:1, ...], str(debug_dir / 'tgt_aug_{}'.format(id)))
-        cp(debug_dir / 'tgt_aug_{}.png'.format(id), stack_dir)
+        if src_aug is not None:
+            save_chunk(src_aug[0:1, ...], str(debug_dir / 'src_aug_{}'.format(id)))
+            cp(debug_dir / 'src_aug_{}.png'.format(id), stack_dir)
+        else:
+            cp(debug_dir / 'src_{}.png'.format(id), stack_dir)
+        if tgt_aug is not None:
+            save_chunk(tgt_aug[0:1, ...], str(debug_dir / 'tgt_aug_{}'.format(id)))
+            cp(debug_dir / 'tgt_aug_{}.png'.format(id), stack_dir)
+        else:
+            cp(debug_dir / 'tgt_{}.png'.format(id), stack_dir)
         warped_src = gridsample_residual(
             src[0:1, ...],
             prediction[0:1, ...].detach().to(src.device),
