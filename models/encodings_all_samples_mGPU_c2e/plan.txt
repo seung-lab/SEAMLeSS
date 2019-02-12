@@ -944,3 +944,74 @@ At epoch 779, iteration 3024:
 Time: 2019-02-11 23:25:11.682402
 Commit: c2ca2cd175316d9bd2f817e1f9f62ba0f698be89
 ./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 779, iteration 3024:
+Time: 2019-02-12 00:48:42.661390
+Commit: befe781a24c44e02ee5bb2dbe0b97fff4c31a929
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/.last_training_record/objective.py	2019-02-12 00:47:29.162190244 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e/objective.py	2019-02-12 00:27:57.964072089 +0000
+@@ -221,8 +221,10 @@
+     # coefficient on the defect:
+     src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
+ 
+-    src_aug_masks = [1.0 - m.float() for m in sample.src.aug_masks]
+-    tgt_aug_masks = [1.0 - m.float() for m in sample.tgt.aug_masks]
++    src_aug_masks = ([1.0 - m.float() for m in sample.src.aug_masks]
++                     if sample.src.aug_masks else [])
++    tgt_aug_masks = ([1.0 - m.float() for m in sample.tgt.aug_masks]
++                     if sample.tgt.aug_masks else [])
+ 
+     return {'src_masks': [src_weights.float()] + src_aug_masks,
+             'tgt_masks': [tgt_weights.float()] + tgt_aug_masks,
+
+At epoch 780, iteration None:
+Time: 2019-02-12 00:50:33.861999
+Commit: befe781a24c44e02ee5bb2dbe0b97fff4c31a929
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 780, iteration 2627:
+Time: 2019-02-12 03:59:49.008266
+Commit: befe781a24c44e02ee5bb2dbe0b97fff4c31a929
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
++ limit max displacement for translation augmentation to 10 pixels
+
+At epoch 781, iteration None:
+Time: 2019-02-12 04:28:43.910151
+Commit: befe781a24c44e02ee5bb2dbe0b97fff4c31a929
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 781, iteration 2594:
+Time: 2019-02-12 07:36:10.386829
+Commit: befe781a24c44e02ee5bb2dbe0b97fff4c31a929
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 782, iteration None:
+Time: 2019-02-12 08:07:33.241997
+Commit: befe781a24c44e02ee5bb2dbe0b97fff4c31a929
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 782, iteration 2578:
+Time: 2019-02-12 11:15:44.563388
+Commit: befe781a24c44e02ee5bb2dbe0b97fff4c31a929
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 783, iteration None:
+Time: 2019-02-12 11:48:08.844905
+Commit: befe781a24c44e02ee5bb2dbe0b97fff4c31a929
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 783, iteration 2567:
+Time: 2019-02-12 14:55:58.423387
+Commit: befe781a24c44e02ee5bb2dbe0b97fff4c31a929
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 784, iteration None:
+Time: 2019-02-12 15:29:55.388354
+Commit: befe781a24c44e02ee5bb2dbe0b97fff4c31a929
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
+
+At epoch 784, iteration 2554:
+Time: 2019-02-12 18:38:22.754015
+Commit: befe781a24c44e02ee5bb2dbe0b97fff4c31a929
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e
