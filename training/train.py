@@ -359,7 +359,7 @@ def init_submodule(submodule):
 
 
 @torch.no_grad()
-def create_debug_outputs(archive, sample, prediction, id):
+def create_debug_outputs(archive, sample, prediction, id=0):
     """
     Creates a subdirectory exports any debugging outputs to that directory.
     """
