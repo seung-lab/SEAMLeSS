@@ -35,7 +35,7 @@ def jacob(fields):
 
 def cjacob(fields):
     def center(f):
-        fmean_x, fmean_y = torch.mean(f[:,:,:,0]).data[0], torch.mean(f[:,:,:,1]).data[0]
+        fmean_x, fmean_y = torch.mean(f[:,:,:,0]).item(), torch.mean(f[:,:,:,1]).item()
         fmean = torch.cat((fmean_x * torch.ones((1,f.size(1), f.size(2),1), device='cuda'), fmean_y * torch.ones((1,f.size(1), f.size(2),1), device='cuda')), 3)
         fmean = Variable(fmean).cuda()
         return f - fmean

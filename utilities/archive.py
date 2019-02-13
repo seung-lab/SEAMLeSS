@@ -11,7 +11,7 @@ import filecmp
 import importlib
 import pandas as pd
 
-from utilities.helpers import cp
+from utilities.helpers import cp, dotdict
 
 import matplotlib
 matplotlib.use('Agg')
@@ -60,7 +60,7 @@ class ModelArchive(object):
         >>> new_model.save()  # save the updated state of the new model to disk
     """
 
-    def __init__(self, name, readonly=1, *args, **kwargs):
+    def __init__(self, name, readonly=True, *args, **kwargs):
         name, directory = self._resolve_model(name)
         self._name = name
         self.directory = directory
@@ -383,14 +383,10 @@ class ModelArchive(object):
             self._model.load(self.paths['weights'])
 
         # set model to eval or train mode
-        if self.readonly==1:
+        if self.readonly:
             for p in self._model.parameters():
                 p.requires_grad = False
             self._model.eval().cuda()
-        elif self.readonly==2:
-            for p in self._model.parameters():
-                p.requires_grad = False
-            self._model.train().cuda()
         else:
             for p in self._model.parameters():
                 p.requires_grad = True
@@ -510,7 +506,14 @@ class ModelArchive(object):
         else:
             checkpt_name = 'e{}_t{}'.format(epoch, iteration)
         check_dir = self.intermediate_models / checkpt_name
-        check_dir.mkdir()
+        if check_dir.exists():
+            print('Checkpoint {} already exists. Overwrite? [y/N]'
+                  .format(check_dir))
+            if input().lower() not in {'yes', 'y'}:
+                check_dir = check_dir / 'new_checkpoint'
+            else:
+                print('OK, overwriting...')
+        check_dir.mkdir(exist_ok=True)
         cp(self.paths['weights'], check_dir)
         cp(self.paths['optimizer'], check_dir)
         cp(self.paths['prand'], check_dir)
@@ -559,7 +562,7 @@ class ModelArchive(object):
             cp(self.paths[filename.split('.')[0]],
                self.last_training_record / filename)
 
-    def new_debug_directory(self):
+    def new_debug_directory(self, exist_ok=False):
         """
         Creates a new subdirectory for debugging outputs.
 
@@ -569,15 +572,15 @@ class ModelArchive(object):
         if self.readonly:
             raise ReadOnlyError(self._name)
         if self._state_vars.iteration is not None:
-            dirname = 'e{}_t{}/'.format(self._state_vars.epoch,
+            dirname = 'e{}_t{}'.format(self._state_vars.epoch,
                                         self._state_vars.iteration)
         else:
-            dirname = 'e{}_val/'.format(self._state_vars.epoch)
+            dirname = 'e{}_val'.format(self._state_vars.epoch)
         debug_directory = self.debug_outputs / dirname
-        if debug_directory.is_dir():
+        if not exist_ok and debug_directory.is_dir():
             raise FileExistsError('The debug directory {} already exists.'
                                   .format(debug_directory))
-        debug_directory.mkdir()
+        debug_directory.mkdir(exist_ok=exist_ok)
         self._current_debug_directory = debug_directory
         return self._current_debug_directory
 
@@ -676,28 +679,6 @@ def git_root():
         return None
 
 
-def git_root():
-    """
-    Return the root directory of the current git repository, if available
-    """
-    try:
-        return Path(subprocess.check_output('git rev-parse --show-toplevel'
-                                            .split()).strip().decode("utf-8"))
-    except subprocess.CalledProcessError:
-        return None
-
-
-def git_root():
-    """
-    Return the root directory of the current git repository, if available
-    """
-    try:
-        return Path(subprocess.check_output('git rev-parse --show-toplevel'
-                                            .split()).strip().decode("utf-8"))
-    except subprocess.CalledProcessError:
-        return None
-
-
 def set_seed(seed):
     """
     Seeds all the random number genertators used.
@@ -760,13 +741,6 @@ class FileLog:
     def flush(self):
         self.terminal_out.flush()
         self.file.flush()
-
-
-class dotdict(dict):
-    """Allow accessing dict elements with dot notation"""
-    __getattr__ = dict.get
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
 
 
 class ReadOnlyError(AttributeError):

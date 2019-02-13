@@ -92,7 +92,7 @@ if __name__ == '__main__':
       a.compute_field(cm, args.model_path, src_cv, dst_cv, field_cv, 
                           z, z+z_offset, bbox, mip, pad, wait=False)
     a.vector_vote(cm, pairwise_field_cvs, vvote_field_cv, z, bbox, mip, 
-                      inverse=False, softmin_temp=-1, serial=True, wait=True)
+                      inverse=False, serial=True, wait=True)
     a.render(cm, src_cv, vvote_field_cv, dst_cv, 
                  src_z=z, field_z=z, dst_z=z, 
                  bbox=bbox, src_mip=mip, field_mip=mip, wait=True)

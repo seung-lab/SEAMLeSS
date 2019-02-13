@@ -26,7 +26,7 @@ from normalizer import Normalizer
 from temporal_regularization import create_field_bump
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
                               np_downsample, invert, compose_fields, upsample_field, \
-                              is_identity, cpc, vector_vote
+                              is_identity, cpc, vector_vote, get_affine_field
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -68,6 +68,7 @@ class Aligner:
     self.threads = threads
     self.task_batch_size = task_batch_size
     self.dry_run = dry_run
+    self.eps = 1e-6
 
     self.gpu_lock = kwargs.get('gpu_lock', None)  # multiprocessing.Semaphore
 
@@ -332,7 +333,6 @@ class Aligner:
   #######################
   # Field IO + handlers #
   #######################
-
   def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True, as_int16=True):
     """Retrieve vector field from CloudVolume.
 
@@ -450,7 +450,7 @@ class Aligner:
     return rel_residual
 
   def avg_field(self, field):
-    favg = field.sum() / torch.nonzero(field).size(0)
+    favg = field.sum() / (torch.nonzero(field).size(0) + self.eps)
     return favg
 
   def profile_field(self, field):
@@ -567,7 +567,7 @@ class Aligner:
 
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
-                        inverse=False, softmin_temp=-1, serial=True):
+                        inverse=False, serial=True):
     """Compute consensus vector field using pairwise vector fields with earlier sections. 
 
     Vector voting requires that vector fields be composed to a common section
@@ -604,7 +604,7 @@ class Aligner:
           G_z = z+z_offset
           F = self.get_composed_field(G_cv, f_cv, G_z, f_z, bbox, mip, mip, mip)
       fields.append(F)
-    return vector_vote(fields, softmin_temp=softmin_temp)
+    return vector_vote(fields, softmin_temp=2**mip)
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
     """Compute the inverse vector field for a given bbox 
@@ -641,21 +641,23 @@ class Aligner:
 
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
                         bbox, image_mip, field_mip, mask_cv=None,
-                        mask_mip=0, mask_val=0, as_int16=True,
+                        mask_mip=0, mask_val=0, affine=None,
                         use_cpu=False):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:
-         z: int for section index to warp
-         image_cv: MiplessCloudVolume storing the image
-         field_cv: MiplessCloudVolume storing the vector field
-         bbox: BoundingBox for output region to be warped
-         image_mip: int for MIP of the image
-         field_mip: int for MIP of the vector field; must be >= image_mip.
-          If field_mip > image_mip, the field will be upsampled.
+        z: int for section index to warp
+        image_cv: MiplessCloudVolume storing the image
+        field_cv: MiplessCloudVolume storing the vector field
+        bbox: BoundingBox for output region to be warped
+        image_mip: int for MIP of the image
+        field_mip: int for MIP of the vector field; must be >= image_mip.
+         If field_mip > image_mip, the field will be upsampled.
+        aff: 2x3 ndarray defining affine transform at MIP0 with which to precondition
+         the field. If None, then will be ignored (treated as the identity).
 
       Returns:
-         warped image with shape of bbox at MIP image_mip
+        warped image with shape of bbox at MIP image_mip
       """
       if use_cpu:
           self.device = 'cpu'
@@ -664,10 +666,18 @@ class Aligner:
       padded_bbox = deepcopy(bbox)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
-      f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
-                          to_tensor=True)
-      x_range = bbox.x_range(mip=0)
-      y_range = bbox.y_range(mip=0)
+      if affine is not None:
+        f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=True,
+                            to_tensor=True)
+        offset = padded_bbox.get_offset(mip=0)
+        size = f.shape[-2]
+        aff = get_affine_field(affine, offset, size, self.device)
+        aff = self.abs_to_rel_residual(aff, padded_bbox, field_mip)
+        f = compose_fields(f, aff)
+        f = self.rel_to_abs_residual(f, field_mip)
+      else:
+        f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
+                            to_tensor=True)
       if is_identity(f):
         image = self.get_image(image_cv, image_z, bbox, image_mip,
                                to_tensor=True, normalizer=None)
@@ -885,7 +895,7 @@ class Aligner:
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
                    bbox, src_mip, field_mip, mask_cv=None, mask_mip=0, 
-                   mask_val=0, prefix='', use_cpu=False):
+                   mask_val=0, affine=None, prefix='', use_cpu=False):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -904,6 +914,7 @@ class Aligner:
        mask_mip: int for MIP level at which source mask is stored
        mask_val: int for pixel value in the mask that should be zero-filled
        wait: bool indicating whether to wait for all tasks must finish before proceeding
+       affine: 2x3 ndarray for preconditioning affine to use (default: None means identity)
        prefix: str used to write "finished" files for each task 
         (only used for distributed)
     """
@@ -917,12 +928,11 @@ class Aligner:
     for chunk in chunks:
       batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z, 
                        field_z, dst_z, chunk, src_mip, field_mip, mask_cv, 
-                       mask_mip, mask_val, prefix, use_cpu))
+                       mask_mip, mask_val, affine, prefix, use_cpu))
     return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip, 
-                        inverse=False, softmin_temp=-1, serial=True, 
-                        prefix=''):
+                        inverse=False, serial=True, prefix=''):
     """Compute consensus field from a set of vector fields
 
     Note: 
@@ -935,7 +945,6 @@ class Aligner:
        z: int for section index to be vector voted 
        bbox: BoundingBox for region where all fields will be loaded/written
        mip: int for MIP level of fields
-       softmin_temp: softmin temperature (default will be 2**mip)
        inverse: bool indicating if pairwise fields are to be treated as inverse fields 
        serial: bool indicating to if a previously composed field is 
         not necessary
@@ -951,8 +960,7 @@ class Aligner:
     batch = []
     for chunk in chunks:
       batch.append(tasks.VectorVoteTask(deepcopy(pairwise_cvs), vvote_cv, z,
-                                        chunk, mip, inverse, softmin_temp, 
-                                        serial, prefix))
+                                        chunk, mip, inverse, serial, prefix))
     return batch
 
   def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 

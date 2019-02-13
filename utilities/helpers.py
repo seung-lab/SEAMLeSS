@@ -25,6 +25,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: 402
 plt.switch_backend('agg')
 import matplotlib.cm as cm  # noqa: 402
+from copy import deepcopy
 
 def compose_functions(fseq):
     def compose(f1, f2):
@@ -332,8 +333,13 @@ def gridsample_residual(source, residual, padding_mode):
 
 @torch.no_grad()
 def _create_identity_grid(size, device):
-    id_theta = torch.cuda.FloatTensor([[[1,0,0],[0,1,0]]], device=device) # identity affine transform
-    I = F.affine_grid(id_theta,torch.Size((1,1,size,size)))
+    if 'cpu' in str(device):  # identity affine transform
+        id_theta = torch.FloatTensor([[[1, 0, 0],
+                                       [0, 1, 0]]])
+    else:
+        id_theta = torch.cuda.FloatTensor([[[1, 0, 0],
+                                            [0, 1, 0]]], device=device)
+    I = F.affine_grid(id_theta, torch.Size((1, 1, size, size)))
     I *= (size - 1) / size # rescale the identity provided by PyTorch
     return I
 
@@ -365,6 +371,67 @@ def identity_grid(size, cache=False, device=None):
         identity_grid._identities[size] = I
     return I.to(device)
 identity_grid._identities = {}
+
+def get_affine_field(aff, offset, size, device):
+  """Create a residual field for an affine transform within bbox
+
+  Args:
+    aff: 2x3 ndarray defining affine transform at MIP0
+    offset: iterable with MIP0 offset
+    size: either an `int` or a `torch.Size` of the form
+     `(N, C, H, W)`. `H` and `W` must be the same (a square tensor).
+     `N` and `C` are ignored.
+
+  Returns:
+    field torch tensor for affine field within bbox as MIP0 absolute residuals
+     
+    Note: the affine matrix defines the transformation that warps to destination
+     to the source, such that,
+     ```
+     \vec{x_s} = A \vec{x_d}
+     ```
+     where x_s is a point in the source image, x_d a point in the destination image,
+     and A is the affine matrix. The field returned will be defined over the 
+     destination image. So the matrix A should define the location in the source
+     image that contribute to a pixel in the destination image.
+  """
+  A = torch.cuda.FloatTensor(np.concatenate([aff, [[0,0,1]]], axis=0), device=device) 
+  B = torch.cuda.FloatTensor([[1., 0, offset[0]],
+                              [0, 1., offset[1]],
+                              [0, 0, 1]], device=device) 
+  Bi = torch.cuda.FloatTensor([[1., 0, -offset[0]],
+                              [0, 1., -offset[1]],
+                              [0, 0, 1]], device=device) 
+  theta = torch.mm(Bi, torch.mm(A, B))[:2].unsqueeze(0)
+  print('get_affine_field \n{}'.format(theta.cpu().numpy()))
+  M = F.affine_grid(theta, torch.Size((1,1,size,size)))
+  M *= (size - 1) / size # rescale the grid provided by PyTorch
+  return M - identity_grid(M.shape, device=M.device)
+
+class dotdict(dict):
+    """Allow accessing dict elements with dot notation"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for k, v in self.items():
+            if isinstance(v, dict):
+                self[k] = dotdict(v)
+
+
+class dotdict(dict):
+    """Allow accessing dict elements with dot notation"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for k, v in self.items():
+            if isinstance(v, dict):
+                self[k] = dotdict(v)
 
 
 class AverageMeter(object):
@@ -480,23 +547,25 @@ def timeout(seconds, *args):
     return decorate
 
 
-def retry_enumerate(iterable, start=0):
+def retry_enumerate(iterable, start=0, max_time=3600):
     """
     Wrapper around enumerate that retries if memory is unavailable.
     """
     import time
     retries = 0
+    seconds = 0
     while True:
-        iterator = None
         try:
-            iterator = enumerate(iterable, start=start)
+            return enumerate(iterable, start=start)
         except OSError:
             seconds = 2 ** retries
-            warnings.warn('Low on memory. Retrying in {} sec.'.format(seconds))
+            if seconds >= max_time:
+                raise
+            print('Low on memory. Retrying in {} sec.'.format(seconds))
             time.sleep(seconds)
             retries += 1
             continue
-        return iterator
+
 
 def dilate_mask(mask, radius=5):
   return skmaximum(np.squeeze(mask).astype(np.uint8), skdisk(radius)).reshape(mask.shape).astype(np.bool)
@@ -602,7 +671,7 @@ def compute_distance(U, V):
   N = pow(D, 2)
   return pow(torch.sum(N, 3), 0.5).unsqueeze(0)
 
-def vector_vote(fields, softmin_temp=1):
+def vector_vote(fields, softmin_temp):
   """Produce a single, consensus vector field from a set of vector fields
 
   Args:
@@ -612,6 +681,7 @@ def vector_vote(fields, softmin_temp=1):
   Returns:
     single vector field
   """
+  print('softmin_temp {}'.format(softmin_temp))
   n = len(fields)
   assert(n % 2 == 1)
   # majority
