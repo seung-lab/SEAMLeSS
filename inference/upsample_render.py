@@ -65,15 +65,17 @@ if __name__ == '__main__':
       reader = csv.reader(f, delimiter=',')
       for k, r in enumerate(reader):
         if k != 0:
-          a = float(r[0])
-          b = float(r[1])
-          c = float(r[2])
-          d = float(r[3])
-          e = float(r[4])
-          f = float(r[5])
-          z = float(r[6])
-          affine = np.array([[a,b,c],[d,e,f]])
-          affine_lookup[z] = affine
+          a11 = float(r[0])
+          a12 = float(r[1])
+          a13 = float(r[2])
+          a21 = float(r[3])
+          a22 = float(r[4])
+          a23 = float(r[5])
+          z_start = int(r[6])
+          z_stop  = int(r[7])
+          affine = np.array([[a11,a12,a13],[a21,a22,a23]])
+          for z in range(z_start, z_stop):
+            affine_lookup[z] = affine
 
   # Render sections
   batch = []

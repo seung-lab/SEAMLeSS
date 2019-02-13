@@ -372,13 +372,12 @@ def identity_grid(size, cache=False, device=None):
     return I.to(device)
 identity_grid._identities = {}
 
-def get_affine_field(aff, offset, scale, size, device):
+def get_affine_field(aff, offset, size, device):
   """Create a residual field for an affine transform within bbox
 
   Args:
     aff: 2x3 ndarray defining affine transform at MIP0
     offset: iterable with MIP0 offset
-    scale: factor to scale from MIP0
     size: either an `int` or a `torch.Size` of the form
      `(N, C, H, W)`. `H` and `W` must be the same (a square tensor).
      `N` and `C` are ignored.
@@ -397,8 +396,8 @@ def get_affine_field(aff, offset, scale, size, device):
      image that contribute to a pixel in the destination image.
   """
   A = torch.cuda.FloatTensor(np.concatenate([aff, [[0,0,1]]], axis=0), device=device) 
-  B = torch.cuda.FloatTensor([[scale, 0, offset[0]],
-                              [0, scale, offset[1]],
+  B = torch.cuda.FloatTensor([[1., 0, offset[0]],
+                              [0, 1., offset[1]],
                               [0, 0, 1]], device=device) 
   Bi = torch.cuda.FloatTensor([[1., 0, -offset[0]],
                               [0, 1., -offset[1]],
@@ -408,6 +407,19 @@ def get_affine_field(aff, offset, scale, size, device):
   M = F.affine_grid(theta, torch.Size((1,1,size,size)))
   M *= (size - 1) / size # rescale the grid provided by PyTorch
   return M - identity_grid(M.shape, device=M.device)
+
+class dotdict(dict):
+    """Allow accessing dict elements with dot notation"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for k, v in self.items():
+            if isinstance(v, dict):
+                self[k] = dotdict(v)
+
 
 class dotdict(dict):
     """Allow accessing dict elements with dot notation"""
