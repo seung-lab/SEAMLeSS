@@ -10,22 +10,22 @@ import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import pow, mul, reciprocal
+from torch import matmul, pow, mul, reciprocal
 from torch.nn.functional import interpolate
 from torch.nn import AvgPool2d, LPPool2d
-from torch import matmul, pow
 from torch.nn.functional import softmax
 from itertools import combinations
 from skimage.transform import rescale
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum 
 from functools import reduce
+from copy import deepcopy
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: 402
 plt.switch_backend('agg')
 import matplotlib.cm as cm  # noqa: 402
-from copy import deepcopy
+
 
 def compose_functions(fseq):
     def compose(f1, f2):
@@ -96,28 +96,31 @@ def get_colors(angles, f, c):
     colors = c(colors)
     return colors
 
+
 def dv(vfield, name=None, downsample=0.5):
     dim = vfield.shape[-2]
     assert type(vfield) == np.ndarray
 
-    lengths = np.squeeze(np.sqrt(vfield[:,:,:,0] ** 2 + vfield[:,:,:,1] ** 2))
+    lengths = np.squeeze(np.sqrt(vfield[:, :, :, 0] ** 2
+                                 + vfield[:, :, :, 1] ** 2))
     lengths = (lengths - np.min(lengths)) / (np.max(lengths) - np.min(lengths))
-    angles = np.squeeze(np.angle(vfield[:,:,:,0] + vfield[:,:,:,1]*1j))
+    angles = np.squeeze(np.angle(vfield[:, :, :, 0] + vfield[:, :, :, 1]*1j))
 
-    angles = (angles - np.min(angles)) / (np.max(angles) - np.min(angles)) * np.pi
+    angles = ((angles - np.min(angles))
+              / (np.max(angles) - np.min(angles)) * np.pi)
     angles -= np.pi/8
-    angles[angles<0] += np.pi
+    angles[angles < 0] += np.pi
     off_angles = angles + np.pi/4
-    off_angles[off_angles>np.pi] -= np.pi
+    off_angles[off_angles > np.pi] -= np.pi
 
     scolors = get_colors(angles, f=lambda x: np.sin(x) ** 1.4, c=cm.viridis)
     ccolors = get_colors(off_angles, f=lambda x: np.sin(x) ** 1.4, c=cm.magma)
 
     # mix
-    scolors[:,:,0] = ccolors[:,:,0]
-    scolors[:,:,1] = (ccolors[:,:,1] + scolors[:,:,1]) / 2
-    scolors = scolors[:,:,:-1] #
-    scolors = 1 - (1 - scolors) * lengths.reshape((dim, dim, 1)) ** .8 #
+    scolors[:, :, 0] = ccolors[:, :, 0]
+    scolors[:, :, 1] = (ccolors[:, :, 1] + scolors[:, :, 1]) / 2
+    scolors = scolors[:, :, :-1]
+    scolors = 1 - (1 - scolors) * lengths.reshape((dim, dim, 1)) ** .8
 
     img = np_upsample(scolors, downsample) if downsample is not None else scolors
 
@@ -126,6 +129,7 @@ def dv(vfield, name=None, downsample=0.5):
     else:
         return img
 
+
 def np_upsample(img, factor):
     if factor == 1:
         return img
@@ -133,27 +137,31 @@ def np_upsample(img, factor):
     if img.ndim == 2:
         return rescale(img, factor)
     elif img.ndim == 3:
-        b = np.empty((int(img.shape[0] * factor), int(img.shape[1] * factor), img.shape[2]))
+        b = np.empty((int(img.shape[0] * factor),
+                      int(img.shape[1] * factor), img.shape[2]))
         for idx in range(img.shape[2]):
-            b[:,:,idx] = np_upsample(img[:,:,idx], factor)
+            b[:, :, idx] = np_upsample(img[:, :, idx], factor)
         return b
     else:
         assert False
+
 
 def np_downsample(img, factor):
     data_4d = np.expand_dims(img, axis=1)
     result = nn.AvgPool2d(factor)(torch.from_numpy(data_4d))
     return result.numpy()[:, 0, :, :]
 
+
 def center_field(field):
     wrap = type(field) == np.ndarray
     if wrap:
         field = [field]
     for idx, vfield in enumerate(field):
-        vfield[:,:,:,0] = vfield[:,:,:,0] - np.mean(vfield[:,:,:,0])
-        vfield[:,:,:,1] = vfield[:,:,:,1] - np.mean(vfield[:,:,:,1])
+        vfield[:, :, :, 0] = vfield[:, :, :, 0] - np.mean(vfield[:, :, :, 0])
+        vfield[:, :, :, 1] = vfield[:, :, :, 1] - np.mean(vfield[:, :, :, 1])
         field[idx] = vfield
     return field[0] if wrap else field
+
 
 def display_v(vfield, name=None, center=False):
     if center:
@@ -161,7 +169,8 @@ def display_v(vfield, name=None, center=False):
 
     if type(vfield) == list:
         dim = max([vf.shape[-2] for vf in vfield])
-        vlist = [np.expand_dims(np_upsample(vf[0], dim/vf.shape[-2]), axis=0) for vf in vfield]
+        vlist = [np.expand_dims(np_upsample(vf[0], dim/vf.shape[-2]), axis=0)
+                 for vf in vfield]
         for idx, _ in enumerate(vlist[1:]):
             vlist[idx+1] += vlist[idx]
         imgs = [dv(vf) for vf in vlist]
@@ -169,6 +178,7 @@ def display_v(vfield, name=None, center=False):
     else:
         assert (name is not None)
         dv(vfield, name)
+
 
 def dvl(V_pred, name, mag=100):
     factor = V_pred.shape[1] // 100
@@ -179,18 +189,21 @@ def dvl(V_pred, name, mag=100):
     V_pred = V_pred * mag
     if isinstance(V_pred, torch.Tensor):
         V_pred = V_pred.cpu().numpy()
-    plt.figure(figsize=(6,6))
-    X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
-    U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
-    colors = np.arctan2(U,V)   # true angle
+    plt.figure(figsize=(6, 6))
+    X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]),
+                       np.arange(-1, 1, 2.0/V_pred.shape[-2]))
+    U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred, 0, -1), 2))
+    colors = np.arctan2(U, V)  # true angle
     plt.title(Path(name).stem)
     plt.gca().invert_yaxis()
-    Q = plt.quiver(X, Y, U, V, colors, scale=6, width=0.002, angles='uv', pivot='tail')
+    Q = plt.quiver(X, Y, U, V, colors, scale=6, width=0.002,
+                   angles='uv', pivot='tail')
     qk = plt.quiverkey(Q, 10.0, 10.0, 2, r'$2 \frac{m}{s}$', labelpos='E', \
                        coordinates='figure')
 
     plt.savefig(name + '.png')
     plt.clf()
+
 
 def reverse_dim(var, dim):
     if var is None:
@@ -201,9 +214,11 @@ def reverse_dim(var, dim):
         idx = idx.cuda()
     return var.index_select(dim, idx)
 
+
 def reduce_seq(seq, f):
     size = min([x.size()[-1] for x in seq])
-    return f([center(var, (-2,-1), var.size()[-1] - size) for var in seq], 1)
+    return f([center(var, (-2, -1), var.size()[-1] - size) for var in seq], 1)
+
 
 def center(var, dims, d):
     if not isinstance(d, collections.Sequence):
@@ -214,19 +229,22 @@ def center(var, dims, d):
         var = var.narrow(dim, d[idx]/2, var.size()[dim] - d[idx])
     return var
 
+
 def crop(data_2d, crop):
-    return data_2d[crop:-crop,crop:-crop]
+    return data_2d[crop:-crop, crop:-crop]
+
 
 def save_chunk(chunk, name, norm=True):
     if type(chunk) != np.ndarray:
         chunk = chunk.cpu().numpy()
     chunk = np.squeeze(chunk).astype(np.float64)
     if norm:
-        chunk[:50,:50] = 0
-        chunk[:10,:10] = 1
-        chunk[-50:,-50:] = 1
-        chunk[-10:,-10:] = 0
+        chunk[:50, :50] = 0
+        chunk[:10, :10] = 1
+        chunk[-50:, -50:] = 1
+        chunk[-10:, -10:] = 0
     plt.imsave(name + '.png', 1 - chunk, cmap='Greys')
+
 
 def gif(filename, array, fps=2, scale=1.0, norm=False):
     """Creates a gif given a stack of images using moviepy
@@ -257,10 +275,10 @@ def gif(filename, array, fps=2, scale=1.0, norm=False):
 
     # add 'signature' block to top left and bottom right
     if norm and array.shape[1] > 1000:
-        array[:,:50,:50] = 0
-        array[:,:10,:10] = 255
-        array[:,-50:,-50:] = 255
-        array[:,-10:,-10:] = 0
+        array[:, :50, :50] = 0
+        array[:, :10, :10] = 255
+        array[:, -50:, -50:] = 255
+        array[:, -10:, -10:] = 0
 
     # make the moviepy clip
     clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
@@ -294,8 +312,8 @@ def gridsample(source, field, padding_mode):
     (as opposed to the centers of the border pixels as in PyTorch 4.1).
 
     `source` and `field` should be PyTorch tensors on the same GPU, with
-    `source` arranged as a PyTorch image, and `field` as a PyTorch vector field.
-
+    `source` arranged as a PyTorch image, and `field` as a PyTorch vector
+    field.
     `padding_mode` is required because it is a significant consideration.
     It determines the value sampled when a vector is outside the range [-1,1]
     Options are:
@@ -320,7 +338,9 @@ def gridsample(source, field, padding_mode):
         raise NotImplementedError('Grid sampling from non-square tensors '
                                   'not yet implementd here.')
     scaled_field = field * source.shape[2] / (source.shape[2] - 1)
-    return F.grid_sample(source, scaled_field, mode="bilinear", padding_mode=padding_mode)
+    return F.grid_sample(source, scaled_field, mode="bilinear",
+                         padding_mode=padding_mode)
+
 
 def gridsample_residual(source, residual, padding_mode):
     """
@@ -339,9 +359,10 @@ def _create_identity_grid(size, device):
     else:
         id_theta = torch.cuda.FloatTensor([[[1, 0, 0],
                                             [0, 1, 0]]], device=device)
-    I = F.affine_grid(id_theta, torch.Size((1, 1, size, size)))
-    I *= (size - 1) / size # rescale the identity provided by PyTorch
-    return I
+    Id = F.affine_grid(id_theta, torch.Size((1, 1, size, size)))
+    Id *= (size - 1) / size  # rescale the identity provided by PyTorch
+    return Id
+
 
 def identity_grid(size, cache=False, device=None):
     """
@@ -356,9 +377,9 @@ def identity_grid(size, cache=False, device=None):
     `(N, C, H, W)`. `H` and `W` must be the same (a square tensor).
     `N` and `C` are ignored.
     """
-    if isinstance(size,torch.Size):
-        if (size[2] == size[3] # image
-            or (size[3] == 2 and size[1] == size[2])): # field
+    if isinstance(size, torch.Size):
+        if (size[2] == size[3]  # image
+                or (size[3] == 2 and size[1] == size[2])):  # field
             size = size[2]
         else:
             raise ValueError("Bad size: {}. Expected a square tensor size.".format(size))
@@ -366,10 +387,10 @@ def identity_grid(size, cache=False, device=None):
         device = torch.cuda.current_device()
     if size in identity_grid._identities:
         return identity_grid._identities[size].to(device)
-    I = _create_identity_grid(size, device)
+    Id = _create_identity_grid(size, device)
     if cache:
-        identity_grid._identities[size] = I
-    return I.to(device)
+        identity_grid._identities[size] = Id
+    return Id.to(device)
 identity_grid._identities = {}
 
 def get_affine_field(aff, offset, size, device):
@@ -407,18 +428,6 @@ def get_affine_field(aff, offset, size, device):
   M = F.affine_grid(theta, torch.Size((1,1,size,size)))
   M *= (size - 1) / size # rescale the grid provided by PyTorch
   return M - identity_grid(M.shape, device=M.device)
-
-class dotdict(dict):
-    """Allow accessing dict elements with dot notation"""
-    __getattr__ = dict.get
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for k, v in self.items():
-            if isinstance(v, dict):
-                self[k] = dotdict(v)
 
 
 class dotdict(dict):
