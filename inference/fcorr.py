@@ -1,6 +1,8 @@
 import torch
 
 r'''
+A mis-alignment indicator metric.
+
 Example usages:
     Comparing single pair of 8x8 images:
       f1,p1 = get_fft_power2(torch.tensor(x[0, :8, :8]))  # 8x8 block in slice 0
@@ -13,9 +15,18 @@ Example usages:
 '''
 
 def get_fft_power2(block):
+    r'''
+    2D FFT on the last two dimensions, and power of FFT components, in one-sided
+     representation and the still redundant components set to 0.
+    *Assuming the last two dimensions are the same.*
+    The returned FFT has one more dimension added at the last dimension for representing
+    the 2 channels of complex numbers. The returned power has same number of dimensions as input.
+    '''
     f = torch.rfft(block, 2, normalized=True, onesided=True) # currently 2-channel tensor rather than "ComplexFloat"
-    # remove redundant components in one-sided DFT (avoid double counting them)
-    onesided = f.shape[-2]   # note the last dim is for complex number
+    # Remove redundant components in one-sided DFT (avoid double counting them)
+    onesided = f.shape[-2]   # get the number of non-redundant components from the "last" dim,
+              # note this is only valid because our "last" two dims are the same,
+    	      # also note the real last dim for array f is for complex number
     f[..., onesided:, 0, :] = 0
     f[..., onesided:, -1, :] = 0
     p = torch.sum(f*f, dim=-1)
@@ -73,12 +84,12 @@ def get_hp_fcorr(f1, p1, f2, p2):
     Returns 2 when not enough components satisfy the criteria.
     '''
     blocksize = 8
-    #thres = 256/2*blocksize*0.15  # unnormalized FFT  p_element ~ sqrt(N_elements)
-    p_thres = 256/2*0.15  # normalized FFT
+    #p_thres = (256/2*blocksize*0.15)**2  # unnormalized FFT  p_element ~ N_elements
+    p_thres = (256/2*0.15)**2  # normalized FFT
     n_thres = 3
-    mpowersqrd = p1*p2
+    mpower = p1*p2
     
-    valid = mpowersqrd > p_thres**4
+    valid = mpower > p_thres**2
     
     # ignore low frequency components
     valid = cut_low_freq(valid, cutoff_1d = 0, cutoff_2d = 1)
