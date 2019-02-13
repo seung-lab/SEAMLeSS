@@ -11,6 +11,8 @@ RUN apt-get update \
   && python -c "import imageio; imageio.plugins.ffmpeg.download();" \
   # Register SEAMLeSS
   && python setup.py develop \
+  # Dirty hacks
+  && pip install -e git+https://github.com/seung-lab/python-task-queue.git@nkem-longpoll#egg=task-queue \
   # Cleanup apt
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* \

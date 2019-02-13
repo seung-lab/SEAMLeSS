@@ -16,5 +16,4 @@ pandas
 opencv-python
 setuptools>=34.0.0
 pyyaml
-task-queue
 imageio==2.4.1
