@@ -1,0 +1,3 @@
+x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name
+92400,21800,300,93424,22824,305,0,vector_fixer30
+102400,21800,305,103424,22824,314,0,vector_fixer30

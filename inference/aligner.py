@@ -26,7 +26,7 @@ from normalizer import Normalizer
 from temporal_regularization import create_field_bump
 from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
                               np_downsample, invert, compose_fields, upsample_field, \
-                              is_identity, cpc, vector_vote, get_affine_field
+                              is_identity, cpc, vector_vote, get_affine_field, is_blank
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -254,10 +254,15 @@ class Aligner:
     data = np.transpose(data, (2,3,0,1))
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
-    if normalizer is not None:
+    if (normalizer is not None) and (not is_blank(data)):
+      print('Normalizing image')
+      start = time()
       data = torch.from_numpy(data)
       data = data.to(device=self.device)
       data = normalizer(data).reshape(data.shape)
+      end = time()
+      diff = end - start
+      print('normalizer: {:.3f}'.format(diff), flush=True) 
     # convert to tensor if requested, or if up/downsampling required
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
@@ -1464,7 +1469,8 @@ class Aligner:
       n = 0
       while not empty:
         if n > 0:
-          sleep(1.75)
+          # sleep(1.75)
+          sleep(5)
         with Storage(path) as stor:
             lst = stor.list_files(prefix=prefix)
         i = sum(1 for _ in lst)

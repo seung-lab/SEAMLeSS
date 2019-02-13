@@ -586,6 +586,15 @@ def is_identity(field):
   """
   return torch.min(field) == 0 and torch.max(field) == 0
 
+def is_blank(image):    
+  """Check if image is blank (assumes ndarray or torch tensor only)
+  """ 
+  if isinstance(image, np.ndarray):
+    return np.min(image) == 0 and np.max(image) == 0
+  else:
+    return torch.min(image) == 0 and torch.max(image) == 0
+    
+
 def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   """Compute the inverse vector field of residual field U by optimization
 
