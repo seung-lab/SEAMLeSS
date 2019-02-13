@@ -182,6 +182,7 @@ if __name__ == '__main__':
 
   # Align without vector voting
   for block_offset in serial_range:
+    print('BLOCK OFFSET {}'.format(block_offset))
     z_offset = serial_offsets[block_offset] 
     serial_field = serial_fields[z_offset]
     batch = []
@@ -252,6 +253,7 @@ if __name__ == '__main__':
 
   # Align with vector voting
   for block_offset in vvote_range:
+    print('BLOCK OFFSET {}'.format(block_offset))
     batch = []
     task_counter = {}
     prefix = block_offset
