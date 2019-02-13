@@ -1505,22 +1505,20 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def rechunck_image(self, chunk_size, image):
-      H = image.shape[2]
-      W = image.shape[3]
-      I = image.chunk(H//chunk_size, dim=2)
+      I = image.split(chunk_size, dim=2)
       I = torch.cat(I, dim=0)
-      I = I.chunk(W//chunk_size, dim=3)
+      I = I.split(chunk_size, dim=3)
       return torch.cat(I, dim=1)
 
-  def calculate_fcorr(self, cm, bbox, mip, z1, z2, cv, dst_cv):
-      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+  def calculate_fcorr(self, cm, bbox, mip, z1, z2, cv, dst_cv, prefix=''):
+      chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
       if prefix == '':
-        prefix = '{}_{}_{}'.format(mip, src_z, tgt_z)
+        prefix = '{}'.format(mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, bbox, mip, z1, z2, prefix))
+        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, chunk, mip, z1, z2, prefix))
       return batch
 
 
@@ -1531,10 +1529,10 @@ class Aligner:
       image1 = self.get_image(cv, z1, bbox, mip, to_tensor=True)
       image2 = self.get_image(cv, z2, bbox, mip, to_tensor=True)
       fcorr_chunk_size = 8
-      new_image1 = self.rechunck_image(image1)
-      new_image2 = self.rechunck_image(image2)
-      f1 p1 = get_fft_power2(new_image1)
-      f2 p2 = get_fft_power2(new_iamge2)
+      new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
+      new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
+      f1, p1 = get_fft_power2(new_image1)
+      f2, p2 = get_fft_power2(new_image2)
       return get_hp_fcorr(f1, p1, f2, p2)
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):

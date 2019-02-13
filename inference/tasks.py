@@ -550,14 +550,15 @@ class ComputeFcorrTask(RegisteredTask):
           "at MIP{}\n"
           "\n".format(cv, z1, z2, mip), flush=True)
     start = time()
-      image = aligner.get_fcorr(patch_bbox, cv, mip, z1, z2)
-      image = image.cpu().numpy()
-      aligner.save_image(image, dst_cv, z2, patch_bbox, mip)
-      with Storage(dst_cv.path) as stor:
-        path = 'Fcorr_done/{}/{}'.format(prefix, patch_bbox.stringify(z2)))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
-      end = time()
-      diff = end - start
-      print('FcorrTask: {:.3f} s'.format(diff))
+    image = aligner.get_fcorr(patch_bbox, cv, mip, z1, z2)
+    image = image.permute(2,3,0,1)
+    image = image.cpu().numpy()
+    aligner.save_image(image, dst_cv, z2, patch_bbox, mip+3, to_uint8=False)
+    with Storage(dst_cv.path) as stor:
+      path = 'Fcorr_done/{}/{}'.format(self.prefix, patch_bbox.stringify(z2))
+      stor.put_file(path, '')
+      print('Marked finished at {}'.format(path))
+    end = time()
+    diff = end - start
+    print('FcorrTask: {:.3f} s'.format(diff))
 
