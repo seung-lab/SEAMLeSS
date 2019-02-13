@@ -169,7 +169,7 @@ if __name__ == '__main__':
 #  print_run(diff, len(batch))
 #
 # Align without vector voting
-  for block_offset in serial_range:
+  for block_offset in [serial_range[0]]:
     z_offset = serial_offsets[block_offset] 
     serial_field = serial_fields[z_offset]
     batch = []
@@ -208,7 +208,8 @@ if __name__ == '__main__':
       z = block_start + block_offset 
       t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
                    bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
-                   mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
+                   mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix,
+                  use_cpu=True)
       batch.extend(t)
 
     print('Scheduling RenderTasks')

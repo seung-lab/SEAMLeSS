@@ -78,11 +78,7 @@ if __name__ == '__main__':
   start = time()
   # wait 
   n = len(batch)
-<<<<<<< HEAD
-  a.wait_for_queue_empty(dst.path, 'PreImg_done/{}'.format(prefix), n)
-=======
   a.wait_for_queue_empty(dst.path, 'predict_image_done/{}'.format(prefix), n)
->>>>>>> master
   end = time()
   diff = end - start
   print_run(diff, len(batch))

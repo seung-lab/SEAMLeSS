@@ -6,7 +6,7 @@ metadata:
     run: seamless
   name: seamless
 spec:
-  replicas: 1 
+  replicas: 2 
   selector:
     matchLabels:
       run: seamless
@@ -26,11 +26,12 @@ spec:
         name: seamless
         imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/worker.py --queue_name deepalign0"]
+        args: ["-c", "python inference/worker.py --processes 8 --queue_name deepalign0"]
         volumeMounts:
         - name: secrets
           mountPath: /root/.cloudvolume/secrets
           readOnly: true
+      dnsPolicy: Default
       volumes:
       - name: secrets
         secret:

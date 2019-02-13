@@ -39,6 +39,7 @@ from taskqueue import TaskQueue
 import tasks
 import tenacity
 import boto3
+from fcorr import get_fft_power2, get_hp_fcorr
 
 retry = tenacity.retry(
   reraise=True, 
@@ -129,7 +130,7 @@ class Aligner:
   # IO methods #
   ##############
 
-  def get_model_archive(self, model_path, readonly=1):
+  def get_model_archive(self, model_path):
     """Load a model stored in the repo with its relative path
 
     TODO: evict old models from self.models
@@ -147,7 +148,7 @@ class Aligner:
       print('Adding model {0} to the cache'.format(model_path), flush=True)
       path = Path(model_path)
       model_name = path.stem
-      archive = ModelArchive(model_name, readonly)
+      archive = ModelArchive(model_name)
       self.model_archives[model_path] = archive
       return archive
 
@@ -536,7 +537,7 @@ class Aligner:
 
     return field
 
-  def perdict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
+  def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
                     chunk_size, prefix=''):
     start = time()
     chunks = self.break_into_chunks(bbox, chunk_size,
@@ -1189,9 +1190,9 @@ class Aligner:
           f = self.compute_field_chunk(model_path, src_cv, tgt_cv, src_z,
                                        tgt_z, bbox, mip, pad)
           #print("--------f shape is ---", f.shape)
-          fields.append(f.cpu().data)
+          fields.append(f)
           #fields.append(f)
-      fields = [i.to(device=self.device) for i in fields]
+      fields = [torch.from_numpy(i).to(device=self.device) for i in fields]
       #print("device is ", fields[0].device)
       field = vector_vote(fields, softmin_temp=softmin_temp)
       field = field.data.cpu().numpy()
@@ -1502,6 +1503,39 @@ class Aligner:
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
+
+  def rechunck_image(self, chunk_size, image):
+      H = image.shape[2]
+      W = image.shape[3]
+      I = image.chunk(H//chunk_size, dim=2)
+      I = torch.cat(I, dim=0)
+      I = I.chunk(W//chunk_size, dim=3)
+      return torch.cat(I, dim=1)
+
+  def calculate_fcorr(self, cm, bbox, mip, z1, z2, cv, dst_cv):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+                                      cm.dst_voxel_offsets[mip], mip=mip,
+                                      max_mip=cm.max_mip)
+      if prefix == '':
+        prefix = '{}_{}_{}'.format(mip, src_z, tgt_z)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, bbox, mip, z1, z2, prefix))
+      return batch
+
+
+  def get_fcorr(self, bbox, cv, mip, z1, z2):
+      """ perform fcorr for two images
+
+      """
+      image1 = self.get_image(cv, z1, bbox, mip, to_tensor=True)
+      image2 = self.get_image(cv, z2, bbox, mip, to_tensor=True)
+      fcorr_chunk_size = 8
+      new_image1 = self.rechunck_image(image1)
+      new_image2 = self.rechunck_image(image2)
+      f1 p1 = get_fft_power2(new_image1)
+      f2 p2 = get_fft_power2(new_iamge2)
+      return get_hp_fcorr(f1, p1, f2, p2)
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
     if self.distributed:

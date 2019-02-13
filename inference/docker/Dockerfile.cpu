@@ -16,7 +16,7 @@ RUN apt-get update \
   # Cleanup apt
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* 
-RUN pip3 install imageio==2.4.1
+  #RUN pip3 install imageio==2.4.1
   #\
   # Cleanup temporary python files
  # && find /opt/conda/lib/python3.6 -depth \
