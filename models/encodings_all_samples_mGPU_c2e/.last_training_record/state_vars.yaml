@@ -1,7 +1,7 @@
 batch_size: 4
 checkpoint_time: 10000
 encodings: true
-epoch: 777
+epoch: 784
 epochs_per_mip: 4
 feature_maps: [12, 12, 12, 12, 12]
 gamma: 1
@@ -9,9 +9,9 @@ gamma_step: 30
 gpus: 0,1,2,3
 height: 5
 initialized_list: [true, true, true, true, true]
-iteration: null
+iteration: 2554
 lambda1: 10000000.0
-levels: null
+levels: !!python/object/apply:builtins.slice [null, null, null]
 log_time: 1
 lr: 0.003
 name: test_encodings_all_samples_mGPU_c2e
@@ -24,6 +24,7 @@ start_lr: 0.003
 supervised: false
 training_set_path: !!python/object/apply:pathlib.PosixPath [/, home, bnehoran, training_data,
   minnie_mip4_annotated_prep_major_folds_curriculum_45x6x1536.h5]
-validation_set_path: null
+validation_set_path: !!python/object/apply:pathlib.PosixPath [/, home, bnehoran, training_data,
+  minnie_1536_v002_train_mip4_annotated_folds_filtered.h5]
 vis_time: 10000
 wd: 0

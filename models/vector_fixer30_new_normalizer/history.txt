@@ -1,0 +1,10 @@
+Model: vector_fixer30_fine_tuning_low_mip
+Time: 9/12/18 - 8:20 pm
+Commit: 787129bc60ea2cbcadffb635ce813c182ed64bd3
+CUDA_VISIBLE_DEVICES=2 python train.py --state_archive pt/vector_fixer29_fine_tuning_low_mip.pt --size 8 --lambda1 2 --lambda2 0.04 --lambda3 0 --lambda4 5 --lambda5 0 --mask_smooth_radius 75 --mask_neighborhood_radius 75 --lr 0.0003 --trunc 0 --fine_tuning --padding 0 --vis_interval 20 --lambda6 1 vector_fixer30_fine_tuning_low_mip
+# *Fine tune on cracks and folds at mip2*: _(Continued)_
+# Fixed vector composition (gridsampling) at vector field borders
+# on branch `upsampling_and_composition_fix`
+# training from `vector_fixer29_fine_tuning_low_mip` without preencoder
+
+

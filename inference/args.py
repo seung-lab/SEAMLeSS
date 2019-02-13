@@ -43,7 +43,7 @@ def get_bbox(args):
   """
   # interleave coords by flattening
   coords = [x for t in zip(args.bbox_start[:2], args.bbox_stop[:2]) for x in t]
-  return BoundingBox(*coords, mip=0, max_mip=args.max_mip)
+  return BoundingBox(*coords, mip=args.bbox_mip, max_mip=args.max_mip)
 
 def get_provenance(args):
   args.user = getuser()

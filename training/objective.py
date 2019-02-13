@@ -221,8 +221,10 @@ def prepare_masks(sample, threshold=0.7):
     # coefficient on the defect:
     src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
 
-    src_aug_masks = [1.0 - m.float() for m in sample.src.aug_masks]
-    tgt_aug_masks = [1.0 - m.float() for m in sample.tgt.aug_masks]
+    src_aug_masks = ([1.0 - m.float() for m in sample.src.aug_masks]
+                     if sample.src.aug_masks else [])
+    tgt_aug_masks = ([1.0 - m.float() for m in sample.tgt.aug_masks]
+                     if sample.tgt.aug_masks else [])
 
     return {'src_masks': [src_weights.float()] + src_aug_masks,
             'tgt_masks': [tgt_weights.float()] + tgt_aug_masks,
