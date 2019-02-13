@@ -45,7 +45,7 @@ class TestInvert(unittest.TestCase):
     U = torch.zeros((1,2,2,2))
     V = invert(U)
     # V = V.permute((0,3,1,2))
-    # UofV = gridsample_residual(V, U, padding_mode='border')
+    # UofV = grid_sample(V, U, padding_mode='border')
     # UofV = UofV.permute((0,2,3,1))
     eq = tensor_approx_eq(U, V)
     self.assertTrue(eq)

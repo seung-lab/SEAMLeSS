@@ -81,7 +81,7 @@ from pathlib import Path
 
 import stack_dataset
 from utilities.archive import ModelArchive
-from utilities.helpers import (gridsample_residual, save_chunk,
+from utilities.helpers import (grid_sample, save_chunk,
                                dvl as save_vectors, AverageMeter,
                                retry_enumerate, cp, dotdict)
 
@@ -384,7 +384,7 @@ def create_debug_outputs(archive, sample, prediction, id=0):
             cp(debug_dir / 'tgt_aug_{}.png'.format(id), stack_dir)
         else:
             cp(debug_dir / 'tgt_{}.png'.format(id), stack_dir)
-        warped_src = gridsample_residual(
+        warped_src = grid_sample(
             src[0:1, ...],
             prediction[0:1, ...].detach().to(src.device),
             padding_mode='zeros')

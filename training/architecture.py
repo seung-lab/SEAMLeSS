@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from utilities.helpers import gridsample_residual, upsample, downsample, load_model_from_dict
+from utilities.helpers import grid_sample, upsample, downsample, load_model_from_dict
 
 
 class Model(nn.Module):
@@ -260,12 +260,12 @@ class AligningPyramid(nn.Module):
                 accum_field = (upsample(prev_level - i)
                                (accum_field.permute(0, 3, 1, 2))
                                .permute(0, 2, 3, 1))
-                src = gridsample_residual(src, accum_field,
+                src = grid_sample(src, accum_field,
                                           padding_mode='border')
             factor = 2 / src.shape[-1]  # scale to [-1,1]
             res_field = aligner(src, tgt, **kwargs) * factor
             if accum_field is not None:
-                resampled = gridsample_residual(
+                resampled = grid_sample(
                     accum_field.permute(0, 3, 1, 2), res_field,
                     padding_mode='border').permute(0, 2, 3, 1)
                 accum_field = res_field + resampled

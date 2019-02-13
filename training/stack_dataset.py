@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Dataset, ConcatDataset
 
 from aug import aug_input, rotate_and_scale, random_translation
-from utilities.helpers import (upsample, downsample, gridsample_residual,
+from utilities.helpers import (upsample, downsample, grid_sample,
                                dotdict)
 
 
@@ -174,7 +174,7 @@ class RandomField(object):
         field = upsample(self.num_downsamples)(field)
         X.truth = field.permute(0, 2, 3, 1)
         for k in X.tgt:
-            X.tgt[k] = gridsample_residual(
+            X.tgt[k] = grid_sample(
                 X.src[k], X.truth, padding_mode='zeros')
         return X
 
