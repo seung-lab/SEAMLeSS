@@ -1,6 +1,6 @@
 import sys
 import csv
-from time import time
+from time import time, sleep
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
 import numpy as np
@@ -30,6 +30,8 @@ if __name__ == '__main__':
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
+  parser.add_argument('--task_limit', type=int, default=500000,
+    help='no. of tasks scheduled before a wait is put in place')
   args = parse_args(parser)
   # only compute matches to previous sections
   a = get_aligner(args)
@@ -78,6 +80,7 @@ if __name__ == '__main__':
             affine_lookup[z] = affine
 
   # Render sections
+  k = 0
   batch = []
   prefix = ''
   for z in z_range:
@@ -87,12 +90,16 @@ if __name__ == '__main__':
     t = a.render(cm, src, field, dst, z, z, z, bbox, src_mip, field_mip, 
                    affine=affine, prefix=prefix)
     batch.extend(t)
-
-  start = time()
-  print('Scheduling RenderTasks')
-  run(a, batch)
-  # wait
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print_run(diff, len(batch))
+    k += len(t)
+    if k > args.task_limit:
+      print('Scheduling RenderTasks up to z={}'.format(z))
+      start = time()
+      run(a, batch)
+      end = time()
+      diff = end - start
+      print_run(diff, len(batch))
+      batch = []
+      k = 0
+      a.wait_for_sqs_empty()
+  if len(batch) > 0:
+    run(a, batch)
