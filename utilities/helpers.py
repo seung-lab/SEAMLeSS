@@ -474,18 +474,25 @@ def identity_grid(size, cache=False, device=None):
         return Id
 
     if isinstance(size, torch.Size):
+        batch_dim = size[0]
         if (size[2] == size[3]  # image
                 or (size[3] == 2 and size[1] == size[2])):  # field
             size = size[2]
         else:
-            raise ValueError("Bad size: {}. Expected a square tensor size.".format(size))
+            raise ValueError("Bad size: {}. Expected a square tensor size."
+                             .format(size))
+    else:
+        batch_dim = 1
     if device is None:
         device = torch.cuda.current_device()
     if size in identity_grid._identities:
-        return identity_grid._identities[size].copy().to(device)
-    Id = _create_identity_grid(size, device)
-    if cache:
-        identity_grid._identities[size] = Id.copy()
+        Id = identity_grid._identities[size].copy()
+    else:
+        Id = _create_identity_grid(size, device)
+        if cache:
+            identity_grid._identities[size] = Id.copy()
+    if batch_dim > 1:
+        Id = torch.cat([Id] * batch_dim)
     return Id.to(device)
 identity_grid._identities = {}
 
