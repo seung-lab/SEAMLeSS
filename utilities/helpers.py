@@ -372,13 +372,12 @@ def identity_grid(size, cache=False, device=None):
     return I.to(device)
 identity_grid._identities = {}
 
-def get_affine_field(aff, offset, scale, size, device):
+def get_affine_field(aff, offset, size, device):
   """Create a residual field for an affine transform within bbox
 
   Args:
     aff: 2x3 ndarray defining affine transform at MIP0
     offset: iterable with MIP0 offset
-    scale: factor to scale from MIP0
     size: either an `int` or a `torch.Size` of the form
      `(N, C, H, W)`. `H` and `W` must be the same (a square tensor).
      `N` and `C` are ignored.
@@ -397,8 +396,8 @@ def get_affine_field(aff, offset, scale, size, device):
      image that contribute to a pixel in the destination image.
   """
   A = torch.cuda.FloatTensor(np.concatenate([aff, [[0,0,1]]], axis=0), device=device) 
-  B = torch.cuda.FloatTensor([[scale, 0, offset[0]],
-                              [0, scale, offset[1]],
+  B = torch.cuda.FloatTensor([[1., 0, offset[0]],
+                              [0, 1., offset[1]],
                               [0, 0, 1]], device=device) 
   Bi = torch.cuda.FloatTensor([[1., 0, -offset[0]],
                               [0, 1., -offset[1]],

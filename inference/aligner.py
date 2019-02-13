@@ -638,9 +638,8 @@ class Aligner:
         f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=True,
                             to_tensor=True)
         offset = padded_bbox.get_offset(mip=0)
-        scale = 2**field_mip
         size = f.shape[-2]
-        aff = get_affine_field(affine, offset, scale, size, self.device)
+        aff = get_affine_field(affine, offset, size, self.device)
         aff = self.abs_to_rel_residual(aff, padded_bbox, field_mip)
         f = compose_fields(f, aff)
         f = self.rel_to_abs_residual(f, field_mip)
