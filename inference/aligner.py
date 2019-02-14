@@ -24,7 +24,7 @@ import torch.nn as nn
 
 from normalizer import Normalizer
 from temporal_regularization import create_field_bump
-from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
+from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               np_downsample, invert, compose_fields, upsample_field, \
                               is_identity, cpc, vector_vote, get_affine_field, is_blank
 from boundingbox import BoundingBox, deserialize_bbox
@@ -706,7 +706,7 @@ class Aligner:
                                 mask_cv=mask_cv, mask_mip=mask_mip,
                                 mask_val=mask_val,
                                 to_tensor=True, normalizer=None)
-        image = gridsample_residual(image, field, padding_mode='zeros')
+        image = grid_sample(image, field, padding_mode='zeros')
         image = image[:,:,pad:-pad,pad:-pad]
         return image
 

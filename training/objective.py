@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from utilities import masklib
 from training.loss import smoothness_penalty
-from utilities.helpers import gridsample_residual
+from utilities.helpers import grid_sample
 
 
 class Objective(nn.Module):
@@ -99,14 +99,14 @@ class SelfSupervisedLoss(nn.Module):
         src = sample.src.image.to(prediction.device)
         tgt = sample.tgt.image.to(prediction.device)
 
-        src_warped = gridsample_residual(src, prediction, padding_mode='zeros')
+        src_warped = grid_sample(src, prediction, padding_mode='zeros')
         image_loss_map = (src_warped - tgt)**2
         if src_masks or tgt_masks:
             image_weights = torch.ones_like(image_loss_map)
             if src_masks is not None:
                 for mask in src_masks:
                     try:
-                        mask = gridsample_residual(mask, prediction,
+                        mask = grid_sample(mask, prediction,
                                                    padding_mode='border')
                         image_loss_map = image_loss_map * mask
                         image_weights = image_weights * mask
@@ -132,7 +132,7 @@ class SelfSupervisedLoss(nn.Module):
             if src_field_masks is not None:
                 for mask in src_field_masks:
                     try:
-                        mask = gridsample_residual(mask, prediction,
+                        mask = grid_sample(mask, prediction,
                                                    padding_mode='border')
                         field_loss_map = field_loss_map * mask
                         field_weights = field_weights * mask
