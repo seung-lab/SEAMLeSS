@@ -65,6 +65,8 @@ if __name__ == '__main__':
 
   batch =[]
   prefix = str(mip)
+#  for z in full_range:
+#      a.downsample_chunkwise(cm, src, z, bbox, mip, 5)
   for z in full_range:
       print("Fcorr for z={} and z={}".format(z, z+1))
       t = a.calculate_fcorr(cm, bbox, mip, z, z+1, src, dst)

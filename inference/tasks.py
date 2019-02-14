@@ -553,7 +553,8 @@ class ComputeFcorrTask(RegisteredTask):
     image = aligner.get_fcorr(patch_bbox, cv, mip, z1, z2)
     image = image.permute(2,3,0,1)
     image = image.cpu().numpy()
-    aligner.save_image(image, dst_cv, z2, patch_bbox, mip+3, to_uint8=False)
+    print("image is", image)
+    aligner.save_image(image, dst_cv, z2, patch_bbox, 8, to_uint8=False)
     with Storage(dst_cv.path) as stor:
       path = 'Fcorr_done/{}/{}'.format(self.prefix, patch_bbox.stringify(z2))
       stor.put_file(path, '')

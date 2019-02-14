@@ -1521,40 +1521,32 @@ class Aligner:
         batch.append(tasks.ComputeFcorrTask(cv, dst_cv, chunk, mip, z1, z2, prefix))
       return batch
 
-  def get_fcorr1(self, bbox, cv, mip, z1, z2):
-      """ perform fcorr for two images
-
-      """
-      image1 = self.get_image(cv, z1, bbox, mip, to_tensor=True)
-      image2 = self.get_image(cv, z2, bbox, mip, to_tensor=True)
-      fcorr_chunk_size = 8
-      new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
-      new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
-      res = []
-      for i in range(new_image1.shape[0]):
-          f1, p1 = get_fft_power2(new_image1[i])
-          f2, p2 = get_fft_power2(new_image2[i])
-          tmp =  get_hp_fcorr(f1, p1, f2, p2)
-          res.append(tmp)
-      result = torch.stack(res)
-      return result 
-
-
   def get_fcorr(self, bbox, cv, mip, z1, z2):
       """ perform fcorr for two images
 
       """
       image1 = self.get_data(cv, z1, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True)
+                             to_float=False, to_tensor=True).float()
       image2 = self.get_data(cv, z2, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True)
+                             to_float=False, to_tensor=True).float()
+      scale_factor = 2.**(mip - 5) 
+      image1 = interpolate(image1, scale_factor=scale_factor,
+                           mode='bilinear')
+      image2 = interpolate(image2, scale_factor=scale_factor,
+                           mode='bilinear')
+      std1 = image1[image1!=0].std()
+      std2 = image2[image2!=0].std()
+      print("++++std1", std1)
+      print("++++std2", std2)
+      scaling = 8 * pow(std1*std2, 1/2)
       fcorr_chunk_size = 8
       #print(image1)
       new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
       new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
-      f1, p1 = get_fft_power2(new_image1.float())
-      f2, p2 = get_fft_power2(new_image2.float())
-      return get_hp_fcorr(f1, p1, f2, p2)
+      f1, p1 = get_fft_power2(new_image1)
+      f2, p2 = get_fft_power2(new_image2)
+      #print("--stander is ", new_image1.float().std(dim=2))
+      return get_hp_fcorr(f1, p1, f2, p2, scaling=scaling)
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
     if self.distributed:

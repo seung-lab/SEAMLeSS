@@ -1,15 +1,32 @@
 import torch
 
 r'''
-Example usage comparing all pairs of adjacent 8x8 slices in a Dx8x8 stack:
-    f,p = get_fft_power2(x)  # x is Dx8x8 block as a torch tensor
-    rho = get_hp_fcorr(f[:-1,:,:,:], p[:-1,:,:], f[1:,:,:,:], p[1:,:,:])  # 1 slice short 
+A mis-alignment indicator metric.
+
+Example usages:
+    Comparing single pair of 8x8 images:
+      f1,p1 = get_fft_power2(torch.tensor(x[0, :8, :8]))  # 8x8 block in slice 0
+      f2,p2 = get_fft_power2(torch.tensor(x[1, :8, :8]))  # 8x8 block in slice 1
+      return get_hp_fcorr(f1, p1, f2, p2)
+    
+    Comparing every pair of adjacent 8x8 slices in a Dx8x8 stack:
+      f,p = get_fft_power2(x)  # x is Dx8x8 block as a torch tensor
+      rho = get_hp_fcorr(f[:-1,:,:,:], p[:-1,:,:], f[1:,:,:,:], p[1:,:,:])  # 1 slice short 
 '''
 
 def get_fft_power2(block):
+    r'''
+    2D FFT on the last two dimensions, and power of FFT components, in one-sided
+     representation and the still redundant components set to 0.
+    *Assuming the last two dimensions are the same.*
+    The returned FFT has one more dimension added at the last dimension for representing
+    the 2 channels of complex numbers. The returned power has same number of dimensions as input.
+    '''
     f = torch.rfft(block, 2, normalized=True, onesided=True) # currently 2-channel tensor rather than "ComplexFloat"
-    # remove redundant components in one-sided DFT (avoid double counting them)
-    onesided = f.shape[-2]   # note the last dim is for complex number
+    # Remove redundant components in one-sided DFT (avoid double counting them)
+    onesided = f.shape[-2]   # get the number of non-redundant components from the "last" dim,
+              # note this is only valid because our "last" two dims are the same,
+    	      # also note the real last dim for array f is for complex number
     f[..., onesided:, 0, :] = 0
     f[..., onesided:, -1, :] = 0
     p = torch.sum(f*f, dim=-1)
@@ -60,19 +77,19 @@ def corr_coef(a, b):
     rho = an.dot(bn) / (an.norm(2) * bn.norm(2))
     return rho
 
-def get_hp_fcorr(f1, p1, f2, p2):
+def get_hp_fcorr(f1, p1, f2, p2, fill_value = 2, scaling = 256):
     r'''
     Correlation coeffecient on high passed and high power frequency components
-    Assuming (Dx)8x8 blocks, voxel value in 0-255
-    Returns 2 when not enough components satisfy the criteria.
+    Assuming (Dx)8x8 blocks. `scaling = 256` is assuming voxel value in 0-255.
+    Returns `fill_value` when/where not enough components satisfy the criteria.
     '''
     blocksize = 8
-    #thres = 256/2*blocksize*0.15  # unnormalized FFT  p_element ~ sqrt(N_elements)
-    p_thres = 256/2*0.15  # normalized FFT
+    #p_thres = (scaling/2*blocksize*0.15)**2  # unnormalized FFT  p_element ~ N_elements
+    p_thres = (scaling/2*0.15)**2  # normalized FFT
     n_thres = 3
-    mpowersqrd = p1*p2
+    mpower = p1*p2
     
-    valid = mpowersqrd > p_thres**4
+    valid = mpower > p_thres**2
     
     # ignore low frequency components
     valid = cut_low_freq(valid, cutoff_1d = 0, cutoff_2d = 1)
@@ -85,8 +102,7 @@ def get_hp_fcorr(f1, p1, f2, p2):
         else:
             rho = 2
     else: # vectorized version: works on stack of many slices
-        rho = masked_corr_coef(f1, f2, valid, n_thres = n_thres, fill_value = 2)
+        rho = masked_corr_coef(f1, f2, valid, n_thres = n_thres, fill_value = fill_value)
         
     return rho
     
-
