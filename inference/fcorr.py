@@ -77,11 +77,11 @@ def corr_coef(a, b):
     rho = an.dot(bn) / (an.norm(2) * bn.norm(2))
     return rho
 
-def get_hp_fcorr(f1, p1, f2, p2):
+def get_hp_fcorr(f1, p1, f2, p2, fill_value = 2):
     r'''
     Correlation coeffecient on high passed and high power frequency components
     Assuming (Dx)8x8 blocks, voxel value in 0-255
-    Returns 2 when not enough components satisfy the criteria.
+    Returns `fill_value` when/where not enough components satisfy the criteria.
     '''
     blocksize = 8
     #p_thres = (256/2*blocksize*0.15)**2  # unnormalized FFT  p_element ~ N_elements
@@ -102,7 +102,7 @@ def get_hp_fcorr(f1, p1, f2, p2):
         else:
             rho = 2
     else: # vectorized version: works on stack of many slices
-        rho = masked_corr_coef(f1, f2, valid, n_thres = n_thres, fill_value = 2)
+        rho = masked_corr_coef(f1, f2, valid, n_thres = n_thres, fill_value = fill_value)
         
     return rho
     
