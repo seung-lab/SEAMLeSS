@@ -1,0 +1,28 @@
+FROM ubuntu:16.04 
+
+ADD . /opt/SEAMLeSS
+WORKDIR /opt/SEAMLeSS
+
+RUN apt-get update \
+  && apt-get upgrade \
+  && apt-get install -y git \
+  # Install SEAMLeSS dependencies
+  && apt-get install -y python3-pip \
+  && apt-get install -y --no-install-recommends \
+      libgtk2.0-dev \
+  && pip3 install --no-cache-dir -r requirements.txt \
+  # Register SEAMLeSS
+  && python3 setup.py develop \
+  # Cleanup apt
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/* 
+  #RUN pip3 install imageio==2.4.1
+  #\
+  # Cleanup temporary python files
+ # && find /opt/conda/lib/python3.6 -depth \
+ #     \( \
+ #       \( -type d -a \( -name __pycache__ \) \) \
+ #       -o \
+ #       \( -type f -a \( -name '*.pyc' -o -name '*.pyo' \) \) \
+ #     \) -exec rm -rf '{}' +
+
