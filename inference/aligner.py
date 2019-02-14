@@ -1521,6 +1521,24 @@ class Aligner:
         batch.append(tasks.ComputeFcorrTask(cv, dst_cv, chunk, mip, z1, z2, prefix))
       return batch
 
+  def get_fcorr1(self, bbox, cv, mip, z1, z2):
+      """ perform fcorr for two images
+
+      """
+      image1 = self.get_image(cv, z1, bbox, mip, to_tensor=True)
+      image2 = self.get_image(cv, z2, bbox, mip, to_tensor=True)
+      fcorr_chunk_size = 8
+      new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
+      new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
+      res = []
+      for i in range(new_image1.shape[0]):
+          f1, p1 = get_fft_power2(new_image1[i])
+          f2, p2 = get_fft_power2(new_image2[i])
+          tmp =  get_hp_fcorr(f1, p1, f2, p2)
+          res.append(tmp)
+      result = torch.stack(res)
+      return result 
+
 
   def get_fcorr(self, bbox, cv, mip, z1, z2):
       """ perform fcorr for two images
