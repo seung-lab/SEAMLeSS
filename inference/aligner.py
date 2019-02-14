@@ -1067,7 +1067,7 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def downsample_chunkwise(self, cv, z, bbox, source_mip, target_mip, wait=True):
+  def downsample_chunkwise(self, cm, cv, z, bbox, source_mip, target_mip, wait=True):
     """Chunkwise downsample
 
     For the CloudVolume dirs at Z_OFFSET, warp the SRC_IMG using the FIELD for
@@ -1077,7 +1077,7 @@ class Aligner:
     print("Downsampling {} from mip {} to mip {}".format(bbox.__str__(mip=0), source_mip, target_mip))
     for m in range(source_mip+1, target_mip+1):
       chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[m],
-                                      cm.dst_voxel_offsets[m], mip=m, render=True)
+                                      cm.dst_voxel_offsets[m], mip=m)
       if self.distributed and len(chunks) > self.task_batch_size * 4:
           batch = []
           print("Distributed downsampling to mip", m, len(chunks)," chunks")
@@ -1092,8 +1092,8 @@ class Aligner:
       else:
           def chunkwise(patch_bbox):
             print ("Local downsampling {} to mip {}".format(patch_bbox.__str__(mip=0), m))
-            downsampled_patch = self.downsample_patch(cv, z, patch_bbox, m-1)
-            self.save_image_patch(cv, z, downsampled_patch, patch_bbox, m)
+            downsampled_patch = self.downsample(cv, z, patch_bbox, m-1)
+            self.save_image(downsampled_patch, cv, z, patch_bbox, m)
           self.pool.map(chunkwise, chunks)
 
   def render_section_all_mips(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip, wait=True):
@@ -1544,13 +1544,16 @@ class Aligner:
       """ perform fcorr for two images
 
       """
-      image1 = self.get_image(cv, z1, bbox, mip, to_tensor=True)
-      image2 = self.get_image(cv, z2, bbox, mip, to_tensor=True)
+      image1 = self.get_data(cv, z1, bbox, src_mip=mip, dst_mip=mip,
+                             to_float=False, to_tensor=True)
+      image2 = self.get_data(cv, z2, bbox, src_mip=mip, dst_mip=mip,
+                             to_float=False, to_tensor=True)
       fcorr_chunk_size = 8
+      #print(image1)
       new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
       new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
-      f1, p1 = get_fft_power2(new_image1)
-      f2, p2 = get_fft_power2(new_image2)
+      f1, p1 = get_fft_power2(new_image1.float())
+      f2, p2 = get_fft_power2(new_image2.float())
       return get_hp_fcorr(f1, p1, f2, p2)
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
