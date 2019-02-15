@@ -1,9 +1,15 @@
 import torch
 
 r'''
-Example usage comparing all pairs of adjacent 8x8 slices in a Dx8x8 stack:
-    f,p = get_fft_power2(x)  # x is Dx8x8 block as a torch tensor
-    rho = get_hp_fcorr(f[:-1,:,:,:], p[:-1,:,:], f[1:,:,:,:], p[1:,:,:])  # 1 slice short 
+Example usages:
+    Comparing single pair of 8x8 images:
+      f1,p1 = get_fft_power2(torch.tensor(x[0, :8, :8]))  # 8x8 block in slice 0
+      f2,p2 = get_fft_power2(torch.tensor(x[1, :8, :8]))  # 8x8 block in slice 1
+      return get_hp_fcorr(f1, p1, f2, p2)
+    
+    Comparing every pair of adjacent 8x8 slices in a Dx8x8 stack:
+      f,p = get_fft_power2(x)  # x is Dx8x8 block as a torch tensor
+      rho = get_hp_fcorr(f[:-1,:,:,:], p[:-1,:,:], f[1:,:,:,:], p[1:,:,:])  # 1 slice short 
 '''
 
 def get_fft_power2(block):

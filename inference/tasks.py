@@ -2,6 +2,7 @@ import boto3
 from time import time
 import json
 import tenacity
+import numpy as np
 from functools import partial
 from mipless_cloudvolume import deserialize_miplessCV as DCV
 from cloudvolume import Storage
@@ -162,9 +163,9 @@ class ComputeFieldTask(RegisteredTask):
 
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
-                     field_mip, mask_cv, mask_mip, mask_val, prefix):
+                     field_mip, mask_cv, mask_mip, mask_val, affine, prefix):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
-                     field_mip, mask_cv, mask_mip, mask_val, prefix)
+                     field_mip, mask_cv, mask_mip, mask_val, affine, prefix)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
@@ -181,20 +182,25 @@ class RenderTask(RegisteredTask):
       mask_cv = DCV(self.mask_cv)
     mask_mip = self.mask_mip
     mask_val = self.mask_val
+    affine = None 
+    if self.affine:
+      affine = np.array(self.affine)
     prefix = self.prefix
     print("\nRendering\n"
-          "src {0}\n"
-          "field {1}\n"
-          "dst {2}\n"
-          "z={3} to z={4}\n"
-          "MIP{5} to MIP{6}\n".format(src_cv, field_cv, dst_cv, 
-                              src_z, dst_z, field_mip, src_mip), flush=True)
+          "src {}\n"
+          "field {}\n"
+          "dst {}\n"
+          "z={} to z={}\n"
+          "MIP{} to MIP{}\n"
+          "Preconditioning affine\n"
+          "{}\n".format(src_cv, field_cv, dst_cv, src_z, dst_z, 
+                        field_mip, src_mip, affine), flush=True)
     start = time()
     if not aligner.dry_run:
       image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z, 
                                      patch_bbox, src_mip, field_mip, 
                                      mask_cv=mask_cv, mask_mip=mask_mip,
-                                     mask_val=mask_val)
+                                     mask_val=mask_val, affine=affine)
       image = image.cpu().numpy()
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
       with Storage(dst_cv.path) as stor:
@@ -206,10 +212,8 @@ class RenderTask(RegisteredTask):
       print('RenderTask: {:.3f} s'.format(diff))
 
 class VectorVoteTask(RegisteredTask):
-  def __init__(self, pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, 
-                     softmin_temp, serial, prefix):
-    super().__init__(pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse,
-                     softmin_temp, serial, prefix)
+  def __init__(self, pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial, prefix):
+    super().__init__(pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial, prefix)
 
   def execute(self, aligner):
     pairwise_cvs = {int(k): DCV(v) for k,v in self.pairwise_cvs.items()}
@@ -218,7 +222,6 @@ class VectorVoteTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
     inverse = bool(self.inverse)
-    softmin_temp = self.softmin_temp
     serial = bool(self.serial)
     prefix = self.prefix
     print("\nVector vote\n"
@@ -227,15 +230,12 @@ class VectorVoteTask(RegisteredTask):
           "z={}\n"
           "MIP{}\n"
           "inverse={}\n"
-          "softmin_temp={}\n"
           "serial={}\n".format(pairwise_cvs.keys(), vvote_cv, z, 
-                              mip, inverse, softmin_temp, serial),
-                              flush=True)
+                              mip, inverse, serial), flush=True)
     start = time()
     if not aligner.dry_run:
       field = aligner.vector_vote_chunk(pairwise_cvs, vvote_cv, z, patch_bbox, mip, 
-                       inverse=inverse, softmin_temp=softmin_temp, 
-                       serial=serial)
+                       inverse=inverse, serial=serial)
       field = field.data.cpu().numpy()
       aligner.save_field(field, vvote_cv, z, patch_bbox, mip, relative=False)
       with Storage(vvote_cv.path) as stor:
