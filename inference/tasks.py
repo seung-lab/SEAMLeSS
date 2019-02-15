@@ -162,10 +162,10 @@ class ComputeFieldTask(RegisteredTask):
       print('ComputeFieldTask: {:.3f} s'.format(diff))
 
 class RenderTask(RegisteredTask):
-  def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
-                     field_mip, mask_cv, mask_mip, mask_val, affine, prefix):
+  def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
+               field_mip, mask_cv, mask_mip, mask_val, affine, prefix, use_cpu=False):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
-                     field_mip, mask_cv, mask_mip, mask_val, affine, prefix)
+                     field_mip, mask_cv, mask_mip, mask_val, affine, prefix, use_cpu)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
@@ -197,10 +197,11 @@ class RenderTask(RegisteredTask):
                         field_mip, src_mip, affine), flush=True)
     start = time()
     if not aligner.dry_run:
-      image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z, 
-                                     patch_bbox, src_mip, field_mip, 
+      image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
+                                     patch_bbox, src_mip, field_mip,
                                      mask_cv=mask_cv, mask_mip=mask_mip,
-                                     mask_val=mask_val, affine=affine)
+                                     mask_val=mask_val, affine=affine,
+                                     use_cpu=self.use_cpu)
       image = image.cpu().numpy()
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
       with Storage(dst_cv.path) as stor:
@@ -531,4 +532,33 @@ class UpsampleRenderRechunkTask(RegisteredTask):
       aligner.save_image_patch_batch(dst_cv, (z_range[0], z_range[-1]+1), warped_patch, 
                                   patch_bbox, image_mip)
     aligner.pool.map(chunkwise, patches)
+
+class ComputeFcorrTask(RegisteredTask):
+  def __init__(self, cv, dst_cv, patch_bbox, mip, z1, z2, prefix):
+    super(). __init__(cv, dst_cv, patch_bbox, mip, z1, z2, prefix)
+
+  def execute(self, aligner):
+    cv = DCV(self.cv)
+    dst_cv = DCV(self.dst_cv)
+    z1 = self.z1
+    z2 = self.z2
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    mip = self.mip
+    print("\nFcorring\n"
+          "cv {}\n"
+          "z={} to z={}\n"
+          "at MIP{}\n"
+          "\n".format(cv, z1, z2, mip), flush=True)
+    start = time()
+    image = aligner.get_fcorr(patch_bbox, cv, mip, z1, z2)
+    image = image.permute(2,3,0,1)
+    image = image.cpu().numpy()
+    aligner.save_image(image, dst_cv, z2, patch_bbox, mip+3, to_uint8=False)
+    with Storage(dst_cv.path) as stor:
+      path = 'Fcorr_done/{}/{}'.format(self.prefix, patch_bbox.stringify(z2))
+      stor.put_file(path, '')
+      print('Marked finished at {}'.format(path))
+    end = time()
+    diff = end - start
+    print('FcorrTask: {:.3f} s'.format(diff))
 

@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import warnings
 import math
@@ -10,22 +11,22 @@ import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import pow, mul, reciprocal
+from torch import matmul, pow, mul, reciprocal
 from torch.nn.functional import interpolate
 from torch.nn import AvgPool2d, LPPool2d
-from torch import matmul, pow
 from torch.nn.functional import softmax
 from itertools import combinations
 from skimage.transform import rescale
 from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum 
 from functools import reduce
+from copy import deepcopy
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: 402
 plt.switch_backend('agg')
 import matplotlib.cm as cm  # noqa: 402
-from copy import deepcopy
+
 
 def compose_functions(fseq):
     def compose(f1, f2):
@@ -96,28 +97,31 @@ def get_colors(angles, f, c):
     colors = c(colors)
     return colors
 
+
 def dv(vfield, name=None, downsample=0.5):
     dim = vfield.shape[-2]
     assert type(vfield) == np.ndarray
 
-    lengths = np.squeeze(np.sqrt(vfield[:,:,:,0] ** 2 + vfield[:,:,:,1] ** 2))
+    lengths = np.squeeze(np.sqrt(vfield[:, :, :, 0] ** 2
+                                 + vfield[:, :, :, 1] ** 2))
     lengths = (lengths - np.min(lengths)) / (np.max(lengths) - np.min(lengths))
-    angles = np.squeeze(np.angle(vfield[:,:,:,0] + vfield[:,:,:,1]*1j))
+    angles = np.squeeze(np.angle(vfield[:, :, :, 0] + vfield[:, :, :, 1]*1j))
 
-    angles = (angles - np.min(angles)) / (np.max(angles) - np.min(angles)) * np.pi
+    angles = ((angles - np.min(angles))
+              / (np.max(angles) - np.min(angles)) * np.pi)
     angles -= np.pi/8
-    angles[angles<0] += np.pi
+    angles[angles < 0] += np.pi
     off_angles = angles + np.pi/4
-    off_angles[off_angles>np.pi] -= np.pi
+    off_angles[off_angles > np.pi] -= np.pi
 
     scolors = get_colors(angles, f=lambda x: np.sin(x) ** 1.4, c=cm.viridis)
     ccolors = get_colors(off_angles, f=lambda x: np.sin(x) ** 1.4, c=cm.magma)
 
     # mix
-    scolors[:,:,0] = ccolors[:,:,0]
-    scolors[:,:,1] = (ccolors[:,:,1] + scolors[:,:,1]) / 2
-    scolors = scolors[:,:,:-1] #
-    scolors = 1 - (1 - scolors) * lengths.reshape((dim, dim, 1)) ** .8 #
+    scolors[:, :, 0] = ccolors[:, :, 0]
+    scolors[:, :, 1] = (ccolors[:, :, 1] + scolors[:, :, 1]) / 2
+    scolors = scolors[:, :, :-1]
+    scolors = 1 - (1 - scolors) * lengths.reshape((dim, dim, 1)) ** .8
 
     img = np_upsample(scolors, downsample) if downsample is not None else scolors
 
@@ -126,6 +130,7 @@ def dv(vfield, name=None, downsample=0.5):
     else:
         return img
 
+
 def np_upsample(img, factor):
     if factor == 1:
         return img
@@ -133,27 +138,31 @@ def np_upsample(img, factor):
     if img.ndim == 2:
         return rescale(img, factor)
     elif img.ndim == 3:
-        b = np.empty((int(img.shape[0] * factor), int(img.shape[1] * factor), img.shape[2]))
+        b = np.empty((int(img.shape[0] * factor),
+                      int(img.shape[1] * factor), img.shape[2]))
         for idx in range(img.shape[2]):
-            b[:,:,idx] = np_upsample(img[:,:,idx], factor)
+            b[:, :, idx] = np_upsample(img[:, :, idx], factor)
         return b
     else:
         assert False
+
 
 def np_downsample(img, factor):
     data_4d = np.expand_dims(img, axis=1)
     result = nn.AvgPool2d(factor)(torch.from_numpy(data_4d))
     return result.numpy()[:, 0, :, :]
 
+
 def center_field(field):
     wrap = type(field) == np.ndarray
     if wrap:
         field = [field]
     for idx, vfield in enumerate(field):
-        vfield[:,:,:,0] = vfield[:,:,:,0] - np.mean(vfield[:,:,:,0])
-        vfield[:,:,:,1] = vfield[:,:,:,1] - np.mean(vfield[:,:,:,1])
+        vfield[:, :, :, 0] = vfield[:, :, :, 0] - np.mean(vfield[:, :, :, 0])
+        vfield[:, :, :, 1] = vfield[:, :, :, 1] - np.mean(vfield[:, :, :, 1])
         field[idx] = vfield
     return field[0] if wrap else field
+
 
 def display_v(vfield, name=None, center=False):
     if center:
@@ -161,7 +170,8 @@ def display_v(vfield, name=None, center=False):
 
     if type(vfield) == list:
         dim = max([vf.shape[-2] for vf in vfield])
-        vlist = [np.expand_dims(np_upsample(vf[0], dim/vf.shape[-2]), axis=0) for vf in vfield]
+        vlist = [np.expand_dims(np_upsample(vf[0], dim/vf.shape[-2]), axis=0)
+                 for vf in vfield]
         for idx, _ in enumerate(vlist[1:]):
             vlist[idx+1] += vlist[idx]
         imgs = [dv(vf) for vf in vlist]
@@ -169,6 +179,7 @@ def display_v(vfield, name=None, center=False):
     else:
         assert (name is not None)
         dv(vfield, name)
+
 
 def dvl(V_pred, name, mag=100):
     factor = V_pred.shape[1] // 100
@@ -179,18 +190,21 @@ def dvl(V_pred, name, mag=100):
     V_pred = V_pred * mag
     if isinstance(V_pred, torch.Tensor):
         V_pred = V_pred.cpu().numpy()
-    plt.figure(figsize=(6,6))
-    X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]), np.arange(-1, 1, 2.0/V_pred.shape[-2]))
-    U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred,0,-1),2))
-    colors = np.arctan2(U,V)   # true angle
+    plt.figure(figsize=(6, 6))
+    X, Y = np.meshgrid(np.arange(-1, 1, 2.0/V_pred.shape[-2]),
+                       np.arange(-1, 1, 2.0/V_pred.shape[-2]))
+    U, V = np.squeeze(np.vsplit(np.swapaxes(V_pred, 0, -1), 2))
+    colors = np.arctan2(U, V)  # true angle
     plt.title(Path(name).stem)
     plt.gca().invert_yaxis()
-    Q = plt.quiver(X, Y, U, V, colors, scale=6, width=0.002, angles='uv', pivot='tail')
+    Q = plt.quiver(X, Y, U, V, colors, scale=6, width=0.002,
+                   angles='uv', pivot='tail')
     qk = plt.quiverkey(Q, 10.0, 10.0, 2, r'$2 \frac{m}{s}$', labelpos='E', \
                        coordinates='figure')
 
     plt.savefig(name + '.png')
     plt.clf()
+
 
 def reverse_dim(var, dim):
     if var is None:
@@ -201,9 +215,11 @@ def reverse_dim(var, dim):
         idx = idx.cuda()
     return var.index_select(dim, idx)
 
+
 def reduce_seq(seq, f):
     size = min([x.size()[-1] for x in seq])
-    return f([center(var, (-2,-1), var.size()[-1] - size) for var in seq], 1)
+    return f([center(var, (-2, -1), var.size()[-1] - size) for var in seq], 1)
+
 
 def center(var, dims, d):
     if not isinstance(d, collections.Sequence):
@@ -214,19 +230,22 @@ def center(var, dims, d):
         var = var.narrow(dim, d[idx]/2, var.size()[dim] - d[idx])
     return var
 
+
 def crop(data_2d, crop):
-    return data_2d[crop:-crop,crop:-crop]
+    return data_2d[crop:-crop, crop:-crop]
+
 
 def save_chunk(chunk, name, norm=True):
     if type(chunk) != np.ndarray:
         chunk = chunk.cpu().numpy()
     chunk = np.squeeze(chunk).astype(np.float64)
     if norm:
-        chunk[:50,:50] = 0
-        chunk[:10,:10] = 1
-        chunk[-50:,-50:] = 1
-        chunk[-10:,-10:] = 0
+        chunk[:50, :50] = 0
+        chunk[:10, :10] = 1
+        chunk[-50:, -50:] = 1
+        chunk[-10:, -10:] = 0
     plt.imsave(name + '.png', 1 - chunk, cmap='Greys')
+
 
 def gif(filename, array, fps=2, scale=1.0, norm=False):
     """Creates a gif given a stack of images using moviepy
@@ -257,10 +276,10 @@ def gif(filename, array, fps=2, scale=1.0, norm=False):
 
     # add 'signature' block to top left and bottom right
     if norm and array.shape[1] > 1000:
-        array[:,:50,:50] = 0
-        array[:,:10,:10] = 255
-        array[:,-50:,-50:] = 255
-        array[:,-10:,-10:] = 0
+        array[:, :50, :50] = 0
+        array[:, :10, :10] = 255
+        array[:, -50:, -50:] = 255
+        array[:, -10:, -10:] = 0
 
     # make the moviepy clip
     clip = ImageSequenceClip(list(array), fps=fps).resize(scale)
@@ -287,62 +306,149 @@ def upsample(x=1):
         return (lambda y: y)
 
 
-def gridsample(source, field, padding_mode):
-    """
-    A version of the PyTorch grid sampler that uses size-agnostic conventions.
-    Vectors with values -1 or +1 point to the actual edges of the images
-    (as opposed to the centers of the border pixels as in PyTorch 4.1).
-
-    `source` and `field` should be PyTorch tensors on the same GPU, with
-    `source` arranged as a PyTorch image, and `field` as a PyTorch vector field.
-
-    `padding_mode` is required because it is a significant consideration.
-    It determines the value sampled when a vector is outside the range [-1,1]
-    Options are:
-     - "zero" : produce the value zero (okay for sampling images with zero as
-                background, but potentially problematic for sampling masks and
-                terrible for sampling from other vector fields)
-     - "border" : produces the value at the nearest inbounds pixel (great for
-                  masks and residual fields)
-
-    If sampling a field (ie. `source` is a vector field), best practice is to
-    subtract out the identity field from `source` first (if present) to get a
-    residual field.
-    Then sample it with `padding_mode = "border"`.
-    This should behave as if source was extended as a uniform vector field
-    beyond each of its boundaries.
-    Note that to sample from a field, the source field must be rearranged to
-    fit the conventions for image dimensions in PyTorch. This can be done by
-    calling `source.permute(0,3,1,2)` before passing to `gridsample()` and
-    `result.permute(0,2,3,1)` to restore the result.
-    """
-    if source.shape[2] != source.shape[3]:
-        raise NotImplementedError('Grid sampling from non-square tensors '
-                                  'not yet implementd here.')
-    scaled_field = field * source.shape[2] / (source.shape[2] - 1)
-    return F.grid_sample(source, scaled_field, mode="bilinear", padding_mode=padding_mode)
-
 def gridsample_residual(source, residual, padding_mode):
     """
-    Similar to `gridsample()`, but takes a residual field.
-    This abstracts away generation of the appropriate identity grid.
+    DEPRECATED: This function has been renamed and is deprecated in favor of
+    `grid_sample()`
+
+    A version of the PyTorch grid sampler that uses size-agnostic residual
+    conventions.
+
+    The vector field encodes relative displacements from which to pull from the
+    image, where vectors with values -1 or +1 reference a displacement equal
+    to the distance from the center point to the actual edges of the images
+    (as opposed to the centers of the border pixels as in PyTorch 1.0).
+
+    Args:
+        `input` and `field` (Tensors): should be PyTorch tensors on the same
+            GPU or CPU, with `input` arranged as a PyTorch image
+            :math:`(N, C, H_in, W_in)`, and `field` as a PyTorch vector field
+            :math:`(N, H_out, W_out, 2)`.
+            The shape of the output image will be `(N, C, H_out, W_out)`
+        `padding_mode` (str): required because it is a significant
+            consideration. It determines the value sampled when a vector's
+            source falls outside of the input.
+            Options are:
+             - "zero" : produce the value zero (okay for sampling images with
+                        zero as background, but potentially problematic for
+                        sampling masks and terrible for sampling from other
+                        vector fields)
+             - "border" : produces the value at the nearest inbounds pixel
+                          (great for masks and residual fields)
+
+    Returns:
+        `output` (Tensor): the input after being warped by `field`,
+        having shape :math:`(N, C, H_out, W_out)`
+
+    Note:
+        If sampling a field (ie. `input` is itself a vector field), the input
+        field must be rearranged to fit the conventions for image dimensions
+        in PyTorch. This can be done by calling `input.permute(0,3,1,2)`
+        before passing to `gridsample()` and `result.permute(0,2,3,1)` to
+        restore the result.
     """
-    field = residual + identity_grid(residual.shape, device=residual.device)
-    return gridsample(source, field, padding_mode)
+    print('gridsample_residual() has been renamed and is deprecated in favor '
+          'of grid_sample()', file=sys.stderr)
+    return grid_sample(source, residual, padding_mode)
+
+
+def grid_sample(input, field, padding_mode, mode='bilinear'):
+    """A version of the PyTorch grid sampler that uses size-agnostic residual
+    conventions.
+
+    The vector field encodes relative displacements from which to pull from the
+    input, where vectors with values -1 or +1 reference a displacement equal
+    to the distance from the center point to the actual edges of the input
+    (as opposed to the centers of the border pixels as in PyTorch 1.0).
+
+    Args:
+        `input` and `field` (Tensors): should be PyTorch tensors on the same
+            GPU or CPU, with `input` arranged as a PyTorch image
+            :math:`(N, C, H_in, W_in)`, and `field` as a PyTorch vector field
+            :math:`(N, H_out, W_out, 2)`.
+            The shape of the output will be :math:`(N, C, H_out, W_out)`.
+        `padding_mode` (str): required because it is a significant
+            consideration. It determines the value sampled when a vector's
+            source falls outside of the input.
+            Options are:
+             - "zero" : produce the value zero (okay for sampling images with
+                        zero as background, but potentially problematic for
+                        sampling masks and terrible for sampling from other
+                        vector fields)
+             - "border" : produces the value at the nearest inbounds pixel
+                          (great for masks and residual fields)
+
+    Returns:
+        `output` (Tensor): the input after being warped by `field`,
+        having shape :math:`(N, C, H_out, W_out)`
+
+    Note:
+        If sampling a field (ie. `input` is itself a vector field), the input
+        field must be rearranged to fit the conventions for image dimensions
+        in PyTorch. This can be done by calling `input.permute(0,3,1,2)`
+        before passing to `gridsample()` and `result.permute(0,2,3,1)` to
+        restore the result.
+        This is simplified by calling `grid_sample_field()`
+    """
+    field = field + identity_grid(field.shape, device=field.device)
+    if input.shape[2] != input.shape[3]:
+        raise NotImplementedError('Grid sampling from non-square tensors '
+                                  'not yet implementd here.')
+    scaled_field = field * input.shape[2] / (input.shape[2] - 1)
+    return F.grid_sample(input, scaled_field, mode=mode,
+                         padding_mode=padding_mode)
+
+
+def grid_sample_field(input_field, warp_field, padding_mode='border',
+                      mode='bilinear'):
+    """A version of the PyTorch grid sampler that uses size-agnostic residual
+    conventions, and samples from another vector field.
+
+    The vector field encodes relative displacements from which to pull from the
+    input, where vectors with values -1 or +1 reference a displacement equal
+    to the distance from the center point to the actual edges of the input
+    (as opposed to the centers of the border pixels as in PyTorch 1.0).
+
+    Args:
+        `input_field` and `warp_field` (Tensors): should be PyTorch tensors on
+            the same GPU or CPU, arranged as PyTorch vector fields with shapes
+            :math:`(N, H_in, W_in, 2)` and :math:`(N, H_out, W_out, 2)`
+            respectively.
+            The shape of the output will be :math:`(N, H_out, W_out, 2)`.
+
+    Returns:
+        `output` (Tensor): the input field after being warped by the warp
+        field, having shape :math:`(N, H_out, W_out, 2)`
+
+    Note:
+        If sampling a warp_field (ie. `input_field` is itself a vector field), the input
+        field must be rearranged to fit the conventions for image dimensions
+        in PyTorch. This can be done by calling `input.permute(0,3,1,2)`
+        before passing to `gridsample()` and `result.permute(0,2,3,1)` to
+        restore the result.
+    """
+    input = input_field.permute(0, 3, 1, 2)
+    output = grid_sample(input, warp_field, padding_mode=padding_mode,
+                         mode=mode)
+    return output.permute(0, 2, 3, 1)
+
+
+def compose_fields(f, g):
+    r"""Compose two vector fields `f⚬g` such that `(f⚬g)(x) ~= f(g(x))`
+
+    Returns:
+        a vector field such that when it is used to grid sample,
+        it is the (approximate) equivalent of sampling with `g`
+        and then with `f`.
+
+    The reason this is only an approximate equivalence is because when sampling
+    twice, information is inevitably lost in the intermediate stage.
+    Sampling with the composed field is therefore more precise.
+    """
+    return f + grid_sample_field(g, f)
 
 
 @torch.no_grad()
-def _create_identity_grid(size, device):
-    if 'cpu' in str(device):  # identity affine transform
-        id_theta = torch.FloatTensor([[[1, 0, 0],
-                                       [0, 1, 0]]])
-    else:
-        id_theta = torch.cuda.FloatTensor([[[1, 0, 0],
-                                            [0, 1, 0]]], device=device)
-    I = F.affine_grid(id_theta, torch.Size((1, 1, size, size)))
-    I *= (size - 1) / size # rescale the identity provided by PyTorch
-    return I
-
 def identity_grid(size, cache=False, device=None):
     """
     Returns a size-agnostic identity field with -1 and +1 pointing to the
@@ -356,69 +462,94 @@ def identity_grid(size, cache=False, device=None):
     `(N, C, H, W)`. `H` and `W` must be the same (a square tensor).
     `N` and `C` are ignored.
     """
-    if isinstance(size,torch.Size):
-        if (size[2] == size[3] # image
-            or (size[3] == 2 and size[1] == size[2])): # field
+    def _create_identity_grid(size, device):
+        if 'cpu' in str(device):  # identity affine transform
+            id_theta = torch.FloatTensor([[[1, 0, 0],
+                                           [0, 1, 0]]])
+        else:
+            id_theta = torch.cuda.FloatTensor([[[1, 0, 0],
+                                                [0, 1, 0]]], device=device)
+        Id = F.affine_grid(id_theta, torch.Size((1, 1, size, size)))
+        Id *= (size - 1) / size  # rescale the identity provided by PyTorch
+        return Id
+
+    if isinstance(size, torch.Size):
+        batch_dim = size[0]
+        if (size[2] == size[3]  # image
+                or (size[3] == 2 and size[1] == size[2])):  # field
             size = size[2]
         else:
-            raise ValueError("Bad size: {}. Expected a square tensor size.".format(size))
+            raise ValueError("Bad size: {}. Expected a square tensor size."
+                             .format(size))
+    else:
+        batch_dim = 1
     if device is None:
         device = torch.cuda.current_device()
     if size in identity_grid._identities:
-        return identity_grid._identities[size].to(device)
-    I = _create_identity_grid(size, device)
-    if cache:
-        identity_grid._identities[size] = I
-    return I.to(device)
+        Id = identity_grid._identities[size].copy()
+    else:
+        Id = _create_identity_grid(size, device)
+        if cache:
+            identity_grid._identities[size] = Id.copy()
+    if batch_dim > 1:
+        Id = torch.cat([Id] * batch_dim)
+    return Id.to(device)
 identity_grid._identities = {}
 
+
+def upsample_field(field, src_mip, dst_mip):
+    """Upsample vector field from src_mip to dst_mip
+    """
+    field = field.permute(0, 3, 1, 2)
+    upsampled_field = upsample(src_mip-dst_mip)(field)
+    return upsampled_field.permute(0, 2, 3, 1)
+
+
+def is_identity(field, eps=0.):
+    """Check if field is the identity, up to some error `eps` (0 by default)
+    """
+    return torch.min(field) >= -eps and torch.max(field) <= eps
+
+
 def get_affine_field(aff, offset, size, device):
-  """Create a residual field for an affine transform within bbox
+    """Create a residual field for an affine transform within bbox
 
-  Args:
-    aff: 2x3 ndarray defining affine transform at MIP0
-    offset: iterable with MIP0 offset
-    size: either an `int` or a `torch.Size` of the form
-     `(N, C, H, W)`. `H` and `W` must be the same (a square tensor).
-     `N` and `C` are ignored.
+    Args:
+        aff: 2x3 ndarray defining affine transform at MIP0
+        offset: iterable with MIP0 offset
+        size: either an `int` or a `torch.Size` of the form
+            `(N, C, H, W)`. `H` and `W` must be the same (a square tensor).
+            `N` and `C` are ignored.
 
-  Returns:
-    field torch tensor for affine field within bbox as MIP0 absolute residuals
-     
-    Note: the affine matrix defines the transformation that warps to destination
-     to the source, such that,
-     ```
-     \vec{x_s} = A \vec{x_d}
-     ```
-     where x_s is a point in the source image, x_d a point in the destination image,
-     and A is the affine matrix. The field returned will be defined over the 
-     destination image. So the matrix A should define the location in the source
-     image that contribute to a pixel in the destination image.
-  """
-  A = torch.cuda.FloatTensor(np.concatenate([aff, [[0,0,1]]], axis=0), device=device) 
-  B = torch.cuda.FloatTensor([[1., 0, offset[0]],
-                              [0, 1., offset[1]],
-                              [0, 0, 1]], device=device) 
-  Bi = torch.cuda.FloatTensor([[1., 0, -offset[0]],
-                              [0, 1., -offset[1]],
-                              [0, 0, 1]], device=device) 
-  theta = torch.mm(Bi, torch.mm(A, B))[:2].unsqueeze(0)
-  print('get_affine_field \n{}'.format(theta.cpu().numpy()))
-  M = F.affine_grid(theta, torch.Size((1,1,size,size)))
-  M *= (size - 1) / size # rescale the grid provided by PyTorch
-  return M - identity_grid(M.shape, device=M.device)
+    Returns:
+        field torch tensor for affine field within bbox as MIP0 absolute
+        residuals
 
-class dotdict(dict):
-    """Allow accessing dict elements with dot notation"""
-    __getattr__ = dict.get
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for k, v in self.items():
-            if isinstance(v, dict):
-                self[k] = dotdict(v)
+    Note:
+        the affine matrix defines the transformation that warps to destination
+        to the source, such that,
+        ```
+        \vec{x_s} = A \vec{x_d}
+        ```
+        where x_s is a point in the source image, x_d a point in the
+        destination image, and A is the affine matrix. The field returned
+        will be defined over the destination image. So the matrix A should
+        define the location in the source image that contribute to a pixel
+        in the destination image.
+    """
+    A = torch.cuda.FloatTensor(np.concatenate([aff, [[0, 0, 1]]], axis=0),
+                               device=device)
+    B = torch.cuda.FloatTensor([[1., 0, offset[0]],
+                                [0, 1., offset[1]],
+                                [0, 0, 1]], device=device)
+    Bi = torch.cuda.FloatTensor([[1., 0, -offset[0]],
+                                 [0, 1., -offset[1]],
+                                 [0, 0, 1]], device=device)
+    theta = torch.mm(Bi, torch.mm(A, B))[:2].unsqueeze(0)
+    print('get_affine_field \n{}'.format(theta.cpu().numpy()))
+    M = F.affine_grid(theta, torch.Size((1, 1, size, size)))
+    M *= (size - 1) / size  # rescale the grid provided by PyTorch
+    return M - identity_grid(M.shape, device=M.device)
 
 
 class dotdict(dict):
@@ -569,22 +700,7 @@ def retry_enumerate(iterable, start=0, max_time=3600):
 
 def dilate_mask(mask, radius=5):
   return skmaximum(np.squeeze(mask).astype(np.uint8), skdisk(radius)).reshape(mask.shape).astype(np.bool)
-    
-def compose_fields(f, g):
-  """Compose two fields f & g, for f(g(x))
-  """    
-  g = g.permute(0,3,1,2)
-  return f + gridsample_residual(g, f, padding_mode='border').permute(0,2,3,1)
 
-def upsample_field(f, src_mip, dst_mip):
-  """Upsample vector field from src_mip to dst_mip
-  """
-  return upsample(src_mip-dst_mip)(f.permute(0,3,1,2)).permute(0,2,3,1)
-
-def is_identity(field):    
-  """Check if field is the identity
-  """
-  return torch.min(field) == 0 and torch.max(field) == 0
 
 def is_blank(image):    
   """Check if image is blank (assumes ndarray or torch tensor only)

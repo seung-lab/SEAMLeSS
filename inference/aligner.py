@@ -24,7 +24,7 @@ import torch.nn as nn
 
 from normalizer import Normalizer
 from temporal_regularization import create_field_bump
-from utilities.helpers import save_chunk, crop, upsample, gridsample_residual, \
+from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               np_downsample, invert, compose_fields, upsample_field, \
                               is_identity, cpc, vector_vote, get_affine_field, is_blank
 from boundingbox import BoundingBox, deserialize_bbox
@@ -39,6 +39,7 @@ from taskqueue import TaskQueue
 import tasks
 import tenacity
 import boto3
+from fcorr import get_fft_power2, get_hp_fcorr
 
 retry = tenacity.retry(
   reraise=True, 
@@ -541,6 +542,36 @@ class Aligner:
 
     return field
 
+  def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
+                    chunk_size, prefix=''):
+    start = time()
+    chunks = self.break_into_chunks(bbox, chunk_size,
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.num_scales)
+    print("\nfold detect\n"
+          "model {}\n"
+          "src {}\n"
+          "dst {}\n"
+          "z={} \n"
+          "MIP{}\n"
+          "{} chunks\n".format(model_path, src_cv, dst_cv, z,
+                               mip, len(chunks)), flush=True)
+    if prefix == '':
+      prefix = '{}'.format(mip)
+    batch = []
+    for patch_bbox in chunks:
+      batch.append(tasks.PredictImgTask(model_path, src_cv, dst_cv, z, mip,
+                                        patch_bbox, prefix))
+    return batch
+
+  def predict_image_chunk(self, model_path, src_cv, z, mip, bbox):
+    archive = self.get_model_archive(model_path, readonly=2)
+    model = archive.model
+    image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
+    new_image = model(image)
+    return new_image
+
+
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
                         inverse=False, serial=True):
     """Compute consensus vector field using pairwise vector fields with earlier sections. 
@@ -614,10 +645,10 @@ class Aligner:
     invf = invf.data.cpu().numpy() 
     self.save_field(dst_cv, z, invf, bbox, mip, relative=True, as_int16=as_int16) 
 
-  def cloudsample_image(self, image_cv, field_cv, image_z, field_z, 
-                              bbox, image_mip, field_mip, 
-                              mask_cv=None, mask_mip=0, mask_val=0,
-                              affine=None):
+  def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
+                        bbox, image_mip, field_mip, mask_cv=None,
+                        mask_mip=0, mask_val=0, affine=None,
+                        use_cpu=False):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:
@@ -634,6 +665,8 @@ class Aligner:
       Returns:
         warped image with shape of bbox at MIP image_mip
       """
+      if use_cpu:
+          self.device = 'cpu'
       assert(field_mip >= image_mip)
       pad = 256
       padded_bbox = deepcopy(bbox)
@@ -673,7 +706,7 @@ class Aligner:
                                 mask_cv=mask_cv, mask_mip=mask_mip,
                                 mask_val=mask_val,
                                 to_tensor=True, normalizer=None)
-        image = gridsample_residual(image, field, padding_mode='zeros')
+        image = grid_sample(image, field, padding_mode='zeros')
         image = image[:,:,pad:-pad,pad:-pad]
         return image
 
@@ -868,7 +901,7 @@ class Aligner:
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
                    bbox, src_mip, field_mip, mask_cv=None, mask_mip=0, 
-                   mask_val=0, affine=None, prefix=''):
+                   mask_val=0, affine=None, prefix='', use_cpu=False):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -901,7 +934,7 @@ class Aligner:
     for chunk in chunks:
       batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z, 
                        field_z, dst_z, chunk, src_mip, field_mip, mask_cv, 
-                       mask_mip, mask_val, affine, prefix))
+                       mask_mip, mask_val, affine, prefix, use_cpu))
     return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip, 
@@ -1151,24 +1184,24 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
 
-  def res_and_compose(self, z, forward_match, reverse_match, bbox, mip, write_F_cv):
-      tgt_range = []
+  def res_and_compose(self, model_path, src_cv, tgt_cv, z, tgt_range, bbox,
+                      mip, write_F_cv, pad, softmin_temp, prefix=""):
       T = 2**mip
-      if forward_match:
-        tgt_range.extend(range(self.tgt_range[-1], 0, -1)) 
-      if reverse_match:
-        tgt_range.extend(range(self.tgt_range[0], 0, 1)) 
       fields = []
       for z_offset in tgt_range:
-          if z_offset != 0:
-            src_z = z
-            tgt_z = src_z - z_offset
-            #print("------------------zoffset is", z_offset)
-            f = self.get_residual(src_z, tgt_z, bbox, mip)
-            fields.append(f) 
-      field = vector_vote(fields, T=T)
-      field = field.data.cpu().numpy() 
-      self.save_field(write_F_cv, z, field, bbox, mip, relative=False, as_int16=as_int16)
+          src_z = z
+          tgt_z = src_z - z_offset
+          print("calc res for src {} and tgt {}".format(src_z, tgt_z))
+          f = self.compute_field_chunk(model_path, src_cv, tgt_cv, src_z,
+                                       tgt_z, bbox, mip, pad)
+          #print("--------f shape is ---", f.shape)
+          fields.append(f)
+          #fields.append(f)
+      fields = [torch.from_numpy(i).to(device=self.device) for i in fields]
+      #print("device is ", fields[0].device)
+      field = vector_vote(fields, softmin_temp=softmin_temp)
+      field = field.data.cpu().numpy()
+      self.save_field(field, write_F_cv, z, bbox, mip, relative=False)
 
   def downsample_range(self, cv, z_range, bbox, source_mip, target_mip):
     """Downsample a range of sections, downsampling a given MIP across all sections
@@ -1252,6 +1285,23 @@ class Aligner:
       end = time()
       print (": {} sec".format(end - start))
 
+  def compute_field_and_vector_vote(self, cm, model_path, src_cv, tgt_cv, vvote_field,
+                          tgt_range, z, bbox, mip, pad, softmin_temp, prefix):
+    """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in
+    TGT_RADIUS and perform vetor voting
+    """
+
+    m = mip
+    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[m],
+                                    cm.vec_voxel_offsets[m], mip=m,
+                                    max_mip=cm.num_scales)
+    batch = []
+    for patch_bbox in chunks:
+        batch.append(tasks.ResAndComposeTask(model_path, src_cv, tgt_cv, z,
+                                            tgt_range, patch_bbox, mip,
+                                            vvote_field, pad, softmin_temp,
+                                            prefix))
+    return batch
 
   def generate_pairwise(self, z_range, bbox, forward_match, reverse_match, 
                               render_match=False, batch_size=1, wait=True):
@@ -1458,6 +1508,37 @@ class Aligner:
         self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
+
+  def rechunck_image(self, chunk_size, image):
+      I = image.split(chunk_size, dim=2)
+      I = torch.cat(I, dim=0)
+      I = I.split(chunk_size, dim=3)
+      return torch.cat(I, dim=1)
+
+  def calculate_fcorr(self, cm, bbox, mip, z1, z2, cv, dst_cv, prefix=''):
+      chunks = self.break_into_chunks(bbox, self.chunk_size,
+                                      cm.dst_voxel_offsets[mip], mip=mip,
+                                      max_mip=cm.max_mip)
+      if prefix == '':
+        prefix = '{}'.format(mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, chunk, mip, z1, z2, prefix))
+      return batch
+
+
+  def get_fcorr(self, bbox, cv, mip, z1, z2):
+      """ perform fcorr for two images
+
+      """
+      image1 = self.get_image(cv, z1, bbox, mip, to_tensor=True)
+      image2 = self.get_image(cv, z2, bbox, mip, to_tensor=True)
+      fcorr_chunk_size = 8
+      new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
+      new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
+      f1, p1 = get_fft_power2(new_image1)
+      f2, p2 = get_fft_power2(new_image2)
+      return get_hp_fcorr(f1, p1, f2, p2)
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
     if self.distributed:
