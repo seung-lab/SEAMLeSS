@@ -1226,3 +1226,38 @@ At epoch 804, iteration None:
 Time: 2019-02-15 14:51:29.008270
 Commit: cc9606a403d55ce9454148e76c43e33582cbac58
 ./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e_v03
+
+At epoch 804, iteration 1581:
+Time: 2019-02-15 17:08:42.391760
+Commit: 538fd8b66fd804a45518c1f6ce9ae9a9879314c4
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e_v03
+--- /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e_v03/.last_training_record/state_vars.yaml	2019-02-15 14:51:29.087954236 +0000
++++ /home/bnehoran/SEAMLeSS/models/encodings_all_samples_mGPU_c2e_v03/state_vars.yaml	2019-02-15 17:07:48.985640847 +0000
+@@ -9,9 +9,9 @@
+ gpus: 0,1,2,3
+ height: 5
+ initialized_list: [true, true, true, true, true]
+-iteration: null
+-lambda1: 10000000.0
+-levels: null
++iteration: 1581
++lambda1: 100000000.0
++levels: !!python/object/apply:builtins.slice [null, null, null]
+ log_time: 1
+ lr: 0.003
+ name: test_encodings_all_samples_mGPU_c2e
+
+At epoch 805, iteration None:
+Time: 2019-02-15 19:10:05.909531
+Commit: 538fd8b66fd804a45518c1f6ce9ae9a9879314c4
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e_v03
+
+At epoch 805, iteration 2115:
+Time: 2019-02-15 22:09:30.772138
+Commit: 538fd8b66fd804a45518c1f6ce9ae9a9879314c4
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e_v03
+
+At epoch 806, iteration None:
+Time: 2019-02-15 23:26:07.163796
+Commit: 538fd8b66fd804a45518c1f6ce9ae9a9879314c4
+./train.py --num_workers 30 --gpu_ids 0,1,2,3 --repeats 144 resume encodings_all_samples_mGPU_c2e_v03

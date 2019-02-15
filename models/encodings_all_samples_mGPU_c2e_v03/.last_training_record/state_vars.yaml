@@ -1,7 +1,7 @@
 batch_size: 4
 checkpoint_time: 10000
 encodings: true
-epoch: 804
+epoch: 806
 epochs_per_mip: 4
 feature_maps: [12, 12, 12, 12, 12]
 gamma: 1
@@ -10,7 +10,7 @@ gpus: 0,1,2,3
 height: 5
 initialized_list: [true, true, true, true, true]
 iteration: null
-lambda1: 10000000.0
+lambda1: 100000000.0
 levels: null
 log_time: 1
 lr: 0.003
