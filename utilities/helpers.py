@@ -435,6 +435,19 @@ class dotdict(dict):
                 self[k] = dotdict(v)
 
 
+class dotdict(dict):
+    """Allow accessing dict elements with dot notation"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for k, v in self.items():
+            if isinstance(v, dict):
+                self[k] = dotdict(v)
+
+
 class AverageMeter(object):
     """
     Computes and stores the average and current value
