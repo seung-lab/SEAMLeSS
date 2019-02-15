@@ -14,7 +14,7 @@ lambda1: 10000000.0
 levels: !!python/object/apply:builtins.slice [null, null, null]
 log_time: 1
 lr: 0.003
-name: test_encodings_all_samples_mGPU_c2e
+name: test_encodings_all_samples_mGPU_c2e_v02
 num_epochs: 1000000
 penalty: lap
 plan: all
