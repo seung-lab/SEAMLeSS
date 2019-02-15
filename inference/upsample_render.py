@@ -6,6 +6,7 @@ from os.path import join
 import numpy as np
 from cloudmanager import CloudManager
 from tasks import run
+import json
 
 def print_run(diff, n_tasks):
   if n_tasks > 0:
@@ -63,10 +64,12 @@ if __name__ == '__main__':
   affine_lookup = None
   if args.affine_lookup:
     affine_lookup = {}
-    affine_list = json.loads(args.affine_lookup)
-    for aff in affine_list:
-      z = aff['z']
-      affine_lookup[z] = np.array(aff['transform'])
+    with open(args.affine_lookup) as f:
+      affine_list = json.load(f)
+      for aff in affine_list:
+        z = aff['z']
+        affine_lookup[z] = np.array(aff['transform'])
+        print((z, aff['transform']))
 
   # Render sections
   k = 0
@@ -90,5 +93,6 @@ if __name__ == '__main__':
       batch = []
       k = 0
       a.wait_for_sqs_empty()
+  print(len(batch))
   if len(batch) > 0:
     run(a, batch)
