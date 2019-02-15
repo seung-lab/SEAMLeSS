@@ -1515,7 +1515,7 @@ class Aligner:
       I = I.split(chunk_size, dim=3)
       return torch.cat(I, dim=1)
 
-  def calculate_fcorr(self, cm, bbox, mip, z1, z2, cv, dst_cv, prefix=''):
+  def calculate_fcorr(self, cm, bbox, mip, z1, z2, cv, dst_cv, dst_nopost, prefix=''):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
@@ -1523,7 +1523,7 @@ class Aligner:
         prefix = '{}'.format(mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, chunk, mip, z1, z2, prefix))
+        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, dst_nopost, chunk, mip, z1, z2, prefix))
       return batch
 
 
@@ -1552,11 +1552,15 @@ class Aligner:
       tmp_image = get_hp_fcorr(f1, p1, f2, p2, scaling=scaling)
       tmp_image = tmp_image.permute(2,3,0,1)
       tmp_image = tmp_image.cpu().numpy()
-      blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp_image, sigma=(0, 0, 1, 1))
+      tmp = deepcopy(tmp_image)
+      tmp[tmp==2]=1
+      blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp, sigma=(0, 0, 1, 1))
       s = scipy.ndimage.generate_binary_structure(2, 1)[None, None, :, :]
       closed = scipy.ndimage.morphology.grey_closing(blurred, footprint=s)
+      closed = -closed + 0.5
+      closed[closed<0] = 0
       #print("++++closed shape",closed.shape)
-      return closed
+      return closed, tmp_image
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
     if self.distributed:

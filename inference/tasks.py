@@ -534,12 +534,13 @@ class UpsampleRenderRechunkTask(RegisteredTask):
     aligner.pool.map(chunkwise, patches)
 
 class ComputeFcorrTask(RegisteredTask):
-  def __init__(self, cv, dst_cv, patch_bbox, mip, z1, z2, prefix):
-    super(). __init__(cv, dst_cv, patch_bbox, mip, z1, z2, prefix)
+  def __init__(self, cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix):
+    super(). __init__(cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix)
 
   def execute(self, aligner):
     cv = DCV(self.cv)
     dst_cv = DCV(self.dst_cv)
+    dst_nopost = DCV(self.dst_nopost)
     z1 = self.z1
     z2 = self.z2
     patch_bbox = deserialize_bbox(self.patch_bbox)
@@ -550,8 +551,9 @@ class ComputeFcorrTask(RegisteredTask):
           "at MIP{}"
           "\n".format(cv, z1, z2, mip), flush=True)
     start = time()
-    image = aligner.get_fcorr(patch_bbox, cv, mip, z1, z2)
+    image, image_no = aligner.get_fcorr(patch_bbox, cv, mip, z1, z2)
     aligner.save_image(image, dst_cv, z2, patch_bbox, 8, to_uint8=False)
+    aligner.save_image(image_no, dst_nopost, z2, patch_bbox, 8, to_uint8=False)
     with Storage(dst_cv.path) as stor:
       path = 'Fcorr_done/{}/{}'.format(self.prefix, patch_bbox.stringify(z2))
       stor.put_file(path, '')
