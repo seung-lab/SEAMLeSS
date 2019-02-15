@@ -123,7 +123,7 @@ class Split(object):
             },
             'tgt': {
                 'image': X[1:2],
-                'fold_mask': X[4:5],
+                'fold_mask': X[5:6],
             },
         })
 
