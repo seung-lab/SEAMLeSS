@@ -6,7 +6,6 @@ matplotlib
 cloud-volume==0.45.0
 fpzip==1.1.2
 h5py
-moviepy
 neuroglancer
 visdom
 pathos
@@ -17,4 +16,5 @@ opencv-python
 setuptools>=34.0.0
 pyyaml
 task-queue
+moviepy==0.2.3.5
 imageio==2.4.1
