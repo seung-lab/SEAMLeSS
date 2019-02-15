@@ -63,21 +63,10 @@ if __name__ == '__main__':
   affine_lookup = None
   if args.affine_lookup:
     affine_lookup = {}
-    with open(args.affine_lookup) as f:
-      reader = csv.reader(f, delimiter=',')
-      for k, r in enumerate(reader):
-        if k != 0:
-          a11 = float(r[0])
-          a12 = float(r[1])
-          a13 = float(r[2])
-          a21 = float(r[3])
-          a22 = float(r[4])
-          a23 = float(r[5])
-          z_start = int(r[6])
-          z_stop  = int(r[7])
-          affine = np.array([[a11,a12,a13],[a21,a22,a23]])
-          for z in range(z_start, z_stop):
-            affine_lookup[z] = affine
+    affine_list = json.loads(args.affine_lookup)
+    for aff in affine_list:
+      z = aff['z']
+      affine_lookup[z] = np.array(aff['transform'])
 
   # Render sections
   k = 0
