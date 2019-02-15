@@ -80,10 +80,11 @@ def corr_coef(a, b):
 def get_hp_fcorr(f1, p1, f2, p2, fill_value = 2, scaling = 256):
     r'''
     Correlation coeffecient on high passed and high power frequency components
-    Assuming the frequency domain inputs came from (...x)8x8 blocks.
+    Assuming the frequency domain inputs came from (...x)8x8 image blocks.
     `scaling`:
        Affects the power threshold.
-       The default value of 256 is assuming voxel values in 0-255.
+       Meant to be proportional to the range of voxel values, and
+       the default value of 256 is assuming voxel values in 0-255.
        Suggested value: 8 * sqrt(image1.std() * image2.std())
     Returns `fill_value` when/where not enough components satisfy the criteria.
     '''
