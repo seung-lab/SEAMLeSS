@@ -69,7 +69,6 @@ if __name__ == '__main__':
       for aff in affine_list:
         z = aff['z']
         affine_lookup[z] = np.array(aff['transform'])
-        print((z, aff['transform']))
 
   # Render sections
   k = 0
@@ -93,6 +92,6 @@ if __name__ == '__main__':
       batch = []
       k = 0
       a.wait_for_sqs_empty()
-  print(len(batch))
   if len(batch) > 0:
+    print('Scheduling RenderTasks up to z={}'.format(z))
     run(a, batch)
