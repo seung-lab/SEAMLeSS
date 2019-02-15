@@ -1529,15 +1529,14 @@ class Aligner:
                              to_float=False, to_tensor=True).float()
       image2 = self.get_data(cv, z2, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True).float()
-      scale_factor = 2.**(mip - 5) 
-      image1 = interpolate(image1, scale_factor=scale_factor,
-                           mode='bilinear')
-      image2 = interpolate(image2, scale_factor=scale_factor,
-                           mode='bilinear')
+      if(mip != 5):
+        scale_factor = 2.**(mip - 5)
+        image1 = interpolate(image1, scale_factor=scale_factor,
+                             mode='bilinear')
+        image2 = interpolate(image2, scale_factor=scale_factor,
+                             mode='bilinear')
       std1 = image1[image1!=0].std()
       std2 = image2[image2!=0].std()
-      print("++++std1", std1)
-      print("++++std2", std2)
       scaling = 8 * pow(std1*std2, 1/2)
       fcorr_chunk_size = 8
       #print(image1)
@@ -1545,8 +1544,15 @@ class Aligner:
       new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
       f1, p1 = get_fft_power2(new_image1)
       f2, p2 = get_fft_power2(new_image2)
-      #print("--stander is ", new_image1.float().std(dim=2))
-      return get_hp_fcorr(f1, p1, f2, p2, scaling=scaling)
+      tmp_image = get_hp_fcorr(f1, p1, f2, p2, scaling=scaling)
+      tmp_image = tmp_image.permute(2,3,0,1)
+      tmp_image = tmp_image.cpu().numpy()
+      blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp_image, sigma=(0, 0, 1, 1))
+      s = scipy.ndimage.generate_binary_structure(2, 1)[None, None, :, :]
+      closed = scipy.ndimage.morphology.grey_closing(blurred, footprint=s)
+      #print("++++closed shape",closed.shape)
+      return closed
+
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
     if self.distributed:
