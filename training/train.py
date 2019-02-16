@@ -209,7 +209,7 @@ def train(train_loader, archive, epoch):
             break
         state_vars.iteration = i
         sample = dotdict(sample)
-        id = tuple(id[:, 0].numpy())
+        id = tuple(id_[0].item() for id_ in id)
 
         # measure data loading time
         data_time.update(time.time() - start_time)
