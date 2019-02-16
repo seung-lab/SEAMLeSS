@@ -89,6 +89,20 @@ class ToFloatTensor(object):
         return torch.from_numpy(X).to(torch.float) / self.factor
 
 
+class RandomDownsample(object):
+    """Randomly chooses whether to downsample an image
+    """
+
+    def __init__(self, mips, one_in=2):
+        self.down = downsample(mips)
+        self.one_in = one_in
+
+    def __call__(self, X):
+        if random.randint(0, self.one_in-1) != 0:
+            X = self.down(X)
+        return X
+
+
 class Preprocess(object):
     """Preprocess the input images to standardize contrast
     """
