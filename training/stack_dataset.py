@@ -45,8 +45,8 @@ class StackDataset(Dataset):
 
     def __getitem__(self, id):
         id = id % (2 * self.N * (self.H - 1))  # eliminate repeats in id
-        flip, id_ = id % 2, id / 2
-        h, n = id_ % (self.H - 1), id_ / (self.H - 1)
+        flip, id_ = id % 2, id // 2
+        h, n = id_ % (self.H - 1), id_ // (self.H - 1)
         X = self.stack[n, h:h+2].copy()  # copy to prevent modifying dataset
         Y = self.dset['fold_mask'][n, h:h+2].copy()
         if flip:  # switch source and target
