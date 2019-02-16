@@ -23,8 +23,8 @@ seed: 5432
 start_lr: 0.003
 supervised: false
 training_set_path: !!python/object/apply:pathlib.PosixPath [/, home, bnehoran, training_data,
-  minnie_mip4_annotated_prep_major_folds_curriculum_45x6x1536.h5]
+  mip2_mixed_annotated.h5]
 validation_set_path: !!python/object/apply:pathlib.PosixPath [/, home, bnehoran, training_data,
-  minnie_1536_v002_train_mip4_annotated_folds_filtered.h5]
+  minnie_mip4_annotated_prep_major_folds_curriculum_45x6x1536_sep.h5]
 vis_time: 10000
 wd: 0
