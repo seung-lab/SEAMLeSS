@@ -679,6 +679,7 @@ class Aligner:
         size = f.shape[-2]
         aff = get_affine_field(affine, offset, size, self.device)
         aff = self.abs_to_rel_residual(aff, padded_bbox, field_mip)
+        print('is_identity(f) {}'.format(is_identity(f)))
         f = compose_fields(f, aff)
         f = self.rel_to_abs_residual(f, field_mip)
       else:
