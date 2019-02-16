@@ -3,6 +3,7 @@ import math
 import h5py
 import torch
 from torch.utils.data import Dataset, ConcatDataset
+import numpy as np
 
 from aug import aug_input, rotate_and_scale, random_translation
 from utilities.helpers import (upsample, downsample, gridsample_residual,
@@ -13,11 +14,13 @@ def compile_dataset(*h5_paths, transform=None, num_samples=None, repeats=1):
     datasets = []
     for h5_path in h5_paths:
         h5f = h5py.File(h5_path, 'r')
-        ds = [StackDataset(v, transform=transform, num_samples=num_samples,
-                           repeats=repeats)
-              for v in h5f.values()]
-        datasets.extend(ds)
-    return ConcatDataset(datasets)
+        ds = StackDataset(h5f, transform=transform, num_samples=num_samples,
+                          repeats=repeats)
+        datasets.append(ds)
+    if len(datasets) > 1:
+        return ConcatDataset(datasets)
+    else:
+        return datasets[0]
 
 
 class StackDataset(Dataset):
@@ -27,25 +30,31 @@ class StackDataset(Dataset):
         stack (4D ndarray): 1xZxHxW image array
     """
 
-    def __init__(self, stack, transform=None, num_samples=None, repeats=1):
-        self.stack = stack
-        self.N = (num_samples
-                  if num_samples and num_samples < len(stack) else len(stack))
+    def __init__(self, dset, transform=None, num_samples=None, repeats=1):
+        self.dset = dset
+        self.stack = dset['image']
+        self.N, self.H, *__ = self.stack.shape
+        self.num_samples = num_samples
         self.transform = transform
         self.repeats = repeats
 
     def __len__(self):
-        return 2*len(self.stack) * self.repeats
+        if self.num_samples:
+            return self.num_samples
+        return 2 * self.N * (self.H - 1) * self.repeats
 
     def __getitem__(self, id):
-        X = self.stack[id % self.N].copy()  # prevent modifying the dataset
-        if id % 2*self.N >= self.N:  # flip source and target
-            # match i -> i+1 if id < N, else match i+1 -> i
-            s, t, sc, tc, sf, tf = X.copy()
-            X[0:6] = t, s, tc, sc, tf, sf
+        id = id % (2 * self.N * (self.H - 1))  # eliminate repeats in id
+        flip, id_ = id % 2, id / 2
+        h, n = id_ % (self.H - 1), id_ / (self.H - 1)
+        X = self.stack[n, h:h+2].copy()  # copy to prevent modifying dataset
+        Y = self.dset['fold_mask'][n, h:h+2].copy()
+        if flip:  # switch source and target
+            X, Y = np.flip(X, 0), np.flip(Y, 0)
+        X = np.concatenate((X, Y), 0)
         if self.transform:
             X = self.transform(X)
-        return X, id
+        return X, (n, h, flip)
 
 
 ############################################################################
@@ -72,8 +81,11 @@ class ToFloatTensor(object):
     """Convert ndarray to FloatTensor
     """
 
+    def __init__(self, factor=1.):
+        self.factor = factor
+
     def __call__(self, X):
-        return torch.from_numpy(X).to(torch.float)
+        return torch.from_numpy(X).to(torch.float) / self.factor
 
 
 class Preprocess(object):
@@ -119,11 +131,11 @@ class Split(object):
         return dotdict({
             'src': {
                 'image': X[0:1],
-                'fold_mask': X[4:5],
+                'fold_mask': X[2:3],
             },
             'tgt': {
                 'image': X[1:2],
-                'fold_mask': X[5:6],
+                'fold_mask': X[3:4],
             },
         })
 
