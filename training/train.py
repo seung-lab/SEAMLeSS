@@ -103,6 +103,7 @@ def main():
     # set up training data
     train_transform = transforms.Compose([
         stack_dataset.ToFloatTensor(),
+        stack_dataset.RandomDownsample(mips=2),
         stack_dataset.Preprocess(archive.preprocessor),
         stack_dataset.OnlyIf(stack_dataset.RandomRotateAndScale(),
                              not state_vars.skip_aug),
