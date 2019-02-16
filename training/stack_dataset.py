@@ -33,6 +33,7 @@ class StackDataset(Dataset):
     def __init__(self, dset, transform=None, num_samples=None, repeats=1):
         self.dset = dset
         self.stack = dset['image']
+        self.fold_masks = dset['fold_mask']
         self.N, self.H, *__ = self.stack.shape
         self.num_samples = num_samples
         self.transform = transform
@@ -48,7 +49,7 @@ class StackDataset(Dataset):
         flip, id_ = id % 2, id // 2
         h, n = id_ % (self.H - 1), id_ // (self.H - 1)
         X = self.stack[n, h:h+2].copy()  # copy to prevent modifying dataset
-        Y = self.dset['fold_mask'][n, h:h+2].copy()
+        Y = self.fold_masks[n, h:h+2].copy()
         if flip:  # switch source and target
             X, Y = np.flip(X, 0), np.flip(Y, 0)
         X = np.concatenate((X, Y), 0)
