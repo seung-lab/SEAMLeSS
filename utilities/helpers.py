@@ -537,20 +537,27 @@ def get_affine_field(aff, offset, size, device):
         define the location in the source image that contribute to a pixel
         in the destination image.
     """
-    A = torch.cuda.FloatTensor(np.concatenate([aff, [[0, 0, 1]]], axis=0),
-                               device=device)
-    B = torch.cuda.FloatTensor([[1., 0, offset[0]],
-                                [0, 1., offset[1]],
-                                [0, 0, 1]], device=device)
-    Bi = torch.cuda.FloatTensor([[1., 0, -offset[0]],
-                                 [0, 1., -offset[1]],
-                                 [0, 0, 1]], device=device)
-    theta = torch.mm(Bi, torch.mm(A, B))[:2].unsqueeze(0)
-    print('get_affine_field \n{}'.format(theta.cpu().numpy()))
+    A = np.concatenate([aff, [[0, 0, 1]]], axis=0)
+    B = np.array([[1., 0, offset[0]],
+                  [0, 1., offset[1]],
+                  [0, 0, 1]])
+    Bi = np.array([[1., 0, -offset[0]],
+                   [0, 1., -offset[1]],
+                   [0, 0, 1]])
+    theta = np.matmul(Bi, np.matmul(A, B))
+    # print('get_affine_field \n{}'.format(theta))
+    # transpose affine for pytorch convention
+    # theta[0,1], theta[1,0] = theta[1,0], theta[0,1]
+    # theta[0,2], theta[1,2] = theta[1,2], theta[0,2]
+    # theta[:2,:2] = theta[:2,:2].permute(1,0)
+    # theta[:2,2] = torch.index_select(theta[:2,2], 0, idx)
+    print('get_affine_field \n{}'.format(theta))
+    theta = torch.cuda.FloatTensor(theta[:2], device=device).unsqueeze(0)
     M = F.affine_grid(theta, torch.Size((1, 1, size, size)))
     M *= (size - 1) / size  # rescale the grid provided by PyTorch
-    return M - identity_grid(M.shape, device=M.device)
-
+    M = M - identity_grid(M.shape, device=M.device)
+    idx = torch.cuda.LongTensor([1,0], device=device)
+    return torch.index_select(M, -1, idx)
 
 class dotdict(dict):
     """Allow accessing dict elements with dot notation"""
