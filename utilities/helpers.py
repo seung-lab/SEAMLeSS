@@ -551,7 +551,8 @@ def get_affine_field(aff, offset, size, mip, device):
     print('get_affine_field \n{}'.format(theta.cpu().numpy()))
     M = F.affine_grid(theta, torch.Size((1, 1, size, size)))
     M *= (size - 1) / size  # rescale the grid provided by PyTorch
-    return M - identity_grid(M.shape, device=M.device)
+    M -= identity_grid(M.shape, device=M.device)
+    return M.flip(-1)
 
 
 class dotdict(dict):
