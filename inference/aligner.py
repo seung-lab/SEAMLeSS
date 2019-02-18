@@ -677,8 +677,8 @@ class Aligner:
                             to_tensor=True)
         offset = padded_bbox.get_offset(mip=0)
         size = f.shape[-2]
-        aff = get_affine_field(affine, offset, size, self.device)
-        aff = self.abs_to_rel_residual(aff, padded_bbox, field_mip)
+        aff = get_affine_field(affine, offset, size, field_mip, self.device)
+        # aff = self.abs_to_rel_residual(aff, padded_bbox, field_mip)
         f = compose_fields(f, aff)
         f = self.rel_to_abs_residual(f, field_mip)
       else:
