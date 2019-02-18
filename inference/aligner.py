@@ -26,7 +26,8 @@ from normalizer import Normalizer
 from temporal_regularization import create_field_bump
 from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               np_downsample, invert, compose_fields, upsample_field, \
-                              is_identity, cpc, vector_vote, get_affine_field, is_blank
+                              is_identity, cpc, vector_vote, get_affine_field, is_blank, \
+                              identity_grid
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -61,7 +62,7 @@ class Aligner:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
     
     self.chunk_size = (1024, 1024)
-    self.device = torch.device('cuda')
+    self.device = 'cpu' #torch.device('cuda')
 
     self.model_archives = {}
     
@@ -120,9 +121,9 @@ class Aligner:
       x_range = padded_bbox.x_range(mip=0)
       y_range = padded_bbox.y_range(mip=0)
       #print("x_range is", x_range, "y_range is", y_range)
-      new_bbox = BoundingBox(x_range[0] + dis[1], x_range[1] + dis[1],
-                                   y_range[0] + dis[0], y_range[1] + dis[0],
-                                   mip=0)
+      new_bbox = BoundingBox(x_range[0] + dis[0], x_range[1] + dis[0],
+                             y_range[0] + dis[1], y_range[1] + dis[1],
+                             mip=0)
       #print(new_bbox.x_range(mip=0), new_bbox.y_range(mip=0))
       return new_bbox
 
@@ -265,7 +266,7 @@ class Aligner:
       diff = end - start
       print('normalizer: {:.3f}'.format(diff), flush=True) 
     # convert to tensor if requested, or if up/downsampling required
-    if to_tensor | (src_mip != dst_mip):
+    if to_tensor or (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
       data = data.to(device=self.device)
@@ -672,19 +673,28 @@ class Aligner:
       padded_bbox = deepcopy(bbox)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
+
+      f = self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
+                         to_tensor=True)
+      if field_mip > image_mip:
+        f = upsample_field(f, field_mip, image_mip)
+
+      f = f.permute(0, 2, 1, 3).flip(-1) # WHY?!
+
       if affine is not None:
-        f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=True,
-                            to_tensor=True)
+        affine = torch.Tensor(affine)
+
+        ident = self.rel_to_abs_residual(identity_grid(f.shape, device=f.device), image_mip)
         offset = padded_bbox.get_offset(mip=0)
-        size = f.shape[-2]
-        aff = get_affine_field(affine, offset, size, self.device)
-        aff = self.abs_to_rel_residual(aff, padded_bbox, field_mip)
-        print('is_identity(f) {}'.format(is_identity(f)))
-        f = compose_fields(f, aff)
-        f = self.rel_to_abs_residual(f, field_mip)
-      else:
-        f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
-                            to_tensor=True)
+        f += ident
+        f[..., 0] += offset[0]
+        f[..., 1] += offset[1]
+        f = torch.tensordot(affine[:, 0:2], f, dims=([1],[3])).permute(1, 2, 3, 0)
+        f[..., :] += affine[:, 2]
+        f[..., 0] -= offset[0]
+        f[..., 1] -= offset[1]
+        f -= ident
+
       if is_identity(f):
         image = self.get_image(image_cv, image_z, bbox, image_mip,
                                to_tensor=True, normalizer=None)
@@ -696,18 +706,19 @@ class Aligner:
         return image
       else:
         distance = self.profile_field(f)
-        distance = (distance//(2**field_mip)) * 2**field_mip
+        distance = (distance//(2**image_mip)) * 2**image_mip
         new_bbox = self.adjust_bbox(padded_bbox, distance)
-        f = f - distance.to(device = self.device)
-        res = self.abs_to_rel_residual(f, padded_bbox, field_mip)
-        field = res.to(device = self.device)
-        if field_mip > image_mip:
-          field = upsample_field(field, field_mip, image_mip)
+        f -= distance.to(device = self.device)
+        f = self.abs_to_rel_residual(f, padded_bbox, image_mip)
+        f = f.to(device = self.device)
+
         image = self.get_masked_image(image_cv, image_z, new_bbox, image_mip,
                                 mask_cv=mask_cv, mask_mip=mask_mip,
                                 mask_val=mask_val,
                                 to_tensor=True, normalizer=None)
-        image = grid_sample(image, field, padding_mode='zeros')
+        image = image.permute(0,1,3,2)
+        image = grid_sample(image, f, padding_mode='zeros')
+        image = image.permute(0,1,3,2)
         image = image[:,:,pad:-pad,pad:-pad]
         return image
 

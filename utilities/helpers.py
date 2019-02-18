@@ -552,12 +552,25 @@ def get_affine_field(aff, offset, size, device):
     # theta[:2,:2] = theta[:2,:2].permute(1,0)
     # theta[:2,2] = torch.index_select(theta[:2,2], 0, idx)
     print('get_affine_field \n{}'.format(theta))
-    theta = torch.cuda.FloatTensor(theta[:2], device=device).unsqueeze(0)
+    theta = torch.FloatTensor(theta[:2], device=device).unsqueeze(0)
+    # import IPython
+    # IPython.embed()
     M = F.affine_grid(theta, torch.Size((1, 1, size, size)))
+
+    tmp = theta[0,:,2]
+
+    M[0,:,:,0] -= tmp[0]
+    M[0,:,:,1] -= tmp[1]
     M *= (size - 1) / size  # rescale the grid provided by PyTorch
     M = M - identity_grid(M.shape, device=M.device)
-    idx = torch.cuda.LongTensor([1,0], device=device)
+    M *= 1024
+
+    M[0,:,:,0] += tmp[0]
+    M[0,:,:,1] += tmp[1]
+
+    idx = torch.LongTensor([1,0], device=device)
     return torch.index_select(M, -1, idx)
+
 
 class dotdict(dict):
     """Allow accessing dict elements with dot notation"""
