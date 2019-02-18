@@ -1557,8 +1557,9 @@ class Aligner:
       blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp, sigma=(0, 0, 1, 1))
       s = scipy.ndimage.generate_binary_structure(2, 1)[None, None, :, :]
       closed = scipy.ndimage.morphology.grey_closing(blurred, footprint=s)
-      closed = -closed + 0.5
-      closed[closed<0] = 0
+      closed = 2*closed
+      closed[closed>1] = 1
+      closed = 1-closed
       #print("++++closed shape",closed.shape)
       return closed, tmp_image
 
