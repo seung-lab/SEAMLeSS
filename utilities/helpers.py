@@ -511,7 +511,7 @@ def is_identity(field, eps=0.):
     return torch.min(field) >= -eps and torch.max(field) <= eps
 
 
-def get_affine_field(aff, offset, size, device):
+def get_affine_field(aff, offset, size, mip, device):
     """Create a residual field for an affine transform within bbox
 
     Args:
@@ -520,6 +520,7 @@ def get_affine_field(aff, offset, size, device):
         size: either an `int` or a `torch.Size` of the form
             `(N, C, H, W)`. `H` and `W` must be the same (a square tensor).
             `N` and `C` are ignored.
+        mip: mip level to convert the mip0 offsets
 
     Returns:
         field torch tensor for affine field within bbox as MIP0 absolute
@@ -546,6 +547,7 @@ def get_affine_field(aff, offset, size, device):
                                  [0, 1., -offset[1]],
                                  [0, 0, 1]], device=device)
     theta = torch.mm(Bi, torch.mm(A, B))[:2].unsqueeze(0)
+    theta[..., -1] = theta[..., -1] / (2 ** mip) * 2 / (size-1)
     print('get_affine_field \n{}'.format(theta.cpu().numpy()))
     M = F.affine_grid(theta, torch.Size((1, 1, size, size)))
     M *= (size - 1) / size  # rescale the grid provided by PyTorch
