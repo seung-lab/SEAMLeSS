@@ -26,7 +26,8 @@ from normalizer import Normalizer
 from temporal_regularization import create_field_bump
 from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               np_downsample, invert, compose_fields, upsample_field, \
-                              is_identity, cpc, vector_vote, get_affine_field, is_blank
+                              is_identity, cpc, vector_vote, get_affine_field, is_blank, \
+                              identity_grid
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -460,7 +461,7 @@ class Aligner:
   def profile_field(self, field):
     avg_x = self.avg_field(field[0,...,0])
     avg_y = self.avg_field(field[0,...,1])
-    return torch.from_numpy(np.float32([avg_x, avg_y]))
+    return torch.Tensor([avg_x, avg_y])
 
   #############################
   # CloudVolume chunk methods #
@@ -670,40 +671,55 @@ class Aligner:
       padded_bbox = deepcopy(bbox)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
+
+      # Load initial vector field
+      field = self.get_field(field_cv, field_z, padded_bbox, field_mip,
+                             relative=False, to_tensor=True)
+      if field_mip > image_mip:
+        field = upsample_field(field, field_mip, image_mip)
+
       if affine is not None:
-        f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=True,
-                            to_tensor=True)
-        offset = padded_bbox.get_offset(mip=0)
-        size = f.shape[-2]
-        aff = get_affine_field(affine, offset, size, self.device)
-        aff = self.abs_to_rel_residual(aff, padded_bbox, field_mip)
-        f = compose_fields(f, aff)
-        f = self.rel_to_abs_residual(f, field_mip)
-      else:
-        f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
-                            to_tensor=True)
-      if is_identity(f):
+        # PyTorch conventions are column, row order (y, then x) so flip
+        # the affine matrix and offset
+        affine = torch.Tensor(affine).to(field.device)
+        affine = affine.flip(0)[:, [1, 0, 2]]  # flip x and y
+        offset_y, offset_x = padded_bbox.get_offset(mip=0)
+
+        ident = self.rel_to_abs_residual(
+            identity_grid(field.shape, device=field.device), image_mip)
+
+        field += ident
+        field[..., 0] += offset_x
+        field[..., 1] += offset_y
+        field = torch.tensordot(
+            affine[:, 0:2], field, dims=([1], [3])).permute(1, 2, 3, 0)
+        field[..., :] += affine[:, 2]
+        field[..., 0] -= offset_x
+        field[..., 1] -= offset_y
+        field -= ident
+
+      if is_identity(field):
         image = self.get_image(image_cv, image_z, bbox, image_mip,
                                to_tensor=True, normalizer=None)
         if mask_cv is not None:
-          mask = self.get_mask(mask_cv, image_z, bbox, 
+          mask = self.get_mask(mask_cv, image_z, bbox,
                                src_mip=mask_mip,
                                dst_mip=image_mip, valid_val=mask_val)
           image = image.masked_fill_(mask, 0)
         return image
       else:
-        distance = self.profile_field(f)
-        distance = (distance//(2**field_mip)) * 2**field_mip
-        new_bbox = self.adjust_bbox(padded_bbox, distance)
-        f = f - distance.to(device = self.device)
-        res = self.abs_to_rel_residual(f, padded_bbox, field_mip)
-        field = res.to(device = self.device)
-        if field_mip > image_mip:
-          field = upsample_field(field, field_mip, image_mip)
+        distance = self.profile_field(field)
+        distance = (distance // (2 ** image_mip)) * 2 ** image_mip
+        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+
+        field -= distance.to(device = self.device)
+        field = self.abs_to_rel_residual(field, padded_bbox, image_mip)
+        field = field.to(device = self.device)
+
         image = self.get_masked_image(image_cv, image_z, new_bbox, image_mip,
-                                mask_cv=mask_cv, mask_mip=mask_mip,
-                                mask_val=mask_val,
-                                to_tensor=True, normalizer=None)
+                                      mask_cv=mask_cv, mask_mip=mask_mip,
+                                      mask_val=mask_val,
+                                      to_tensor=True, normalizer=None)
         image = grid_sample(image, field, padding_mode='zeros')
         image = image[:,:,pad:-pad,pad:-pad]
         return image
