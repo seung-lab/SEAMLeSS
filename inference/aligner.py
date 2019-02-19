@@ -1515,7 +1515,7 @@ class Aligner:
       I = I.split(chunk_size, dim=3)
       return torch.cat(I, dim=1)
 
-  def calculate_fcorr(self, cm, bbox, mip, z1, z2, cv, dst_cv, prefix=''):
+  def calculate_fcorr(self, cm, bbox, mip, z1, z2, cv, dst_cv, dst_nopost, prefix=''):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
@@ -1523,22 +1523,45 @@ class Aligner:
         prefix = '{}'.format(mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, chunk, mip, z1, z2, prefix))
+        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, dst_nopost, chunk, mip, z1, z2, prefix))
       return batch
 
 
   def get_fcorr(self, bbox, cv, mip, z1, z2):
       """ perform fcorr for two images
-
       """
-      image1 = self.get_image(cv, z1, bbox, mip, to_tensor=True)
-      image2 = self.get_image(cv, z2, bbox, mip, to_tensor=True)
+      image1 = self.get_data(cv, z1, bbox, src_mip=mip, dst_mip=mip,
+                             to_float=False, to_tensor=True).float()
+      image2 = self.get_data(cv, z2, bbox, src_mip=mip, dst_mip=mip,
+                             to_float=False, to_tensor=True).float()
+      if(mip != 5):
+        scale_factor = 2.**(mip - 5)
+        image1 = interpolate(image1, scale_factor=scale_factor,
+                             mode='bilinear')
+        image2 = interpolate(image2, scale_factor=scale_factor,
+                             mode='bilinear')
+      std1 = image1[image1!=0].std()
+      std2 = image2[image2!=0].std()
+      scaling = 8 * pow(std1*std2, 1/2)
       fcorr_chunk_size = 8
+      #print(image1)
       new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
       new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
       f1, p1 = get_fft_power2(new_image1)
       f2, p2 = get_fft_power2(new_image2)
-      return get_hp_fcorr(f1, p1, f2, p2)
+      tmp_image = get_hp_fcorr(f1, p1, f2, p2, scaling=scaling)
+      tmp_image = tmp_image.permute(2,3,0,1)
+      tmp_image = tmp_image.cpu().numpy()
+      tmp = deepcopy(tmp_image)
+      tmp[tmp==2]=1
+      blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp, sigma=(0, 0, 1, 1))
+      s = scipy.ndimage.generate_binary_structure(2, 1)[None, None, :, :]
+      closed = scipy.ndimage.morphology.grey_closing(blurred, footprint=s)
+      closed = 2*closed
+      closed[closed>1] = 1
+      closed = 1-closed
+      #print("++++closed shape",closed.shape)
+      return closed, tmp_image
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
     if self.distributed:
