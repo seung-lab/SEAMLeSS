@@ -119,11 +119,9 @@ class Aligner:
       padded_bbox = deepcopy(bbox)
       x_range = padded_bbox.x_range(mip=0)
       y_range = padded_bbox.y_range(mip=0)
-      #print("x_range is", x_range, "y_range is", y_range)
-      new_bbox = BoundingBox(x_range[0] + dis[1], x_range[1] + dis[1],
-                                   y_range[0] + dis[0], y_range[1] + dis[0],
-                                   mip=0)
-      #print(new_bbox.x_range(mip=0), new_bbox.y_range(mip=0))
+      new_bbox = BoundingBox(x_range[0] + dis[0], x_range[1] + dis[0],
+                             y_range[0] + dis[1], y_range[1] + dis[1],
+                             mip=0)
       return new_bbox
 
   ##############
