@@ -37,5 +37,5 @@ class RangeAdjuster(object):
     def __call__(self, x):
         return (x / self.divide) - self.subtract
 
-def get_threshold_black(img, threshold=-0.1):
+def get_threshold_black(img, threshold=-100.1):
     return (img < threshold).type(torch.cuda.FloatTensor)
