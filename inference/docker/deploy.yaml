@@ -22,14 +22,17 @@ spec:
         run: seamless
     spec:
       containers:
-      - image: seunglab/seamless:latest
+      - image: seunglab/seamless:alexfcorr
         name: seamless
         imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/worker.py --processes 8 --gpu_processes 1 --queue_name deepalign-tmacrina --lease_seconds 40"]
+        args: ["-c", "python inference/worker.py --processes 3 --gpu_processes 1 --queue_name deepalign0 --lease_seconds 40"]
         resources: 
           limits:
             nvidia.com/gpu: 1
+          requests:
+            cpu: "3"
+            memory: "10Gi"
         volumeMounts:
         - name: secrets
           mountPath: /root/.cloudvolume/secrets
