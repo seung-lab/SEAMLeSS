@@ -16,6 +16,8 @@ if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--affine_lookup', type=str, 
     help='path to csv of affine transforms indexed by section')
+  parser.add_argument('--downsample_shift', type=int, default=0,
+    help='temporary hack to account for half pixel shifts caused by downsampling')
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--field_path', type=str)
   parser.add_argument('--dst_path', type=str)
@@ -69,6 +71,7 @@ if __name__ == '__main__':
       for aff in affine_list:
         z = aff['z']
         affine_lookup[z] = np.array(aff['transform'])
+        affine_lookup[z][:, 2] += args.downsample_shift
 
   # Render sections
   k = 0
