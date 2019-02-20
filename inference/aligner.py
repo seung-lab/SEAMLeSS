@@ -858,6 +858,7 @@ class Aligner:
     if prefix == '':
       prefix = '{}_{}'.format(mip, dst_z)
     batch = []
+    print("len of chunks is", len(chunks))
     for chunk in chunks: 
       batch.append(tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
                                   is_field, mask_cv, mask_mip, mask_val, prefix))

@@ -1,3 +1,6 @@
+import gevent.monkey
+gevent.monkey.patch_all()
+
 import boto3
 from time import time
 import json
@@ -9,14 +12,26 @@ from cloudvolume import Storage
 from cloudvolume.lib import scatter 
 from boundingbox import BoundingBox, deserialize_bbox
 
-from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue
+
+from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue, GreenTaskQueue
 from concurrent.futures import ProcessPoolExecutor
 # from taskqueue.taskqueue import _scatter as scatter
 
 def remote_upload(queue_name, ptasks):
-  with TaskQueue(queue_name=queue_name) as tq:
+  with GreenTaskQueue(queue_name=queue_name) as tq:
     for task in ptasks:
       tq.insert(task)
+
+def new_run(aligner, tasks): 
+  if aligner.distributed:
+    fn = partial(remote_upload, aligner.queue_name)
+    with ProcessPoolExecutor(max_workers=aligner.threads) as executor:
+      executor.map(fn, tasks)
+  else:
+    with LocalTaskQueue(queue_name=aligner.queue_name, parallel=1) as tq:
+      for task in tasks:
+        tq.insert(task, args=[ aligner ])
+
 
 def run(aligner, tasks): 
   if aligner.distributed:
