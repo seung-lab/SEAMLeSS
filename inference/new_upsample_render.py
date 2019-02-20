@@ -89,7 +89,10 @@ if __name__ == '__main__':
         for z in self.zrange:
           affine = None
           if affine_lookup:
-            affine = affine_lookup[z]
+            try:
+              affine = affine_lookup[z]
+            except KeyError:
+              affine = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
           t = a.render(cm, src, field, dst, z, z, z, bbox, src_mip, field_mip, 
                   affine=affine, prefix=prefix) 
           yield from t
