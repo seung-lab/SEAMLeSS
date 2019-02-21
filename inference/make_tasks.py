@@ -3,7 +3,7 @@ gevent.monkey.patch_all()
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
 from taskqueue import TaskQueue, GreenTaskQueue
-
+import pathos.pools
 from tasks import new_run
 
 
@@ -29,32 +29,34 @@ def remote_upload(tasks):
     with GreenTaskQueue(queue_name=args.queue_name) as tq:
        tq.insert_all(tasks) 
 
+class TaskIterator():
+    def __init__(self, brange, odd_even, cm, src, dsts, ):
+        self.brange = brange
+        self.odd_even = odd_even
+    def __iter__(self):
+        for block_offset in copy_range:
+          prefix = block_offset
+          #for i, block_start in enumerate(block_range):
+          for i, block_start in enumerate(self.brange):
+            block_type = block_types[(i + self.odd_even) % 2]
+            #block_type = block_types[i % 2]
+            dst = dsts[block_type]
+            z = block_start + block_offset
+            bbox = bbox_lookup[z]
+            t =  a.copy(cm, src, dst, z, z, bbox, mip, is_field=False,
+                       mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val,
+                       prefix=prefix)
+            yield from t
+ 
 def make_copy_tasks(a, copy_range, block_range, block_types, bbox_lookup, cm, src,
                     dsts, mip, mask_cv, mask_mip, mask_val):
-  class TaskIterator():
-      def __init__(self, brange, odd_even):
-          self.brange = brange
-          self.odd_even = odd_even
-      def __iter__(self):
-          for block_offset in copy_range:
-            prefix = block_offset
-            #for i, block_start in enumerate(block_range):
-            for i, block_start in enumerate(self.brange):
-              block_type = block_types[(i + self.odd_even) % 2]
-              #block_type = block_types[i % 2]
-              dst = dsts[block_type]
-              z = block_start + block_offset
-              bbox = bbox_lookup[z]
-              t =  a.copy(cm, src, dst, z, z, bbox, mip, is_field=False,
-                         mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val,
-                         prefix=prefix)
-              yield from t
-  ptask = []
+ ptask = []
   range_list, odd_even = make_range(block_range, a.threads)
   for i, irange in enumerate(range_list):
       ptask.append(TaskIterator(irange, i*odd_even))
   
-  with ProcessPoolExecutor(max_workers=1) as executor:
+  #with ProcessPoolExecutor(max_workers=1) as executor:
+  with pathos.pools.ProcessPool(1) as executor:
       executor.map(remote_upload, ptask)
 
   #new_run(a, ptask)
