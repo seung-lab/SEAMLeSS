@@ -1,3 +1,10 @@
+import gevent.monkey
+gevent.monkey.patch_all()
+
+from concurrent.futures import ProcessPoolExecutor
+import taskqueue
+from taskqueue import TaskQueue, GreenTaskQueue
+
 import sys
 import torch
 import json
@@ -13,6 +20,24 @@ from boundingbox import BoundingBox
 def print_run(diff, n_tasks):
   if n_tasks > 0:
     print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
+
+def make_range(block_range, part_num):
+    rangelen = len(block_range)
+    if(rangelen < part_num):
+        srange =1
+        part = rangelen
+    else:
+        part = part_num
+        srange = rangelen//part
+    if rangelen%2 == 0:
+        odd_even = 0
+    else:
+        odd_even = 1
+    range_list = []
+    for i in range(part-1):
+        range_list.append(block_range[i*srange:(i+1)*srange + 1])
+    range_list.append(block_range[(part-1)*srange:])
+    return range_list, odd_even
 
 if __name__ == '__main__':
   parser = get_argparser()
@@ -147,38 +172,70 @@ if __name__ == '__main__':
   vvote_range = [r for r in vvote_range if r >= args.restart]
   
   # Copy first section
-  batch = []
-  task_counter = {}
-  for block_offset in copy_range:
-    prefix = block_offset
-    for i, block_start in enumerate(block_range):
-      block_type = block_types[i % 2]
-      dst = dsts[block_type]
-      z = block_start + block_offset 
-      bbox = bbox_lookup[z]
-      t = a.copy(cm, src.path, dst, z, z, bbox, mip, is_field=False, mask_cv=src_mask_cv,
-                     mask_mip=src_mask_mip, mask_val=src_mask_val, prefix=prefix)
-      k = (prefix, dst)
-      if k not in task_counter:
-        task_counter[k] = 0
-      task_counter[k] += len(t)
-      batch.extend(t)
+  
+  def remote_upload(tasks):
+      with GreenTaskQueue(queue_name=args.queue_name) as tq:
+          tq.insert_all(tasks)  
+ 
+  class CopyTaskIterator():
+      def __init__(self, brange, odd_even):
+          self.brange = brange
+          self.odd_even = odd_even
+      def __iter__(self):
+          for block_offset in copy_range:
+            prefix = block_offset
+            #for i, block_start in enumerate(block_range):
+            for i, block_start in enumerate(self.brange):
+              block_type = block_types[(i + self.odd_even) % 2]
+              #block_type = block_types[i % 2]
+              dst = dsts[block_type]
+              z = block_start + block_offset
+              bbox = bbox_lookup[z]
+              t =  a.copy(cm, src, dst, z, z, bbox, mip, is_field=False,
+                         mask_cv=src_mask_cv, mask_mip=src_mask_mip, mask_val=src_mask_val,
+                         prefix=prefix)
+              yield from t 
+
+  ptask = []
+  range_list, odd_even = make_range(block_range, a.threads)
+  for i, irange in enumerate(range_list):
+      ptask.append(CopyTaskIterator(irange, i*odd_even))
+  
+  with ProcessPoolExecutor(max_workers=1) as executor:
+      executor.map(remote_upload, ptask)
+ 
+#  batch = []
+#  task_counter = {}
+#  for block_offset in copy_range:
+#    prefix = block_offset
+#    for i, block_start in enumerate(block_range):
+#      block_type = block_types[i % 2]
+#      dst = dsts[block_type]
+#      z = block_start + block_offset 
+#      bbox = bbox_lookup[z]
+#      t = a.copy(cm, src.path, dst, z, z, bbox, mip, is_field=False, mask_cv=src_mask_cv,
+#                     mask_mip=src_mask_mip, mask_val=src_mask_val, prefix=prefix)
+#      k = (prefix, dst)
+#      if k not in task_counter:
+#        task_counter[k] = 0
+#      task_counter[k] += len(t)
+#      batch.extend(t)
   print('Scheduling CopyTasks')
-  start = time()
-  run(a, batch)
-  end = time()
-  diff = end - start
-  print_run(diff, len(batch))
-  # wait
-  start = time()
+#  start = time()
+#  run(a, batch)
+#  end = time()
+#  diff = end - start
+#  print_run(diff, len(batch))
+#  # wait
+#  start = time()
   if args.use_sqs_wait:
     a.wait_for_sqs_empty()
-  else:
-    for (prefix, path), n in task_counter.items():
-      a.wait_for_queue_empty(path, 'copy_done/{}'.format(prefix), n)
-  end = time()
-  diff = end - start
-  print_run(diff, len(batch))
+#  else:
+#    for (prefix, path), n in task_counter.items():
+#      a.wait_for_queue_empty(path, 'copy_done/{}'.format(prefix), n)
+#  end = time()
+#  diff = end - start
+#  print_run(diff, len(batch))
 
 #  # Align without vector voting
 #  for block_offset in serial_range:
