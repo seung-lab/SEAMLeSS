@@ -11,7 +11,7 @@ def deserialize_miplessCV_old(s, cache={}):
       cache[s] = mcv
       return mcv
 
-def deserialize_miplessCV(s, cache={}):
+def deserialize_miplessCV_old2(s, cache={}):
     cv_kwargs = {'bounded': False, 'progress': False,
               'autocrop': False, 'non_aligned_writes': False,
               'cdn_cache': False}
@@ -23,6 +23,19 @@ def deserialize_miplessCV(s, cache={}):
                                fill_missing=True, **cv_kwargs)
       cache[s] = mcv
       return mcv
+
+def deserialize_miplessCV(s, cache={}):
+    cv_kwargs = {'bounded': False, 'progress': False,
+              'autocrop': False, 'non_aligned_writes': False,
+              'cdn_cache': False}
+    if s in cache:
+      return cache[s]
+    else:
+      mcv = MiplessCloudVolume(s, mkdir=False,
+                               fill_missing=True, **cv_kwargs)
+      cache[s] = mcv
+      return mcv
+
 
 class MiplessCloudVolume():
   """Multi-mip access to CloudVolumes using the same path
