@@ -35,7 +35,7 @@ def make_range(block_range, part_num):
         odd_even = 1
     range_list = []
     for i in range(part-1):
-        range_list.append(block_range[i*srange:(i+1)*srange + 1])
+        range_list.append(block_range[i*srange:(i+1)*srange])
     range_list.append(block_range[(part-1)*srange:])
     return range_list, odd_even
 
@@ -222,19 +222,19 @@ if __name__ == '__main__':
     print('BLOCK OFFSET {}'.format(block_offset))
     z_offset = serial_offsets[block_offset] 
     serial_field = serial_fields[z_offset]
+    prefix = block_offset
     class ComputeFieldTaskIterator(object):
         def __init__(self, brange, odd_even):
             self.brange = brange
             self.odd_even = odd_even
         def __iter__(self):
-            prefix = block_offset
             for i, block_start in enumerate(self.brange):
                 block_type = block_types[(i+self.odd_even) % 2]
                 dst = dsts[block_type]
                 z = block_start + block_offset 
                 model_path = model_lookup[z]
                 bbox = bbox_lookup[z]
-                t = a.compute_field(cm, args.model_path, src.path, dst, serial_field, 
+                t = a.compute_field(cm, model_path, src.path, dst, serial_field, 
                                     z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
                                     src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                                     tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
@@ -244,7 +244,7 @@ if __name__ == '__main__':
     start = time()
     for i, irange in enumerate(range_list):
         ptask.append(ComputeFieldTaskIterator(irange, i*odd_even))
-    
+    print("-----ptask len is", len(ptask), a.threads) 
     with ProcessPoolExecutor(max_workers=a.threads) as executor:
         executor.map(remote_upload, ptask)
    
@@ -310,9 +310,9 @@ if __name__ == '__main__':
                 z = block_start + block_offset 
                 bbox = bbox_lookup[z]
                 model_path = model_lookup[z]
-                for z_offset in vvote_offset:
+                for z_offset in vvote_offsets:
                     field = pair_fields[z_offset]
-                    t = a.compute_field(cm, args.model_path, src.path, dst, field, 
+                    t = a.compute_field(cm, model_path, src.path, dst, field, 
                                         z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
                                         src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                                         tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
@@ -408,7 +408,6 @@ if __name__ == '__main__':
   ###########################
   
   # Copy vector field of first block
-#  batch = []
   block_start = block_range[0]
   prefix = block_start
   class CopyTaskIteratorII():
@@ -445,7 +444,6 @@ if __name__ == '__main__':
 
 
   # Render out the images from the copied field
-#  batch = []
   block_start = block_range[0]
   prefix = block_start
 
@@ -519,8 +517,6 @@ if __name__ == '__main__':
   end = time()
   diff = end - start
   print("Executing Compose tasks use time:", diff)
-
-
 
   prefix = ''
   start = time()
