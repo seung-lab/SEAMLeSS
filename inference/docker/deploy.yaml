@@ -26,13 +26,10 @@ spec:
         name: seamless
         imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/worker.py --processes 3 --gpu_processes 1 --queue_name deepalign0 --lease_seconds 40"]
+        args: ["-c", "python inference/worker.py --processes 1 --gpu_processes 1 --queue_name deepalign1 --lease_seconds 40"]
         resources: 
           limits:
             nvidia.com/gpu: 1
-          requests:
-            cpu: "3"
-            memory: "10Gi"
         volumeMounts:
         - name: secrets
           mountPath: /root/.cloudvolume/secrets
