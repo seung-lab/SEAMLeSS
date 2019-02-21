@@ -29,7 +29,7 @@ def make_range(block_range, part_num):
     else:
         part = part_num
         srange = rangelen//part
-    if rangelen%2 == 0:
+    if srange%2 == 0:
         odd_even = 0
     else:
         odd_even = 1
