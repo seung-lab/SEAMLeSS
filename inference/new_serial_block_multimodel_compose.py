@@ -364,7 +364,7 @@ if __name__ == '__main__':
     end = time()
     diff = end - start
     print("Sending Vvote Tasks for vvote use time:", diff)
-    print('Run Compute field for vvote')
+    print('Run vvoting')
     # wait 
     print('block offset {}'.format(block_offset))
     start = time()
@@ -514,7 +514,7 @@ if __name__ == '__main__':
     end = time()
     diff = end - start
     print("Sending Compose Tasks use time:", diff)
-    print('Run Compoose')
+    print('Run Compose')
   start = time()
   # wait 
   a.wait_for_sqs_empty()
