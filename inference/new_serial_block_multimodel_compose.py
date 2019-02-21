@@ -29,7 +29,7 @@ def make_range(block_range, part_num):
     else:
         part = part_num
         srange = rangelen//part
-    if rangelen%2 == 0:
+    if srange%2 == 0:
         odd_even = 0
     else:
         odd_even = 1
@@ -146,12 +146,12 @@ if __name__ == '__main__':
   for z_offset in serial_offsets.values():
     serial_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
                                   data_type='int16', num_channels=2,
-                                  fill_missing=True, overwrite=True)
+                                  fill_missing=True, overwrite=True).path
   pair_fields = {}
   for z_offset in vvote_offsets:
     pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
                                       data_type='int16', num_channels=2,
-                                      fill_missing=True, overwrite=True)
+                                      fill_missing=True, overwrite=True).path
   vvote_field = cm.create(join(args.dst_path, 'field', 'vvote_{}'.format(overlap)), 
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True)
@@ -184,330 +184,379 @@ if __name__ == '__main__':
       def __iter__(self):
           for block_offset in copy_range:
             prefix = block_offset
-            #for i, block_start in enumerate(block_range):
             for i, block_start in enumerate(self.brange):
               block_type = block_types[(i + self.odd_even) % 2]
-              #block_type = block_types[i % 2]
               dst = dsts[block_type]
               z = block_start + block_offset
               bbox = bbox_lookup[z]
-              t =  a.copy(cm, src, dst, z, z, bbox, mip, is_field=False,
+              t =  a.copy(cm, src.path, dst, z, z, bbox, mip, is_field=False,
                          mask_cv=src_mask_cv, mask_mip=src_mask_mip, mask_val=src_mask_val,
                          prefix=prefix)
               yield from t 
 
   ptask = []
   range_list, odd_even = make_range(block_range, a.threads)
+  
+  start = time()
   for i, irange in enumerate(range_list):
       ptask.append(CopyTaskIterator(irange, i*odd_even))
   
-  with ProcessPoolExecutor(max_workers=1) as executor:
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
       executor.map(remote_upload, ptask)
  
-#  batch = []
-#  task_counter = {}
-#  for block_offset in copy_range:
-#    prefix = block_offset
-#    for i, block_start in enumerate(block_range):
-#      block_type = block_types[i % 2]
-#      dst = dsts[block_type]
-#      z = block_start + block_offset 
-#      bbox = bbox_lookup[z]
-#      t = a.copy(cm, src.path, dst, z, z, bbox, mip, is_field=False, mask_cv=src_mask_cv,
-#                     mask_mip=src_mask_mip, mask_val=src_mask_val, prefix=prefix)
-#      k = (prefix, dst)
-#      if k not in task_counter:
-#        task_counter[k] = 0
-#      task_counter[k] += len(t)
-#      batch.extend(t)
-  print('Scheduling CopyTasks')
-#  start = time()
-#  run(a, batch)
-#  end = time()
-#  diff = end - start
-#  print_run(diff, len(batch))
-#  # wait
-#  start = time()
-  if args.use_sqs_wait:
-    a.wait_for_sqs_empty()
-#  else:
-#    for (prefix, path), n in task_counter.items():
-#      a.wait_for_queue_empty(path, 'copy_done/{}'.format(prefix), n)
-#  end = time()
-#  diff = end - start
-#  print_run(diff, len(batch))
+  end = time()
+  diff = end - start
+  print("Sending Copy Tasks use time:", diff)
+  print('Run CopyTasks')
+  # wait
+  start = time()
+  #if args.use_sqs_wait:
+  a.wait_for_sqs_empty()
+  end = time()
+  diff = end - start
+  print("Executing Copy Tasks use time:", diff)
 
-#  # Align without vector voting
-#  for block_offset in serial_range:
-#    print('BLOCK OFFSET {}'.format(block_offset))
-#    z_offset = serial_offsets[block_offset] 
-#    serial_field = serial_fields[z_offset]
-#    batch = []
-#    prefix = block_offset
-#    for i, block_start in enumerate(block_range):
-#      block_type = block_types[i % 2]
-#      dst = dsts[block_type]
-#      z = block_start + block_offset 
-#      model_path = model_lookup[z]
-#      bbox = bbox_lookup[z]
-#      t = a.compute_field(cm, model_path, src, dst, serial_field, 
-#                          z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
-#                          src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-#                          tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-#                          tgt_mask_val=src_mask_val, prefix=prefix)
-#      batch.extend(t)
-#
-#    print('Scheduling ComputeFieldTasks')
-#    start = time()
-#    run(a, batch)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#    start = time()
-#    # wait 
-#    if args.use_sqs_wait:
-#      a.wait_for_sqs_empty()
-#    else:
-#      n = len(batch) 
-#      a.wait_for_queue_empty(serial_field.path, 
-#          'compute_field_done/{}'.format(prefix), n)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#
-#    batch = []
-#    task_counter = {}
-#    for i, block_start in enumerate(block_range):
-#      block_type = block_types[i % 2]
-#      dst = dsts[block_type]
-#      z = block_start + block_offset 
-#      bbox = bbox_lookup[z]
-#      t = a.render(cm, src, serial_field, dst, src_z=z, field_z=z, dst_z=z, 
-#                   bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
-#                   mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
-#      k = (prefix, dst.path)
-#      if k not in task_counter:
-#        task_counter[k] = 0
-#      task_counter[k] += len(t)
-#      batch.extend(t)
-#
-#    print('Scheduling RenderTasks')
-#    start = time()
-#    run(a, batch)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#    start = time()
-#    # wait 
-#    if args.use_sqs_wait:
-#      a.wait_for_sqs_empty()
-#    else:
-#      for (prefix, path), n in task_counter.items():
-#        a.wait_for_queue_empty(path, 'render_done/{}'.format(prefix), n)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#
-#  # Align with vector voting
-#  for block_offset in vvote_range:
-#    print('BLOCK OFFSET {}'.format(block_offset))
-#    batch = []
-#    task_counter = {}
-#    prefix = block_offset
-#    for i, block_start in enumerate(block_range):
-#      block_type = block_types[i % 2]
-#      dst = dsts[block_type]
-#      z = block_start + block_offset 
-#      bbox = bbox_lookup[z]
-#      model_path = model_lookup[z]
-#      for z_offset in vvote_offsets:
-#        field = pair_fields[z_offset]
-#        t = a.compute_field(cm, model_path, src, dst, field, 
-#                            z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
-#                            src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-#                            tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-#                            tgt_mask_val=src_mask_val, prefix=prefix)
-#        batch.extend(t)
-#        k = (prefix, field.path)
-#        if k not in task_counter:
-#          task_counter[k] = 0
-#        task_counter[k] += len(t)
-#
-#    print('\nScheduling ComputeFieldTasks')
-#    start = time()
-#    run(a, batch)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#    start = time()
-#    # wait 
-#    if args.use_sqs_wait:
-#      print('block offset {}'.format(block_offset))
-#      a.wait_for_sqs_empty()
-#    else:
-#      for (prefix, path), n in task_counter.items():
-#        a.wait_for_queue_empty(path, 'compute_field_done/{}'.format(prefix), n)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#
-#    batch = []
-#    for block_start in block_range:
-#      z = block_start + block_offset 
-#      bbox = bbox_lookup[z]
-#      t = a.vector_vote(cm, pair_fields, vvote_field, z, bbox, mip, inverse=False, 
-#                        serial=True, prefix=prefix)
-#      batch.extend(t)
-#
-#    print('\nScheduling VectorVoteTasks')
-#    start = time()
-#    run(a, batch)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#    start = time()
-#    # wait 
-#    if args.use_sqs_wait:
-#      print('block offset {}'.format(block_offset))
-#      a.wait_for_sqs_empty()
-#    else:
-#      n = len(batch)
-#      a.wait_for_queue_empty(vvote_field.path, 
-#          'vector_vote_done/{}'.format(prefix), n)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#
-#    batch = []
-#    task_counter = {}
-#    for i, block_start in enumerate(block_range):
-#      block_type = block_types[i % 2]
-#      dst = dsts[block_type]
-#      z = block_start + block_offset 
-#      bbox = bbox_lookup[z]
-#      t = a.render(cm, src, vvote_field, dst, 
-#                   src_z=z, field_z=z, dst_z=z, bbox=bbox, src_mip=mip, field_mip=mip, 
-#                   mask_cv=src_mask_cv, mask_val=src_mask_val, mask_mip=src_mask_mip,
-#                   prefix=prefix)
-#      batch.extend(t)
-#      k = (prefix, dst.path)
-#      if k not in task_counter:
-#        task_counter[k] = 0
-#      task_counter[k] += len(t)
-#
-#    print('\nScheduling RenderTasks')
-#    start = time()
-#    run(a, batch)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#    start = time()
-#    # wait
-#    if args.use_sqs_wait:
-#      print('block offset {}'.format(block_offset))
-#      a.wait_for_sqs_empty()
-#    else:
-#      for (prefix, path), n in task_counter.items():
-#        a.wait_for_queue_empty(path, 'render_done/{}'.format(prefix), n)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#
-#  ###########################
-#  # Serial broadcast script #
-#  ###########################
-#  
-#  # Copy vector field of first block
+
+  # Align without vector voting
+  for block_offset in serial_range:
+    print('BLOCK OFFSET {}'.format(block_offset))
+    z_offset = serial_offsets[block_offset] 
+    serial_field = serial_fields[z_offset]
+    class ComputeFieldTaskIterator(object):
+        def __init__(self, brange, odd_even):
+            self.brange = brange
+            self.odd_even = odd_even
+        def __iter__(self):
+            prefix = block_offset
+            for i, block_start in enumerate(self.brange):
+                block_type = block_types[(i+self.odd_even) % 2]
+                dst = dsts[block_type]
+                z = block_start + block_offset 
+                model_path = model_lookup[z]
+                bbox = bbox_lookup[z]
+                t = a.compute_field(cm, args.model_path, src.path, dst, serial_field, 
+                                    z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
+                                    src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                                    tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+                                    tgt_mask_val=src_mask_val, prefix=prefix)
+                yield from t
+    ptask = []
+    start = time()
+    for i, irange in enumerate(range_list):
+        ptask.append(ComputeFieldTaskIterator(irange, i*odd_even))
+    
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+   
+    end = time()
+    diff = end - start
+    print("Sending Compute Field Tasks use time:", diff)
+    print('Run Compute field')
+
+    start = time()
+    # wait 
+    a.wait_for_sqs_empty()
+    end = time()
+    diff = end - start
+    print("Executing Compute Tasks use time:", diff)
+
+    class RenderTaskIterator(object):
+        def __init__(self, brange, odd_even):
+            self.brange = brange
+            self.odd_even = odd_even
+        def __iter__(self):
+            prefix = block_offset
+            for i, block_start in enumerate(self.brange):
+                block_type = block_types[(i+self.odd_even) % 2]
+                dst = dsts[block_type]
+                z = block_start + block_offset
+                bbox = bbox_lookup[z]
+                t = a.render(cm, src.path, serial_field, dst, src_z=z, field_z=z, dst_z=z,
+                             bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
+                             mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
+                yield from t
+    ptask = []
+    start = time()
+    for i, irange in enumerate(range_list):
+        ptask.append(RenderTaskIterator(irange, i*odd_even))
+    
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+   
+    end = time()
+    diff = end - start
+    print("Sending Render Tasks use time:", diff)
+    print('Run rendering')
+
+    start = time()
+    # wait 
+    a.wait_for_sqs_empty()
+    end = time()
+    diff = end - start
+    print("Executing Rendering use time:", diff)
+
+  # Align with vector voting
+  for block_offset in vvote_range:
+    print('BLOCK OFFSET {}'.format(block_offset))
+    prefix = block_offset
+    class ComputeFieldTaskIteratorII(object):
+        def __init__(self, brange, odd_even):
+            self.brange = brange
+            self.odd_even = odd_even
+        def __iter__(self):
+            for i, block_start in enumerate(self.brange):
+                block_type = block_types[(i+self.odd_even) % 2]
+                dst = dsts[block_type]
+                z = block_start + block_offset 
+                bbox = bbox_lookup[z]
+                model_path = model_lookup[z]
+                for z_offset in vvote_offset:
+                    field = pair_fields[z_offset]
+                    t = a.compute_field(cm, args.model_path, src.path, dst, field, 
+                                        z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
+                                        src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                                        tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+                                        tgt_mask_val=src_mask_val, prefix=prefix)
+                    yield from t
+    ptask = []
+    start = time()
+    for i, irange in enumerate(range_list):
+        ptask.append(ComputeFieldTaskIteratorII(irange, i*odd_even))
+    
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+   
+    end = time()
+    diff = end - start
+    print("Sending Compute Field Tasks for vvote use time:", diff)
+    print('Run Compute field for vvote')
+    # wait 
+    print('block offset {}'.format(block_offset))
+    start = time()
+    a.wait_for_sqs_empty()
+    end = time()
+    diff = end - start
+    print("Executing Compute Tasks for vvtote use time:", diff)
+
+    class VvoteTaskIterator(object):
+        def __init__(self, brange):
+            self.brange = brange
+        def __iter__(self):
+            for block_start in self.brange:
+                z = block_start + block_offset
+                bbox = bbox_lookup[z]
+                t = a.vector_vote(cm, pair_fields, vvote_field.path, z, bbox,
+                                  mip, inverse=False, serial=True, prefix=prefix)
+                yield from t
+    ptask = []
+    start = time()
+    for irange in range_list:
+        ptask.append(VvoteTaskIterator(irange))
+    
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+   
+    end = time()
+    diff = end - start
+    print("Sending Vvote Tasks for vvote use time:", diff)
+    print('Run Compute field for vvote')
+    # wait 
+    print('block offset {}'.format(block_offset))
+    start = time()
+    a.wait_for_sqs_empty()
+    end = time()
+    diff = end - start
+    print("Executing vvtote use time:", diff)
+
+    class RenderTaskIteratorII(object):
+        def __init__(self, brange, odd_even):
+            self.brange = brange
+            self.odd_even = odd_even
+        def __iter__(self):
+            for i, block_start in enumerate(self.brange):
+                block_type = block_types[(i+self.odd_even) % 2]
+                dst = dsts[block_type]
+                z = block_start + block_offset
+                bbox = bbox_lookup[z]
+                t = a.render(cm, src.path, vvote_field.path, dst, src_z=z, field_z=z, dst_z=z,
+                             bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
+                             mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
+                yield from t
+    ptask = []
+    start = time()
+    for i, irange in enumerate(range_list):
+        ptask.append(RenderTaskIteratorII(irange, i*odd_even))
+    
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+   
+    end = time()
+    diff = end - start
+    print("Sending Render Tasks use time:", diff)
+    print('Run rendering')
+
+    start = time()
+    # wait 
+    a.wait_for_sqs_empty()
+    end = time()
+    diff = end - start
+    print("Executing Rendering use time:", diff)
+
+
+  ###########################
+  # Serial broadcast script #
+  ###########################
+  
+  # Copy vector field of first block
 #  batch = []
-#  block_start = block_range[0]
-#  prefix = block_start
-#  for block_offset in copy_field_range: 
-#    z = block_start + block_offset
-#    bbox = bbox_lookup[z]
-#    t = a.copy(cm, vvote_field, compose_field, z, z, bbox, mip, is_field=True, prefix=prefix)
-#    batch.extend(t)
-#
-#  run(a, batch)
-#  start = time()
-#  # wait
-#  if args.use_sqs_wait:
-#    a.wait_for_sqs_empty()
-#  else:
-#    a.wait_for_queue_empty(compose_field.path, 'copy_done/{}'.format(prefix), len(batch))
-#  end = time()
-#  diff = end - start
-#  print_run(diff, len(batch))
-#
-#  # Render out the images from the copied field
+  block_start = block_range[0]
+  prefix = block_start
+  class CopyTaskIteratorII():
+      def __init__(self, brange):
+          self.brange = brange
+      def __iter__(self):
+          for block_offset in self.brange:
+              z = block_start + block_offset
+              bbox = bbox_lookup[z]
+              t = a.copy(cm, vvote_field.path, compose_field.path, z, z, bbox, mip, is_field=True, prefix=prefix)
+              yield from t 
+
+  copy_range_list, cp_odd_even = make_range(copy_field_range, a.threads)
+  ptask = []
+  start = time()
+  for irange in range_list:
+      ptask.append(CopyTaskIteratorII(irange))
+  
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+      executor.map(remote_upload, ptask)
+  
+  end = time()
+  diff = end - start
+  print("Sending Copy Tasks use time:", diff)
+  print('Run copying')
+ 
+  start = time()
+  # wait 
+  a.wait_for_sqs_empty()
+  end = time()
+  diff = end - start
+  print("Executing copy tasks use time:", diff)
+
+
+
+  # Render out the images from the copied field
 #  batch = []
-#  block_start = block_range[0]
-#  prefix = block_start
-#  for block_offset in copy_field_range: 
-#    z = block_start + block_offset 
-#    bbox = bbox_lookup[z]
-#    t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
-#                 bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
-#    batch.extend(t)
-#
-#  print('Scheduling render for copied range')
-#  start = time()
-#  run(a, batch)
-#  end = time()
-#  diff = end - start
-#  print_run(diff, len(batch))
-#
-#  # Compose next block with last vector field from the previous composed block
-#  n_tasks = 0
-#  prefix = '' 
-#  start = time()
-#  for i, block_start in enumerate(block_range[1:]):
-#    batch = []
-#    z_broadcast = block_start + overlap - 1
-#    for block_offset in broadcast_field_range[1:]:
-#      # decay the composition over the length of the block
-#      br = float(broadcast_field_range[-1])
-#      factor = (br - block_offset) / (br - broadcast_field_range[1])
-#      z = block_start + block_offset
-#      bbox = bbox_lookup[z]
-#      t = a.compose(cm, vvote_field, vvote_field, compose_field, z_broadcast, z, z, 
-#                    bbox, mip, mip, mip, factor, prefix=prefix)
-#      batch.extend(t)
-#      n_tasks += len(t)
-#
-#    print('Scheduling compose for block_start {}, block {} / {}'.format(block_start, i+1, 
-#                                                                    len(block_range[1:])))
-#    start = time()
-#    run(a, batch)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#  # wait
-#  if args.use_sqs_wait:
-#    a.wait_for_sqs_empty()
-#  else:
-#    a.wait_for_queue_empty(compose_field.path, 'compose_done/{}'.format(prefix), n_tasks)
-#  end = time()
-#  diff = end - start
-#  print_run(diff, len(batch))
-#
-#  prefix = ''
-#  start = time()
-#  for i, block_start in enumerate(block_range[1:]):
-#    batch = []
-#    for block_offset in broadcast_field_range[1:]: 
-#      z = block_start + block_offset 
-#      bbox = bbox_lookup[z]
-#      t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
-#                   bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
-#      batch.extend(t)
-#
-#    print('Scheduling render for block_start {}, block {} / {}'.format(block_start, i+1, 
-#                                                                    len(block_range[1:])))
-#    start = time()
-#    run(a, batch)
-#    end = time()
-#    diff = end - start
-#    print_run(diff, len(batch))
-#
+  block_start = block_range[0]
+  prefix = block_start
+
+  class RenderTaskIteratorIII(object):
+      def __init__(self, brange):
+          self.brange = brange
+      def __iter__(self):
+          for block_offset in self.brange: 
+              z = block_start + block_offset 
+              bbox = bbox_lookup[z]
+              t = a.render(cm, src.path, compose_field.path, final_dst.path, src_z=z, field_z=z, dst_z=z,
+                      bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+              yield from t
+  
+  ptask = []
+  start = time()
+  for irange in copy_range_list:
+      ptask.append(RenderTaskIteratorIII(irange))
+  
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+      executor.map(remote_upload, ptask)
+  
+  end = time()
+  diff = end - start
+  print("Sending Render Tasks use time:", diff)
+  print('Run rendering')
+
+  start = time()
+  # wait 
+  a.wait_for_sqs_empty()
+  end = time()
+  diff = end - start
+  print("Executing Rendering for copied range use time:", diff)
+
+  # Compose next block with last vector field from the previous composed block
+  prefix = '' 
+  start = time()
+  broadcast_range_list, brodd_even = make_range(broadcast_field_range[1:], a.threads)
+  for i, block_start in enumerate(block_range[1:]):
+    z_broadcast = block_start + overlap - 1
+    class ComposeTaskIterator(object):
+        def __init__(self, brange):
+            self.brange = brange
+        def __iter__(self):
+            for block_offset in self.brange:
+                br = float(broadcast_field_range[-1])
+                factor = (br - block_offset) / (br - broadcast_field_range[1])
+                z = block_start + block_offset
+                bbox = bbox_lookup[z]
+                t = a.compose(cm, vvote_field.path, vvote_field.path, compose_field.path, z_broadcast, z, z, 
+                              bbox, mip, mip, mip, factor, prefix=prefix)
+                yield from t
+    
+    ptask = []
+    start = time()
+    for irange in copy_range_list:
+        ptask.append(ComposeTaskIterator(irange))
+    
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+    print('Scheduling compose for block_start {}, block {} / {}'.format(block_start, i+1, 
+                                                                    len(block_range[1:])))
+ 
+    end = time()
+    diff = end - start
+    print("Sending Compose Tasks use time:", diff)
+    print('Run Compoose')
+  start = time()
+  # wait 
+  a.wait_for_sqs_empty()
+  end = time()
+  diff = end - start
+  print("Executing Compose tasks use time:", diff)
+
+
+
+  prefix = ''
+  start = time()
+
+  class RenderTaskIteratorIV(object):
+      def __init__(self, brange):
+          self.brange = brange
+      def __iter__(self):
+          for i, block_start in enumerate(self.brange):
+            for block_offset in broadcast_field_range[1:]: 
+              z = block_start + block_offset 
+              bbox = bbox_lookup[z]
+              t = a.render(cm, src.path, compose_field.path, final_dst.path, src_z=z, field_z=z, dst_z=z, 
+                           bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+              yield from t
+  
+  final_list, fiodd_even = make_range(block_range[1:], a.threads)
+  ptask = []
+  start = time()
+  for irange in final_list:
+      ptask.append(RenderTaskIteratorIV(irange))
+  
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+      executor.map(remote_upload, ptask)
+  
+  end = time()
+  diff = end - start
+  print("Sending Render Tasks use time:", diff)
+  print('Run rendering')
+
+  start = time()
+  # wait 
+  a.wait_for_sqs_empty()
+  end = time()
+  diff = end - start
+  print("Executing Rendering for copied range use time:", diff)
+
 #
 #  # # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
