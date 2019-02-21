@@ -191,7 +191,7 @@ if __name__ == '__main__':
               dst = dsts[block_type]
               z = block_start + block_offset
               bbox = bbox_lookup[z]
-              t =  a.copy(cm, src, dst, z, z, bbox, mip, is_field=False,
+              t =  a.copy(cm, src.path, dst, z, z, bbox, mip, is_field=False,
                          mask_cv=src_mask_cv, mask_mip=src_mask_mip, mask_val=src_mask_val,
                          prefix=prefix)
               yield from t 
