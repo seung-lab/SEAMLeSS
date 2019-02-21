@@ -14,7 +14,7 @@ from time import time, sleep
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
 from cloudmanager import CloudManager
-from tasks import run 
+from tasks import run
 from boundingbox import BoundingBox
 
 def print_run(diff, n_tasks):
@@ -132,6 +132,11 @@ if __name__ == '__main__':
                                fill_missing=True, overwrite=False)
     tgt_mask_cv = src_mask_cv
 
+  if src_mask_cv != None:
+      src_mask_cv = src_mask_cv.path
+  if tgt_mask_cv != None:
+      tgt_mask_cv = tgt_mask_cv.path
+
   # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius 
   dsts = {}
   block_types = ['even', 'odd']
@@ -242,6 +247,7 @@ if __name__ == '__main__':
                 yield from t
     ptask = []
     start = time()
+    print("block_range", block_range)
     for i, irange in enumerate(range_list):
         ptask.append(ComputeFieldTaskIterator(irange, i*odd_even))
     print("-----ptask len is", len(ptask), a.threads) 
@@ -265,7 +271,6 @@ if __name__ == '__main__':
             self.brange = brange
             self.odd_even = odd_even
         def __iter__(self):
-            prefix = block_offset
             for i, block_start in enumerate(self.brange):
                 block_type = block_types[(i+self.odd_even) % 2]
                 dst = dsts[block_type]
@@ -423,7 +428,7 @@ if __name__ == '__main__':
   copy_range_list, cp_odd_even = make_range(copy_field_range, a.threads)
   ptask = []
   start = time()
-  for irange in range_list:
+  for irange in copy_range_list:
       ptask.append(CopyTaskIteratorII(irange))
   
   with ProcessPoolExecutor(max_workers=a.threads) as executor:
@@ -480,7 +485,6 @@ if __name__ == '__main__':
 
   # Compose next block with last vector field from the previous composed block
   prefix = '' 
-  start = time()
   broadcast_range_list, brodd_even = make_range(broadcast_field_range[1:], a.threads)
   for i, block_start in enumerate(block_range[1:]):
     z_broadcast = block_start + overlap - 1
@@ -499,7 +503,7 @@ if __name__ == '__main__':
     
     ptask = []
     start = time()
-    for irange in copy_range_list:
+    for irange in broadcast_range_list:
         ptask.append(ComposeTaskIterator(irange))
     
     with ProcessPoolExecutor(max_workers=a.threads) as executor:
