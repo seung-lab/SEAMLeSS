@@ -22,7 +22,8 @@ else:
 '''for z in starts:
     print ("z == {}".format(z))
     name = args.name_template.format(z)'''
-for name  in ['zzzz_02_21_mip_4_5_6_7_mined_7_frankenstein_ft_m4']:
+for name  in ['zzzz_02_21_mip_4_5_6_7_mined_7_frankenstein_raw', 'zzzz_02_21_mip_4_5_6_7_mined_7_frankenstein_x1',
+                     'zzzz_02_21_mip_4_5_6_7_mined_7_frankenstein_x1_ft_m5m6']:
     net_dir = "{}{}".format(args.prefix, name)
     src_weights_dir = args.weights_dir
     tgt_weights_dir = os.path.join(net_dir, "weights.pt")
