@@ -542,7 +542,7 @@ class Aligner:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       field = self.rel_to_abs_residual(field, mip)
       field = field[:,pad:-pad,pad:-pad,:]
-      field += distance
+      field += distance.to(device=self.device)
       field = field.data.cpu().numpy()
       # clear unused, cached memory so that other processes can allocate it
       torch.cuda.empty_cache()
