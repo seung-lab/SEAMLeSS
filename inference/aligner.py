@@ -724,57 +724,84 @@ class Aligner:
         image = image[:,:,pad:-pad,pad:-pad]
         return image
 
-  # def cloudsample_compose(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip, dst_mip,
-  #                               pad=2048):
-  #     """Wrapper for torch.nn.functional.gridsample for CloudVolume field objects.
 
-  #     Gridsampling a field is a composition, such that f(g(x)).
+  def cloudsample_compose(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip,
+                          dst_mip, affine=None, pad=256):
+      """Wrapper for torch.nn.functional.gridsample for CloudVolume field objects.
 
-  #     ** THIS METHOD HAS NOT BEEN TESTED **
+      Gridsampling a field is a composition, such that f(g(x)).
 
-  #     Args:
-  #        f_cv: MiplessCloudVolume storing the vector field to do the warping 
-  #        g_cv: MiplessCloudVolume storing the vector field to be warped
-  #        bbox: BoundingBox for output region to be warped
-  #        z: int for section index to warp
-  #        f_mip: int for MIP of the warping field 
-  #        g_mip: int for MIP of the field to be warped
-  #        dst_mip: int for MIP of the desired output field
+      ** THIS METHOD HAS NOT BEEN TESTED **
 
-  #     Returns:
-  #        composed field
-  #     """
-  #     padded_bbox = deepcopy(bbox)
-  #     padded_bbox.uncrop(pad, mip=0)
-  #     crop = pad // 2**dst_mip
-  #     f = self.get_field(f_cv, f_z, padded_bbox, f_mip, relative=False,
-  #                         to_tensor=True)
-  #     x_range = bbox.x_range(mip=0)
-  #     y_range = bbox.y_range(mip=0)
-  #     if is_identity(f):
-  #       h = self.get_field(g_cv, g_z, bbox, g_mip, relative=False,
-  #                           to_tensor=True)
-  #       return h 
-  #     else:
-  #       distance = self.profile_field(f)
-  #       distance = (distance//(2**f_mip)) * 2**f_mip
-  #       new_bbox = self.adjust_bbox(padded_bbox, distance)
-  #       g = self.get_field(g_cv, g_z, new_bbox, g_mip, relative=True,
-  #                           to_tensor=True)
+      Args:
+         f_cv: MiplessCloudVolume storing the vector field to do the warping
+         g_cv: MiplessCloudVolume storing the vector field to be warped
+         bbox: BoundingBox for output region to be warped
+         z: int for section index to warp
+         f_mip: int for MIP of the warping field
+         g_mip: int for MIP of the field to be warped
+         dst_mip: int for MIP of the desired output field
+         pad: number of pixels to pad at dst_mip
 
-  #       f = f - distance.to(device = self.device)
-  #       f = self.abs_to_rel_residual(f, padded_bbox, f_mip)
-  #       f = f.to(device = self.device)
+      Returns:
+         composed field
+      """
+      assert(f_mip >= dst_mip)
+      assert(g_mip >= dst_mip)
+      padded_bbox = deepcopy(bbox)
+      print('Padding by {} at MIP{}'.format(pad, dst_mip))
+      padded_bbox.uncrop(pad, mip=dst_mip)
 
-  #       if dst_mip < g_mip:
-  #         g = upsample_field(g, g_mip, dst_mip)
-  #       if dst_mip < f_mip:
-  #         f = upsample_field(f, f_mip, dst_mip)
+      # Load warper vector field
+      f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
+                             relative=False, to_tensor=True)
+      if f_mip > dst_mip:
+        f = upsample_field(f, f_mip, dst_mip)
 
-  #       h = compose_fields(f, g)
-  #       h = self.rel_to_abs_residual(h, dst_mip)
-  #       h = h[:,crop:-crop,crop:-crop,:]
-  #       return h
+      if affine is not None:
+        # PyTorch conventions are column, row order (y, then x) so flip
+        # the affine matrix and offset
+        affine = torch.Tensor(affine).to(f.device)
+        affine = affine.flip(0)[:, [1, 0, 2]]  # flip x and y
+        offset_y, offset_x = padded_bbox.get_offset(mip=0)
+
+        ident = self.rel_to_abs_residual(
+            identity_grid(f.shape, device=f.device), dst_mip)
+
+        f += ident
+        f[..., 0] += offset_x
+        f[..., 1] += offset_y
+        f = torch.tensordot(
+            affine[:, 0:2], f, dims=([1], [3])).permute(1, 2, 3, 0)
+        f[..., :] += affine[:, 2]
+        f[..., 0] -= offset_x
+        f[..., 1] -= offset_y
+        f -= ident
+
+      if is_identity(f):
+        g = self.get_field(g_cv, g_z, padded_bbox, g_mip,
+                           relative=False, to_tensor=True)
+        return g
+      else:
+        distance = self.profile_field(f)
+        distance = (distance // (2 ** dst_mip)) * 2 ** dst_mip
+        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+
+        f -= distance.to(device = self.device)
+        f = self.abs_to_rel_residual(f, padded_bbox, dst_mip)
+        f = f.to(device = self.device)
+
+        g = self.get_field(g_cv, g_z, new_bbox, g_mip,
+                           relative=False, to_tensor=True)
+        if g_mip > dst_mip:
+          g = upsample_field(g, g_mip, dst_mip)
+        g = self.abs_to_rel_residual(g, padded_bbox, dst_mip)
+        h = compose_fields(f, g)
+        h = self.rel_to_abs_residual(h, dst_mip)
+        h += distance
+        h = h[:,:,pad:-pad,pad:-pad]
+        return h
+
 
   def cloudsample_image_batch(self, z_range, image_cv, field_cv, 
                               bbox, image_mip, field_mip,
