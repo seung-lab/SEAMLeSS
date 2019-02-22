@@ -220,8 +220,8 @@ if __name__ == '__main__':
   end = time()
   diff = end - start
   print("Executing Copy Tasks use time:", diff)
-
-
+ 
+ 
   # Align without vector voting
   for block_offset in serial_range:
     print('BLOCK OFFSET {}'.format(block_offset))
@@ -243,7 +243,8 @@ if __name__ == '__main__':
                                     z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
                                     src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                                     tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                                    tgt_mask_val=src_mask_val, prefix=prefix)
+                                    tgt_mask_val=src_mask_val, prefix=prefix,
+                                    prev_field_cv=None, prev_field_z=None)
                 yield from t
     ptask = []
     start = time()
@@ -258,14 +259,14 @@ if __name__ == '__main__':
     diff = end - start
     print("Sending Compute Field Tasks use time:", diff)
     print('Run Compute field')
-
+ 
     start = time()
     # wait 
     a.wait_for_sqs_empty()
     end = time()
     diff = end - start
     print("Executing Compute Tasks use time:", diff)
-
+ 
     class RenderTaskIterator(object):
         def __init__(self, brange, odd_even):
             self.brange = brange
@@ -292,7 +293,7 @@ if __name__ == '__main__':
     diff = end - start
     print("Sending Render Tasks use time:", diff)
     print('Run rendering')
-
+ 
     start = time()
     # wait 
     a.wait_for_sqs_empty()
@@ -321,7 +322,8 @@ if __name__ == '__main__':
                                         z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
                                         src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                                         tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                                        tgt_mask_val=src_mask_val, prefix=prefix)
+                                        tgt_mask_val=src_mask_val, prefix=prefix, 
+                                        prev_field_cv=vvote_field.path, prev_field_z=z+z_offset)
                     yield from t
     ptask = []
     start = time()
