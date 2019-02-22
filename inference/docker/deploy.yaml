@@ -26,7 +26,7 @@ spec:
         name: seamless
         imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/worker.py --processes 1 --gpu_processes 1 --queue_name deepalign1 --lease_seconds 40"]
+        args: ["-c", "python inference/worker.py --processes 8 --gpu_processes 1 --queue_name deepalign1 --lease_seconds 10"]
         resources: 
           limits:
             nvidia.com/gpu: 1
