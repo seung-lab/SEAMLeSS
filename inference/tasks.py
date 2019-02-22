@@ -159,7 +159,7 @@ class ComputeFieldTask(RegisteredTask):
                                           patch_bbox, mip, pad, 
                                           src_mask_cv, src_mask_mip, src_mask_val,
                                           tgt_mask_cv, tgt_mask_mip, tgt_mask_val,
-                                          prev_field_cv, prev_field_z)
+                                          None, prev_field_cv, prev_field_z)
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       with Storage(field_cv.path) as stor:
         path = 'compute_field_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))
