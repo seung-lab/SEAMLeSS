@@ -470,20 +470,23 @@ class Aligner:
   def compute_field_chunk(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad, 
                           src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
                           tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
-                          tgt_alt_z=None):
+                          tgt_alt_z=None, prev_field_cv=None, prev_field_z=None):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
     Args:
       model_path: str for relative path to model directory
       src_z: int of section to be warped
-      src_cv: MiplessCloudVolume with source image      
+      src_cv: MiplessCloudVolume with source image
       tgt_z: int of section to be warped to
       tgt_cv: MiplessCloudVolume with target image
       bbox: BoundingBox for region of both sections to process
-      mip: int of MIP level to use for bbox 
+      mip: int of MIP level to use for bbox
       pad: int for amount of padding to add to the bbox before processing
       mask_cv: MiplessCloudVolume with mask to be used for both src & tgt image
-      
+      prev_field_cv: if specified, a MiplessCloudVolume containing the
+                     previously predicted field to be profile and displace
+                     the src chunk
+
     Returns:
       field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
@@ -496,6 +499,16 @@ class Aligner:
     padded_bbox = deepcopy(bbox)
     padded_bbox.uncrop(pad, mip=mip)
 
+    if prev_field_cv is not None:
+        field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
+                           relative=False, to_tensor=True)
+        distance = self.profile_field(field)
+        distance = (distance // (2 ** mip)) * 2 ** mip
+        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+    else:
+        distance = torch.Tensor([0, 0])
+        new_bbox = padded_bbox
+
     tgt_z = [tgt_z]
     if tgt_alt_z is not None:
       try:
@@ -504,7 +517,7 @@ class Aligner:
         tgt_z.append(tgt_alt_z)
       print('alternative target slices:', tgt_alt_z)
 
-    src_patch = self.get_masked_image(src_cv, src_z, padded_bbox, mip,
+    src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
                                 mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                 mask_val=src_mask_val,
                                 to_tensor=True, normalizer=normalizer)
@@ -529,6 +542,7 @@ class Aligner:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       field = self.rel_to_abs_residual(field, mip)
       field = field[:,pad:-pad,pad:-pad,:]
+      field += distance
       field = field.data.cpu().numpy()
       # clear unused, cached memory so that other processes can allocate it
       torch.cuda.empty_cache()
