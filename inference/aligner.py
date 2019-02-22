@@ -921,7 +921,8 @@ class Aligner:
   def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv, 
                           src_z, tgt_z, bbox, mip, pad=2048, 
                           src_mask_cv=None, src_mask_mip=0, src_mask_val=0, 
-                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0, prefix=''):
+                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
+                          prefix='', prev_field_cv=None, prev_field_z=None):
     """Compute field to warp src section to tgt section 
   
     Args:
@@ -951,7 +952,8 @@ class Aligner:
       batch.append(tasks.ComputeFieldTask(model_path, src_cv, tgt_cv, field_cv,
                                           src_z, tgt_z, chunk, mip, pad,
                                           src_mask_cv, src_mask_val, src_mask_mip, 
-                                          tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix))
+                                          tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix,
+                                          prev_field_cv, prev_field_z))
     return batch
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
