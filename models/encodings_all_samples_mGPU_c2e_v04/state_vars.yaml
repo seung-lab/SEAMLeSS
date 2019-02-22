@@ -9,9 +9,9 @@ gamma_step: 30
 gpus: '1'
 height: 5
 initialized_list: [true, true, true, true, true]
-iteration: 2468
+iteration: null
 lambda1: 100000.0
-levels: !!python/object/apply:builtins.slice [null, null, null]
+levels: null
 log_time: 1
 lr: 0.003
 name: test_encodings_all_samples_mGPU_c2e_v04_lsm
