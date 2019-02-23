@@ -37,8 +37,8 @@ if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--downsample_shift', type=int, default=0,
     help='temporary hack to account for half pixel shifts caused by downsampling')
-  parser.add_argument('--affine_lookup', type=str, 
-    help='path to csv of affine transforms indexed by section')
+  parser.add_argument('--section_lookup', type=str, 
+    help='path to json file with section specific settings')
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--field_path', type=str)
   parser.add_argument('--fine_field_path', type=str)
@@ -91,16 +91,31 @@ if __name__ == '__main__':
   field = cm.create(args.field_path, data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True)
 
+  # Source Dict
+  src_path_to_cv = {args.src_path: src}
+
   # compile model lookup per z index
   affine_lookup = None
-  if args.affine_lookup:
+  source_lookup = {}
+  if args.section_lookup:
     affine_lookup = {}
-    with open(args.affine_lookup) as f:
-      affine_list = json.load(f)
-      for aff in affine_list:
-        z = aff['z']
-        affine_lookup[z] = np.array(aff['transform'])
+    with open(args.section_lookup) as f:
+      section_list = json.load(f)
+      for section in section_list:
+        z = section['z']
+        affine_lookup[z] = np.array(section['transform'])
         affine_lookup[z][:, 2] += args.downsample_shift
+
+        try:
+          src_path = section['src']
+        except KeyError:
+          src_path = args.src_path
+
+        if src_path not in src_path_to_cv:
+          src_path_to_cv[src_path] = cm.create(src_path,
+              data_type='uint8', num_channels=1, fill_missing=True,
+              overwrite=False)
+        source_lookup[z] = src_path_to_cv[src_path]
 
   prefix = ''
 
@@ -151,13 +166,19 @@ if __name__ == '__main__':
           affine = None
           if affine_lookup:
             try:
-                affine = affine_lookup[z]
+              affine = affine_lookup[z]
             except KeyError:
-                affine = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]) 
-          t = a.render(cm, src.path, field.path, dst.path, z, z, z, bbox,
+              affine = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+
+          try:
+            src_path = source_lookup[z].path
+          except KeyError:
+            src_path = src.path
+          print("Rendering using path {}".format(src_path))
+          t = a.render(cm, src_path, field.path, dst.path, z, z, z, bbox,
                            src_mip, src_mip, affine=affine, prefix=prefix) 
           yield from t
- 
+
   ptask = []
   start = time()
   for irange in range_list:
