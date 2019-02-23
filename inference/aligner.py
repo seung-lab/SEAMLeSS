@@ -917,6 +917,8 @@ class Aligner:
       batch.append(tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
                                   is_field, mask_cv, mask_mip, mask_val, prefix))
     return batch
+  
+
 
   def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv, 
                           src_z, tgt_z, bbox, mip, pad=2048, 
@@ -1024,6 +1026,44 @@ class Aligner:
     for chunk in chunks:
       batch.append(tasks.VectorVoteTask(deepcopy(pairwise_cvs), vvote_cv, z,
                                         chunk, mip, inverse, serial, prefix))
+    return batch
+
+  def cloud_compose_field(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 
+                    f_mip, g_mip, dst_mip, affine, pad, prefix=''):
+    """Compose two vector field CloudVolumes
+
+    For coarse + fine composition:
+      f = fine 
+      g = coarse 
+    
+    Args:
+       cm: CloudManager that corresponds to the f_cv, g_cv, dst_cv
+       f_cv: MiplessCloudVolume of vector field f
+       g_cv: MiplessCloudVolume of vector field g
+       dst_cv: MiplessCloudVolume of composed vector field
+       f_z: int of section index to process
+       g_z: int of section index to process
+       dst_z: int of section index to process
+       bbox: BoundingBox of region to process
+       f_mip: MIP of vector field f
+       g_mip: MIP of vector field g
+       dst_mip: MIP of composed vector field
+       affine: affine matrix
+       pad: padding size
+       prefix: str used to write "finished" files for each task 
+        (only used for distributed)
+    """
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
+                                    cm.vec_voxel_offsets[dst_mip], 
+                                    mip=dst_mip)
+    if prefix == '':
+      prefix = '{}_{}'.format(dst_mip, dst_z)
+    batch = []
+    for chunk in chunks:
+      batch.append(tasks.CloudComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
+                                     dst_z, chunk, f_mip, g_mip, dst_mip,
+                                     affine, pad, prefix))
     return batch
 
   def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 

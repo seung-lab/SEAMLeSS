@@ -297,6 +297,50 @@ class ComposeTask(RegisteredTask):
       diff = end - start
       print('ComposeTask: {:.3f} s'.format(diff))
 
+class CloudComposeTask(RegisteredTask):
+  def __init__(self, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
+                     dst_mip, affine, pad, prefix):
+    super().__init__(f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
+                     dst_mip, affine, pad, prefix)
+
+  def execute(self, aligner):
+    f_cv = DCV(self.f_cv)
+    g_cv = DCV(self.g_cv)
+    dst_cv = DCV(self.dst_cv)
+    f_z = self.f_z
+    g_z = self.g_z
+    dst_z = self.dst_z
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    f_mip = self.f_mip
+    g_mip = self.g_mip
+    dst_mip = self.dst_mip
+    pad = self.pad
+    affine = None
+    if self.affine:
+      affine = np.array(self.affine)
+    prefix = self.prefix
+    print("\nCompose\n"
+          "f {}\n"
+          "g {}\n"
+          "f_z={}, g_z={}\n"
+          "f_MIP{}, g_MIP{}\n"
+          "dst {}\n"
+          "dst_MIP {}\n".format(f_cv, g_cv, f_z, g_z, f_mip, g_mip, dst_cv, 
+                               dst_mip), flush=True)
+    start = time()
+    if not aligner.dry_run:
+      h = aligner.cloudsample_compose(f_cv, g_cv, f_z, g_z, patch_bbox, f_mip,
+                                     g_mip, dst_mip, affine, pad)
+      h = h.data.cpu().numpy()
+      aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
+      with Storage(dst_cv.path) as stor:
+        path = 'compose_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
+      end = time()
+      diff = end - start
+      print('ComposeTask: {:.3f} s'.format(diff))
+
 class CPCTask(RegisteredTask):
   def __init__(self, src_cv, tgt_cv, dst_cv, src_z, tgt_z, patch_bbox, 
                     src_mip, dst_mip, norm, prefix):
