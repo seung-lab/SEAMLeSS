@@ -200,9 +200,8 @@ class RenderTask(RegisteredTask):
           "dst {}\n"
           "z={} to z={}\n"
           "MIP{} to MIP{}\n"
-          "Preconditioning affine\n"
-          "{}\n".format(src_cv, field_cv, dst_cv, src_z, dst_z, 
-                        field_mip, src_mip, affine), flush=True)
+          "\n".format(src_cv.path, field_cv.path, dst_cv.path, src_z, dst_z, 
+                        field_mip, src_mip), flush=True)
     start = time()
     if not aligner.dry_run:
       image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,

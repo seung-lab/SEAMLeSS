@@ -765,13 +765,11 @@ class Aligner:
       padded_bbox = deepcopy(bbox)
       print('Padding by {} at MIP{}'.format(pad, dst_mip))
       padded_bbox.uncrop(pad, mip=dst_mip)
-
       # Load warper vector field
       f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
                              relative=False, to_tensor=True)
       if f_mip > dst_mip:
         f = upsample_field(f, f_mip, dst_mip)
-
       if affine is not None:
         # PyTorch conventions are column, row order (y, then x) so flip
         # the affine matrix and offset
@@ -795,12 +793,15 @@ class Aligner:
       if is_identity(f):
         g = self.get_field(g_cv, g_z, padded_bbox, g_mip,
                            relative=False, to_tensor=True)
+        if g_mip > dst_mip:
+            g = upsample_field(g, g_mip, dst_mip)
         return g
+
       else:
         distance = self.profile_field(f)
-        distance = (distance // (2 ** dst_mip)) * 2 ** dst_mip
+        distance = (distance // (2 ** g_mip)) * 2 ** g_mip
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
-
+        
         f -= distance.to(device = self.device)
         f = self.abs_to_rel_residual(f, padded_bbox, dst_mip)
         f = f.to(device = self.device)
@@ -812,8 +813,8 @@ class Aligner:
         g = self.abs_to_rel_residual(g, padded_bbox, dst_mip)
         h = compose_fields(f, g)
         h = self.rel_to_abs_residual(h, dst_mip)
-        h += distance
-        h = h[:,:,pad:-pad,pad:-pad]
+        h += distance.to(device = self.device)
+        h = h[:,pad:-pad,pad:-pad:,]
         return h
 
 
