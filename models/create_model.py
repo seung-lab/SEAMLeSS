@@ -22,7 +22,7 @@ else:
 '''for z in starts:
     print ("z == {}".format(z))
     name = args.name_template.format(z)'''
-for name  in ['zzzz_02_21_mip_4_5_6_7_mined_7_frankenstein_ft_m4']:
+for name  in ['zzzz_02_21_mip_4_5_6_7_mined_7_2k_frankenstein_dropuot_03_x2']:
 
     net_dir = "{}{}".format(args.prefix, name)
     src_weights_dir = args.weights_dir
