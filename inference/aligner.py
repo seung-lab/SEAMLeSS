@@ -814,7 +814,7 @@ class Aligner:
         h = compose_fields(f, g)
         h = self.rel_to_abs_residual(h, dst_mip)
         h += distance.to(device = self.device)
-        h = h[:,pad:-pad,pad:-pad:,]
+        h = h[:,pad:-pad,pad:-pad,:]
         return h
 
 
