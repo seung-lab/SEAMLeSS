@@ -1591,12 +1591,7 @@ class Aligner:
                              to_float=False, to_tensor=True).float()
       image2 = self.get_data(cv, z2, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True).float()
-      if(mip != 5):
-        scale_factor = 2.**(mip - 5)
-        image1 = interpolate(image1, scale_factor=scale_factor,
-                             mode='bilinear')
-        image2 = interpolate(image2, scale_factor=scale_factor,
-                             mode='bilinear')
+
       std1 = image1[image1!=0].std()
       std2 = image2[image2!=0].std()
       # scaling = 8 * pow(std1*std2, 1/2)
