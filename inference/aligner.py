@@ -573,12 +573,12 @@ class Aligner:
       prefix = '{}'.format(mip)
     batch = []
     for patch_bbox in chunks:
-      batch.append(tasks.PredictImgTask(model_path, src_cv, dst_cv, z, mip,
+      batch.append(tasks.PredictImageTask(model_path, src_cv, dst_cv, z, mip,
                                         patch_bbox, prefix))
     return batch
 
   def predict_image_chunk(self, model_path, src_cv, z, mip, bbox):
-    archive = self.get_model_archive(model_path, readonly=2)
+    archive = self.get_model_archive(model_path)
     model = archive.model
     image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
     new_image = model(image)
