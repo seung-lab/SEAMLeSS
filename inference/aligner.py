@@ -1599,9 +1599,10 @@ class Aligner:
                              mode='bilinear')
       std1 = image1[image1!=0].std()
       std2 = image2[image2!=0].std()
-      scaling = 8 * pow(std1*std2, 1/2)
+      # scaling = 8 * pow(std1*std2, 1/2)
+      scaling = 36
       fcorr_chunk_size = 8
-      #print(image1)
+      print(scaling)
       new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
       new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
       f1, p1 = get_fft_power2(new_image1)
