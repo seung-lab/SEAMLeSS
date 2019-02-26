@@ -1606,7 +1606,7 @@ class Aligner:
       f2, p2 = get_fft_power2(new_image2)
       tmp_image = get_hp_fcorr(f1, p1, f2, p2, scaling=scaling)
       tmp_image = tmp_image.permute(2,3,0,1)
-      tmp_image = tmp_image.cpu().numpy()
+      tmp_image = tmp_image.numpy()
       tmp = deepcopy(tmp_image)
       tmp[tmp==2]=1
       blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp, sigma=(0, 0, 1, 1))
