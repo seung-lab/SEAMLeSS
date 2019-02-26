@@ -1593,13 +1593,13 @@ class Aligner:
                              to_float=False, to_tensor=True, gpu=False).float()
       image2 = self.get_data(cv, z2, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True, gpu=False).float()
-      
+
       # std1 = image1[image1!=0].std()
       # std2 = image2[image2!=0].std()
       # scaling = 8 * pow(std1*std2, 1/2)
       scaling = 180 # Fixed threshold
       fcorr_chunk_size = 8
-      print(scaling)
+
       new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
       new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
       f1, p1 = get_fft_power2(new_image1)
