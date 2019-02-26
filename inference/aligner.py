@@ -231,7 +231,7 @@ class Aligner:
     return combined
 
   def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
-                     to_tensor=True, normalizer=None):
+                     to_tensor=True, gpu=True, normalizer=None):
     """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
     
     Args:
@@ -258,7 +258,8 @@ class Aligner:
       print('Normalizing image')
       start = time()
       data = torch.from_numpy(data)
-      data = data.to(device=self.device)
+      if gpu:
+        data = data.to(device=self.device)
       data = normalizer(data).reshape(data.shape)
       end = time()
       diff = end - start
@@ -267,7 +268,8 @@ class Aligner:
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
-      data = data.to(device=self.device)
+      if gpu:
+        data = data.to(device=self.device)
       if src_mip != dst_mip:
         # k = 2**(src_mip - dst_mip)
         size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
@@ -1588,14 +1590,14 @@ class Aligner:
       """ perform fcorr for two images
       """
       image1 = self.get_data(cv, z1, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True).float()
+                             to_float=False, to_tensor=True, gpu=False).float()
       image2 = self.get_data(cv, z2, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True).float()
-
-      std1 = image1[image1!=0].std()
-      std2 = image2[image2!=0].std()
+                             to_float=False, to_tensor=True, gpu=False).float()
+      
+      # std1 = image1[image1!=0].std()
+      # std2 = image2[image2!=0].std()
       # scaling = 8 * pow(std1*std2, 1/2)
-      scaling = 64
+      scaling = 180 # Fixed threshold
       fcorr_chunk_size = 8
       print(scaling)
       new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
