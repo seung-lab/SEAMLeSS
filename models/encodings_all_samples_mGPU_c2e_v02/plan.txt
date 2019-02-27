@@ -2126,3 +2126,13 @@ At epoch 862, iteration None:
 Time: 2019-02-26 05:11:35.567647
 Commit: 94dc32cb28310de68735658d02542c4850389d41
 ./train.py --num_workers 30 --gpu_ids 0,1 --repeats 72 resume encodings_all_samples_mGPU_c2e_v02
+
+At epoch 862, iteration 619:
+Time: 2019-02-26 21:08:28.538959
+Commit: 479eb378c1c6e2001f6d35c1108914f51ecd03c4
+./train.py --num_workers 30 --gpu_ids 0,1 --repeats 72 resume encodings_all_samples_mGPU_c2e_v02
+
+At epoch 862, iteration 2281:
+Time: 2019-02-27 00:15:57.867480
+Commit: 479eb378c1c6e2001f6d35c1108914f51ecd03c4
+./train.py --num_workers 30 --gpu_ids 0,1 --repeats 72 resume encodings_all_samples_mGPU_c2e_v02
