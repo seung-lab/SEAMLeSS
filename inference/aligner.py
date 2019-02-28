@@ -561,14 +561,14 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.num_scales)
-    print("\nfold detect\n"
-          "model {}\n"
-          "src {}\n"
-          "dst {}\n"
-          "z={} \n"
-          "MIP{}\n"
-          "{} chunks\n".format(model_path, src_cv, dst_cv, z,
-                               mip, len(chunks)), flush=True)
+    #print("\nfold detect\n"
+    #      "model {}\n"
+    #      "src {}\n"
+    #      "dst {}\n"
+    #      "z={} \n"
+    #      "MIP{}\n"
+    #      "{} chunks\n".format(model_path, src_cv, dst_cv, z,
+    #                           mip, len(chunks)), flush=True)
     if prefix == '':
       prefix = '{}'.format(mip)
     batch = []
