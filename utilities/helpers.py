@@ -49,7 +49,7 @@ def cp(src, dst):
 
 
 @torch.no_grad()
-def load_model_from_dict(model, archive_params):
+def load_model_from_dict(model, archive_params, warning=True):
     model_params = model.state_dict(keep_vars=True)
     model_keys = sorted(model_params.keys())
     archive_keys = sorted(archive_params.keys())
@@ -62,7 +62,7 @@ def load_model_from_dict(model, archive_params):
                   .format(key))
             dropped += 1
             continue
-        if model_params[key].shape != archive_params[key].shape:
+        if (model_params[key].shape != archive_params[key].shape) and warning:
             print('[WARNING]   {} has different shape in model and archive: '
                   '{}, {}'.format(key, model_params[key].shape,
                                   archive_params[key].shape))

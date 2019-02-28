@@ -70,6 +70,7 @@ if __name__ == '__main__':
       t = a.predict_image(cm, args.model_path, src, dst, z, mip, bbox,
                       chunk_size, prefix);
       batch.extend(t)
+  print(">>>>> Generation done!")
   start = time()
   run(a, batch)
   end = time()
