@@ -65,22 +65,44 @@ if __name__ == '__main__':
 
   batch =[]
   prefix = str(mip)
-  for z in full_range:
-      print("fold detection for z={}".format(z))
-      t = a.predict_image(cm, args.model_path, src, dst, z, mip, bbox,
-                      chunk_size, prefix);
-      batch.extend(t)
-  print(">>>>> Generation done!")
-  start = time()
-  run(a, batch)
-  end = time()
-  diff = end - start
-  print_run(diff, len(batch))
-  start = time()
-  # wait 
-  n = len(batch)
-  a.wait_for_queue_empty(dst.path, 'predict_image_done/{}'.format(prefix), n)
-  end = time()
-  diff = end - start
-  print_run(diff, len(batch))
+  # for z in full_range:
+  #     print("fold detection for z={}".format(z))
+  #     t = a.predict_image(cm, args.model_path, src, dst, z, mip, bbox,
+  #                     chunk_size, prefix);
+  #     batch.extend(t)
+  # print(">>>>> Generation done!")
+  # start = time()
+  # run(a, batch)
+  # end = time()
+  # diff = end - start
+  # print_run(diff, len(batch))
+  # start = time()
+  # # wait 
+  # n = len(batch)
+  # a.wait_for_queue_empty(dst.path, 'predict_image_done/{}'.format(prefix), n)
+  # end = time()
+  # diff = end - start
+  # print_run(diff, len(batch))
+
+  range_idx = np.arange(args.bbox_start[2], args.bbox_stop[2], 100)
+  for i in range_idx:
+    part_range = np.arange(i, i+100)
+    for z in part_range:
+        print("fold detection for z={}".format(z))
+        t = a.predict_image(cm, args.model_path, src, dst, z, mip, bbox,
+                        chunk_size, prefix);
+        batch.extend(t)
+    print(">>>>> Generation done!")
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+    start = time()
+    # wait 
+    n = len(batch)
+    a.wait_for_queue_empty(dst.path, 'predict_image_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
 
