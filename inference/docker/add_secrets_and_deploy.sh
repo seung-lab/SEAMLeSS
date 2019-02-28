@@ -6,5 +6,5 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 #create secrets for AWS and Google cloud
 kubectl create secret generic secrets --from-file=$HOME/.cloudvolume/secrets/google-secret.json --from-file=$HOME/.cloudvolume/secrets/seunglab2-google-secret.json --from-file=$HOME/.cloudvolume/secrets/microns-seunglab-google-secret.json --from-file=$HOME/.cloudvolume/secrets/aws-secret.json
 kubectl create -f deploy.yaml
-# scale deployment 
+# scale deployment
 # kubectl scale deployment seamless --replicas=64
