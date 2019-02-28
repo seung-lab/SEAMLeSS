@@ -101,7 +101,6 @@ class Aligner:
     
     x_offset = offset[0]
     y_offset = offset[1]
-
     x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
     y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
 
@@ -1618,27 +1617,28 @@ class Aligner:
       #print("++++closed shape",closed.shape)
       return closed, tmp_image
 
-  def fcorr_mask_op(self, bbox, cv1, cv2, z, mip):
-      mask1 = self.get_data(cv1, z, bbox, src_mip=mip, dst_mip=mip,
+  def slip_mask_op(self, bbox, cv1, cv2, z1, z2, mip):
+      mask1 = self.get_data(cv1, z1, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True, gpu=False)
-      mask2 = self.get_data(cv2, z, bbox, src_mip=mip, dst_mip=mip,
+      mask2 = self.get_data(cv2, z2, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True, gpu=False)
       mask1[mask1>0] = 1
       mask1[mask1<=0] =0
-      mask2[mask2>0] = 1
-      mask2[mask2<=0] = 0
+      mask2[mask2>0] = 0
+      mask2[mask2<=0] = 1
 
       return mask1 * mask2
 
-  def mask_op(self, cm, bbox, mip, z, cv1, cv2, dst_cv, prefix=''):
-      chunks = self.break_into_chunks(bbox, self.chunk_size,
+  def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, prefix=''):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
       if prefix == '':
         prefix = '{}'.format(mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, dst_nopost, chunk, mip, z1, z2, prefix))
+        batch.append(tasks.MaskOpTask(chunk, cv1, cv2, z1, z2, mip, dst_cv,
+                                      dst_z, prefix))
       return batch
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):

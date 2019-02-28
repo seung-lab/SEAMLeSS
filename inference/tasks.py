@@ -542,31 +542,33 @@ class UpsampleRenderRechunkTask(RegisteredTask):
     aligner.pool.map(chunkwise, patches)
 
 class MaskOpTask(RegisteredTask):
-  def __init__(self, bbox, cv1, cv2, z, mip, dst_cv, prefix):
-    super(). __init__(bbox, cv1, cv2, z, mip, dst_cv, prefix)
+  def __init__(self, bbox, cv1, cv2, z1, z2, mip, dst_cv, dst_z, prefix):
+    super(). __init__(bbox, cv1, cv2, z1, z2, mip, dst_cv, dst_z, prefix)
 
   def execute(self, aligner):
     cv1 = DCV(self.cv1)
     cv2 = DCV(self.cv2)
     dst_cv = DCV(self.dst_cv)
-    z = self.z
+    z1 = self.z1
+    z2 = self.z2
+    dst_z = self.dst_z
     patch_bbox = deserialize_bbox(self.bbox)
     mip = self.mip
-    print("\nFcorring "
-          "cv {}\n"
+    print("\n Mask op "
           "z={} to z={}\n"
           "at MIP{}"
-          "\n".format(cv, z1, z2, mip), flush=True)
+          "\n".format(z1, z2, mip), flush=True)
     start = time()
-    res = aligner.fcorr_mask_op(patch_bbox, cv1, cv2, z, mip)
-    aligner.save_image(res, dst_cv, z, patch_bbox, mip, to_uint8=False)
+    res = aligner.slip_mask_op(patch_bbox, cv1, cv2, z1, z2, mip)
+    aligner.save_image(res.numpy(), dst_cv, dst_z, patch_bbox, mip, to_uint8=False)
     with Storage(dst_cv.path) as stor:
-      path = 'Fcorr_mask_op_done/{}/{}'.format(self.prefix, patch_bbox.stringify(z))
+      path = 'Mask_op_done/{}/{}'.format(self.prefix,
+                                         patch_bbox.stringify(dst_z))
       stor.put_file(path, '')
       print('Marked finished at {}'.format(path))
     end = time()
     diff = end - start
-    print('FcorrTask: {:.3f} s'.format(diff))
+    print('Task: {:.3f} s'.format(diff))
 
 class ComputeFcorrTask(RegisteredTask):
   def __init__(self, cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix):
