@@ -80,11 +80,12 @@ if __name__ == '__main__':
   # Compile ranges
   block_range = range(args.z_start, args.z_stop, args.block_size)
   overlap = args.tgt_radius
-  full_range = range(args.block_size + overlap)
+  full_range = range(args.block_size + overlap + overlap)
 
   copy_range = full_range[overlap-1:overlap]
   serial_range = full_range[:overlap-1][::-1]
-  vvote_range = full_range[overlap:]
+  vvote_range = full_range[overlap:-overlap]
+  realign_range = full_range[-overlap:]
   copy_field_range = range(overlap, args.block_size+overlap)
   broadcast_field_range = range(overlap-1, args.block_size+overlap)
 
@@ -131,6 +132,10 @@ if __name__ == '__main__':
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True)
 
+  block_end_field = cm.create(join(args.dst_path, 'field', 'block_end'), 
+                          data_type='int16', num_channels=2,
+                          fill_missing=True, overwrite=True)
+
   compose_field = cm.create(join(args.dst_path, 'field', 'block_compose'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True)
@@ -145,6 +150,7 @@ if __name__ == '__main__':
   copy_range = [r for r in copy_range if r >= args.restart]
   serial_range = [r for r in serial_range if r >= args.restart]
   vvote_range = [r for r in vvote_range if r >= args.restart]
+  realign_range = [r for r in realign_range if r >= args.restart]
   
   # Copy first section
   batch = []
@@ -262,6 +268,114 @@ if __name__ == '__main__':
       block_type = block_types[i % 2]
       dst = dsts[block_type]
       z = block_start + block_offset 
+      bbox = bbox_lookup[z]
+      model_path = model_lookup[z]
+      for z_offset in vvote_offsets:
+        field = pair_fields[z_offset]
+        t = a.compute_field(cm, model_path, src, dst, field, 
+                            z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
+                            src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                            tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+                            tgt_mask_val=src_mask_val, prefix=prefix,
+                            prev_field_cv=vvote_field, prev_field_z=z+z_offset)
+        batch.extend(t)
+        k = (prefix, field.path)
+        if k not in task_counter:
+          task_counter[k] = 0
+        task_counter[k] += len(t)
+
+    print('\nScheduling ComputeFieldTasks')
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+    start = time()
+    # wait 
+    if args.use_sqs_wait:
+      print('block offset {}'.format(block_offset))
+      a.wait_for_sqs_empty()
+    else:
+      for (prefix, path), n in task_counter.items():
+        a.wait_for_queue_empty(path, 'compute_field_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+
+    batch = []
+    for block_start in block_range:
+      z = block_start + block_offset 
+      bbox = bbox_lookup[z]
+      t = a.vector_vote(cm, pair_fields, vvote_field, z, bbox, mip, inverse=False, 
+                        serial=True, prefix=prefix)
+      batch.extend(t)
+
+    print('\nScheduling VectorVoteTasks')
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+    start = time()
+    # wait 
+    if args.use_sqs_wait:
+      print('block offset {}'.format(block_offset))
+      a.wait_for_sqs_empty()
+    else:
+      n = len(batch)
+      a.wait_for_queue_empty(vvote_field.path, 
+          'vector_vote_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+
+    batch = []
+    task_counter = {}
+    for i, block_start in enumerate(block_range):
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
+      z = block_start + block_offset 
+      bbox = bbox_lookup[z]
+      t = a.render(cm, src, vvote_field, dst, 
+                   src_z=z, field_z=z, dst_z=z, bbox=bbox, src_mip=mip, field_mip=mip, 
+                   mask_cv=src_mask_cv, mask_val=src_mask_val, mask_mip=src_mask_mip,
+                   prefix=prefix)
+      batch.extend(t)
+      k = (prefix, dst.path)
+      if k not in task_counter:
+        task_counter[k] = 0
+      task_counter[k] += len(t)
+
+    print('\nScheduling RenderTasks')
+    start = time()
+    run(a, batch)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+    start = time()
+    # wait
+    if args.use_sqs_wait:
+      print('block offset {}'.format(block_offset))
+      a.wait_for_sqs_empty()
+    else:
+      for (prefix, path), n in task_counter.items():
+        a.wait_for_queue_empty(path, 'render_done/{}'.format(prefix), n)
+    end = time()
+    diff = end - start
+    print_run(diff, len(batch))
+
+  # Realign overlap with vector voting
+  for block_offset in realign_range:
+    print('BLOCK OFFSET {}'.format(block_offset))
+    batch = []
+    task_counter = {}
+    prefix = block_offset
+    for i, block_start in enumerate(block_range):
+      realign_src_block_type = block_types[(i+1) % 2]
+      realign_src = dsts[realign_src_block_type]
+      block_type = block_types[i % 2]
+      dst = dsts[block_type]
+      z = block_start + block_offset
       bbox = bbox_lookup[z]
       model_path = model_lookup[z]
       for z_offset in vvote_offsets:
