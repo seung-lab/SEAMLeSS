@@ -70,7 +70,8 @@ if __name__ == '__main__':
   prefix = str(mip)
   for z in full_range:
       print("Fcorr for z={} and z={}".format(z, z+1))
-      t = a.calculate_fcorr(cm, bbox, mip, z, z+1, src, dst, dst1)
+      t = a.calculate_fcorr(cm, bbox, mip, z, z+1, src.path, dst.path,
+                            dst1.path)
       batch.extend(t)
   start = time()
   run(a, batch)
