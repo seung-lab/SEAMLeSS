@@ -95,10 +95,10 @@ if __name__ == '__main__':
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-              t = a.predict_image(cm, args.model_path, src, dst, z, mip, bbox,
+              t = a.predict_image(cm, args.model_path, src.path, dst.path, z, mip, bbox,
                                   chunk_size, prefix)
               yield from t
-  range_list= make_range(full_range, a.threads)
+  range_list = make_range(full_range, a.threads)
 
   start = time()
   ptask = []
