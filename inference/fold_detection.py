@@ -84,9 +84,9 @@ if __name__ == '__main__':
   # diff = end - start
   # print_run(diff, len(batch))
 
-  range_idx = np.arange(args.bbox_start[2], args.bbox_stop[2], 100)
+  range_idx = range(args.bbox_start[2], args.bbox_stop[2], 100)
   for i in range_idx:
-    part_range = np.arange(i, i+100)
+    part_range = range(i, i+100)
     for z in part_range:
         print("fold detection for z={}".format(z))
         t = a.predict_image(cm, args.model_path, src, dst, z, mip, bbox,
