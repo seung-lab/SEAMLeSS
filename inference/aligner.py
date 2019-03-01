@@ -1596,7 +1596,7 @@ class Aligner:
       # std1 = image1[image1!=0].std()
       # std2 = image2[image2!=0].std()
       # scaling = 8 * pow(std1*std2, 1/2)
-      scaling = 180 # Fixed threshold
+      scaling = 240 # Fixed threshold
       fcorr_chunk_size = 8
 
       new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
