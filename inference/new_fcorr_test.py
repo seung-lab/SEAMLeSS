@@ -44,6 +44,8 @@ if __name__ == '__main__':
   parser.add_argument('--src_mask_val', type=int, default=1,
     help='Value of of mask that indicates DO NOT mask')
   parser.add_argument('--dst_path', type=str)
+  parser.add_argument('--dist', type=int,
+    help='Distance between pairs to compute')
   parser.add_argument('--mip', type=int)
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
@@ -94,7 +96,7 @@ if __name__ == '__main__':
       def __iter__(self):
           for z in self.brange:
             #print("Fcorr for z={} and z={}".format(z, z+1))
-            t = a.calculate_fcorr(cm, bbox, mip, z, z+2, src, dst,
+            t = a.calculate_fcorr(cm, bbox, mip, z, z+args.dist, src, dst,
                                   dst1, prefix)
             yield from t
 
