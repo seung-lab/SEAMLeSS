@@ -96,8 +96,8 @@ if __name__ == '__main__':
       def __iter__(self):
           for z in self.brange:
             #print("Fcorr for z={} and z={}".format(z, z+1))
-            t = a.calculate_fcorr(cm, bbox, mip, z, z+args.dist, src, dst,
-                                  dst1, prefix)
+            t = a.calculate_fcorr(cm, bbox, mip, z, z+args.dist, src.path,
+                                  dst.path, dst1.path, prefix)
             yield from t
 
   range_list = make_range(full_range, a.threads)

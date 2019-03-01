@@ -87,7 +87,7 @@ if __name__ == '__main__':
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-              t = a.mask_op(cm, bbox, mip, z, z, src1, src2, dst, z)
+              t = a.mask_op(cm, bbox, mip, z, z, src1.path, src2.path, dst.path, z)
               yield from t
 
   range_list = make_range(full_range, a.threads)
@@ -103,8 +103,13 @@ if __name__ == '__main__':
 
   #with  LocalTaskQueue(parallel=1) as tq:
   #    tq.insert_all(ptask[0], args=[a])
-  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-      executor.map(remote_upload, ptask)
+  if a.distributed:
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+  else:
+      for t in ptask:
+        tq = LocalTaskQueue(parallel=1)
+        tq.insert_all(t, args= [a])
 
   end = time()
   diff = end - start
