@@ -3,7 +3,7 @@ gevent.monkey.patch_all()
 
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
-from taskqueue import TaskQueue, GreenTaskQueue
+from taskqueue import TaskQueue, GreenTaskQueue, LocalTaskQueue
 
 import sys
 import torch
@@ -109,8 +109,14 @@ if __name__ == '__main__':
   for i in range_list:
       ptask.append(TaskIterator(i))
 
-  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-      executor.map(remote_upload, ptask)
+  if a.distributed:
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+  else:
+      for t in ptask:
+        tq = LocalTaskQueue(parallel=1)
+        tq.insert_all(t, args= [a])
+
 
   end = time()
   diff = end - start
