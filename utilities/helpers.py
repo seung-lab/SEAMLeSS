@@ -826,9 +826,11 @@ def vector_vote(fields, softmin_temp):
       t.append(dists[(i,j)])
     mtuple_avg.append(torch.mean(torch.cat(t, dim=0), dim=0, keepdim=True))
   mavg = torch.cat(mtuple_avg, dim=0)
+  print('avg vvote {}'.format(torch.mean(torch.mean(mavg, dim=-1), dim=-1)))
 
   # compute weights for mtuples, giving higher weight to mtuples w/ smaller distances
   mtuple_weights = softmax(-mavg/softmin_temp , dim=0)
+  print('avg mtupl_weights {}'.format(torch.mean(torch.mean(mtuple_weights, dim=-1), dim=-1)))
   # assign mtuple weights back to individual fields
   field_weights = torch.zeros((n,) + mtuple_weights.shape[1:])
   field_weights = field_weights.to(device=mtuple_weights.device)
@@ -837,8 +839,15 @@ def vector_vote(fields, softmin_temp):
       field_weights[j,...] += mtuple_weights[i,...]
   # divy up the weight by contribution
   field_weights = field_weights / m
+  print('avg field_weights {}'.format(torch.mean(torch.mean(field_weights, dim=-1), dim=-1)))
+  it, jt = field_weights.shape[-2] // 2, field_weights.shape[-1] // 2
+  print('field_weights[{},{}] {}'.format(it, jt, field_weights[:,0,it,jt]))
   # create a voted field by multiplying fields by field weights
   field = torch.cat(fields, dim=0)
+  print('field[{},{}] {}'.format(it, jt, field[:,it,jt,:]))
   field = field.permute(1,2,3,0)
   field_weights = field_weights.permute(2,3,0,1)
-  return matmul(field, field_weights).permute(3,0,1,2)
+  vvote = matmul(field, field_weights).permute(3,0,1,2)
+  print('vvote[{},{}] {}'.format(it, jt, vvote[:,it,jt,:]))
+  return vvote
+  
