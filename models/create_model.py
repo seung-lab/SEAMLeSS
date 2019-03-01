@@ -7,9 +7,9 @@ from subprocess import Popen, PIPE, STDOUT
 parser = argparse.ArgumentParser()
 parser.add_argument('--weights_dir', type=str, default='/usr/people/popovych/alignment/nets/')
 parser.add_argument('--template', type=str, default="sergiy_m8m10_template")
-parser.add_argument('--name_template', type=str, default="zzzz_02_03_mip_10_z{}")
+parser.add_argument('--name_template', type=str, default="_03_01_new_finetune_z{}")
 parser.add_argument('--prefix', type=str, default="sergiy_m8m10_")
-parser.add_argument('--mips_trained', type=list, default=[10])
+parser.add_argument('--mips_trained', type=list, default=[10, 8])
 parser.add_argument('--mips_copied', type=list, default=[])
 parser.add_argument('--section', type=int, default=None)
 args = parser.parse_args()
@@ -22,7 +22,7 @@ else:
 '''for z in starts:
     print ("z == {}".format(z))
     name = args.name_template.format(z)'''
-for name  in ['zzzz_02_21_mip_4_5_6_7_mined_7_2k_frankenstein_dropuot_03_x2']:
+for name  in ['03_01_mip_10_8_new_finetune']:
 
     net_dir = "{}{}".format(args.prefix, name)
     src_weights_dir = args.weights_dir
