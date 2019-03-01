@@ -1622,12 +1622,14 @@ class Aligner:
                              to_float=False, to_tensor=True, gpu=False)
       mask2 = self.get_data(cv2, z2, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True, gpu=False)
-      mask1[mask1>0] = 1
-      mask1[mask1<=0] =0
-      mask2[mask2>0] = 0
-      mask2[mask2<=0] = 1
+      
+      mask1_bin = np.zeros(mask1.shape)
+      mask2_bin = np.zeros(mask2.shape)
 
-      return mask1 * mask2
+      mask1_bin[mask1>0] = 1
+      mask2_bin[mask2<=0] = 1
+
+      return mask1_bin * mask2_bin
 
   def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, prefix=''):
       chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
