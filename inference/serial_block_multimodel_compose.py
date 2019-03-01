@@ -197,7 +197,8 @@ if __name__ == '__main__':
                           z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
                           src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                           tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                          tgt_mask_val=src_mask_val, prefix=prefix)
+                          tgt_mask_val=src_mask_val, prefix=prefix,
+                          prev_field_cv=None, prev_field_z=None)
       batch.extend(t)
 
     print('Scheduling ComputeFieldTasks')
@@ -269,7 +270,8 @@ if __name__ == '__main__':
                             z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
                             src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                             tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                            tgt_mask_val=src_mask_val, prefix=prefix)
+                            tgt_mask_val=src_mask_val, prefix=prefix,
+                            prev_field_cv=vvote_field, prev_field_z=z+z_offset)
         batch.extend(t)
         k = (prefix, field.path)
         if k not in task_counter:

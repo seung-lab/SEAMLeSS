@@ -109,18 +109,25 @@ class CopyTask(RegisteredTask):
 class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
-                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix):
+                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix,
+                     prev_field_cv, prev_field_z):
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
-                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix)
+                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix,
+                     prev_field_cv, prev_field_z)
 
   def execute(self, aligner):
     model_path = self.model_path
     src_cv = DCV(self.src_cv) 
     tgt_cv = DCV(self.tgt_cv) 
-    field_cv = DCV(self.field_cv) 
+    field_cv = DCV(self.field_cv)
+    if self.prev_field_cv is not None:
+        prev_field_cv = DCV(self.prev_field_cv)
+    else:
+        prev_field_cv = None
     src_z = self.src_z
     tgt_z = self.tgt_z
+    prev_field_z = self.prev_field_z
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
     pad = self.pad
@@ -151,7 +158,8 @@ class ComputeFieldTask(RegisteredTask):
       field = aligner.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z, 
                                           patch_bbox, mip, pad, 
                                           src_mask_cv, src_mask_mip, src_mask_val,
-                                          tgt_mask_cv, tgt_mask_mip, tgt_mask_val)
+                                          tgt_mask_cv, tgt_mask_mip, tgt_mask_val,
+                                          None, prev_field_cv, prev_field_z)
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       with Storage(field_cv.path) as stor:
         path = 'compute_field_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))
@@ -534,26 +542,26 @@ class UpsampleRenderRechunkTask(RegisteredTask):
     aligner.pool.map(chunkwise, patches)
 
 class ComputeFcorrTask(RegisteredTask):
-  def __init__(self, cv, dst_cv, patch_bbox, mip, z1, z2, prefix):
-    super(). __init__(cv, dst_cv, patch_bbox, mip, z1, z2, prefix)
+  def __init__(self, cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix):
+    super(). __init__(cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix)
 
   def execute(self, aligner):
     cv = DCV(self.cv)
     dst_cv = DCV(self.dst_cv)
+    dst_nopost = DCV(self.dst_nopost)
     z1 = self.z1
     z2 = self.z2
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
-    print("\nFcorring\n"
+    print("\nFcorring "
           "cv {}\n"
           "z={} to z={}\n"
-          "at MIP{}\n"
+          "at MIP{}"
           "\n".format(cv, z1, z2, mip), flush=True)
     start = time()
-    image = aligner.get_fcorr(patch_bbox, cv, mip, z1, z2)
-    image = image.permute(2,3,0,1)
-    image = image.cpu().numpy()
-    aligner.save_image(image, dst_cv, z2, patch_bbox, mip+3, to_uint8=False)
+    image, image_no = aligner.get_fcorr(patch_bbox, cv, mip, z1, z2)
+    aligner.save_image(image, dst_cv, z2, patch_bbox, 8, to_uint8=False)
+    aligner.save_image(image_no, dst_nopost, z2, patch_bbox, 8, to_uint8=False)
     with Storage(dst_cv.path) as stor:
       path = 'Fcorr_done/{}/{}'.format(self.prefix, patch_bbox.stringify(z2))
       stor.put_file(path, '')
@@ -561,4 +569,3 @@ class ComputeFcorrTask(RegisteredTask):
     end = time()
     diff = end - start
     print('FcorrTask: {:.3f} s'.format(diff))
-

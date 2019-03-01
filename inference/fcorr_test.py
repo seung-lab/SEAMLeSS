@@ -62,12 +62,15 @@ if __name__ == '__main__':
   dst = cm.create(join(args.dst_path, 'image'),
                   data_type='float32', num_channels=1, fill_missing=True,
                   overwrite=True)
+  dst1 = cm.create(join(args.dst_path, 'image_nopost'),
+                  data_type='float32', num_channels=1, fill_missing=True,
+                  overwrite=True)
 
   batch =[]
   prefix = str(mip)
   for z in full_range:
       print("Fcorr for z={} and z={}".format(z, z+1))
-      t = a.calculate_fcorr(cm, bbox, mip, z, z+1, src, dst)
+      t = a.calculate_fcorr(cm, bbox, mip, z, z+1, src, dst, dst1)
       batch.extend(t)
   start = time()
   run(a, batch)

@@ -26,7 +26,8 @@ from normalizer import Normalizer
 from temporal_regularization import create_field_bump
 from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               np_downsample, invert, compose_fields, upsample_field, \
-                              is_identity, cpc, vector_vote, get_affine_field, is_blank
+                              is_identity, cpc, vector_vote, get_affine_field, is_blank, \
+                              identity_grid
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -119,11 +120,9 @@ class Aligner:
       padded_bbox = deepcopy(bbox)
       x_range = padded_bbox.x_range(mip=0)
       y_range = padded_bbox.y_range(mip=0)
-      #print("x_range is", x_range, "y_range is", y_range)
-      new_bbox = BoundingBox(x_range[0] + dis[1], x_range[1] + dis[1],
-                                   y_range[0] + dis[0], y_range[1] + dis[0],
-                                   mip=0)
-      #print(new_bbox.x_range(mip=0), new_bbox.y_range(mip=0))
+      new_bbox = BoundingBox(x_range[0] + dis[0], x_range[1] + dis[0],
+                             y_range[0] + dis[1], y_range[1] + dis[1],
+                             mip=0)
       return new_bbox
 
   ##############
@@ -462,7 +461,7 @@ class Aligner:
   def profile_field(self, field):
     avg_x = self.avg_field(field[0,...,0])
     avg_y = self.avg_field(field[0,...,1])
-    return torch.from_numpy(np.float32([avg_x, avg_y]))
+    return torch.Tensor([avg_x, avg_y])
 
   #############################
   # CloudVolume chunk methods #
@@ -471,20 +470,23 @@ class Aligner:
   def compute_field_chunk(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad, 
                           src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
                           tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
-                          tgt_alt_z=None):
+                          tgt_alt_z=None, prev_field_cv=None, prev_field_z=None):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
     Args:
       model_path: str for relative path to model directory
       src_z: int of section to be warped
-      src_cv: MiplessCloudVolume with source image      
+      src_cv: MiplessCloudVolume with source image
       tgt_z: int of section to be warped to
       tgt_cv: MiplessCloudVolume with target image
       bbox: BoundingBox for region of both sections to process
-      mip: int of MIP level to use for bbox 
+      mip: int of MIP level to use for bbox
       pad: int for amount of padding to add to the bbox before processing
       mask_cv: MiplessCloudVolume with mask to be used for both src & tgt image
-      
+      prev_field_cv: if specified, a MiplessCloudVolume containing the
+                     previously predicted field to be profile and displace
+                     the src chunk
+
     Returns:
       field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
@@ -497,6 +499,16 @@ class Aligner:
     padded_bbox = deepcopy(bbox)
     padded_bbox.uncrop(pad, mip=mip)
 
+    if prev_field_cv is not None:
+        field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
+                           relative=False, to_tensor=True)
+        distance = self.profile_field(field)
+        distance = (distance // (2 ** mip)) * 2 ** mip
+        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+    else:
+        distance = torch.Tensor([0, 0])
+        new_bbox = padded_bbox
+
     tgt_z = [tgt_z]
     if tgt_alt_z is not None:
       try:
@@ -505,7 +517,7 @@ class Aligner:
         tgt_z.append(tgt_alt_z)
       print('alternative target slices:', tgt_alt_z)
 
-    src_patch = self.get_masked_image(src_cv, src_z, padded_bbox, mip,
+    src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
                                 mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                 mask_val=src_mask_val,
                                 to_tensor=True, normalizer=normalizer)
@@ -530,6 +542,7 @@ class Aligner:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       field = self.rel_to_abs_residual(field, mip)
       field = field[:,pad:-pad,pad:-pad,:]
+      field += distance.to(device=self.device)
       field = field.data.cpu().numpy()
       # clear unused, cached memory so that other processes can allocate it
       torch.cuda.empty_cache()
@@ -672,95 +685,137 @@ class Aligner:
       padded_bbox = deepcopy(bbox)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
+
+      # Load initial vector field
+      field = self.get_field(field_cv, field_z, padded_bbox, field_mip,
+                             relative=False, to_tensor=True)
+      if field_mip > image_mip:
+        field = upsample_field(field, field_mip, image_mip)
+
       if affine is not None:
-        f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=True,
-                            to_tensor=True)
-        offset = padded_bbox.get_offset(mip=0)
-        size = f.shape[-2]
-        aff = get_affine_field(affine, offset, size, self.device)
-        aff = self.abs_to_rel_residual(aff, padded_bbox, field_mip)
-        f = compose_fields(f, aff)
-        f = self.rel_to_abs_residual(f, field_mip)
-      else:
-        f =  self.get_field(field_cv, field_z, padded_bbox, field_mip, relative=False,
-                            to_tensor=True)
-      if is_identity(f):
+        # PyTorch conventions are column, row order (y, then x) so flip
+        # the affine matrix and offset
+        affine = torch.Tensor(affine).to(field.device)
+        affine = affine.flip(0)[:, [1, 0, 2]]  # flip x and y
+        offset_y, offset_x = padded_bbox.get_offset(mip=0)
+
+        ident = self.rel_to_abs_residual(
+            identity_grid(field.shape, device=field.device), image_mip)
+
+        field += ident
+        field[..., 0] += offset_x
+        field[..., 1] += offset_y
+        field = torch.tensordot(
+            affine[:, 0:2], field, dims=([1], [3])).permute(1, 2, 3, 0)
+        field[..., :] += affine[:, 2]
+        field[..., 0] -= offset_x
+        field[..., 1] -= offset_y
+        field -= ident
+
+      if is_identity(field):
         image = self.get_image(image_cv, image_z, bbox, image_mip,
                                to_tensor=True, normalizer=None)
         if mask_cv is not None:
-          mask = self.get_mask(mask_cv, image_z, bbox, 
+          mask = self.get_mask(mask_cv, image_z, bbox,
                                src_mip=mask_mip,
                                dst_mip=image_mip, valid_val=mask_val)
           image = image.masked_fill_(mask, 0)
         return image
       else:
-        distance = self.profile_field(f)
-        distance = (distance//(2**field_mip)) * 2**field_mip
-        new_bbox = self.adjust_bbox(padded_bbox, distance)
-        f = f - distance.to(device = self.device)
-        res = self.abs_to_rel_residual(f, padded_bbox, field_mip)
-        field = res.to(device = self.device)
-        if field_mip > image_mip:
-          field = upsample_field(field, field_mip, image_mip)
+        distance = self.profile_field(field)
+        distance = (distance // (2 ** image_mip)) * 2 ** image_mip
+        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+
+        field -= distance.to(device = self.device)
+        field = self.abs_to_rel_residual(field, padded_bbox, image_mip)
+        field = field.to(device = self.device)
+
         image = self.get_masked_image(image_cv, image_z, new_bbox, image_mip,
-                                mask_cv=mask_cv, mask_mip=mask_mip,
-                                mask_val=mask_val,
-                                to_tensor=True, normalizer=None)
+                                      mask_cv=mask_cv, mask_mip=mask_mip,
+                                      mask_val=mask_val,
+                                      to_tensor=True, normalizer=None)
         image = grid_sample(image, field, padding_mode='zeros')
         image = image[:,:,pad:-pad,pad:-pad]
         return image
 
-  # def cloudsample_compose(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip, dst_mip,
-  #                               pad=2048):
-  #     """Wrapper for torch.nn.functional.gridsample for CloudVolume field objects.
 
-  #     Gridsampling a field is a composition, such that f(g(x)).
+  def cloudsample_compose(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip,
+                          dst_mip, affine=None, pad=256):
+      """Wrapper for torch.nn.functional.gridsample for CloudVolume field objects.
 
-  #     ** THIS METHOD HAS NOT BEEN TESTED **
+      Gridsampling a field is a composition, such that f(g(x)).
 
-  #     Args:
-  #        f_cv: MiplessCloudVolume storing the vector field to do the warping 
-  #        g_cv: MiplessCloudVolume storing the vector field to be warped
-  #        bbox: BoundingBox for output region to be warped
-  #        z: int for section index to warp
-  #        f_mip: int for MIP of the warping field 
-  #        g_mip: int for MIP of the field to be warped
-  #        dst_mip: int for MIP of the desired output field
+      ** THIS METHOD HAS NOT BEEN TESTED **
 
-  #     Returns:
-  #        composed field
-  #     """
-  #     padded_bbox = deepcopy(bbox)
-  #     padded_bbox.uncrop(pad, mip=0)
-  #     crop = pad // 2**dst_mip
-  #     f = self.get_field(f_cv, f_z, padded_bbox, f_mip, relative=False,
-  #                         to_tensor=True)
-  #     x_range = bbox.x_range(mip=0)
-  #     y_range = bbox.y_range(mip=0)
-  #     if is_identity(f):
-  #       h = self.get_field(g_cv, g_z, bbox, g_mip, relative=False,
-  #                           to_tensor=True)
-  #       return h 
-  #     else:
-  #       distance = self.profile_field(f)
-  #       distance = (distance//(2**f_mip)) * 2**f_mip
-  #       new_bbox = self.adjust_bbox(padded_bbox, distance)
-  #       g = self.get_field(g_cv, g_z, new_bbox, g_mip, relative=True,
-  #                           to_tensor=True)
+      Args:
+         f_cv: MiplessCloudVolume storing the vector field to do the warping
+         g_cv: MiplessCloudVolume storing the vector field to be warped
+         bbox: BoundingBox for output region to be warped
+         z: int for section index to warp
+         f_mip: int for MIP of the warping field
+         g_mip: int for MIP of the field to be warped
+         dst_mip: int for MIP of the desired output field
+         pad: number of pixels to pad at dst_mip
 
-  #       f = f - distance.to(device = self.device)
-  #       f = self.abs_to_rel_residual(f, padded_bbox, f_mip)
-  #       f = f.to(device = self.device)
+      Returns:
+         composed field
+      """
+      assert(f_mip >= dst_mip)
+      assert(g_mip >= dst_mip)
+      padded_bbox = deepcopy(bbox)
+      print('Padding by {} at MIP{}'.format(pad, dst_mip))
+      padded_bbox.uncrop(pad, mip=dst_mip)
 
-  #       if dst_mip < g_mip:
-  #         g = upsample_field(g, g_mip, dst_mip)
-  #       if dst_mip < f_mip:
-  #         f = upsample_field(f, f_mip, dst_mip)
+      # Load warper vector field
+      f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
+                             relative=False, to_tensor=True)
+      if f_mip > dst_mip:
+        f = upsample_field(f, f_mip, dst_mip)
 
-  #       h = compose_fields(f, g)
-  #       h = self.rel_to_abs_residual(h, dst_mip)
-  #       h = h[:,crop:-crop,crop:-crop,:]
-  #       return h
+      if affine is not None:
+        # PyTorch conventions are column, row order (y, then x) so flip
+        # the affine matrix and offset
+        affine = torch.Tensor(affine).to(f.device)
+        affine = affine.flip(0)[:, [1, 0, 2]]  # flip x and y
+        offset_y, offset_x = padded_bbox.get_offset(mip=0)
+
+        ident = self.rel_to_abs_residual(
+            identity_grid(f.shape, device=f.device), dst_mip)
+
+        f += ident
+        f[..., 0] += offset_x
+        f[..., 1] += offset_y
+        f = torch.tensordot(
+            affine[:, 0:2], f, dims=([1], [3])).permute(1, 2, 3, 0)
+        f[..., :] += affine[:, 2]
+        f[..., 0] -= offset_x
+        f[..., 1] -= offset_y
+        f -= ident
+
+      if is_identity(f):
+        g = self.get_field(g_cv, g_z, padded_bbox, g_mip,
+                           relative=False, to_tensor=True)
+        return g
+      else:
+        distance = self.profile_field(f)
+        distance = (distance // (2 ** dst_mip)) * 2 ** dst_mip
+        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+
+        f -= distance.to(device = self.device)
+        f = self.abs_to_rel_residual(f, padded_bbox, dst_mip)
+        f = f.to(device = self.device)
+
+        g = self.get_field(g_cv, g_z, new_bbox, g_mip,
+                           relative=False, to_tensor=True)
+        if g_mip > dst_mip:
+          g = upsample_field(g, g_mip, dst_mip)
+        g = self.abs_to_rel_residual(g, padded_bbox, dst_mip)
+        h = compose_fields(f, g)
+        h = self.rel_to_abs_residual(h, dst_mip)
+        h += distance
+        h = h[:,:,pad:-pad,pad:-pad]
+        return h
+
 
   def cloudsample_image_batch(self, z_range, image_cv, field_cv, 
                               bbox, image_mip, field_mip,
@@ -866,7 +921,8 @@ class Aligner:
   def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv, 
                           src_z, tgt_z, bbox, mip, pad=2048, 
                           src_mask_cv=None, src_mask_mip=0, src_mask_val=0, 
-                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0, prefix=''):
+                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
+                          prefix='', prev_field_cv=None, prev_field_z=None):
     """Compute field to warp src section to tgt section 
   
     Args:
@@ -896,7 +952,8 @@ class Aligner:
       batch.append(tasks.ComputeFieldTask(model_path, src_cv, tgt_cv, field_cv,
                                           src_z, tgt_z, chunk, mip, pad,
                                           src_mask_cv, src_mask_val, src_mask_mip, 
-                                          tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix))
+                                          tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix,
+                                          prev_field_cv, prev_field_z))
     return batch
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
@@ -1515,7 +1572,7 @@ class Aligner:
       I = I.split(chunk_size, dim=3)
       return torch.cat(I, dim=1)
 
-  def calculate_fcorr(self, cm, bbox, mip, z1, z2, cv, dst_cv, prefix=''):
+  def calculate_fcorr(self, cm, bbox, mip, z1, z2, cv, dst_cv, dst_nopost, prefix=''):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
@@ -1523,22 +1580,45 @@ class Aligner:
         prefix = '{}'.format(mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, chunk, mip, z1, z2, prefix))
+        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, dst_nopost, chunk, mip, z1, z2, prefix))
       return batch
 
 
   def get_fcorr(self, bbox, cv, mip, z1, z2):
       """ perform fcorr for two images
-
       """
-      image1 = self.get_image(cv, z1, bbox, mip, to_tensor=True)
-      image2 = self.get_image(cv, z2, bbox, mip, to_tensor=True)
+      image1 = self.get_data(cv, z1, bbox, src_mip=mip, dst_mip=mip,
+                             to_float=False, to_tensor=True).float()
+      image2 = self.get_data(cv, z2, bbox, src_mip=mip, dst_mip=mip,
+                             to_float=False, to_tensor=True).float()
+      if(mip != 5):
+        scale_factor = 2.**(mip - 5)
+        image1 = interpolate(image1, scale_factor=scale_factor,
+                             mode='bilinear')
+        image2 = interpolate(image2, scale_factor=scale_factor,
+                             mode='bilinear')
+      std1 = image1[image1!=0].std()
+      std2 = image2[image2!=0].std()
+      scaling = 8 * pow(std1*std2, 1/2)
       fcorr_chunk_size = 8
+      #print(image1)
       new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
       new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
       f1, p1 = get_fft_power2(new_image1)
       f2, p2 = get_fft_power2(new_image2)
-      return get_hp_fcorr(f1, p1, f2, p2)
+      tmp_image = get_hp_fcorr(f1, p1, f2, p2, scaling=scaling)
+      tmp_image = tmp_image.permute(2,3,0,1)
+      tmp_image = tmp_image.cpu().numpy()
+      tmp = deepcopy(tmp_image)
+      tmp[tmp==2]=1
+      blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp, sigma=(0, 0, 1, 1))
+      s = scipy.ndimage.generate_binary_structure(2, 1)[None, None, :, :]
+      closed = scipy.ndimage.morphology.grey_closing(blurred, footprint=s)
+      closed = 2*closed
+      closed[closed>1] = 1
+      closed = 1-closed
+      #print("++++closed shape",closed.shape)
+      return closed, tmp_image
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
     if self.distributed:
