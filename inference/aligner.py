@@ -1623,9 +1623,8 @@ class Aligner:
       mask2 = self.get_data(cv2, z2, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True, gpu=False)
       
-      mask1_bin = np.zeros(mask1.shape)
-      mask2_bin = np.zeros(mask2.shape)
-
+      mask1_bin = torch.zeros(mask1.shape)
+      mask2_bin = torch.zeros(mask2.shape)
       mask1_bin[mask1>0] = 1
       mask2_bin[mask2<=0] = 1
 
