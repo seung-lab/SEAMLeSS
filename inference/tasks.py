@@ -559,7 +559,7 @@ class FoldDetecPostTask(RegisteredTask):
     start = time()
     image = aligner.fold_postprocess_chunk(cv, patch_bbox, z, mip)
     image = image[np.newaxis,np.newaxis,...]
-    aligner.save_image(image, dst_cv, z, patch_bbox, mip, to_uint8=False)
+    aligner.save_image(image, dst_cv, z, patch_bbox, mip, to_uint8=True)
     end = time()
     diff = end - start
     print('Fold detection postprocess task: {:.3f} s'.format(diff))
