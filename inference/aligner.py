@@ -41,6 +41,7 @@ import tasks
 import tenacity
 import boto3
 from fcorr import get_fft_power2, get_hp_fcorr
+from fold_detec_post import postprocess
 
 retry = tenacity.retry(
   reraise=True, 
@@ -318,7 +319,6 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = np.transpose(float_patch, (2,3,0,1))
-    #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
     if to_uint8:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
@@ -557,18 +557,9 @@ class Aligner:
 
   def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
                     chunk_size, prefix=''):
-    start = time()
     chunks = self.break_into_chunks(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.num_scales)
-    #print("\nfold detect\n"
-    #      "model {}\n"
-    #      "src {}\n"
-    #      "dst {}\n"
-    #      "z={} \n"
-    #      "MIP{}\n"
-    #      "{} chunks\n".format(model_path, src_cv, dst_cv, z,
-    #                           mip, len(chunks)), flush=True)
     if prefix == '':
       prefix = '{}'.format(mip)
     batch = []
@@ -583,6 +574,19 @@ class Aligner:
     image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
     new_image = model(image)
     return new_image
+
+  def fold_postprocess(self, cm, src_cv, dst_cv, z, mip, bbox):
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.num_scales)
+    batch = []
+    for patch_bbox in chunks:
+      batch.append(tasks.FoldDetecPostTask(src_cv, dst_cv,patch_bbox, mip, z))
+    return batch
+ 
+  def fold_postprocess_chunk(self, src_cv, bbox, z, mip):
+    image = self.get_image(src_cv, z, bbox, mip, to_tensor=False)
+    return postprocess(image[0,0,...]) 
 
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 

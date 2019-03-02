@@ -541,6 +541,29 @@ class UpsampleRenderRechunkTask(RegisteredTask):
                                   patch_bbox, image_mip)
     aligner.pool.map(chunkwise, patches)
 
+class FoldDetecPostTask(RegisteredTask):
+  def __init__(self, cv, dst_cv, patch_bbox, mip, z):
+    super(). __init__(cv, dst_cv, patch_bbox, mip, z)
+
+  def execute(self, aligner):
+    cv = DCV(self.cv)
+    dst_cv = DCV(self.dst_cv)
+    z = self.z
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    mip = self.mip
+    print("\nFold detection postprocess "
+          "cv {}\n"
+          "z={}\n"
+          "at MIP{}"
+          "\n".format(cv, z, mip), flush=True)
+    start = time()
+    image = aligner.fold_postprocess_chunk(cv, patch_bbox, z, mip)
+    image = image[np.newaxis,np.newaxis,...]
+    aligner.save_image(image, dst_cv, z, patch_bbox, mip, to_uint8=False)
+    end = time()
+    diff = end - start
+    print('Fold detection postprocess task: {:.3f} s'.format(diff))
+
 class ComputeFcorrTask(RegisteredTask):
   def __init__(self, cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix):
     super(). __init__(cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix)

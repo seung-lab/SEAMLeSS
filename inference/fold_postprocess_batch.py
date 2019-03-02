@@ -35,8 +35,6 @@ def make_range(block_range, part_num):
 
 if __name__ == '__main__':
   parser = get_argparser()
-  parser.add_argument('--model_path', type=str,
-    help='relative path to the ModelArchive to use for computing fields')
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--src_mask_path', type=str, default='',
     help='CloudVolume path of mask to use with src images; default None')
@@ -74,7 +72,7 @@ if __name__ == '__main__':
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=256, batch_mip=mip)
+                    size_chunk=1024, batch_mip=mip)
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
@@ -95,8 +93,7 @@ if __name__ == '__main__':
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-              t = a.predict_image(cm, args.model_path, src.path, dst.path, z, mip, bbox,
-                                  chunk_size, prefix)
+              t = a.fold_postprocess(cm, src.path, dst.path, z, mip, bbox)
               yield from t
   range_list = make_range(full_range, a.threads)
 
@@ -104,8 +101,7 @@ if __name__ == '__main__':
   ptask = []
   for i in range_list:
       ptask.append(TaskIterator(i))
-
-
+ 
   if a.distributed:
       with ProcessPoolExecutor(max_workers=a.threads) as executor:
           executor.map(remote_upload, ptask)

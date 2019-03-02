@@ -15,6 +15,7 @@ pandas
 opencv-python
 setuptools>=34.0.0
 pyyaml
-task-queue
+task-queue>=0.14.3
 moviepy==0.2.3.5
 imageio==2.4.1
+fastremap
