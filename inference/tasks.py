@@ -110,11 +110,11 @@ class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix,
-                     prev_field_cv, prev_field_z):
+                     prev_field_cv, prev_field_z, prev_field_inverse):
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix,
-                     prev_field_cv, prev_field_z)
+                     prev_field_cv, prev_field_z, prev_field_inverse)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -128,6 +128,7 @@ class ComputeFieldTask(RegisteredTask):
     src_z = self.src_z
     tgt_z = self.tgt_z
     prev_field_z = self.prev_field_z
+    prev_field_inverse = self.prev_field_inverse
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
     pad = self.pad
@@ -159,7 +160,8 @@ class ComputeFieldTask(RegisteredTask):
                                           patch_bbox, mip, pad, 
                                           src_mask_cv, src_mask_mip, src_mask_val,
                                           tgt_mask_cv, tgt_mask_mip, tgt_mask_val,
-                                          None, prev_field_cv, prev_field_z)
+                                          None, prev_field_cv, prev_field_z, 
+                                          prev_field_inverse)
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       with Storage(field_cv.path) as stor:
         path = 'compute_field_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))

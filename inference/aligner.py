@@ -470,7 +470,8 @@ class Aligner:
   def compute_field_chunk(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad, 
                           src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
                           tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
-                          tgt_alt_z=None, prev_field_cv=None, prev_field_z=None):
+                          tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
+                          prev_field_inverse=False):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
     Args:
@@ -502,6 +503,8 @@ class Aligner:
     if prev_field_cv is not None:
         field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
                            relative=False, to_tensor=True)
+        if prev_field_inverse:
+          field = -field
         distance = self.profile_field(field)
         distance = (distance // (2 ** mip)) * 2 ** mip
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
@@ -922,7 +925,8 @@ class Aligner:
                           src_z, tgt_z, bbox, mip, pad=2048, 
                           src_mask_cv=None, src_mask_mip=0, src_mask_val=0, 
                           tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
-                          prefix='', prev_field_cv=None, prev_field_z=None):
+                          prefix='', prev_field_cv=None, prev_field_z=None,
+                          prev_field_inverse=False):
     """Compute field to warp src section to tgt section 
   
     Args:
@@ -940,6 +944,12 @@ class Aligner:
        wait: bool indicating whether to wait for all tasks must finish before proceeding
        prefix: str used to write "finished" files for each task 
         (only used for distributed)
+       prev_field_cv: MiplessCloudVolume where field prior is stored. Field will be used 
+        to apply initial translation to target image. If None, will ignore.
+       prev_field_z: int for section index of previous field
+       prev_field_inverse: bool indicating whether the inverse of the previous field
+        should be used.
+       
     """
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
@@ -952,8 +962,9 @@ class Aligner:
       batch.append(tasks.ComputeFieldTask(model_path, src_cv, tgt_cv, field_cv,
                                           src_z, tgt_z, chunk, mip, pad,
                                           src_mask_cv, src_mask_val, src_mask_mip, 
-                                          tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix,
-                                          prev_field_cv, prev_field_z))
+                                          tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
+                                          prefix, prev_field_cv, prev_field_z, 
+                                          prev_field_inverse))
     return batch
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
