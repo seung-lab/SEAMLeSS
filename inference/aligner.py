@@ -555,6 +555,15 @@ class Aligner:
 
     return field
 
+  def template_match(self, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad):
+    """Template match to compute translation between src & tgt
+    """
+    src_bbox = bbox.crop(bbox.size // 2)
+    tgt_bbox = bbox.uncrop(pad)
+    src = self.get_image(src_cv, src_bbox, mip)
+    tgt = self.get_image(tgt_cv, tgt_bbox, mip)
+    return template_match(src, tgt)
+
   def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
                     chunk_size, prefix=''):
     start = time()
