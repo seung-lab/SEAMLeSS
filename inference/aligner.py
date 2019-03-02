@@ -562,7 +562,18 @@ class Aligner:
     tgt_bbox = bbox.uncrop(pad)
     src = self.get_image(src_cv, src_bbox, mip)
     tgt = self.get_image(tgt_cv, tgt_bbox, mip)
-    return template_match(src, tgt)
+    r = normxcorr2(src, tgt, mode='full')
+    if is_blank(r):
+      x, y = np.nan, np.nan
+    elif torch.isnan(r[0,0,0,0]):
+      x, y = np.nan, np.nan
+    else:
+      idx = torch.argmax(r)
+      x = idx // r.shape[-2]
+      y = idx % r.shape[-1]
+      x = x - np.ceil(r.shape[-2] / 2)
+      y = y - np.ceil(r.shape[-1] / 2)
+    return torch.Tensor([[[[x, y]]]], device=src.device)
 
   def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
                     chunk_size, prefix=''):

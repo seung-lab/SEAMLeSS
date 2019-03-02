@@ -842,3 +842,52 @@ def vector_vote(fields, softmin_temp):
   field = field.permute(1,2,3,0)
   field_weights = field_weights.permute(2,3,0,1)
   return matmul(field, field_weights).permute(3,0,1,2)
+
+def normxcorr2(t, f, mode='valid'):
+  """Normalized 2D cross correlation for torch tensors
+
+  Args
+     t: torch tensor (4D, image format) for template image
+     f: torch tensor (4D, image format) for feature image
+     mode: string for 'valid' or 'full' convolution 
+
+  Returns
+     the normalized cross correlogram between t & f
+  """
+  eps = 1e-8
+  n1, n2 = t.shape[-2], t.shape[-1]
+  if mode == 'full':
+    k1 = n1*2 - 2 + f.shape[-2]
+    k2 = n2*2 - 2 + f.shape[-1]
+    f_mean = torch.mean(torch.mean(f, dim=-1), dim=-1)[0,0]
+    f_new = torch.Tensor(1,1,k1,k2, device=f.device)
+    f_new.fill_(f_mean)
+    f_new[0, 0, n1:k1-n1+2, n2:k2-n2+2] = f 
+    f = f_new 
+  m1, m2 = f.shape[-2], f.shape[-1]
+
+  t_mean = torch.mean(torch.mean(t, dim=-1), dim=-1)[0,0]
+  t_centered = t - t_mean 
+  t_var = torch.sum(torch.sum(pow(t_centered, 2), dim=-1), dim=-1)[0,0]
+  if t_var == 0:
+    corr = torch.Tensor(1,1,m1-n1+1,m2-n2+1, device=f.device)
+    corr.fill_(np.nan)
+    return corr
+  # only need to center the template
+  numerator = conv2d(f, t_centered)
+
+  # expanding img (f) variance calculation
+  # \sum f^2 - N*\bar{f}^2
+  # \bar{f} = \frac{1}{N}\sum f
+  f2 = pow(f, 2)
+  sum_filter = torch.ones(t.shape, device=t.device)
+  f_bar = conv2d(f, sum_filter)
+  f_bar2 = pow(f_bar, 2)
+  f2_bar = conv2d(f2, sum_filter)
+  N = n1*n2
+  f_var = f2_bar - f_bar2/N
+  denominator = torch.sqrt(f_var * t_var) 
+  numerator[denominator <= 0] = 0
+  denominator[denominator <= 0] = eps
+  return torch.div(numerator, denominator)
+  
