@@ -166,11 +166,11 @@ class Aligner:
     print('get_mask: {:.3f}'.format(diff), flush=True) 
     return mask
 
-  def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None):
+  def get_image(self, cv, z, bbox, mip, to_tensor=True, gpu=True, normalizer=None):
     print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
     start = time()
     image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
-                             to_tensor=to_tensor, normalizer=normalizer)
+                             to_tensor=to_tensor, gpu=gpu, normalizer=normalizer)
     end = time()
     diff = end - start
     print('get_image: {:.3f}'.format(diff), flush=True) 
@@ -232,7 +232,7 @@ class Aligner:
     return combined
 
   def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
-                     to_tensor=True, normalizer=None):
+                     to_tensor=True, gpu=True, normalizer=None):
     """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
     
     Args:
@@ -259,7 +259,8 @@ class Aligner:
       print('Normalizing image')
       start = time()
       data = torch.from_numpy(data)
-      data = data.to(device=self.device)
+      if gpu:
+        data = data.to(device=self.device)
       data = normalizer(data).reshape(data.shape)
       end = time()
       diff = end - start
@@ -268,7 +269,8 @@ class Aligner:
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
-      data = data.to(device=self.device)
+      if gpu:
+        data = data.to(device=self.device)
       if src_mip != dst_mip:
         # k = 2**(src_mip - dst_mip)
         size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
@@ -585,7 +587,7 @@ class Aligner:
     return batch
  
   def fold_postprocess_chunk(self, src_cv, bbox, z, mip):
-    image = self.get_image(src_cv, z, bbox, mip, to_tensor=False)
+    image = self.get_image(src_cv, z, bbox, mip, to_tensor=False, gpu=False)
     return postprocess(image[0,0,...]) 
 
 
