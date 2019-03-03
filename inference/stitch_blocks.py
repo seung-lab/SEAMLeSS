@@ -105,22 +105,22 @@ if __name__ == '__main__':
   pair_fields = {}
   for z_offset in overlap_offsets:
     pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
-                                           'stitch_reverse_v3', str(z_offset)), 
+                                           'stitch_reverse', str(z_offset)), 
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True)
-  temp_vvote_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse_v3', 'vvote', 'field'), 
+  temp_vvote_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'vvote', 'field'), 
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=True)
-  temp_vvote_image = cm.create(join(args.dst_path, 'field', 'stitch_reverse_v3', 'vvote', 'image'), 
+  temp_vvote_image = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'vvote', 'image'), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True)
   stitch_fields = {}
   for z_offset in overlap_offsets:
     stitch_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
-                                             'stitch_reverse_v3', 'vvote', str(z_offset)), 
+                                             'stitch_reverse', 'vvote', str(z_offset)), 
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True)
-  broadcasting_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse_v3', 
+  broadcasting_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 
                                       'broadcasting'),
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=True)
@@ -128,10 +128,10 @@ if __name__ == '__main__':
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=False)
 
-  compose_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse_v3', 'compose'),
+  compose_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'compose'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True)
-  final_dst = cm.create(join(args.dst_path, 'image_compose_reverse_test_v3'), 
+  final_dst = cm.create(join(args.dst_path, 'image_compose_reverse_test'), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True)
 
