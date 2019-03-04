@@ -15,10 +15,9 @@ class Model(nn.Module):
     `feature_maps` is the number of feature maps per encoding layer
     """
 
-    def __init__(self, height, dim=1536, skip=0, topskips=0, k=7,
-                 num_targets=1, *args, **kwargs):
+    def __init__(self, height, skip=0, topskips=0, k=7, *args, **kwargs):
         super().__init__()
-        self.pyramid = EPyramid(height, dim, skip, topskips, k, num_targets)
+        self.pyramid = EPyramid(height, skip, topskips, k)
 
     def forward(self, src, tgt, skip=0, in_field=None, **kwargs):
         src.unsqueeze_(0)
@@ -32,9 +31,6 @@ class Model(nn.Module):
         with path.open('rb') as f:
             weights = torch.load(f)
         load_model_from_dict(self, weights)
-        # model_params = dict(self.align.named_parameters())
-        # model_keys = sorted(model_params.keys())
-        # print(model_keys)
         return self
 
     def save(self, path):
@@ -42,7 +38,7 @@ class Model(nn.Module):
         Saves the model weights to a file
         """
         with path.open('wb') as f:
-            torch.save(self.align.state_dict(), f)
+            torch.save(self.state_dict(), f)
 
 
 class G(nn.Module):
@@ -127,16 +123,15 @@ class PreEnc(nn.Module):
                 out = m(out)
                 if idx < len(self.pelist) - 1:
                     out = self.f(out)
-
             outputs.append(out)
         return torch.cat(outputs, 1)
 
 
 class EPyramid(nn.Module):
-    def __init__(self, size, dim, skip, topskips, k, num_targets=1):
+    def __init__(self, size, skip, topskips, k):
         super(EPyramid, self).__init__()
-        print('Constructing EPyramid with size {} ({} downsamples, '
-              'input size {})...'.format(size, size-1, dim))
+        print('Constructing EPyramid with size {} ({} downsamples)...'
+              .format(size, size-1))
         fm_0 = 12
         fm_coef = 6
         self.identities = {}
@@ -159,30 +154,29 @@ class EPyramid(nn.Module):
         self.tgt_encodings = {}
 
     def forward(self, src, tgt, target_level):
-        with torch.no_grad():
-            factor = self.train_size / src.shape[-2]
+        factor = self.train_size / src.shape[-2]
 
-            for i, module in enumerate(self.enclist):
-                src, tgt = module(src, tgt)
-                self.src_encodings[i] = src
-                self.tgt_encodings[i] = tgt
-                src, tgt = self.down(src), self.down(tgt)
+        for i, module in enumerate(self.enclist):
+            src, tgt = module(src, tgt)
+            self.src_encodings[i] = src
+            self.tgt_encodings[i] = tgt
+            src, tgt = self.down(src), self.down(tgt)
 
-            field_so_far = 0
-            first_iter = True
-            for i in range(self.nlevels, target_level - 1, -1):
-                if i >= self.skip and i != 0:  # don't run the lowest aligner
-                    enc_src, enc_tgt = self.src_encodings[i], self.tgt_encodings[i]
-                    if not first_iter:
-                        enc_src = grid_sample(
-                            enc_src,
-                            field_so_far, padding_mode='zeros')
-                    rfield = self.mlist[i](enc_src, enc_tgt) * factor
-                    if first_iter:
-                        field_so_far = rfield
-                        first_iter = False
-                    else:
-                        field_so_far = compose_fields(rfield, field_so_far)
-                if i != target_level:
-                    field_so_far = upsample_field(field_so_far, i, i-1)
-            return field_so_far
+        field_so_far = 0
+        first_iter = True
+        for i in range(self.nlevels, target_level - 1, -1):
+            if i >= self.skip and i != 0:  # don't run the lowest aligner
+                enc_src, enc_tgt = self.src_encodings[i], self.tgt_encodings[i]
+                if not first_iter:
+                    enc_src = grid_sample(
+                        enc_src,
+                        field_so_far, padding_mode='zeros')
+                rfield = self.mlist[i](enc_src, enc_tgt) * factor
+                if first_iter:
+                    field_so_far = rfield
+                    first_iter = False
+                else:
+                    field_so_far = compose_fields(rfield, field_so_far)
+            if i != target_level:
+                field_so_far = upsample_field(field_so_far, i, i-1)
+        return field_so_far
