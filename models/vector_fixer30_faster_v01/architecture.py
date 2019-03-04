@@ -171,7 +171,7 @@ class EPyramid(nn.Module):
             field_so_far = 0
             first_iter = True
             for i in range(self.nlevels, target_level - 1, -1):
-                if i >= self.skip:
+                if i >= self.skip and i != 0:  # don't run the lowest aligner
                     enc_src, enc_tgt = self.src_encodings[i], self.tgt_encodings[i]
                     if not first_iter:
                         enc_src = grid_sample(
