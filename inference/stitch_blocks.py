@@ -78,7 +78,7 @@ if __name__ == '__main__':
   copy_range = full_range[-overlap:]
   overlap_range = full_range[-2*overlap:-overlap][::-1]
   copy_field_range = range(overlap, args.block_size+overlap)
-  broadcast_field_range = range(overlap-1, args.block_size+overlap)
+  broadcast_field_range = range(overlap, args.block_size+overlap)
   overlap_offsets = [i for i in range(1, overlap+1)]
 
   print('overlap_range {}'.format(overlap_range))
@@ -131,7 +131,7 @@ if __name__ == '__main__':
   compose_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'compose'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True)
-  final_dst = cm.create(join(args.dst_path, 'image_compose_reverse_test'), 
+  final_dst = cm.create(join(args.dst_path, 'image_compose_reverse'), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True)
 
@@ -342,7 +342,7 @@ if __name__ == '__main__':
   start = time()
   for i, block_start in enumerate(block_range):
     batch = []
-    for block_offset in broadcast_field_range: 
+    for block_offset in broadcast_field_range:
       z = block_start + block_offset 
       bbox = bbox_lookup[z]
       t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
