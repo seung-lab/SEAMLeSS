@@ -305,42 +305,6 @@ if __name__ == '__main__':
   # Serial broadcast script #
   ###########################
   
-  # # Copy vector field of first block
-  # batch = []
-  # block_start = block_range[0]
-  # prefix = block_start
-  # for block_offset in copy_field_range: 
-  #   z = block_start + block_offset
-  #   bbox = bbox_lookup[z]
-  #   t = a.copy(cm, block_field, compose_field, z, z, bbox, mip, is_field=True, prefix=prefix)
-  #   batch.extend(t)
-
-  # run(a, batch)
-  # start = time()
-  # # wait
-  # a.wait_for_sqs_empty()
-  # end = time()
-  # diff = end - start
-  # print_run(diff, len(batch))
-
-  # # Render out the images from the copied field
-  # batch = []
-  # block_start = block_range[0]
-  # prefix = block_start
-  # for block_offset in copy_field_range: 
-  #   z = block_start + block_offset 
-  #   bbox = bbox_lookup[z]
-  #   t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
-  #                bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
-  #   batch.extend(t)
-
-  # print('Scheduling render for copied range')
-  # start = time()
-  # run(a, batch)
-  # end = time()
-  # diff = end - start
-  # print_run(diff, len(batch))
-
   # Compose next block with last vector field from the previous composed block
   n_tasks = 0
   prefix = '' 
