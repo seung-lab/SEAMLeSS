@@ -23,20 +23,25 @@ def print_run(diff, n_tasks):
 
 def make_range(block_range, part_num):
     rangelen = len(block_range)
-    if(rangelen < part_num):
-        srange =1
-        part = rangelen
+    if part_num == 1:
+      odd_even =0
+      range_list =[block_range]
     else:
-        part = part_num
-        srange = rangelen//part
-    if srange%2 == 0:
-        odd_even = 0
-    else:
-        odd_even = 1
-    range_list = []
-    for i in range(part-1):
-        range_list.append(block_range[i*srange:(i+1)*srange])
-    range_list.append(block_range[(part-1)*srange:])
+      if(rangelen < part_num):
+          srange =1
+          part = rangelen
+      else:
+          part = part_num
+          srange = rangelen//part
+      if srange%2 == 0:
+          odd_even = 0
+      else:
+          odd_even = 1
+      range_list = []
+      for i in range(part-1):
+          range_list.append(block_range[i*srange:(i+1)*srange])
+      range_list.append(block_range[(part-1)*srange:])
+
     return range_list, odd_even
 
 if __name__ == '__main__':
@@ -108,6 +113,7 @@ if __name__ == '__main__':
 
   print('overlap_range {}'.format(overlap_range))
   print('overlap_offsets {}'.format(overlap_offsets))
+  print('block_range{}'.format(block_range))
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
@@ -189,7 +195,8 @@ if __name__ == '__main__':
 
   print('Scheduling CopyTasks')
   range_list, odd_even = make_range(block_range, a.threads)
-
+  print("range list", range_list)
+  print("--------------", odd_even, a.threads)
   ptask = []
   start = time()
   for i, irange in enumerate(range_list):
