@@ -13,7 +13,8 @@ def postprocess(img):
         img_thr = threshold_image(img, 0.35)
         img_con = dilate_folds(img_thr, 5)
 
-        return dilate_folds(filter_folds(img_con, 1500), 15)
+        # return dilate_folds(filter_folds(img_con, 1500), 15)
+        return filter_folds(img_con, 1500)
 
 def threshold_image(img, thr):
 

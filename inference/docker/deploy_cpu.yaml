@@ -6,7 +6,7 @@ metadata:
     run: seamless
   name: seamless
 spec:
-  replicas: 2 
+  replicas: 1 
   selector:
     matchLabels:
       run: seamless
@@ -22,12 +22,15 @@ spec:
         run: seamless
     spec:
       containers:
-      - image: seunglab/seamless:cpu
+      - image: seunglab/seamless:fold-detector
         name: seamless
         imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/worker.py --processes 8 --queue_name deepalign0"]
-        volumeMounts:
+        args: ["-c", "python inference/worker.py --processes 9 --queue_name deepalign0 --lease_seconds 5"]
+        # resources: 
+        #   limits:
+        #     nvidia.com/gpu: 1
+        volumeMounts: 
         - name: secrets
           mountPath: /root/.cloudvolume/secrets
           readOnly: true
