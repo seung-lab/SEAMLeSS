@@ -1,5 +1,3 @@
-import gevent.monkey 
-gevent.monkey.patch_all(thread=False)
 import boto3
 from time import time
 import json
@@ -19,18 +17,6 @@ def remote_upload(queue_name, ptasks):
   with TaskQueue(queue_name=queue_name) as tq:
     for task in ptasks:
       tq.insert(task)
-
-def green_upload(ptask, aligner):
-    if aligner.distributed:
-        tq = GreenTaskQueue(aligner.queue_name)
-        tq.insert_all(ptask, parallel=aligner.threads)
-    else:
-        tq = LocalTaskQueue(parallel=1)
-        tq.insert_all(ptask, args= [aligner])
-   
-   # for task in ptask:
-   #     tq.insert(task, args=[ a ])
-
 
 def run(aligner, tasks): 
   if aligner.distributed:
