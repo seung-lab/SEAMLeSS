@@ -23,6 +23,7 @@ from torch.nn.functional import interpolate
 import torch.nn as nn
 
 from normalizer import Normalizer
+from scipy.special import binom
 from temporal_regularization import create_field_bump
 from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               np_downsample, invert, compose_fields, upsample_field, \
@@ -626,7 +627,13 @@ class Aligner:
           G_z = z+z_offset
           F = self.get_composed_field(G_cv, f_cv, G_z, f_z, bbox, mip, mip, mip)
       fields.append(F)
-    return vector_vote(fields, softmin_temp=2**mip)
+    # assign weight w if the difference between majority vector similarities are d
+    w = 0.99
+    d = 2**mip
+    n = len(fields)
+    m = int(binom(n, (n+1)//2)) - 1
+    softmin_temp = - d / np.log((1-w) / (m*w))
+    return vector_vote(fields, softmin_temp=softmin_temp)
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
     """Compute the inverse vector field for a given bbox 
