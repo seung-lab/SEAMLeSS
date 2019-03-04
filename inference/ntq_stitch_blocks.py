@@ -354,7 +354,7 @@ if __name__ == '__main__':
   ptask = []
   start = time() 
   for i, irange in enumerate(range_list):
-      ptask.append(CopyTaskIterator(irange, i*odd_even))
+      ptask.append(CopyTaskIteratorII(irange, i*odd_even))
 
   with ProcessPoolExecutor(max_workers=a.threads) as executor:
       executor.map(remote_upload, ptask)
