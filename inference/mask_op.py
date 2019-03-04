@@ -87,7 +87,7 @@ if __name__ == '__main__':
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-              t = a.mask_op(cm, bbox, mip, z, z, src1.path, src2.path, dst.path, z)
+              t = a.mask_op(cm, bbox, mip, z, z, src1.path, src2.path, dst.path, z-1)
               yield from t
 
   range_list = make_range(full_range, a.threads)
