@@ -108,9 +108,9 @@ class ConvBlock(nn.Module):
         self.norm = nn.BatchNorm2d(out_channels, track_running_stats=False)
         
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
+        x = F.relu(self.norm(self.conv1(x)))
+        x = F.relu(self.norm(self.conv2(x)))
+        x = F.relu(self.norm(self.conv3(x)))
         return x
 
 
