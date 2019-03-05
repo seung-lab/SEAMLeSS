@@ -1617,7 +1617,7 @@ class Aligner:
       #print("++++closed shape",closed.shape)
       return closed, tmp_image
 
-  def slip_mask_op(self, bbox, cv1, cv2, z1, z2, mip):
+  def slip_mask_op(self, bbox, cv1, cv2, z1, z2, mip, z1_thres, z2_thres):
       mask1 = self.get_data(cv1, z1, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True, gpu=False)
       mask2 = self.get_data(cv2, z2, bbox, src_mip=mip, dst_mip=mip,
@@ -1625,12 +1625,13 @@ class Aligner:
       
       mask1_bin = torch.zeros(mask1.shape)
       mask2_bin = torch.zeros(mask2.shape)
-      mask1_bin[mask1>0] = 1
-      mask2_bin[mask2<=0] = 1
+      mask1_bin[mask1>z1_thres] = 1
+      mask2_bin[mask2<=z2_thres] = 1
 
       return mask1_bin * mask2_bin
 
-  def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, prefix=''):
+  def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, z1_thres,
+              z2_thres, prefix=''):
       chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
@@ -1639,7 +1640,7 @@ class Aligner:
       batch = []
       for chunk in chunks:
         batch.append(tasks.MaskOpTask(chunk, cv1, cv2, z1, z2, mip, dst_cv,
-                                      dst_z, prefix))
+                                      dst_z, z1_thres, z2_thres, prefix))
       return batch
 
   def wait_for_queue_empty(self, path, prefix, chunks_len):
