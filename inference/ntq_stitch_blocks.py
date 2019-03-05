@@ -1,3 +1,12 @@
+"""
+Stitch even and odd blocks together
+T Macrina
+190305
+
+TODO: This script does not properly handle the last block (reverse compose)
+      or the first block (forward compose). Proper handling should be put
+      in place.
+"""
 import gevent.monkey
 gevent.monkey.patch_all()
 
@@ -58,6 +67,10 @@ if __name__ == '__main__':
   parser.add_argument('--odd_start', 
      help='indicate that the first block is odd (default is even)',
      action='store_true')
+  parser.add_argument('--forward_compose', 
+     help='stitch blocks by broadcast composing vector field from previous block across' \
+          ' current block (default is to reverse compose from next block across current)',
+     action='store_true')
   args = parse_args(parser)
   # Only compute matches to previous sections
   a = get_aligner(args)
@@ -105,6 +118,12 @@ if __name__ == '__main__':
   copy_field_range = range(overlap, args.block_size+overlap)
   broadcast_field_range = range(overlap, args.block_size+overlap)
   overlap_offsets = [i for i in range(1, overlap+1)]
+  if args.forward_compose:
+    copy_range = full_range[:overlap]
+    overlap_range = full_range[overlap:2*overlap]
+    copy_field_range = range(overlap, args.block_size+overlap)
+    broadcast_field_range = range(overlap, args.block_size+overlap)
+    overlap_offsets = [-i for i in range(1, overlap+1)]
 
   print('overlap_range {}'.format(overlap_range))
   print('overlap_offsets {}'.format(overlap_offsets))
@@ -130,22 +149,22 @@ if __name__ == '__main__':
   pair_fields = {}
   for z_offset in overlap_offsets:
     pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
-                                           'stitch_reverse', str(z_offset)), 
+                                           'stitch', str(z_offset)), 
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True).path
-  temp_vvote_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'vvote', 'field'), 
+  temp_vvote_field = cm.create(join(args.dst_path, 'field', 'stitch', 'vvote', 'field'), 
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=True).path
-  temp_vvote_image = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'vvote', 'image'), 
+  temp_vvote_image = cm.create(join(args.dst_path, 'field', 'stitch', 'vvote', 'image'), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True).path
   stitch_fields = {}
   for z_offset in overlap_offsets:
     stitch_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
-                                             'stitch_reverse', 'vvote', str(z_offset)), 
+                                             'stitch', 'vvote', str(z_offset)), 
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True).path
-  broadcasting_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 
+  broadcasting_field = cm.create(join(args.dst_path, 'field', 'stitch', 
                                       'broadcasting'),
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=True).path
@@ -153,10 +172,10 @@ if __name__ == '__main__':
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=False).path
 
-  compose_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'compose'),
+  compose_field = cm.create(join(args.dst_path, 'field', 'stitch', 'compose'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True).path
-  final_dst = cm.create(join(args.dst_path, 'image_compose_reverse'), 
+  final_dst = cm.create(join(args.dst_path, 'image_stitched'), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True).path
 
@@ -227,12 +246,15 @@ if __name__ == '__main__':
               model_path = model_lookup[z]
               for z_offset in overlap_offsets:
                 field = pair_fields[z_offset]
+                prev_z = z
+                if args.forward_compose:
+                  prev_z = z+z_offset
                 t = a.compute_field(cm, model_path, current_block, temp_vvote_image, field, 
                                     z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
                                     src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                                     tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
                                     tgt_mask_val=src_mask_val, prefix=prefix,
-                                    prev_field_cv=block_field, prev_field_z=z,
+                                    prev_field_cv=block_field, prev_field_z=prev_z,
                                     prev_field_inverse=True)
                 yield from t
 
@@ -339,6 +361,8 @@ if __name__ == '__main__':
             for j, block_offset in enumerate(overlap_range):
               z = block_start + block_offset
               z_offset = j+1
+              if args.forward_compose:
+                z_offset = -1*z_offset
               stitch_field = stitch_fields[z_offset]
               bbox = bbox_lookup[z]
               t = a.copy(cm, temp_vvote_field, stitch_field, z, block_start, bbox, mip, 
@@ -413,6 +437,9 @@ if __name__ == '__main__':
             for block_offset in self.brange:
               fixed_z = float(broadcast_field_range[0])
               factor = (block_offset - fixed_z) / (broadcast_field_range[-1] - fixed_z)
+              if args.forward_compose:
+                last_z = float(broadcast_field_range[-1])
+                factor = (br - block_offset) / (br - broadcast_field_range[0])
               z = block_start + block_offset
               bbox = bbox_lookup[z]
               t = a.compose(cm, broadcasting_field, block_field, compose_field,
