@@ -259,8 +259,7 @@ class Aligner:
       print('Normalizing image')
       start = time()
       data = torch.from_numpy(data)
-      if gpu:
-        data = data.to(device=self.device)
+      data = data.to(device=self.device)
       data = normalizer(data).reshape(data.shape)
       end = time()
       diff = end - start
@@ -269,8 +268,7 @@ class Aligner:
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
-      if gpu:
-        data = data.to(device=self.device)
+      data = data.to(device=self.device)
       if src_mip != dst_mip:
         # k = 2**(src_mip - dst_mip)
         size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
