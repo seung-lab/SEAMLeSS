@@ -1,0 +1,42 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    run: seamless
+  name: seamless
+spec:
+  replicas: 1 
+  selector:
+    matchLabels:
+      run: seamless
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: seamless
+    spec:
+      containers:
+      - image: seunglab/seamless:fold-detector
+        name: seamless
+        imagePullPolicy: Always
+        command: ["/bin/sh"]
+        args: ["-c", "python inference/worker.py --processes 12 --queue_name deepalign0 --lease_seconds 5"]
+        resources: 
+          limits:
+            nvidia.com/gpu: 1
+        volumeMounts: 
+        - name: secrets
+          mountPath: /root/.cloudvolume/secrets
+          readOnly: true
+      dnsPolicy: Default
+      volumes:
+      - name: secrets
+        secret:
+          secretName: secrets
+status: {}
