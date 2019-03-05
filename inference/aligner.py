@@ -573,7 +573,7 @@ class Aligner:
   def predict_image_chunk(self, model_path, src_cv, z, mip, bbox):
     archive = self.get_model_archive(model_path)
     model = archive.model
-    image = self.get_image(src_cv, z, bbox, mip, to_tensor=False)
+    image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
     new_image = model(image)
     return new_image
 
