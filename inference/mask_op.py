@@ -40,6 +40,8 @@ if __name__ == '__main__':
   parser.add_argument('--src_path2', type=str)
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--mip', type=int)
+  parser.add_argument('--z1_thres', type=float)
+  parser.add_argument('--z2_thres', type=float)
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
   parser.add_argument('--bbox_stop', nargs=3, type=int,
@@ -87,7 +89,8 @@ if __name__ == '__main__':
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-              t = a.mask_op(cm, bbox, mip, z, z, src1.path, src2.path, dst.path, z-1)
+              t = a.mask_op(cm, bbox, mip, z, z, src1.path, src2.path,
+                            dst.path, z-1, args.z1_thres, args.z2_thres)
               yield from t
 
   range_list = make_range(full_range, a.threads)

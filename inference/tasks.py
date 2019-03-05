@@ -562,7 +562,7 @@ class MaskOpTask(RegisteredTask):
           "\n".format(z1, z2, mip), flush=True)
     start = time()
     res = aligner.slip_mask_op(patch_bbox, cv1, cv2, z1, z2, mip,
-                               self.z1_thres, self,z2_thres)
+                               self.z1_thres, self.z2_thres)
     aligner.save_image(res.numpy(), dst_cv, dst_z, patch_bbox, mip, to_uint8=False)
     with Storage(dst_cv.path) as stor:
       path = 'Mask_op_done/{}/{}'.format(self.prefix,
