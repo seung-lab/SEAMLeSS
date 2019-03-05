@@ -23,20 +23,25 @@ def print_run(diff, n_tasks):
 
 def make_range(block_range, part_num):
     rangelen = len(block_range)
-    if(rangelen < part_num):
-        srange =1
-        part = rangelen
-    else:
-        part = part_num
-        srange = rangelen//part
-    if srange%2 == 0:
+    if part_num ==1:
         odd_even = 0
+        range_list = [block_range]
     else:
-        odd_even = 1
-    range_list = []
-    for i in range(part-1):
-        range_list.append(block_range[i*srange:(i+1)*srange])
-    range_list.append(block_range[(part-1)*srange:])
+        if(rangelen < part_num):
+            srange =1
+            part = rangelen
+        else:
+            part = part_num
+            srange = rangelen//part
+        if srange%2 == 0:
+            odd_even = 0
+        else:
+            odd_even = 1
+        range_list = []
+        for i in range(part-1):
+            range_list.append(block_range[i*srange:(i+1)*srange])
+        range_list.append(block_range[(part-1)*srange:])
+
     return range_list, odd_even
 
 if __name__ == '__main__':
