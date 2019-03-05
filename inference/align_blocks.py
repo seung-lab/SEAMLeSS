@@ -203,11 +203,11 @@ if __name__ == '__main__':
   range_list, odd_even = make_range(block_range, a.threads)
   
   start = time()
-  for i, irange in enumerate(range_list):
-      ptask.append(CopyTaskIterator(irange, i*odd_even))
+#   for i, irange in enumerate(range_list):
+#       ptask.append(CopyTaskIterator(irange, i*odd_even))
   
-  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-      executor.map(remote_upload, ptask)
+#   with ProcessPoolExecutor(max_workers=a.threads) as executor:
+#       executor.map(remote_upload, ptask)
  
   end = time()
   diff = end - start
@@ -216,7 +216,7 @@ if __name__ == '__main__':
   # wait
   start = time()
   #if args.use_sqs_wait:
-  a.wait_for_sqs_empty()
+#   a.wait_for_sqs_empty()
   end = time()
   diff = end - start
   print("Executing Copy Tasks use time:", diff)
@@ -414,151 +414,151 @@ if __name__ == '__main__':
   # Serial broadcast script #
   ###########################
   
-  # Copy vector field of first block
-  block_start = block_range[0]
-  prefix = block_start
-  class CopyTaskIteratorII():
-      def __init__(self, brange):
-          self.brange = brange
-      def __iter__(self):
-          for block_offset in self.brange:
-              z = block_start + block_offset
-              bbox = bbox_lookup[z]
-              t = a.copy(cm, vvote_field.path, compose_field.path, z, z, bbox, mip, is_field=True, prefix=prefix)
-              yield from t 
+#   # Copy vector field of first block
+#   block_start = block_range[0]
+#   prefix = block_start
+#   class CopyTaskIteratorII():
+#       def __init__(self, brange):
+#           self.brange = brange
+#       def __iter__(self):
+#           for block_offset in self.brange:
+#               z = block_start + block_offset
+#               bbox = bbox_lookup[z]
+#               t = a.copy(cm, vvote_field.path, compose_field.path, z, z, bbox, mip, is_field=True, prefix=prefix)
+#               yield from t 
 
-  copy_range_list, cp_odd_even = make_range(copy_field_range, a.threads)
-  ptask = []
-  start = time()
-  for irange in copy_range_list:
-      ptask.append(CopyTaskIteratorII(irange))
+#   copy_range_list, cp_odd_even = make_range(copy_field_range, a.threads)
+#   ptask = []
+#   start = time()
+#   for irange in copy_range_list:
+#       ptask.append(CopyTaskIteratorII(irange))
   
-  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-      executor.map(remote_upload, ptask)
+#   with ProcessPoolExecutor(max_workers=a.threads) as executor:
+#       executor.map(remote_upload, ptask)
   
-  end = time()
-  diff = end - start
-  print("Sending Copy Tasks use time:", diff)
-  print('Run copying')
+#   end = time()
+#   diff = end - start
+#   print("Sending Copy Tasks use time:", diff)
+#   print('Run copying')
  
-  start = time()
-  # wait 
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing copy tasks use time:", diff)
+#   start = time()
+#   # wait 
+#   a.wait_for_sqs_empty()
+#   end = time()
+#   diff = end - start
+#   print("Executing copy tasks use time:", diff)
 
 
 
-  # Render out the images from the copied field
-  block_start = block_range[0]
-  prefix = block_start
+#   # Render out the images from the copied field
+#   block_start = block_range[0]
+#   prefix = block_start
 
-  class RenderTaskIteratorIII(object):
-      def __init__(self, brange):
-          self.brange = brange
-      def __iter__(self):
-          for block_offset in self.brange: 
-              z = block_start + block_offset 
-              bbox = bbox_lookup[z]
-              t = a.render(cm, src.path, compose_field.path, final_dst.path, src_z=z, field_z=z, dst_z=z,
-                      bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
-              yield from t
+#   class RenderTaskIteratorIII(object):
+#       def __init__(self, brange):
+#           self.brange = brange
+#       def __iter__(self):
+#           for block_offset in self.brange: 
+#               z = block_start + block_offset 
+#               bbox = bbox_lookup[z]
+#               t = a.render(cm, src.path, compose_field.path, final_dst.path, src_z=z, field_z=z, dst_z=z,
+#                       bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+#               yield from t
   
-  ptask = []
-  start = time()
-  for irange in copy_range_list:
-      ptask.append(RenderTaskIteratorIII(irange))
+#   ptask = []
+#   start = time()
+#   for irange in copy_range_list:
+#       ptask.append(RenderTaskIteratorIII(irange))
   
-  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-      executor.map(remote_upload, ptask)
+#   with ProcessPoolExecutor(max_workers=a.threads) as executor:
+#       executor.map(remote_upload, ptask)
   
-  end = time()
-  diff = end - start
-  print("Sending Render Tasks use time:", diff)
-  print('Run rendering')
+#   end = time()
+#   diff = end - start
+#   print("Sending Render Tasks use time:", diff)
+#   print('Run rendering')
 
-  start = time()
-  # wait 
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing Rendering for copied range use time:", diff)
+#   start = time()
+#   # wait 
+#   a.wait_for_sqs_empty()
+#   end = time()
+#   diff = end - start
+#   print("Executing Rendering for copied range use time:", diff)
 
-  # Compose next block with last vector field from the previous composed block
-  prefix = '' 
-  broadcast_range_list, brodd_even = make_range(broadcast_field_range[1:], a.threads)
-  for i, block_start in enumerate(block_range[1:]):
-    z_broadcast = block_start + overlap - 1
-    class ComposeTaskIterator(object):
-        def __init__(self, brange):
-            self.brange = brange
-        def __iter__(self):
-            for block_offset in self.brange:
-                br = float(broadcast_field_range[-1])
-                factor = (br - block_offset) / (br - broadcast_field_range[1])
-                z = block_start + block_offset
-                bbox = bbox_lookup[z]
-                t = a.compose(cm, vvote_field.path, vvote_field.path, compose_field.path, z_broadcast, z, z, 
-                              bbox, mip, mip, mip, factor, prefix=prefix)
-                yield from t
+#   # Compose next block with last vector field from the previous composed block
+#   prefix = '' 
+#   broadcast_range_list, brodd_even = make_range(broadcast_field_range[1:], a.threads)
+#   for i, block_start in enumerate(block_range[1:]):
+#     z_broadcast = block_start + overlap - 1
+#     class ComposeTaskIterator(object):
+#         def __init__(self, brange):
+#             self.brange = brange
+#         def __iter__(self):
+#             for block_offset in self.brange:
+#                 br = float(broadcast_field_range[-1])
+#                 factor = (br - block_offset) / (br - broadcast_field_range[1])
+#                 z = block_start + block_offset
+#                 bbox = bbox_lookup[z]
+#                 t = a.compose(cm, vvote_field.path, vvote_field.path, compose_field.path, z_broadcast, z, z, 
+#                               bbox, mip, mip, mip, factor, prefix=prefix)
+#                 yield from t
     
-    ptask = []
-    start = time()
-    for irange in broadcast_range_list:
-        ptask.append(ComposeTaskIterator(irange))
+#     ptask = []
+#     start = time()
+#     for irange in broadcast_range_list:
+#         ptask.append(ComposeTaskIterator(irange))
     
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-    print('Scheduling compose for block_start {}, block {} / {}'.format(block_start, i+1, 
-                                                                    len(block_range[1:])))
+#     with ProcessPoolExecutor(max_workers=a.threads) as executor:
+#         executor.map(remote_upload, ptask)
+#     print('Scheduling compose for block_start {}, block {} / {}'.format(block_start, i+1, 
+#                                                                     len(block_range[1:])))
  
-    end = time()
-    diff = end - start
-    print("Sending Compose Tasks use time:", diff)
-    print('Run Compose')
-  start = time()
-  # wait 
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing Compose tasks use time:", diff)
+#     end = time()
+#     diff = end - start
+#     print("Sending Compose Tasks use time:", diff)
+#     print('Run Compose')
+#   start = time()
+#   # wait 
+#   a.wait_for_sqs_empty()
+#   end = time()
+#   diff = end - start
+#   print("Executing Compose tasks use time:", diff)
 
-  prefix = ''
-  start = time()
+#   prefix = ''
+#   start = time()
 
-  class RenderTaskIteratorIV(object):
-      def __init__(self, brange):
-          self.brange = brange
-      def __iter__(self):
-          for i, block_start in enumerate(self.brange):
-            for block_offset in broadcast_field_range[1:]: 
-              z = block_start + block_offset 
-              bbox = bbox_lookup[z]
-              t = a.render(cm, src.path, compose_field.path, final_dst.path, src_z=z, field_z=z, dst_z=z, 
-                           bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
-              yield from t
+#   class RenderTaskIteratorIV(object):
+#       def __init__(self, brange):
+#           self.brange = brange
+#       def __iter__(self):
+#           for i, block_start in enumerate(self.brange):
+#             for block_offset in broadcast_field_range[1:]: 
+#               z = block_start + block_offset 
+#               bbox = bbox_lookup[z]
+#               t = a.render(cm, src.path, compose_field.path, final_dst.path, src_z=z, field_z=z, dst_z=z, 
+#                            bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+#               yield from t
   
-  final_list, fiodd_even = make_range(block_range[1:], a.threads)
-  ptask = []
-  start = time()
-  for irange in final_list:
-      ptask.append(RenderTaskIteratorIV(irange))
+#   final_list, fiodd_even = make_range(block_range[1:], a.threads)
+#   ptask = []
+#   start = time()
+#   for irange in final_list:
+#       ptask.append(RenderTaskIteratorIV(irange))
   
-  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-      executor.map(remote_upload, ptask)
+#   with ProcessPoolExecutor(max_workers=a.threads) as executor:
+#       executor.map(remote_upload, ptask)
   
-  end = time()
-  diff = end - start
-  print("Sending Render Tasks use time:", diff)
-  print('Run rendering')
+#   end = time()
+#   diff = end - start
+#   print("Sending Render Tasks use time:", diff)
+#   print('Run rendering')
 
-  start = time()
-  # wait 
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing Rendering for copied range use time:", diff)
+#   start = time()
+#   # wait 
+#   a.wait_for_sqs_empty()
+#   end = time()
+#   diff = end - start
+#   print("Executing Rendering for copied range use time:", diff)
 
-#
-#  # # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
+# #
+# #  # # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)

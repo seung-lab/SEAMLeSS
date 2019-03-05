@@ -40,10 +40,10 @@ if __name__ == '__main__':
   parser.add_argument('--section_lookup', type=str, 
     help='path to json file with section specific settings')
   parser.add_argument('--src_path', type=str)
-  parser.add_argument('--field_path', type=str)
-  parser.add_argument('--fine_field_path', type=str)
+  # parser.add_argument('--field_path', type=str)
+  # parser.add_argument('--fine_field_path', type=str)
   parser.add_argument('--coarse_field_path', type=str)
-  parser.add_argument('--fine_mip', type=int)
+  # parser.add_argument('--fine_mip', type=int)
   parser.add_argument('--coarse_mip', type=int)
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--src_mip', type=int)
@@ -57,8 +57,8 @@ if __name__ == '__main__':
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
-  parser.add_argument('--task_limit', type=int, default=500000,
-    help='no. of tasks scheduled before a wait is put in place')
+  # parser.add_argument('--task_limit', type=int, default=500000,
+    # help='no. of tasks scheduled before a wait is put in place')
   args = parse_args(parser)
   # only compute matches to previous sections
   a = get_aligner(args)
@@ -67,7 +67,7 @@ if __name__ == '__main__':
   chunk_size = 1024
 
   src_mip = args.src_mip
-  f_mip = args.fine_mip
+  # f_mip = args.fine_mip
   g_mip = args.coarse_mip
   max_mip = args.max_mip
   pad = args.pad
@@ -82,14 +82,14 @@ if __name__ == '__main__':
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False)
-  f_field = cm.create(args.fine_field_path, data_type='int16', num_channels=2,
-                          fill_missing=True, overwrite=False)
+  # f_field = cm.create(args.fine_field_path, data_type='int16', num_channels=2,
+                          # fill_missing=True, overwrite=False)
   dst = cm.create(args.dst_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=True)
   g_field = cm.create(args.coarse_field_path, data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=False)
-  field = cm.create(args.field_path, data_type='int16', num_channels=2,
-                          fill_missing=True, overwrite=True)
+  # field = cm.create(args.field_path, data_type='int16', num_channels=2,
+                          # fill_missing=True, overwrite=True)
 
   # Source Dict
   src_path_to_cv = {args.src_path: src}
@@ -124,38 +124,38 @@ if __name__ == '__main__':
           tq.insert_all(tasks)
 
 
-  class ComposeTaskIterator(object):
-      def __init__(self, zrange):
-          self.zrange = zrange
-      def __iter__(self):
-          print("range is ", self.zrange)
-          for z in self.zrange:
-              affine = None
-              t = a.cloud_compose_field(cm, f_field.path, g_field.path,
-                      field.path, z, z, z, bbox, f_mip,
-                      g_mip, src_mip, affine, pad, prefix=prefix)
-              yield from t
+  # class ComposeTaskIterator(object):
+  #     def __init__(self, zrange):
+  #         self.zrange = zrange
+  #     def __iter__(self):
+  #         print("range is ", self.zrange)
+  #         for z in self.zrange:
+  #             affine = None
+  #             t = a.cloud_compose_field(cm, f_field.path, g_field.path,
+  #                     field.path, z, z, z, bbox, f_mip,
+  #                     g_mip, src_mip, affine, pad, prefix=prefix)
+  #             yield from t
 
-  ptask = []
+  # ptask = []
   range_list = make_range(z_range, a.threads)
   
-  start = time()
-  for irange in range_list:
-      ptask.append(ComposeTaskIterator(irange))
+  # start = time()
+  # for irange in range_list:
+  #     ptask.append(ComposeTaskIterator(irange))
   
-  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-      executor.map(remote_upload, ptask)
+  # with ProcessPoolExecutor(max_workers=a.threads) as executor:
+  #     executor.map(remote_upload, ptask)
  
-  end = time()
-  diff = end - start
-  print("Sending Compose Tasks use time:", diff)
-  print('Running Compose Tasks')
-  # wait 
-  start = time()
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing Compose Tasks use time:", diff)
+  # end = time()
+  # diff = end - start
+  # print("Sending Compose Tasks use time:", diff)
+  # print('Running Compose Tasks')
+  # # wait 
+  # start = time()
+  # a.wait_for_sqs_empty()
+  # end = time()
+  # diff = end - start
+  # print("Executing Compose Tasks use time:", diff)
  
   class RenderTaskIterator(object):
       def __init__(self, zrange):
@@ -172,11 +172,13 @@ if __name__ == '__main__':
 
           try:
             src_path = source_lookup[z].path
+            if src_path != src.path:
+              print("Overriding {} source dir with path {}".format(z, src_path))
           except KeyError:
             src_path = src.path
-          print("Rendering using path {}".format(src_path))
-          t = a.render(cm, src_path, field.path, dst.path, z, z, z, bbox,
-                           src_mip, src_mip, affine=affine, prefix=prefix) 
+          
+          t = a.render(cm, src_path, g_field.path, dst.path, z, z, z, bbox,
+                           src_mip, g_mip, affine=affine, prefix=prefix) 
           yield from t
 
   ptask = []

@@ -20,8 +20,6 @@ class Model(nn.Module):
         self.pyramid = EPyramid(height, skip, topskips, k)
 
     def forward(self, src, tgt, skip=0, in_field=None, **kwargs):
-        src.unsqueeze_(0)
-        tgt.unsqueeze_(0)
         return self.pyramid(src, tgt, skip)
 
     def load(self, path):
