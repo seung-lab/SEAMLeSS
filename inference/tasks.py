@@ -9,7 +9,7 @@ from cloudvolume import Storage
 from cloudvolume.lib import scatter 
 from boundingbox import BoundingBox, deserialize_bbox
 
-from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue
+from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue, GreenTaskQueue
 from concurrent.futures import ProcessPoolExecutor
 # from taskqueue.taskqueue import _scatter as scatter
 
@@ -17,6 +17,18 @@ def remote_upload(queue_name, ptasks):
   with TaskQueue(queue_name=queue_name) as tq:
     for task in ptasks:
       tq.insert(task)
+
+def green_upload(ptask, aligner):
+    if aligner.distributed:
+        tq = GreenTaskQueue(aligner.queue_name)
+        tq.insert_all(ptask, parallel=aligner.threads)
+    else:
+        tq = LocalTaskQueue(parallel=1)
+        tq.insert_all(ptask, args= [aligner])
+   
+   # for task in ptask:
+   #     tq.insert(task, args=[ a ])
+
 
 def run(aligner, tasks): 
   if aligner.distributed:
@@ -202,9 +214,8 @@ class RenderTask(RegisteredTask):
           "dst {}\n"
           "z={} to z={}\n"
           "MIP{} to MIP{}\n"
-          "Preconditioning affine\n"
-          "{}\n".format(src_cv, field_cv, dst_cv, src_z, dst_z, 
-                        field_mip, src_mip, affine), flush=True)
+          "\n".format(src_cv.path, field_cv.path, dst_cv.path, src_z, dst_z, 
+                        field_mip, src_mip), flush=True)
     start = time()
     if not aligner.dry_run:
       image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
@@ -289,6 +300,50 @@ class ComposeTask(RegisteredTask):
     if not aligner.dry_run:
       h = aligner.get_composed_field(f_cv, g_cv, f_z, g_z, patch_bbox, 
                                    f_mip, g_mip, dst_mip, factor)
+      h = h.data.cpu().numpy()
+      aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
+      with Storage(dst_cv.path) as stor:
+        path = 'compose_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
+      end = time()
+      diff = end - start
+      print('ComposeTask: {:.3f} s'.format(diff))
+
+class CloudComposeTask(RegisteredTask):
+  def __init__(self, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
+                     dst_mip, affine, pad, prefix):
+    super().__init__(f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
+                     dst_mip, affine, pad, prefix)
+
+  def execute(self, aligner):
+    f_cv = DCV(self.f_cv)
+    g_cv = DCV(self.g_cv)
+    dst_cv = DCV(self.dst_cv)
+    f_z = self.f_z
+    g_z = self.g_z
+    dst_z = self.dst_z
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    f_mip = self.f_mip
+    g_mip = self.g_mip
+    dst_mip = self.dst_mip
+    pad = self.pad
+    affine = None
+    if self.affine:
+      affine = np.array(self.affine)
+    prefix = self.prefix
+    print("\nCompose\n"
+          "f {}\n"
+          "g {}\n"
+          "f_z={}, g_z={}\n"
+          "f_MIP{}, g_MIP{}\n"
+          "dst {}\n"
+          "dst_MIP {}\n".format(f_cv, g_cv, f_z, g_z, f_mip, g_mip, dst_cv, 
+                               dst_mip), flush=True)
+    start = time()
+    if not aligner.dry_run:
+      h = aligner.cloudsample_compose(f_cv, g_cv, f_z, g_z, patch_bbox, f_mip,
+                                     g_mip, dst_mip, affine, pad)
       h = h.data.cpu().numpy()
       aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
       with Storage(dst_cv.path) as stor:
