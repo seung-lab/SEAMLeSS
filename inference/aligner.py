@@ -230,7 +230,7 @@ class Aligner:
     return combined
 
   def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
-                     to_tensor=True, gpu=True, normalizer=None):
+                     to_tensor=True, normalizer=None):
     """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
     
     Args:
@@ -257,8 +257,7 @@ class Aligner:
       print('Normalizing image')
       start = time()
       data = torch.from_numpy(data)
-      if gpu:
-        data = data.to(device=self.device)
+      data = data.to(device=self.device)
       data = normalizer(data).reshape(data.shape)
       end = time()
       diff = end - start
@@ -267,8 +266,7 @@ class Aligner:
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
-      if gpu:
-        data = data.to(device=self.device)
+      data = data.to(device=self.device)
       if src_mip != dst_mip:
         # k = 2**(src_mip - dst_mip)
         size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
@@ -1589,9 +1587,9 @@ class Aligner:
       """ perform fcorr for two images
       """
       image1 = self.get_data(cv, z1, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True, gpu=False).float()
+                             to_float=False, to_tensor=True).float()
       image2 = self.get_data(cv, z2, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True, gpu=False).float()
+                             to_float=False, to_tensor=True).float()
 
       # std1 = image1[image1!=0].std()
       # std2 = image2[image2!=0].std()
@@ -1619,9 +1617,9 @@ class Aligner:
 
   def slip_mask_op(self, bbox, cv1, cv2, z1, z2, mip):
       mask1 = self.get_data(cv1, z1, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True, gpu=False)
+                             to_float=False, to_tensor=True)
       mask2 = self.get_data(cv2, z2, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True, gpu=False)
+                             to_float=False, to_tensor=True)
       
       mask1_bin = torch.zeros(mask1.shape)
       mask2_bin = torch.zeros(mask2.shape)
