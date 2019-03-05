@@ -574,9 +574,11 @@ class Aligner:
     archive = self.get_model_archive(model_path)
     model = archive.model
     image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
-    new_image = model(image)
-    return new_image
-
+    if torch.sum(image)>0:
+      return model(image)
+    else:
+      return image
+    
   def fold_postprocess(self, cm, src_cv, dst_cv, z, mip, bbox):
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip,
