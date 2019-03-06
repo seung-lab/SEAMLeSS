@@ -87,7 +87,7 @@ if __name__ == '__main__':
   src_mask_mip = 8
 
   # Create CloudVolume Manager
-  cm = CloudManager(args.src_path, max_mip, 512, provenance, batch_size=1,
+  cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
                     size_chunk=chunk_size, batch_mip=mip)
   
   # compile bbox & model lookup per z index
@@ -285,21 +285,23 @@ if __name__ == '__main__':
               current_block = dsts[current_block_type]
               next_block = dsts[next_block_type]
               z = block_start + block_offset 
-              prev_field_cv = block_field
               prev_field_z = z
-              prev_field_inverse = True 
-              if block_offset != overlap_range[0]:
-                prev_field_cv = temp_vvote_field
-                prev_field_z = z + 1
-                prev_field_inverse = False
+              prev_field_cv = temp_vvote_field
+              prev_field_inverse = False
+              if not args.forward_compose:
+                prev_field_cv = block_field
+                prev_field_z = z
+                prev_field_inverse = True 
+                if block_offset != overlap_range[0]:
+                  prev_field_cv = temp_vvote_field
+                  prev_field_z = z + 1
+                  prev_field_inverse = False
               bbox = bbox_lookup[z]
               model_path = model_lookup[z]
               for z_offset in overlap_offsets:
                 field = pair_fields[z_offset]
-                prev_z = z
-                prev_field_inverse = not args.forward_compose
                 if args.forward_compose:
-                  prev_z = z+z_offset
+                  prev_field_z = z+z_offset
                 t = a.compute_field(cm, model_path, current_block, temp_vvote_image, field, 
                                     z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
                                     src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
