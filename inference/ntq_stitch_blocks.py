@@ -58,6 +58,7 @@ if __name__ == '__main__':
   parser.add_argument('--odd_start', 
      help='indicate that the first block is odd (default is even)',
      action='store_true')
+  parser.add_argument('--suffix', type=str, default='')
   args = parse_args(parser)
   # Only compute matches to previous sections
   a = get_aligner(args)
@@ -130,22 +131,22 @@ if __name__ == '__main__':
   pair_fields = {}
   for z_offset in overlap_offsets:
     pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
-                                           'stitch_reverse', str(z_offset)), 
+                                           'stitch{}'.format(args.suffix), str(z_offset)), 
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True).path
-  temp_vvote_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'vvote', 'field'), 
+  temp_vvote_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format(args.suffix), 'vvote', 'field'), 
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=True).path
-  temp_vvote_image = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'vvote', 'image'), 
+  temp_vvote_image = cm.create(join(args.dst_path, 'field', 'stitch{}'.format(args.suffix), 'vvote', 'image'), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True).path
   stitch_fields = {}
   for z_offset in overlap_offsets:
     stitch_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
-                                             'stitch_reverse', 'vvote', str(z_offset)), 
+                                             'stitch{}'.format(args.suffix), 'vvote', str(z_offset)), 
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True).path
-  broadcasting_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 
+  broadcasting_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format(args.suffix), 
                                       'broadcasting'),
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=True).path
@@ -153,10 +154,10 @@ if __name__ == '__main__':
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=False).path
 
-  compose_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'compose'),
+  compose_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format(args.suffix), 'compose'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True).path
-  final_dst = cm.create(join(args.dst_path, 'image_compose_reverse'), 
+  final_dst = cm.create(join(args.dst_path, 'image_stitch{}'.format(args.suffix)), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True).path
 
