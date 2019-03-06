@@ -507,6 +507,7 @@ class Aligner:
         if prev_field_inverse:
           field = -field
         distance = self.profile_field(field)
+        print('Displacement adjustment: {} px'.format(distance))
         distance = (distance // (2 ** mip)) * 2 ** mip
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
     else:
@@ -632,7 +633,8 @@ class Aligner:
     d = 2**mip
     n = len(fields)
     m = int(binom(n, (n+1)//2)) - 1
-    softmin_temp = - d / np.log((1-w) / (m*w))
+    # softmin_temp = - d / np.log((1-w) / (m*w))
+    softmin_temp = 2**mip
     return vector_vote(fields, softmin_temp=softmin_temp)
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
