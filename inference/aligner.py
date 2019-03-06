@@ -1616,17 +1616,22 @@ class Aligner:
       return closed, tmp_image
 
   def slip_mask_op(self, bbox, cv1, cv2, z1, z2, mip, z1_thres, z2_thres):
-      mask1 = self.get_data(cv1, z1, bbox, src_mip=mip, dst_mip=mip,
+      z1mask1 = self.get_data(cv1, z1, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True)
-      mask2 = self.get_data(cv2, z2, bbox, src_mip=mip, dst_mip=mip,
+      z1mask2 = self.get_data(cv1, z1-1, bbox, src_mip=mip, dst_mip=mip,
+                             to_float=False, to_tensor=True)
+      z2mask = self.get_data(cv2, z2, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True)
       
-      mask1_bin = torch.zeros(mask1.shape)
-      mask2_bin = torch.zeros(mask2.shape)
-      mask1_bin[mask1>z1_thres] = 1
-      mask2_bin[mask2<=z2_thres] = 1
+      z1mask1_bin = torch.zeros(z1mask1.shape)
+      z1mask2_bin = torch.zeros(z1mask2.shape)
+      z2mask_bin = torch.zeros(z2mask.shape)
 
-      return mask1_bin * mask2_bin
+      z1mask1_bin[z1mask1>z1_thres] = 1
+      z1mask2_bin[z1mask2>z1_thres] = 1
+      z2mask_bin[z2mask<=z2_thres] = 1
+
+      return z1mask1_bin * z1mask2_bin * z2mask_bin
 
   def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, z1_thres,
               z2_thres, prefix=''):
