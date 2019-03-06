@@ -58,7 +58,9 @@ if __name__ == '__main__':
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--tgt_radius', type=int, default=3,
+  parser.add_argument('--overlap', type=int, default=3,
+    help='int for number of sections in overlap between even & odd blocks')
+  parser.add_argument('--stitching_vvote', type=int, default=3,
     help='int for number of sections to include in vector voting')
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
@@ -112,23 +114,25 @@ if __name__ == '__main__':
 
   # Compile ranges
   block_range = range(args.z_start, args.z_stop, args.block_size)
-  overlap = args.tgt_radius
-  full_range = range(args.block_size + 2*overlap)
+  overlap = args.overlap
+  stitching_vvote = args.stitching_vvote 
+  full_range = range(args.block_size + overlap + stitching_vvote)
 
   copy_range = full_range[-overlap:]
-  overlap_range = full_range[-2*overlap:-overlap][::-1]
-  copy_field_range = range(overlap, args.block_size+overlap)
+  overlap_range = full_range[-overlap-stitching_vvote:-overlap][::-1]
   broadcast_field_range = range(overlap, args.block_size+overlap)
-  overlap_offsets = [i for i in range(1, overlap+1)]
+  overlap_vvote_offsets = [i for i in range(1, overlap+1)]
+  broadcast_vvote_offsets = [i for i in range(1, stitching_vvote+1)]
   if args.forward_compose:
     copy_range = full_range[:overlap]
-    overlap_range = full_range[overlap:2*overlap]
-    copy_field_range = range(overlap, args.block_size+overlap)
+    overlap_range = full_range[overlap:overlap+stitching_vvote]
     broadcast_field_range = range(overlap, args.block_size+overlap)
-    overlap_offsets = [-i for i in range(1, overlap+1)]
+    overlap_vvote_offsets = [-i for i in range(1, overlap+1)]
+    broadcast_vvote_offsets = [-i for i in range(1, stitching_vvote+1)]
 
   print('overlap_range {}'.format(overlap_range))
-  print('overlap_offsets {}'.format(overlap_offsets))
+  print('overlap_vvote_offsets {}'.format(overlap_vvote_offsets))
+  print('broadcast_vvote_offsets {}'.format(broadcast_vvote_offsets))
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
@@ -149,7 +153,7 @@ if __name__ == '__main__':
 
   # Create field CloudVolumes
   pair_fields = {}
-  for z_offset in overlap_offsets:
+  for z_offset in overlap_vvote_offsets:
     pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
                                            'stitch{}'.format(args.suffix), str(z_offset)), 
                                       data_type='int16', num_channels=2,
@@ -163,7 +167,7 @@ if __name__ == '__main__':
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True).path
   stitch_fields = {}
-  for z_offset in overlap_offsets:
+  for z_offset in broadcast_vvote_offsets:
     stitch_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
                                              'stitch{}'.format(args.suffix), 
                                              'vvote', str(z_offset)), 
@@ -298,7 +302,7 @@ if __name__ == '__main__':
                   prev_field_inverse = False
               bbox = bbox_lookup[z]
               model_path = model_lookup[z]
-              for z_offset in overlap_offsets:
+              for z_offset in overlap_vvote_offsets:
                 field = pair_fields[z_offset]
                 if args.forward_compose:
                   prev_field_z = z+z_offset
