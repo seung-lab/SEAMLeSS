@@ -542,8 +542,10 @@ class UpsampleRenderRechunkTask(RegisteredTask):
     aligner.pool.map(chunkwise, patches)
 
 class MaskOpTask(RegisteredTask):
-  def __init__(self, bbox, cv1, cv2, z1, z2, mip, dst_cv, dst_z, prefix):
-    super(). __init__(bbox, cv1, cv2, z1, z2, mip, dst_cv, dst_z, prefix)
+  def __init__(self, bbox, cv1, cv2, z1, z2, mip, dst_cv, dst_z, z1_thres,
+               z2_thres, prefix):
+    super(). __init__(bbox, cv1, cv2, z1, z2, mip, dst_cv, dst_z, z1_thres,
+                      z2_thres, prefix)
 
   def execute(self, aligner):
     cv1 = DCV(self.cv1)
@@ -559,7 +561,8 @@ class MaskOpTask(RegisteredTask):
           "at MIP{}"
           "\n".format(z1, z2, mip), flush=True)
     start = time()
-    res = aligner.slip_mask_op(patch_bbox, cv1, cv2, z1, z2, mip)
+    res = aligner.slip_mask_op(patch_bbox, cv1, cv2, z1, z2, mip,
+                               self.z1_thres, self.z2_thres)
     aligner.save_image(res.numpy(), dst_cv, dst_z, patch_bbox, mip, to_uint8=False)
     with Storage(dst_cv.path) as stor:
       path = 'Mask_op_done/{}/{}'.format(self.prefix,
