@@ -506,7 +506,7 @@ if __name__ == '__main__':
                             prefix=prefix)
               yield from t
 
-    broadcast_range_list, brodd_even = make_range(broadcast_field_range[:8], a.threads)
+    broadcast_range_list, brodd_even = make_range(broadcast_field_range, a.threads)
     ptask = []
     start = time()
     for irange in broadcast_range_list:
