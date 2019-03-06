@@ -588,6 +588,34 @@ class Aligner:
     new_image = model(image)
     return new_image
 
+  def error_detect_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
+                    chunk_size, prefix=''):
+    start = time()
+    chunks = self.break_into_chunks(bbox, chunk_size,
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.num_scales)
+    print("\nfold detect\n"
+          "model {}\n"
+          "src {}\n"
+          "dst {}\n"
+          "z={} \n"
+          "MIP{}\n"
+          "{} chunks\n".format(model_path, src_cv, dst_cv, z,
+                               mip, len(chunks)), flush=True)
+    if prefix == '':
+      prefix = '{}'.format(mip)
+    batch = []
+    for patch_bbox in chunks:
+      batch.append(tasks.PredictImgTask(model_path, src_cv, dst_cv, z, mip,
+                                        patch_bbox, prefix))
+    return batch
+
+  def errdet_image_chunk(self, model_path, src_img_cv, src_seg_cv, z, mip, bbox):
+    archive = self.get_model_archive(model_path, readonly=2)
+    model = archive.model
+    image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
+    new_image = model(image)
+    return new_image
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
                         inverse=False, serial=True):
