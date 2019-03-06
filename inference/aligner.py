@@ -591,7 +591,8 @@ class Aligner:
 
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
-                        inverse=False, serial=True):
+                        inverse=False, serial=True, softmin_temp=None,
+                        blur_sigma=None):
     """Compute consensus vector field using pairwise vector fields with earlier sections. 
 
     Vector voting requires that vector fields be composed to a common section
@@ -612,6 +613,11 @@ class Aligner:
        inverse: bool indicating if pairwise fields are to be treated as inverse fields 
        serial: bool indicating to if a previously composed field is 
         not necessary
+       softmin_temp: temperature to use for the softmin in vector voting; default None
+        will use formula based on MIP level
+       blur_sigma: std dev of Gaussian kernel by which to blur the vector vote inputs;
+        default None means no blurring
+       
     """
     fields = []
     for z_offset, f_cv in pairwise_cvs.items():
@@ -629,13 +635,13 @@ class Aligner:
           F = self.get_composed_field(G_cv, f_cv, G_z, f_z, bbox, mip, mip, mip)
       fields.append(F)
     # assign weight w if the difference between majority vector similarities are d
-    w = 0.99
-    d = 2**mip
-    n = len(fields)
-    m = int(binom(n, (n+1)//2)) - 1
-    # softmin_temp = - d / np.log((1-w) / (m*w))
-    softmin_temp = 2**mip
-    return vector_vote(fields, softmin_temp=softmin_temp)
+    if not softmin_temp:
+      w = 0.99
+      d = 2**mip
+      n = len(fields)
+      m = int(binom(n, (n+1)//2)) - 1
+      softmin_temp = 2**mip
+    return vector_vote(fields, softmin_temp=softmin_temp, blur_sigma=blur_sigma)
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
     """Compute the inverse vector field for a given bbox 
@@ -1085,7 +1091,8 @@ class Aligner:
         return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,
-                  inverse=False, serial=True, prefix='', return_iterator=False):
+                  inverse=False, serial=True, prefix='', return_iterator=False,
+                  softmin_temp=None, blur_sigma=None):
     """Compute consensus field from a set of vector fields
 
     Note: 
@@ -1126,14 +1133,17 @@ class Aligner:
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
             yield tasks.VectorVoteTask(deepcopy(pairwise_cvs), vvote_cv, z,
-                                        chunk, mip, inverse, serial, prefix)
+                                        chunk, mip, inverse, serial, prefix,
+                                        softmin_temp=softmin_temp, blur_sigma=blur_sigma)
     if return_iterator:
         return VvoteTaskIterator(chunks,0, len(chunks))
     else:
         batch = []
         for chunk in chunks:
           batch.append(tasks.VectorVoteTask(deepcopy(pairwise_cvs), vvote_cv, z,
-                                            chunk, mip, inverse, serial, prefix))
+                                            chunk, mip, inverse, serial, prefix,
+                                            softmin_temp=softmin_temp, 
+                                            blur_sigma=blur_sigma))
         return batch
 
   def cloud_compose_field(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 

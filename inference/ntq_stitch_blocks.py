@@ -340,7 +340,8 @@ if __name__ == '__main__':
               bbox = bbox_lookup[z]
               t = a.vector_vote(cm, pair_fields, temp_vvote_field,
                                 z, bbox, mip, inverse=False,
-                                serial=True, prefix=prefix)
+                                serial=True, prefix=prefix, softmin_temp=2**mip,
+                                blur_sigma=1)
               yield from t
     print('\nScheduling VectorVoteTasks')
     ptask = []
@@ -449,7 +450,8 @@ if __name__ == '__main__':
           bbox = bbox_lookup[z]
           t = a.vector_vote(cm, stitch_fields, broadcasting_field,
                             z, bbox, mip, inverse=False,
-                            serial=True, prefix=prefix)
+                            serial=True, prefix=prefix, softmin_temp=2**mip,
+                            blur_sigma=1)
           yield from t
 
   print('\nScheduling VectorVoteTasks')

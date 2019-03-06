@@ -797,18 +797,22 @@ def compute_distance(U, V):
   N = pow(D, 2)
   return pow(torch.sum(N, 3), 0.5).unsqueeze(0)
 
-def vector_vote(fields, softmin_temp):
+def vector_vote(fields, softmin_temp, blur_sigma=None):
   """Produce a single, consensus vector field from a set of vector fields
 
   Args:
     fields: list of fields (torch tensors in gridsample convention)
     softmin_temp: float for temperature of softmin
+    blur_sigma: std dev of the Gaussian kernel by which to blur the inputs;
+      default None means no blurring
 
   Returns:
     single vector field
   """
   print('softmin_temp {}'.format(softmin_temp))
-  blurred_fields = [blur_field(f, 1) for f in fields]
+  fields_blurred = fields
+  if blur_sigma:
+    fields_blurred = [blur_field(f, blur_sigma) for f in fields]
   n = len(fields)
   assert(n % 2 == 1)
   # majority
@@ -818,7 +822,7 @@ def vector_vote(fields, softmin_temp):
   # compute distances for all pairs of fields
   dists = {}
   for i,j in combinations(indices, 2):
-    dists[(i,j)] = compute_distance(blurred_fields[i], blurred_fields[j])
+    dists[(i,j)] = compute_distance(fields_blurred[i], fields_blurred[j])
   # compute mean distance for all m-tuples
   mtuple_avg = []
   mtuples = list(combinations(indices, m))

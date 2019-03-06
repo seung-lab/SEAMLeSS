@@ -234,8 +234,10 @@ class RenderTask(RegisteredTask):
       print('RenderTask: {:.3f} s'.format(diff))
 
 class VectorVoteTask(RegisteredTask):
-  def __init__(self, pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial, prefix):
-    super().__init__(pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial, prefix)
+  def __init__(self, pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial, prefix,
+               softmin_temp, blur_sigma):
+    super().__init__(pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial, prefix,
+                     softmin_temp, blur_sigma)
 
   def execute(self, aligner):
     pairwise_cvs = {int(k): DCV(v) for k,v in self.pairwise_cvs.items()}
@@ -246,18 +248,24 @@ class VectorVoteTask(RegisteredTask):
     inverse = bool(self.inverse)
     serial = bool(self.serial)
     prefix = self.prefix
+    softmin_temp = self.softmin_temp
+    blur_sigma = self.blur_sigma
     print("\nVector vote\n"
           "fields {}\n"
           "dst {}\n"
           "z={}\n"
           "MIP{}\n"
           "inverse={}\n"
-          "serial={}\n".format(pairwise_cvs.keys(), vvote_cv, z, 
-                              mip, inverse, serial), flush=True)
+          "serial={}\n"
+          "softmin_temp={}\n"
+          "blur_sigma={}\n".format(pairwise_cvs.keys(), vvote_cv, z, 
+                                   mip, inverse, serial, softmin_temp,
+                                   blur_sigma), flush=True)
     start = time()
     if not aligner.dry_run:
       field = aligner.vector_vote_chunk(pairwise_cvs, vvote_cv, z, patch_bbox, mip, 
-                       inverse=inverse, serial=serial)
+                                        inverse=inverse, serial=serial, 
+                                        softmin_temp=softmin_temp, blur_sigma=blur_sigma)
       field = field.data.cpu().numpy()
       aligner.save_field(field, vvote_cv, z, patch_bbox, mip, relative=False)
       with Storage(vvote_cv.path) as stor:
