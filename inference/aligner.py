@@ -176,6 +176,17 @@ class Aligner:
     print('get_image: {:.3f}'.format(diff), flush=True) 
     return image
 
+  def get_3D_image(self, cv, z_range, bbox, mip, to_tensor=True, normalizer=None):
+    print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
+    start = time()
+    image = self.get_3D_data(cv, z_range, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
+                             to_tensor=to_tensor, normalizer=normalizer)
+    end = time()
+    diff = end - start
+    print('get_image: {:.3f}'.format(diff), flush=True) 
+    return image
+
+
   def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
                              to_tensor=True, normalizer=None):
     """Get image with mask applied
@@ -230,6 +241,60 @@ class Aligner:
       combined[black_mask] = tmp[black_mask]
 
     return combined
+ 
+  def get_3D_data(self, cv, z_range, bbox, src_mip, dst_mip, to_float=True, 
+                     to_tensor=True, normalizer=None):
+    """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
+    
+    Args:
+       cv_key: string to lookup CloudVolume
+       bbox: BoundingBox defining data range
+       src_mip: mip of the CloudVolume data
+       dst_mip: mip of the output mask (dictates whether to up/downsample)
+       to_float: output should be float32
+       to_tensor: output will be torch.tensor
+       normalizer: callable function to adjust the contrast of the image
+
+    Returns:
+       image from CloudVolume in region bbox at dst_mip, with contrast adjusted,
+       if normalizer is specified, and as a uint8 or float32 torch tensor or numpy, 
+       as specified
+    """
+    x_range = bbox.x_range(mip=src_mip)
+    y_range = bbox.y_range(mip=src_mip)
+    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1],
+                       z_range[0]:z_range[1]]
+    data = np.transpose(data, (2,3,0,1))
+    if to_float:
+      data = np.divide(data, float(255.0), dtype=np.float32)
+    if (normalizer is not None) and (not is_blank(data)):
+      print('Normalizing image')
+      start = time()
+      data = torch.from_numpy(data)
+      data = data.to(device=self.device)
+      data = normalizer(data).reshape(data.shape)
+      end = time()
+      diff = end - start
+      print('normalizer: {:.3f}'.format(diff), flush=True) 
+    # convert to tensor if requested, or if up/downsampling required
+    if to_tensor | (src_mip != dst_mip):
+      if isinstance(data, np.ndarray):
+        data = torch.from_numpy(data)
+      data = data.to(device=self.device)
+      if src_mip != dst_mip:
+        # k = 2**(src_mip - dst_mip)
+        size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
+        if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
+          data = interpolate(data, size=size, mode='bilinear')
+        else:
+          data = data.type('torch.cuda.DoubleTensor')
+          data = interpolate(data, size=size, mode='nearest')
+          data = data.type('torch.cuda.ByteTensor')
+      if not to_tensor:
+        data = data.cpu().numpy()
+    
+    return data
+
 
   def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
                      to_tensor=True, normalizer=None):
