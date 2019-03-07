@@ -758,7 +758,7 @@ class Aligner:
 
 
   def cloudsample_compose(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip,
-                          dst_mip, affine=None, pad=256):
+                          dst_mip, factor=1., affine=None, pad=256):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume field objects.
 
       Gridsampling a field is a composition, such that f(g(x)).
@@ -770,11 +770,12 @@ class Aligner:
          f_z, g_z: int for section index from which to read fields
          f_mip, g_mip: int for MIPs of the input fields
          dst_mip: int for MIP of the desired output field
-         pad: number of pixels to pad at dst_mip
+         factor: float to multiply the f vector field by
          affine: an additional affine matrix to be composed before the fields
            If a is the affine matrix, then rendering the resulting field would
            be equivalent to
              f(g(a(x)))
+         pad: number of pixels to pad at dst_mip
 
       Returns:
          composed field
@@ -787,6 +788,7 @@ class Aligner:
       # Load warper vector field
       f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
                              relative=False, to_tensor=True)
+      f = f * factor
       if f_mip > dst_mip:
         f = upsample_field(f, f_mip, dst_mip)
 
@@ -1228,7 +1230,7 @@ class Aligner:
         return batch
 
   def cloud_compose_field(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 
-                    f_mip, g_mip, dst_mip, affine, pad, prefix='',
+                          f_mip, g_mip, dst_mip, factor, affine, pad, prefix='',
                           return_iterator=False):
     """Compose two vector field CloudVolumes
 
@@ -1277,7 +1279,7 @@ class Aligner:
             chunk = self.chunklist[i]
             yield tasks.CloudComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
                                      dst_z, chunk, f_mip, g_mip, dst_mip,
-                                     affine, pad, prefix)
+                                     factor, affine, pad, prefix)
     if return_iterator:
         return CloudComposeIterator(chunks,0, len(chunks))
     else:
@@ -1285,7 +1287,7 @@ class Aligner:
         for chunk in chunks:
           batch.append(tasks.CloudComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
                                          dst_z, chunk, f_mip, g_mip, dst_mip,
-                                         affine, pad, prefix))
+                                         factor, affine, pad, prefix))
         return batch
 
   def cloud_multi_compose_field(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, 

@@ -320,9 +320,9 @@ class ComposeTask(RegisteredTask):
 
 class CloudComposeTask(RegisteredTask):
   def __init__(self, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
-                     dst_mip, affine, pad, prefix):
+                     dst_mip, factor, affine, pad, prefix):
     super().__init__(f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
-                     dst_mip, affine, pad, prefix)
+                     dst_mip, factor, affine, pad, prefix)
 
   def execute(self, aligner):
     f_cv = DCV(self.f_cv)
@@ -335,6 +335,7 @@ class CloudComposeTask(RegisteredTask):
     f_mip = self.f_mip
     g_mip = self.g_mip
     dst_mip = self.dst_mip
+    factor = self.factor
     pad = self.pad
     affine = None
     if self.affine:
@@ -351,7 +352,8 @@ class CloudComposeTask(RegisteredTask):
     start = time()
     if not aligner.dry_run:
       h = aligner.cloudsample_compose(f_cv, g_cv, f_z, g_z, patch_bbox, f_mip,
-                                     g_mip, dst_mip, affine, pad)
+                                     g_mip, dst_mip, factor=factor,
+                                     affine=affine, pad=pad)
       h = h.data.cpu().numpy()
       aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
       with Storage(dst_cv.path) as stor:
