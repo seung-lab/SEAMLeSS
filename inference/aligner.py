@@ -1283,6 +1283,63 @@ class Aligner:
                                          affine, pad, prefix))
         return batch
 
+  def cloud_multi_compose_field(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, 
+                                mip_list, dst_mip, pad, prefix='',
+                                return_iterator=False):
+    """Compose a list of field CloudVolumes
+
+    This takes a list of fields
+    field_list = [f_0, f_1, ..., f_n]
+    and composes them to get
+    f_0 ⚬ f_1 ⚬ ... ⚬ f_n ~= f_0(f_1(...(f_n)))
+
+    Args:
+       cm: CloudManager that corresponds to the f_cv, g_cv, dst_cv
+       cv_list: list of MiplessCloudVolume storing the vector fields
+       dst_cv: MiplessCloudVolume of composed vector field
+       z_list: int or list of ints for section indices to read fields
+       dst_z: int of section index to process
+       bbox: BoundingBox of region to process
+       mip_list: int or list of ints for MIPs of the input fields
+       dst_mip: MIP of composed vector field
+       pad: padding size
+       prefix: str used to write "finished" files for each task
+        (only used for distributed)
+    """
+    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
+                                    cm.vec_voxel_offsets[dst_mip], 
+                                    mip=dst_mip)
+    if prefix == '':
+        prefix = '{}_{}'.format(dst_mip, dst_z)
+
+    if return_iterator:
+        class CloudMultiComposeIterator():
+            def __init__(self, cl, start, stop):
+                self.chunklist = cl
+                self.start = start
+                self.stop = stop
+            def __len__(self):
+                return self.stop - self.start
+            def __getitem__(self, slc):
+                itr = deepcopy(self)
+                itr.start = slc.start
+                itr.stop = slc.stop
+                return itr
+            def __iter__(self):
+                for i in range(self.start, self.stop):
+                    chunk = self.chunklist[i]
+                    yield tasks.CloudMultiComposeTask(cv_list, dst_cv, z_list,
+                                                      dst_z, chunk, mip_list,
+                                                      dst_mip, pad, prefix)
+        return CloudMultiComposeIterator(chunks, 0, len(chunks))
+    else:
+        batch = []
+        for chunk in chunks:
+            batch.append(tasks.CloudComposeTask(cv_list, dst_cv, z_list,
+                                                dst_z, chunk, mip_list,
+                                                dst_mip, pad, prefix))
+        return batch
+
   def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 
                     f_mip, g_mip, dst_mip, factor=1., prefix='',
               return_iterator=False):

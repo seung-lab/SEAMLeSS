@@ -362,6 +362,48 @@ class CloudComposeTask(RegisteredTask):
       diff = end - start
       print('ComposeTask: {:.3f} s'.format(diff))
 
+
+class CloudMultiComposeTask(RegisteredTask):
+    def __init__(self, cv_list, dst_cv, z_list, dst_z, patch_bbox, mip_list,
+                 dst_mip, pad, prefix):
+        super().__init__(cv_list, dst_cv, z_list, dst_z, patch_bbox, mip_list,
+                         dst_mip, pad, prefix)
+
+    def execute(self, aligner):
+        cv_list = [DCV(f) for f in self.cv_list]
+        dst_cv = DCV(self.dst_cv)
+        z_list = self.z_list
+        dst_z = self.dst_z
+        patch_bbox = deserialize_bbox(self.patch_bbox)
+        mip_list = self.mip_list
+        dst_mip = self.dst_mip
+        pad = self.pad
+        prefix = self.prefix
+        print("\nCompose\n"
+              "cv {}\n"
+              "z={}\n"
+              "MIPs={}\n"
+              "dst {}\n"
+              "dst_MIP {}\n"
+              .format(cv_list, z_list, mip_list, dst_cv, dst_mip),
+              flush=True)
+        start = time()
+        if not aligner.dry_run:
+            h = aligner.cloudsample_multi_compose(cv_list, z_list, patch_bbox,
+                                                  mip_list, dst_mip, pad)
+            h = h.data.cpu().numpy()
+            aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip,
+                               relative=False)
+            with Storage(dst_cv.path) as stor:
+                path = 'multi_compose_done/{}/{}'.format(
+                    prefix, patch_bbox.stringify(dst_z))
+                stor.put_file(path, '')
+                print('Marked finished at {}'.format(path))
+            end = time()
+            diff = end - start
+            print('MultiComposeTask: {:.3f} s'.format(diff))
+
+
 class CPCTask(RegisteredTask):
   def __init__(self, src_cv, tgt_cv, dst_cv, src_z, tgt_z, patch_bbox, 
                     src_mip, dst_mip, norm, prefix):
