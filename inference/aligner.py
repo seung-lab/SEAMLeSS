@@ -374,41 +374,6 @@ class Aligner:
     else:
       return field 
 
-  def get_composed_field(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip, dst_mip,
-                               factor=1., pad=2048):
-    """Compose chunk of two field cloudvolumes, such that f(g(x)) at dst_mip
-
-    Args:
-       f_z: int section index of the f CloudVolume
-       g_z: int section index of the g CloudVolume
-       f_cv: MiplessCloudVolume of left-hand vector field
-       g_cv: MiplessCloudVolume of right-hand vector field
-       bbox: BoundingBox for region to process
-       f_mip: MIP of left-hand vector field
-       g_mip: MIP of right-hand vector field
-       dst_mip: MIP of the output vector field, such that min(f_mip, g_mip) >= dst_mip
-       factor: float to multiply the f vector field by
-       pad: int for amount of MIP0 padding to use before processing
-
-    Returns:
-       the composed vector field at MIP min(f_mip, g_mip) in absolute space for size
-       of bbox
-    """
-    padded_bbox = deepcopy(bbox)
-    padded_bbox.uncrop(pad, mip=0)
-    crop = pad // 2**dst_mip
-    f = self.get_field(f_cv, f_z, padded_bbox, f_mip, relative=True, to_tensor=True)
-    f = f*factor
-    g = self.get_field(g_cv, g_z, padded_bbox, g_mip, relative=True, to_tensor=True)
-    if dst_mip < g_mip:
-      g = upsample_field(g, g_mip, dst_mip)
-    elif dst_mip < f_mip:
-      f = upsample_field(f, f_mip, dst_mip)
-    h = compose_fields(f, g)
-    h = self.rel_to_abs_residual(h, dst_mip)
-    h = h[:,crop:-crop,crop:-crop,:]
-    return h
-
   def save_field(self, field, cv, z, bbox, mip, relative, as_int16=True):
     """Save vector field to CloudVolume.
 
@@ -1229,7 +1194,7 @@ class Aligner:
                                             blur_sigma=blur_sigma))
         return batch
 
-  def cloud_compose_field(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 
+  def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 
                           f_mip, g_mip, dst_mip, factor, affine, pad, prefix='',
                           return_iterator=False):
     """Compose two vector field CloudVolumes
@@ -1345,66 +1310,6 @@ class Aligner:
             batch.append(tasks.CloudComposeTask(cv_list, dst_cv, z_list,
                                                 dst_z, chunk, mip_list,
                                                 dst_mip, pad, prefix))
-        return batch
-
-  def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 
-                    f_mip, g_mip, dst_mip, factor=1., prefix='',
-              return_iterator=False):
-    """Compose two vector field CloudVolumes
-
-    For coarse + fine composition:
-      f = fine 
-      g = coarse 
-    
-    Args:
-       cm: CloudManager that corresponds to the f_cv, g_cv, dst_cv
-       f_cv: MiplessCloudVolume of vector field f
-       g_cv: MiplessCloudVolume of vector field g
-       dst_cv: MiplessCloudVolume of composed vector field
-       f_z: int of section index to process
-       g_z: int of section index to process
-       dst_z: int of section index to process
-       bbox: BoundingBox of region to process
-       f_mip: MIP of vector field f
-       g_mip: MIP of vector field g
-       dst_mip: MIP of composed vector field
-       wait: bool indicating whether to wait for all tasks must finish before proceeding
-       prefix: str used to write "finished" files for each task 
-        (only used for distributed)
-    """
-    start = time()
-    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
-                                    cm.vec_voxel_offsets[dst_mip], 
-                                    mip=dst_mip)
-    if prefix == '':
-      prefix = '{}_{}'.format(dst_mip, dst_z)
-
-    class ComposeIterator():
-        def __init__(self, cl, start, stop):
-          self.chunklist = cl
-          self.start = start
-          self.stop = stop
-        def __len__(self):
-          return self.stop - self.start
-        def __getitem__(self, slc):
-          itr = deepcopy(self)
-          itr.start = slc.start
-          itr.stop = slc.stop
-          return itr
-        def __iter__(self):
-          for i in range(self.start, self.stop):
-            chunk = self.chunklist[i]
-            yield tasks.ComposeTask(f_cv, g_cv, dst_cv, f_z, g_z,
-                                    dst_z, chunk, f_mip, g_mip, dst_mip,
-                                    factor, prefix)
-    if return_iterator:
-        return ComposeIterator(chunks,0, len(chunks))
-    else:
-        batch = []
-        for chunk in chunks:
-          batch.append(tasks.ComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
-                                         dst_z, chunk, f_mip, g_mip, dst_mip,
-                                         factor, prefix))
         return batch
 
   def cpc(self, cm, src_cv, tgt_cv, dst_cv, src_z, tgt_z, bbox, src_mip, dst_mip, 
