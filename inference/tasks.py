@@ -326,9 +326,9 @@ class CloudComposeTask(RegisteredTask):
 
 class CloudMultiComposeTask(RegisteredTask):
     def __init__(self, cv_list, dst_cv, z_list, dst_z, patch_bbox, mip_list,
-                 dst_mip, pad, prefix):
+                 dst_mip, factors, pad, prefix):
         super().__init__(cv_list, dst_cv, z_list, dst_z, patch_bbox, mip_list,
-                         dst_mip, pad, prefix)
+                         dst_mip, factors, pad, prefix)
 
     def execute(self, aligner):
         cv_list = [DCV(f) for f in self.cv_list]
@@ -338,6 +338,7 @@ class CloudMultiComposeTask(RegisteredTask):
         patch_bbox = deserialize_bbox(self.patch_bbox)
         mip_list = self.mip_list
         dst_mip = self.dst_mip
+        factors = self.factors
         pad = self.pad
         prefix = self.prefix
         print("\nCompose\n"
@@ -351,7 +352,8 @@ class CloudMultiComposeTask(RegisteredTask):
         start = time()
         if not aligner.dry_run:
             h = aligner.cloudsample_multi_compose(cv_list, z_list, patch_bbox,
-                                                  mip_list, dst_mip, pad)
+                                                  mip_list, dst_mip, factors,
+                                                  pad)
             h = h.data.cpu().numpy()
             aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip,
                                relative=False)

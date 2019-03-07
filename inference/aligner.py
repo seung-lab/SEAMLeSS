@@ -805,7 +805,7 @@ class Aligner:
       return h
 
   def cloudsample_multi_compose(self, field_list, z_list, bbox, mip_list,
-                                dst_mip, pad=256):
+                                dst_mip, factors=None, pad=256):
     """Compose a list of field CloudVolumes
 
     This takes a list of fields
@@ -820,6 +820,7 @@ class Aligner:
        mip_list: int or list of ints for MIPs of the input fields
        dst_mip: int for MIP of the desired output field
        pad: number of pixels to pad at dst_mip
+       factors: floats to multiply/reweight the fields by before composing
 
     Returns:
        composed field
@@ -833,6 +834,10 @@ class Aligner:
     else:
         assert(len(mip_list) == len(field_list))
     assert(min(mip_list) >= dst_mip)
+    if factors is None:
+        factors = [1.0] * len(field_list)
+    else:
+        assert(len(factors) == len(field_list))
     padded_bbox = deepcopy(bbox)
     print('Padding by {} at MIP{}'.format(pad, dst_mip))
     padded_bbox.uncrop(pad, mip=dst_mip)
@@ -841,16 +846,20 @@ class Aligner:
     f_cv, *field_list = field_list
     f_z, *z_list = z_list
     f_mip, *mip_list = mip_list
+    f_factor, *factors = factors
     f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
                        relative=False, to_tensor=True)
+    f = f * f_factor
 
     # skip any empty / identity fields
     while is_identity(f):
         f_cv, *field_list = field_list
         f_z, *z_list = z_list
         f_mip, *mip_list = mip_list
+        f_factor, *factors = factors
         f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
                            relative=False, to_tensor=True)
+        f = f * f_factor
         if len(field_list) == 0:
             return f
 
@@ -862,6 +871,7 @@ class Aligner:
         g_cv, *field_list = field_list
         g_z, *z_list = z_list
         g_mip, *mip_list = mip_list
+        g_factor, *factors = factors
 
         distance = self.profile_field(f)
         distance = (distance // (2 ** g_mip)) * 2 ** g_mip
@@ -873,6 +883,7 @@ class Aligner:
 
         g = self.get_field(g_cv, g_z, new_bbox, g_mip,
                            relative=False, to_tensor=True)
+        g = g * g_factor
         if g_mip > dst_mip:
             g = upsample_field(g, g_mip, dst_mip)
         g = self.abs_to_rel_residual(g, padded_bbox, dst_mip)
@@ -1256,7 +1267,7 @@ class Aligner:
         return batch
 
   def multi_compose(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, 
-                                mip_list, dst_mip, pad, prefix='',
+                                mip_list, dst_mip, factors, pad, prefix='',
                                 return_iterator=False):
     """Compose a list of field CloudVolumes
 
@@ -1302,14 +1313,15 @@ class Aligner:
                     chunk = self.chunklist[i]
                     yield tasks.CloudMultiComposeTask(cv_list, dst_cv, z_list,
                                                       dst_z, chunk, mip_list,
-                                                      dst_mip, pad, prefix)
+                                                      dst_mip, factors, pad,
+                                                      prefix)
         return CloudMultiComposeIterator(chunks, 0, len(chunks))
     else:
         batch = []
         for chunk in chunks:
             batch.append(tasks.CloudComposeTask(cv_list, dst_cv, z_list,
                                                 dst_z, chunk, mip_list,
-                                                dst_mip, pad, prefix))
+                                                dst_mip, factors, pad, prefix))
         return batch
 
   def cpc(self, cm, src_cv, tgt_cv, dst_cv, src_z, tgt_z, bbox, src_mip, dst_mip, 
