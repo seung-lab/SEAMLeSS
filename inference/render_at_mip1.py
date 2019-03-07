@@ -131,9 +131,10 @@ if __name__ == '__main__':
   #         print("range is ", self.zrange)
   #         for z in self.zrange:
   #             affine = None
-  #             t = a.cloud_compose_field(cm, f_field.path, g_field.path,
-  #                     field.path, z, z, z, bbox, f_mip,
-  #                     g_mip, src_mip, affine, pad, prefix=prefix)
+  #             t = a.compose(cm, f_field.path, g_field.path,
+  #                           field.path, z, z, z, bbox, f_mip,
+  #                           g_mip, src_mip, factor=1, affine=affine,
+  #                           pad=pad, prefix=prefix)
   #             yield from t
 
   # ptask = []

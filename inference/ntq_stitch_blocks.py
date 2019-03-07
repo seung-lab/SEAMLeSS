@@ -502,8 +502,8 @@ if __name__ == '__main__':
               z = block_start + block_offset
               bbox = bbox_lookup[z]
               t = a.compose(cm, broadcasting_field, block_field, compose_field,
-                            z_broadcast, z, z, bbox, mip, mip, mip, factor,
-                            prefix=prefix)
+                            z_broadcast, z, z, bbox, mip, mip, mip,
+                            factor=factor, affine=None, pad=pad, prefix=prefix)
               yield from t
 
     broadcast_range_list, brodd_even = make_range(broadcast_field_range, a.threads)
@@ -558,4 +558,3 @@ if __name__ == '__main__':
   end = time()
   diff = end - start
   print("Executing Rendering for copied range use time:", diff)
-
