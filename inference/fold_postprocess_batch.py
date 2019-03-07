@@ -58,8 +58,8 @@ if __name__ == '__main__':
   args = parse_args(parser)
   # Only compute matches to previous sections
   args.serial_operation = True
-  args.device = torch.device('cpu')
   a = get_aligner(args)
+  a.device = torch.device('cpu')
   bbox = get_bbox(args)
   provenance = get_provenance(args)
   
