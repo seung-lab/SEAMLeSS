@@ -1319,7 +1319,7 @@ class Aligner:
     else:
         batch = []
         for chunk in chunks:
-            batch.append(tasks.CloudComposeTask(cv_list, dst_cv, z_list,
+            batch.append(tasks.CloudMultiComposeTask(cv_list, dst_cv, z_list,
                                                 dst_z, chunk, mip_list,
                                                 dst_mip, factors, pad, prefix))
         return batch
