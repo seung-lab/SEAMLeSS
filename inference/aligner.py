@@ -1255,7 +1255,7 @@ class Aligner:
                                          factor, affine, pad, prefix))
         return batch
 
-  def cloud_multi_compose_field(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, 
+  def multi_compose(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, 
                                 mip_list, dst_mip, pad, prefix='',
                                 return_iterator=False):
     """Compose a list of field CloudVolumes
