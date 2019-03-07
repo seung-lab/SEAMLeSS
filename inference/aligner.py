@@ -771,6 +771,10 @@ class Aligner:
          f_mip, g_mip: int for MIPs of the input fields
          dst_mip: int for MIP of the desired output field
          pad: number of pixels to pad at dst_mip
+         affine: an additional affine matrix to be composed before the fields
+           If a is the affine matrix, then rendering the resulting field would
+           be equivalent to
+             f(g(a(x)))
 
       Returns:
          composed field
@@ -785,6 +789,32 @@ class Aligner:
                              relative=False, to_tensor=True)
       if f_mip > dst_mip:
         f = upsample_field(f, f_mip, dst_mip)
+
+      if is_identity(f):
+        g = self.get_field(g_cv, g_z, padded_bbox, g_mip,
+                           relative=False, to_tensor=True)
+        if g_mip > dst_mip:
+            g = upsample_field(g, g_mip, dst_mip)
+        return g
+
+      distance = self.profile_field(f)
+      distance = (distance // (2 ** g_mip)) * 2 ** g_mip
+      new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+
+      f -= distance.to(device = self.device)
+      f = self.abs_to_rel_residual(f, padded_bbox, dst_mip)
+      f = f.to(device = self.device)
+
+      g = self.get_field(g_cv, g_z, new_bbox, g_mip,
+                         relative=False, to_tensor=True)
+      if g_mip > dst_mip:
+        g = upsample_field(g, g_mip, dst_mip)
+      g = self.abs_to_rel_residual(g, padded_bbox, dst_mip)
+      h = compose_fields(f, g)
+      h = self.rel_to_abs_residual(h, dst_mip)
+      h += distance.to(device=self.device)
+      h = h[:,pad:-pad,pad:-pad,:]
+
       if affine is not None:
         # PyTorch conventions are column, row order (y, then x) so flip
         # the affine matrix and offset
@@ -795,42 +825,17 @@ class Aligner:
         ident = self.rel_to_abs_residual(
             identity_grid(f.shape, device=f.device), dst_mip)
 
-        f += ident
-        f[..., 0] += offset_x
-        f[..., 1] += offset_y
-        f = torch.tensordot(
-            affine[:, 0:2], f, dims=([1], [3])).permute(1, 2, 3, 0)
-        f[..., :] += affine[:, 2]
-        f[..., 0] -= offset_x
-        f[..., 1] -= offset_y
-        f -= ident
+        h += ident
+        h[..., 0] += offset_x
+        h[..., 1] += offset_y
+        h = torch.tensordot(
+            affine[:, 0:2], h, dims=([1], [3])).permute(1, 2, 3, 0)
+        h[..., :] += affine[:, 2]
+        h[..., 0] -= offset_x
+        h[..., 1] -= offset_y
+        h -= ident
 
-      if is_identity(f):
-        g = self.get_field(g_cv, g_z, padded_bbox, g_mip,
-                           relative=False, to_tensor=True)
-        if g_mip > dst_mip:
-            g = upsample_field(g, g_mip, dst_mip)
-        return g
-
-      else:
-        distance = self.profile_field(f)
-        distance = (distance // (2 ** g_mip)) * 2 ** g_mip
-        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
-        
-        f -= distance.to(device = self.device)
-        f = self.abs_to_rel_residual(f, padded_bbox, dst_mip)
-        f = f.to(device = self.device)
-
-        g = self.get_field(g_cv, g_z, new_bbox, g_mip,
-                           relative=False, to_tensor=True)
-        if g_mip > dst_mip:
-          g = upsample_field(g, g_mip, dst_mip)
-        g = self.abs_to_rel_residual(g, padded_bbox, dst_mip)
-        h = compose_fields(f, g)
-        h = self.rel_to_abs_residual(h, dst_mip)
-        h += distance.to(device = self.device)
-        h = h[:,pad:-pad,pad:-pad,:]
-        return h
+      return h
 
   def cloudsample_multi_compose(self, field_list, z_list, bbox, mip_list,
                                 dst_mip, pad=256):
