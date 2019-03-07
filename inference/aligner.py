@@ -763,15 +763,12 @@ class Aligner:
 
       Gridsampling a field is a composition, such that f(g(x)).
 
-      ** THIS METHOD HAS NOT BEEN TESTED **
-
       Args:
          f_cv: MiplessCloudVolume storing the vector field to do the warping
          g_cv: MiplessCloudVolume storing the vector field to be warped
          bbox: BoundingBox for output region to be warped
-         z: int for section index to warp
-         f_mip: int for MIP of the warping field
-         g_mip: int for MIP of the field to be warped
+         f_z, g_z: int for section index from which to read fields
+         f_mip, g_mip: int for MIPs of the input fields
          dst_mip: int for MIP of the desired output field
          pad: number of pixels to pad at dst_mip
 
@@ -835,6 +832,85 @@ class Aligner:
         h = h[:,pad:-pad,pad:-pad,:]
         return h
 
+  def cloudsample_multi_compose(self, field_list, z_list, bbox, mip_list,
+                                dst_mip, pad=256):
+    """Compose a list of field CloudVolumes
+
+    This takes a list of fields
+    field_list = [f_0, f_1, ..., f_n]
+    and composes them to get
+    f_0 ⚬ f_1 ⚬ ... ⚬ f_n ~= f_0(f_1(...(f_n)))
+
+    Args:
+       field_list: list of MiplessCloudVolume storing the vector fields
+       z_list: int or list of ints for section indices to read fields
+       bbox: BoundingBox for output region to be warped
+       mip_list: int or list of ints for MIPs of the input fields
+       dst_mip: int for MIP of the desired output field
+       pad: number of pixels to pad at dst_mip
+
+    Returns:
+       composed field
+    """
+    if isinstance(z_list, int):
+        z_list = [z_list] * len(field_list)
+    else:
+        assert(len(z_list) == len(field_list))
+    if isinstance(mip_list, int):
+        mip_list = [mip_list] * len(field_list)
+    else:
+        assert(len(mip_list) == len(field_list))
+    assert(min(mip_list) >= dst_mip)
+    padded_bbox = deepcopy(bbox)
+    print('Padding by {} at MIP{}'.format(pad, dst_mip))
+    padded_bbox.uncrop(pad, mip=dst_mip)
+
+    # load the first vector field
+    f_cv, *field_list = field_list
+    f_z, *z_list = z_list
+    f_mip, *mip_list = mip_list
+    f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
+                       relative=False, to_tensor=True)
+
+    # skip any empty / identity fields
+    while is_identity(f):
+        f_cv, *field_list = field_list
+        f_z, *z_list = z_list
+        f_mip, *mip_list = mip_list
+        f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
+                           relative=False, to_tensor=True)
+        if len(field_list) == 0:
+            return f
+
+    if f_mip > dst_mip:
+        f = upsample_field(f, f_mip, dst_mip)
+
+    # compose with the remaining fields
+    while len(field_list) > 0:
+        g_cv, *field_list = field_list
+        g_z, *z_list = z_list
+        g_mip, *mip_list = mip_list
+
+        distance = self.profile_field(f)
+        distance = (distance // (2 ** g_mip)) * 2 ** g_mip
+        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+
+        f -= distance.to(device=self.device)
+        f = self.abs_to_rel_residual(f, padded_bbox, dst_mip)
+        f = f.to(device=self.device)
+
+        g = self.get_field(g_cv, g_z, new_bbox, g_mip,
+                           relative=False, to_tensor=True)
+        if g_mip > dst_mip:
+            g = upsample_field(g, g_mip, dst_mip)
+        g = self.abs_to_rel_residual(g, padded_bbox, dst_mip)
+        h = compose_fields(f, g)
+        h = self.rel_to_abs_residual(h, dst_mip)
+        h += distance.to(device=self.device)
+        f = h
+
+    h = h[:, pad:-pad, pad:-pad, :]
+    return h
 
   def cloudsample_image_batch(self, z_range, image_cv, field_cv, 
                               bbox, image_mip, field_mip,
