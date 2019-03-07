@@ -892,8 +892,8 @@ class Aligner:
         h += distance.to(device=self.device)
         f = h
 
-    h = h[:, pad:-pad, pad:-pad, :]
-    return h
+    f = f[:, pad:-pad, pad:-pad, :]
+    return f
 
   def cloudsample_image_batch(self, z_range, image_cv, field_cv, 
                               bbox, image_mip, field_mip,
