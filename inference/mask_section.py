@@ -36,10 +36,12 @@ if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--mip', type=int)
-  parser.add_argument('--bbox_start', nargs=3, type=int,
+  parser.add_argument('--bbox_start', nargs=2, type=int,
     help='bbox origin, 3-element int list')
-  parser.add_argument('--bbox_stop', nargs=3, type=int,
+  parser.add_argument('--bbox_stop', nargs=2, type=int,
     help='bbox origin+shape, 3-element int list')
+  parser.add_argument('--z', nargs='*', type=int,
+    help='index list for section mask')
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
@@ -61,7 +63,7 @@ if __name__ == '__main__':
   pad = args.max_displacement
 
   # Compile ranges
-  full_range = range(args.bbox_start[2], args.bbox_stop[2])
+  full_range = args.z
   # Create CloudVolume Manager
   #cm = CloudManager(args.src_path1, max_mip, pad, provenance, batch_size=1,
   #                  size_chunk=128, batch_mip=mip) 
@@ -69,7 +71,7 @@ if __name__ == '__main__':
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='float', num_channels=1,
                      fill_missing=True, overwrite=False)
-
+  print("z range is ", full_range)
   # Create dst CloudVolumes
   class TaskIterator():
       def __init__(self, brange):
