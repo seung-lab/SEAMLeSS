@@ -19,7 +19,7 @@ from skimage.morphology import disk as skdisk
 from skimage.filters.rank import maximum as skmaximum 
 from taskqueue import TaskQueue, LocalTaskQueue
 import torch
-from torch.nn.functional import interpolate
+from torch.nn.functional import interpolate, max_pool2d
 import torch.nn as nn
 
 from normalizer import Normalizer
@@ -271,16 +271,24 @@ class Aligner:
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
-      data = data.to(device=self.device)
-      if src_mip != dst_mip:
-        # k = 2**(src_mip - dst_mip)
-        size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
-        if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
-          data = interpolate(data, size=size, mode='bilinear')
-        else:
-          data = data.type('torch.cuda.DoubleTensor')
-          data = interpolate(data, size=size, mode='nearest')
-          data = data.type('torch.cuda.ByteTensor')
+      # data = data.to(device=self.device)
+      # if src_mip != dst_mip:
+      #   # k = 2**(src_mip - dst_mip)
+      #   size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
+      #   if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
+      #     data = interpolate(data, size=size, mode='bilinear')
+      #   else:
+      #     data = data.type('torch.cuda.DoubleTensor')
+      #     data = interpolate(data, size=size, mode='nearest')
+      #     data = data.type('torch.cuda.ByteTensor')
+      data = data.type(torch.float32)
+      if src_mip > dst_mip:
+        data = interpolate(data, size=size, mode='nearest')
+        data = data.type(torch.ByteTensor)
+      elif src_mip < dst_mip:
+        ratio = 2**(dst_mip-src_mip)
+        data = max_pool2d(data, kernel_size=ratio)
+        data = data.type(torch.ByteTensor)
       if not to_tensor:
         data = data.cpu().numpy()
     
@@ -1638,29 +1646,28 @@ class Aligner:
 
       return z1mask1_bin * z1mask2_bin * z2mask_bin
 
-  def three_mask_op_chunk(self, bbox, fold_cv, slip_cv, image_cv, fold_z, slip_z,
-                    image_z, fold_mip, slip_mip, image_mip):
+  def three_mask_op_chunk(self, bbox, fold_cv, slip_cv, tissue_cv, fold_z, slip_z,
+                    tissue_z, fold_mip, slip_mip, tissue_mip):
       fold_mask = self.get_data(fold_cv, fold_z, bbox, src_mip=fold_mip,
-                                dst_mip=slip_mip, to_float=False, to_tensor=True)
-      slip_mask = self.get_data(slip_cv, slip_z, bbox, src_mip=slip_mip, dst_mip=slip_mip,
-                                to_float=False, to_tensor=True)
-      image_mask = self.get_image(image_cv, image_z, bbox, image_mip, dst_mip=slip_mip)
+                                dst_mip=tissue_mip, to_float=False, to_tensor=False)
+      slip_mask = self.get_data(slip_cv, slip_z, bbox, src_mip=slip_mip, dst_mip=tissue_mip,
+                                to_float=False, to_tensor=False)
+      tissue_mask = self.get_data(tissue_cv, tissue_z, bbox, src_mip=tissue_mip, dst_mip=tissue_mip,
+                                to_float=False, to_tensor=False)
 
-      image_mask[image_mask>0] = 0
+      return tissue_mask + slip_mask + fold_mask
 
-      return image_mask + slip_mask + fold_mask
-
-  def three_mask_op(self, cm, bbox, fold_cv, slip_cv, image_cv, dst_cv,
-                    fold_z, slip_z, image_z, dst_z, fold_mip, slip_mip,
-                    image_mip):
-      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[slip_mip],
-                                      cm.dst_voxel_offsets[slip_mip],
-                                      mip=slip_mip, max_mip=cm.max_mip)
+  def three_mask_op(self, cm, bbox, fold_cv, slip_cv, tissue_cv, dst_cv,
+                    fold_z, slip_z, tissue_z, dst_z, fold_mip, slip_mip,
+                    tissue_mip):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[tissue_mip],
+                                      cm.dst_voxel_offsets[tissue_mip],
+                                      mip=tissue_mip, max_mip=cm.max_mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.ThreeMaskOpTask(chunk, fold_cv, slip_cv, image_cv, dst_cv,
-                                           fold_z, slip_z, image_z, dst_z, fold_mip,
-                                           slip_mip, image_mip))
+        batch.append(tasks.ThreeMaskOpTask(chunk, fold_cv, slip_cv, tissue_cv, dst_cv,
+                                           fold_z, slip_z, tissue_z, dst_z, fold_mip,
+                                           slip_mip, tissue_mip))
       return batch
 
 

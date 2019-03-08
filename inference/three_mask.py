@@ -34,9 +34,9 @@ if __name__ == '__main__':
     help='relative path to the ModelArchive to use for computing fields')
   parser.add_argument('--fold_mask_path', type=str)
   parser.add_argument('--slip_mask_path', type=str)
-  parser.add_argument('--src_path', type=str)
+  parser.add_argument('--tissue_mask_path', type=str)
   parser.add_argument('--dst_path', type=str)
-  parser.add_argument('--image_mip', type=int)
+  parser.add_argument('--tissue_mask_mip', type=int)
   parser.add_argument('--fold_mask_mip', type=int)
   parser.add_argument('--slip_mask_mip', type=int)
   parser.add_argument('--bbox_start', nargs=3, type=int,
@@ -54,14 +54,13 @@ if __name__ == '__main__':
   # Only compute matches to previous sections
   args.serial_operation = True
   a = get_aligner(args)
-  a.device = torch.device('cpu')
   bbox = get_bbox(args)
   provenance = get_provenance(args)
   
   # Simplify var names
   fold_mip = args.fold_mask_mip
   slip_mip = args.slip_mask_mip
-  image_mip = args.image_mip
+  tissue_mip = args.tissue_mask_mip
   max_mip = args.max_mip
   pad = args.max_displacement
 
@@ -70,10 +69,10 @@ if __name__ == '__main__':
   # Create CloudVolume Manager
   #cm = CloudManager(args.src_path1, max_mip, pad, provenance, batch_size=1,
   #                  size_chunk=128, batch_mip=mip) 
-  cm = CloudManager(args.src_path, max_mip, pad, provenance)
+  cm = CloudManager(args.tissue_mask_path, max_mip, pad, provenance)
 
   # Create src CloudVolumes
-  image_cv = cm.create(args.src_path, data_type='float', num_channels=1,
+  tissue_cv = cm.create(args.tissue_mask_path, data_type='float', num_channels=1,
                      fill_missing=True, overwrite=False)
 
   fold_cv = cm.create(args.fold_mask_path, data_type='float', num_channels=1,
@@ -93,7 +92,7 @@ if __name__ == '__main__':
           for z in self.brange:
               t = a.three_mask_op(cm, bbox, fold_cv.path, slip_cv.path, 
                                   image_cv.path, dst.path, z, z, z, z, 
-                                  fold_mip, slip_mip, image_mip)
+                                  fold_mip, slip_mip, tissue_mip)
               yield from t
 
   range_list = make_range(full_range, a.threads)

@@ -542,29 +542,29 @@ class UpsampleRenderRechunkTask(RegisteredTask):
     aligner.pool.map(chunkwise, patches)
 
 class ThreeMaskOpTask(RegisteredTask):
-  def __init__(self, bbox, fold_cv, slip_cv, image_cv, dst_cv, fold_z, slip_z,
-               image_z, dst_z, fold_mip, slip_mip, image_mip):
-    super(). __init__(bbox, fold_cv, slip_cv, image_cv, dst_cv, fold_z, slip_z,
-               image_z, dst_z, fold_mip, slip_mip, image_mip)
+  def __init__(self, bbox, fold_cv, slip_cv, tissue_cv, dst_cv, fold_z, slip_z,
+               tissue_z, dst_z, fold_mip, slip_mip, tissue_mip):
+    super(). __init__(bbox, fold_cv, slip_cv, tissue_cv, dst_cv, fold_z, slip_z,
+               tissue_z, dst_z, fold_mip, slip_mip, tissue_mip)
 
   def execute(self, aligner):
     fold_cv = DCV(self.fold_cv)
     slip_cv = DCV(self.slip_cv)
-    image_cv = DCV(self.image_cv)
+    tissue_cv = DCV(self.tissue_cv)
     dst_cv = DCV(self.dst_cv)
     fold_z = self.fold_z
     slip_z = self.slip_z
-    image_z = self.image_z
+    tissue_z = self.tissue_z
     dst_z = self.dst_z
     patch_bbox = deserialize_bbox(self.bbox)
     fold_mip = self.fold_mip
     slip_mip = self.slip_mip
-    image_mip = self.image_mip
+    tissue_mip = self.tissue_mip
     print("\n Mask conjunction \n" )
     start = time()
-    res = aligner.three_mask_op_chunk(patch_bbox,fold_cv, slip_cv, image_cv, fold_z,
-                                     slip_z, image_z, fold_mip, slip_mip, image_mip)
-    aligner.save_image(res.numpy(), dst_cv, dst_z, patch_bbox, slip_mip, to_uint8=False)
+    res = aligner.three_mask_op_chunk(patch_bbox,fold_cv, slip_cv, tissue_cv, fold_z,
+                                     slip_z, tissue_z, fold_mip, slip_mip, tissue_mip)
+    aligner.save_image(res.numpy(), dst_cv, dst_z, patch_bbox, tissue_mip, to_uint8=True)
     #with Storage(dst_cv.path) as stor:
     #  path = 'Mask_op_done/{}/{}'.format(self.prefix,
     #                                     patch_bbox.stringify(dst_z))
