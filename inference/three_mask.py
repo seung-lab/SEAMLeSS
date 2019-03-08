@@ -62,6 +62,7 @@ if __name__ == '__main__':
   slip_mip = args.slip_mask_mip
   tissue_mip = args.tissue_mask_mip
   max_mip = args.max_mip
+  mip = tissue_mip
   pad = args.max_displacement
 
   # Compile ranges
