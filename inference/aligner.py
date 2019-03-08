@@ -62,7 +62,7 @@ class Aligner:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
     
     self.chunk_size = (1024, 1024)
-    self.device = torch.device('cuda')
+    self.device = torch.device('cpu')
 
     self.model_archives = {}
     
@@ -164,10 +164,15 @@ class Aligner:
     print('get_mask: {:.3f}'.format(diff), flush=True) 
     return mask
 
-  def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None):
+  def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None,
+                dst_mip=None):
     print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
     start = time()
-    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
+    if dst_mip == None:
+        d_mip = mip
+    else:
+        d_mip = dst_mip
+    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=d_mip, to_float=True, 
                              to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
@@ -1632,6 +1637,31 @@ class Aligner:
       z2mask_bin[z2mask<=z2_thres] = 1
 
       return z1mask1_bin * z1mask2_bin * z2mask_bin
+
+  def Three_mask_op_chunk(self, bbox, fold_cv, slip_cv, image_cv, fold_z, slip_z,
+                    image_z, fold_mip, slip_mip, image_mip):
+      fold_mask = self.get_data(fold_cv, fold_z, bbox, src_mip=fold_mip,
+                                dst_mip=slip_mip, to_float=False, to_tensor=True)
+      slip_mask = self.get_data(slip_cv, slip_z, bbox, src_mip=slip_mip, dst_mip=slip_mip,
+                                to_float=False, to_tensor=True)
+      image_mask = self.get_image(image_cv, image_z, bbox, image_mip, dst_mip=slip_mip)
+
+      image_mask[image_mask>0] = 0
+
+      return image_mask + slip_mask + fold_mask
+
+  def Three_mask_op(self, cm, bbox, fold_cv, slip_cv, image_cv, dst_cv,
+                    fold_z, slip_z, image_z, dst_z, fold_mip, slip_mip,
+                    image_mip):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[slip_mip],
+                                      cm.dst_voxel_offsets[slip_mip],
+                                      mip=slip_mip, max_mip=cm.max_mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.MaskOpTask(chunk, cv1, cv2, z1, z2, mip, dst_cv,
+                                      dst_z, z1_thres, z2_thres, prefix))
+      return batch
+
 
   def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, z1_thres,
               z2_thres, prefix=''):
