@@ -541,6 +541,40 @@ class UpsampleRenderRechunkTask(RegisteredTask):
                                   patch_bbox, image_mip)
     aligner.pool.map(chunkwise, patches)
 
+class ThreeMaskOpTask(RegisteredTask):
+  def __init__(self, bbox, fold_cv, slip_cv, image_cv, dst_cv, fold_z, slip_z,
+               image_z, dst_z, fold_mip, slip_mip, image_mip):
+    super(). __init__(bbox, fold_cv, slip_cv, image_cv, dst_cv, fold_z, slip_z,
+               image_z, dst_z, fold_mip, slip_mip, image_mip)
+
+  def execute(self, aligner):
+    fold_cv = DCV(self.fold_cv)
+    slip_cv = DCV(self.slip_cv)
+    image_cv = DCV(self.image_cv)
+    dst_cv = DCV(self.dst_cv)
+    fold_z = self.fold_z
+    slip_z = self.slip_z
+    image_z = self.image_z
+    dst_z = self.dst_z
+    patch_bbox = deserialize_bbox(self.bbox)
+    fold_mip = self.fold_mip
+    slip_mip = self.slip_mip
+    image_mip = self.image_mip
+    print("\n Mask conjunction \n" )
+    start = time()
+    res = aligner.three_mask_op_chunk(patch_bbox,fold_cv, slip_cv, image_cv, fold_z,
+                                     slip_z, image_z, fold_mip, slip_mip, image_mip)
+    aligner.save_image(res.numpy(), dst_cv, dst_z, patch_bbox, slip_mip, to_uint8=False)
+    #with Storage(dst_cv.path) as stor:
+    #  path = 'Mask_op_done/{}/{}'.format(self.prefix,
+    #                                     patch_bbox.stringify(dst_z))
+    #  stor.put_file(path, '')
+    #  print('Marked finished at {}'.format(path))
+    end = time()
+    diff = end - start
+    print('Task: {:.3f} s'.format(diff))
+
+
 class MaskOpTask(RegisteredTask):
   def __init__(self, bbox, cv1, cv2, z1, z2, mip, dst_cv, dst_z, z1_thres,
                z2_thres, prefix):
