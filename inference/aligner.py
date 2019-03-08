@@ -355,8 +355,7 @@ class Aligner:
     #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
     if to_uint8:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
-    cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] =
-      cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] + patch
+    cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] + patch
 
   def append_image_batch(self, cv, z_range, float_patch, bbox, mip, to_uint8=True):
     x_range = bbox.x_range(mip=mip)
@@ -367,8 +366,7 @@ class Aligner:
     if to_uint8:
         patch = (np.multiply(patch, 255)).astype(np.uint8)
     print("patch shape", patch.shape)
-    cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range[0]:z_range[1]] =
-      cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range[0]:z_range[1]] + patch
+    cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range[0]:z_range[1]] = cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range[0]:z_range[1]] + patch
   #######################
   # Field IO + handlers #
   #######################
@@ -1708,7 +1706,7 @@ class Aligner:
                                       mip=mip, max_mip=cm.max_mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.FilterThreeOpTask(chunk, mask_cv, z, dst_z, mip))
+        batch.append(tasks.FilterThreeOpTask(chunk, mask_cv, dst_cv, z, dst_z, mip))
       return batch
 
 
