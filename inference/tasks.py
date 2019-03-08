@@ -542,8 +542,8 @@ class UpsampleRenderRechunkTask(RegisteredTask):
     aligner.pool.map(chunkwise, patches)
 
 class FoldDetecPostTask(RegisteredTask):
-  def __init__(self, cv, dst_cv, patch_bbox, mip, z):
-    super(). __init__(cv, dst_cv, patch_bbox, mip, z)
+  def __init__(self, cv, dst_cv, patch_bbox, mip, z, thr_binarize, w_connect, thr_filter, w_dilate):
+    super(). __init__(cv, dst_cv, patch_bbox, mip, z, thr_binarize, w_connect, thr_filter, w_dilate)
 
   def execute(self, aligner):
     cv = DCV(self.cv)
@@ -557,7 +557,7 @@ class FoldDetecPostTask(RegisteredTask):
           "at MIP{}"
           "\n".format(cv, z, mip), flush=True)
     start = time()
-    image = aligner.fold_postprocess_chunk(cv, patch_bbox, z, mip)
+    image = aligner.fold_postprocess_chunk(cv, patch_bbox, z, mip, thr_binarize, w_connect, thr_filter, w_dilate)
     image = image[np.newaxis,np.newaxis,...]
     aligner.save_image(image, dst_cv, z, patch_bbox, mip, to_uint8=True)
     end = time()

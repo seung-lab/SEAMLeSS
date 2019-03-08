@@ -44,6 +44,14 @@ if __name__ == '__main__':
     help='Value of of mask that indicates DO NOT mask')
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--mip', type=int)
+  parser.add_argument('--thr_binarize', type=int, default=0,
+    help='Threshold for binary mask')
+  parser.add_argument('--w_connect', type=int, default=0,
+    help='Width to dilate to connect adjacent components')
+  parser.add_argument('--thr_filter', type=int, default=0,
+    help='Size threshold to filter small components')
+  parser.add_argument('--w_dilate', type=int, default=0,
+    help='Width to dilate')
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
   parser.add_argument('--bbox_stop', nargs=3, type=int,
@@ -59,7 +67,7 @@ if __name__ == '__main__':
   # Only compute matches to previous sections
   args.serial_operation = True
   a = get_aligner(args)
-  a.device = torch.device('cpu')
+  # a.device = torch.device('cpu')
   bbox = get_bbox(args)
   provenance = get_provenance(args)
   
@@ -67,7 +75,12 @@ if __name__ == '__main__':
   mip = args.mip
   max_mip = args.max_mip
   pad = args.max_displacement
-  chunk_size = (256, 256)
+  chunk_size = (1024, 1024)
+
+  thr_binarize = args.thr_binarize
+  w_connect = args.w_connect
+  thr_filter = args.thr_filter
+  w_dilate = args.w_dilate
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -94,7 +107,7 @@ if __name__ == '__main__':
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-              t = a.fold_postprocess(cm, src.path, dst.path, z, mip, bbox)
+              t = a.fold_postprocess(cm, src.path, dst.path, z, mip, bbox, thr_binarize, w_connect, thr_filter, w_dilate)
               yield from t
   range_list = make_range(full_range, a.threads)
 

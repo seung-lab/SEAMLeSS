@@ -166,11 +166,11 @@ class Aligner:
     print('get_mask: {:.3f}'.format(diff), flush=True) 
     return mask
 
-  def get_image(self, cv, z, bbox, mip, to_tensor=True, gpu=True, normalizer=None):
+  def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None):
     print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
     start = time()
     image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
-                             to_tensor=to_tensor, gpu=gpu, normalizer=normalizer)
+                             to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
     print('get_image: {:.3f}'.format(diff), flush=True) 
@@ -232,7 +232,7 @@ class Aligner:
     return combined
 
   def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
-                     to_tensor=True, gpu=True, normalizer=None):
+                     to_tensor=True, normalizer=None):
     """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
     
     Args:
@@ -577,18 +577,20 @@ class Aligner:
     else:
       return image
     
-  def fold_postprocess(self, cm, src_cv, dst_cv, z, mip, bbox):
+  def fold_postprocess(self, cm, src_cv, dst_cv, z, mip, bbox, thr_binarize, w_connect, thr_filter, w_dilate):
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.num_scales)
     batch = []
     for patch_bbox in chunks:
-      batch.append(tasks.FoldDetecPostTask(src_cv, dst_cv,patch_bbox, mip, z))
+      batch.append(tasks.FoldDetecPostTask(src_cv, dst_cv,patch_bbox, mip, z, thr_binarize, w_connect, thr_filter, w_dilate))
     return batch
  
-  def fold_postprocess_chunk(self, src_cv, bbox, z, mip):
-    image = self.get_image(src_cv, z, bbox, mip, to_tensor=False, gpu=False)
-    return postprocess(image[0,0,...]) 
+  def fold_postprocess_chunk(self, src_cv, bbox, z, mip, thr_binarize, w_connect, thr_filter, w_dilate):
+    image = self.get_image(src_cv, z, bbox, mip, to_tensor=False)
+    return postprocess(image[0,0,...],
+                      thr_binarize=thr_binarize, w_connect=w_connect,
+                      thr_filter=thr_filter, w_dilate=w_dilate) 
 
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 

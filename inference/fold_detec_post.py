@@ -8,13 +8,19 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 
 
-def postprocess(img):
+def postprocess(img, thr_binarize=0, w_connect=0, thr_filter=0, w_dilate=0):
 
-    img_thr = threshold_image(img, 0.1)
-    img_con = dilate_folds(img_thr, 5)
+	if thr_binarize:
+    	img = threshold_image(img, thr_binarize)
+    if w_connect:
+    	img = dilate_mask(img, w_connect)
+    if :
+    	img = filter_mask(img, thr_filter)
+    if dilate_w:
+    	img = dilate_mask(img, w_dilate)
 
-    return dilate_folds(filter_folds(img_con, 1500), 15)
-    # return filter_folds(img_con, 1500)
+    return img
+
 
 def threshold_image(img, thr):
 
@@ -29,7 +35,7 @@ def threshold_image(img, thr):
 	return (img>=new_thr).astype('uint8')
 
 
-def dilate_folds(img, w_dilate):
+def dilate_mask(img, w_dilate):
 
 	if np.max(img) > 10:
 		img = (img/np.max(img)).astype('uint8')
@@ -38,7 +44,7 @@ def dilate_folds(img, w_dilate):
 
 	return ndimage.binary_dilation(img, structure=struct).astype(img.dtype)
 
-def filter_folds(img, size_thr):
+def filter_mask(img, size_thr):
 
 	img_lab = measure.label(img)
 
