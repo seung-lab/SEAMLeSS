@@ -51,7 +51,8 @@ def filter_mask(img, size_thr):
 	img_lab = measure.label(img)
 
 	fold_num, fold_size = np.unique(img_lab, return_counts=True)
-	fold_num = fold_num[1:]; fold_size = fold_size[1:]
+	if fold_num.shape[0] != 1:
+		fold_num = fold_num[1:]; fold_size = fold_size[1:]
 
 	img_lab_vec = np.reshape(img_lab, (-1,))
 	img_relab = np.reshape(fastremap.remap_from_array_kv(img_lab_vec, fold_num, fold_size), img_lab.shape)
