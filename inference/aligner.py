@@ -1656,7 +1656,7 @@ class Aligner:
       tissue_mask = self.get_data(tissue_cv, tissue_z, bbox, src_mip=tissue_mip, dst_mip=tissue_mip,
                                 to_float=False, to_tensor=False)
 
-      return logical_or(logical_or(tissue_mask, slip_mask), fold_mask)
+      return np.logical_or(np.logical_or(tissue_mask, slip_mask), fold_mask)
 
   def three_mask_op(self, cm, bbox, fold_cv, slip_cv, tissue_cv, dst_cv,
                     fold_z, slip_z, tissue_z, dst_z, fold_mip, slip_mip,
