@@ -73,17 +73,17 @@ if __name__ == '__main__':
   cm = CloudManager(args.tissue_mask_path, max_mip, pad, provenance)
 
   # Create src CloudVolumes
-  tissue_cv = cm.create(args.tissue_mask_path, data_type='float', num_channels=1,
+  tissue_cv = cm.create(args.tissue_mask_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False)
 
-  fold_cv = cm.create(args.fold_mask_path, data_type='float', num_channels=1,
+  fold_cv = cm.create(args.fold_mask_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False)
 
-  slip_cv = cm.create(args.slip_mask_path, data_type='float', num_channels=1,
+  slip_cv = cm.create(args.slip_mask_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False) 
   # Create dst CloudVolumes
   dst = cm.create(join(args.dst_path, 'image'),
-                  data_type='float32', num_channels=1, fill_missing=True,
+                  data_type='uint8', num_channels=1, fill_missing=True,
                   overwrite=True)
   prefix = str(mip)
   class TaskIterator():

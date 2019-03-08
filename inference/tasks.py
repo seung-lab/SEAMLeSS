@@ -564,7 +564,7 @@ class ThreeMaskOpTask(RegisteredTask):
     start = time()
     res = aligner.three_mask_op_chunk(patch_bbox,fold_cv, slip_cv, tissue_cv, fold_z,
                                      slip_z, tissue_z, fold_mip, slip_mip, tissue_mip)
-    aligner.save_image(res.numpy(), dst_cv, dst_z, patch_bbox, tissue_mip, to_uint8=True)
+    aligner.save_image(res, dst_cv, dst_z, patch_bbox, tissue_mip, to_uint8=True)
     #with Storage(dst_cv.path) as stor:
     #  path = 'Mask_op_done/{}/{}'.format(self.prefix,
     #                                     patch_bbox.stringify(dst_z))
