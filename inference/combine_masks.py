@@ -6,6 +6,7 @@ from cloudvolume import CloudVolume
 
 from args import get_argparser, parse_args
 
+from time import time
 
 if __name__ == '__main__':
   parser = get_argparser()
@@ -17,13 +18,14 @@ if __name__ == '__main__':
   parser.add_argument('--src1_mip', type=int)
   parser.add_argument('--src2_mip', type=int)
   parser.add_argument('--src3_mip', type=int)
-  parser.add_arguemnt('--mip', type=int)
+  parser.add_argument('--mip', type=int)
 
   args = parse_args(parser)
 
   src1_path = args.src1_path
   src2_path = args.src2_path
   src3_path = args.src3_path
+  dst_path = args.dst_path  
 
   src1_mip = 4
   src2_mip = 6
@@ -53,11 +55,13 @@ if __name__ == '__main__':
   upsample = nn.Upsample(scale_factor=(4,4), mode='bilinear')
 
   for i in section_range:
+  	t0 = time()
+  	print(">>>>>>> Section " + str(i))
+  	s_src1 = torch.reshape(downsample(torch.reshape(torch.tensor(src1[0:36224,0:29824,i][:,:,0,0], dtype=torch.float32), (1,36224,29824))), (9056,7456))
+  	s_src2 = torch.tensor(src2[0:9056,0:7456,i][:,:,0,0], dtype=torch.float32)
+  	s_src3 = torch.reshape(upsample(torch.reshape(torch.tensor(src3[0:2256,0:1856,i][:,:,0,0], dtype=torch.float32), (1,1,2256,1856))), (9024,7424))
 
-  	s_src1 = torch.reshape(downsample(torch.reshape(torch.tensor(src1[:36224,:29824,i][:,:,0,0], dtype=torch.float32), (1,36224,29824))), (9056,7456))
-  	s_src2 = torch.tensor(src2[:9056,:7456,i][:,:,0,0], dtype=torch.float32)
-  	s_src3 = torch.reshape(upsample(torch.reshape(torch.tensor(src3[:2256,:1856,i][:,:,0,0], dtype=torch.float32), (1,2256,1856))), (9024,7424))
-
-  	dst[:,:,i] = s_src1[:9024,:7424] + s_src2[:9024,:7424] + s_src3  
+  	dst[:,:,i] = s_src1[:9024,:7424] + s_src2[:9024,:7424] + s_src3
+  	print("Elapsed : " + str(np.round(time()-t0,3)))  
 
 
