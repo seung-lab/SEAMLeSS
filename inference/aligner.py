@@ -1638,7 +1638,7 @@ class Aligner:
 
       return z1mask1_bin * z1mask2_bin * z2mask_bin
 
-  def Three_mask_op(self, bbox, fold_cv, slip_cv, image_cv, fold_z, slip_z,
+  def Three_mask_op_chunk(self, bbox, fold_cv, slip_cv, image_cv, fold_z, slip_z,
                     image_z, fold_mip, slip_mip, image_mip):
       fold_mask = self.get_data(fold_cv, fold_z, bbox, src_mip=fold_mip,
                                 dst_mip=slip_mip, to_float=False, to_tensor=True)
@@ -1649,6 +1649,18 @@ class Aligner:
       image_mask[image_mask>0] = 0
 
       return image_mask + slip_mask + fold_mask
+
+  def Three_mask_op(self, cm, bbox, fold_cv, slip_cv, image_cv, dst_cv,
+                    fold_z, slip_z, image_z, dst_z, fold_mip, slip_mip,
+                    image_mip):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[slip_mip],
+                                      cm.dst_voxel_offsets[slip_mip],
+                                      mip=slip_mip, max_mip=cm.max_mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.MaskOpTask(chunk, cv1, cv2, z1, z2, mip, dst_cv,
+                                      dst_z, z1_thres, z2_thres, prefix))
+      return batch
 
 
   def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, z1_thres,
