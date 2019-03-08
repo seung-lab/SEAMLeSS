@@ -92,7 +92,7 @@ if __name__ == '__main__':
       def __iter__(self):
           for z in self.brange:
               t = a.three_mask_op(cm, bbox, fold_cv.path, slip_cv.path, 
-                                  image_cv.path, dst.path, z, z, z, z, 
+                                  tissue_cv.path, dst.path, z, z, z, z, 
                                   fold_mip, slip_mip, tissue_mip)
               yield from t
 
