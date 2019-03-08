@@ -348,6 +348,27 @@ class Aligner:
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1],
             z_range[0]:z_range[1]] = patch
 
+  def append_image(self, float_patch, cv, z, bbox, mip, to_uint8=True):
+    x_range = bbox.x_range(mip=mip)
+    y_range = bbox.y_range(mip=mip)
+    patch = np.transpose(float_patch, (2,3,0,1))
+    #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
+    if to_uint8:
+      patch = (np.multiply(patch, 255)).astype(np.uint8)
+    cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] =
+      cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] + patch
+
+  def append_image_batch(self, cv, z_range, float_patch, bbox, mip, to_uint8=True):
+    x_range = bbox.x_range(mip=mip)
+    y_range = bbox.y_range(mip=mip)
+    print("type of float_patch", type(float_patch), "shape", float_patch.shape)
+    patch = np.transpose(float_patch, (2,3,0,1))
+    # patch = np.transpose(float_patch, (2,1,0))[..., np.newaxis]
+    if to_uint8:
+        patch = (np.multiply(patch, 255)).astype(np.uint8)
+    print("patch shape", patch.shape)
+    cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range[0]:z_range[1]] =
+      cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range[0]:z_range[1]] + patch
   #######################
   # Field IO + handlers #
   #######################
@@ -1669,6 +1690,25 @@ class Aligner:
         batch.append(tasks.ThreeMaskOpTask(chunk, fold_cv, slip_cv, tissue_cv, dst_cv,
                                            fold_z, slip_z, tissue_z, dst_z, fold_mip,
                                            slip_mip, tissue_mip))
+      return batch
+
+  def filterthree_op_chunk(self, bbox, mask_cv, z, mip):
+      mask1 = self.get_data(mask_cv, z, bbox, src_mip=mip, dst_mip=mip,
+                                to_float=False, to_tensor=False)
+      mask2 = self.get_data(mask_cv, z+1, bbox, src_mip=mip, dst_mip=mip,
+                                to_float=False, to_tensor=False)
+      mask3 = self.get_data(mask_cv, z+2, bbox, src_mip=mip, dst_mip=mip,
+                                to_float=False, to_tensor=False)
+
+      return np.logical_and(np.logical_and(mask1, mask2), mask3)
+
+  def filterthree_op(self, cm, bbox, mask_cv, dst_cv, z, dst_z, mip):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+                                      cm.dst_voxel_offsets[mip],
+                                      mip=mip, max_mip=cm.max_mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.FilterThreeOpTask(chunk, mask_cv, z, dst_z, mip))
       return batch
 
 

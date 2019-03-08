@@ -574,6 +574,32 @@ class ThreeMaskOpTask(RegisteredTask):
     diff = end - start
     print('Task: {:.3f} s'.format(diff))
 
+class FilterThreeOpTask(RegisteredTask):
+  def __init__(self, bbox, mask_cv, dst_cv, z, dst_z, mip):
+    super(). __init__(bbox, mask_cv, dst_cv, z, dst_z, mip)
+
+  def execute(self, aligner):
+    mask_cv = DCV(self.mask_cv)
+    dst_cv = DCV(self.dst_cv)
+    z = self.z
+    dst_z = self.dst_z
+    patch_bbox = deserialize_bbox(self.bbox)
+    mip = self.mip
+    print("\n Mask conjunction \n" )
+    start = time()
+    res = aligner.filterthree_op_chunk(patch_bbox, mask_cv, z, mip)
+    aligner.append_image(res, dst_cv, dst_z, patch_bbox, mip, to_uint8=True)
+    aligner.append_image(res, dst_cv, dst_z+1, patch_bbox, mip, to_uint8=True)
+    aligner.append_image(res, dst_cv, dst_z+2, patch_bbox, mip, to_uint8=True)
+    #with Storage(dst_cv.path) as stor:
+    #  path = 'Mask_op_done/{}/{}'.format(self.prefix,
+    #                                     patch_bbox.stringify(dst_z))
+    #  stor.put_file(path, '')
+    #  print('Marked finished at {}'.format(path))
+    end = time()
+    diff = end - start
+    print('Task: {:.3f} s'.format(diff))
+
 
 class MaskOpTask(RegisteredTask):
   def __init__(self, bbox, cv1, cv2, z1, z2, mip, dst_cv, dst_z, z1_thres,
