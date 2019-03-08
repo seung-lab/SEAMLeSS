@@ -11,15 +11,17 @@ from functools import partial
 def postprocess(img, thr_binarize=0, w_connect=0, thr_filter=0, w_dilate=0):
 
 	if thr_binarize:
-    	img = threshold_image(img, thr_binarize)
-    if w_connect:
-    	img = dilate_mask(img, w_connect)
-    if :
-    	img = filter_mask(img, thr_filter)
-    if dilate_w:
-    	img = dilate_mask(img, w_dilate)
+		img = threshold_image(img, abs(thr_binarize))
+		if thr_binarize<0:
+			img = 1 - img
+	if w_connect:
+		img = dilate_mask(img, w_connect)
+	if thr_filter:
+		img = filter_mask(img, thr_filter)
+	if w_dilate:
+		img = dilate_mask(img, w_dilate)
 
-    return img
+	return img
 
 
 def threshold_image(img, thr):

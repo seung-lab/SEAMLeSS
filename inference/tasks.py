@@ -551,6 +551,10 @@ class FoldDetecPostTask(RegisteredTask):
     z = self.z
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
+    thr_binarize = self.thr_binarize
+    w_connect = self.w_connect
+    thr_filter = self.thr_filter
+    w_dilate = self.w_dilate
     print("\nFold detection postprocess "
           "cv {}\n"
           "z={}\n"
