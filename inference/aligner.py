@@ -283,6 +283,7 @@ class Aligner:
       #     data = data.type('torch.cuda.ByteTensor')
       data = data.type(torch.float32)
       if src_mip > dst_mip:
+        size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
         data = interpolate(data, size=size, mode='nearest')
         data = data.type(torch.ByteTensor)
       elif src_mip < dst_mip:
