@@ -633,6 +633,20 @@ class MaskOpTask(RegisteredTask):
     diff = end - start
     print('Task: {:.3f} s'.format(diff))
 
+class MaskOutTask(RegisteredTask):
+  def __init__(self, cv, mip, z, bbox):
+    super(). __init__(cv, mip, z, bbox)
+
+  def execute(self, aligner):
+    cv = DCV(self.cv)
+    mip = self.mip
+    z = self.z
+    bbox = deserialize_bbox(self.bbox)
+    mask = aligner.get_ones(bbox, mip)
+    mask = mask[np.newaxis,np.newaxis,...] 
+    aligner.save_image(mask, cv, z, bbox, mip, to_uint8=True)
+    print('Mask out: section {}'.format(z))
+
 class ComputeFcorrTask(RegisteredTask):
   def __init__(self, cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix):
     super(). __init__(cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix)

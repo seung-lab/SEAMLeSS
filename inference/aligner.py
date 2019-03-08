@@ -1677,6 +1677,22 @@ class Aligner:
 
       return np.logical_or(np.logical_or(tissue_mask, slip_mask), fold_mask)
 
+  def mask_section(self, cm, bbox, cv, z, mip):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+                                      cm.vec_voxel_offsets[mip],
+                                      mip=mip, max_mip=cm.max_mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.MaskOutTask(cv, mip, z, chunk))
+      return batch
+
+
+  def get_ones(self, bbox, mip):
+      x_range = bbox.x_range(mip=mip)
+      y_range = bbox.y_range(mip=mip)
+      return np.ones([x_range[1]-x_range[0], y_range[1]-y_range[0]])
+
+
   def three_mask_op(self, cm, bbox, fold_cv, slip_cv, tissue_cv, dst_cv,
                     fold_z, slip_z, tissue_z, dst_z, fold_mip, slip_mip,
                     tissue_mip):
