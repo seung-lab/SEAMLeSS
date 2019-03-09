@@ -598,7 +598,7 @@ class FourMaskOpTask(RegisteredTask):
     print("\n Mask conjunction \n" )
     start = time()
     res = aligner.four_mask_op_chunk(patch_bbox,fold_cv, slip_cv, tissue_cv, fold_z,
-                                     slip_z, tissue_z, fold_mip, slip_mip, tissue_mip
+                                     slip_z, tissue_z, fold_mip, slip_mip, tissue_mip,
                                      slip2_cv, slip2_mip)
     aligner.save_image(res, dst_cv, dst_z, patch_bbox, tissue_mip, to_uint8=True)
     #with Storage(dst_cv.path) as stor:
