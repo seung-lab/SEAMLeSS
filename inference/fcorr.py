@@ -113,5 +113,23 @@ def get_hp_fcorr(f1, p1, f2, p2, fill_value = 2, scaling = 256, n_thres = 2):
         rho = masked_corr_coef(f1, f2, valid, n_thres = n_thres, fill_value = fill_value)
         
     return rho
-    
 
+def collapse_fcorr(a):
+    """Collapse the post-processed fcorr result to [0,1]
+    """
+    a[a > 1] = 2 - a[a > 1]
+    return a
+    
+def fcorr_conjunction(images, operators):
+    """Elementwise multiplication of fcorr images, -1 operator elements indicate negation 
+    """ 
+    p = collapse_fcorr(images[0])
+    if operators[0] == -1:
+        p = 1. - p
+
+    for image, operator in zip(images[1:], operators[1:]):
+        d = collapse_fcorr(image)
+        if operator == -1:
+             d = 1. - d
+        p *= d     
+    return p 
