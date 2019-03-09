@@ -61,7 +61,8 @@ class Aligner:
     if queue_name:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
     
-    self.chunk_size = (1024, 1024)
+    # self.chunk_size = (1024, 1024)
+    self.chunk_size = (4096, 4096)
     self.device = torch.device('cpu')
 
     self.model_archives = {}
@@ -1604,42 +1605,45 @@ class Aligner:
       I = I.split(chunk_size, dim=3)
       return torch.cat(I, dim=1)
 
-  def calculate_fcorr(self, cm, bbox, mip, z1, z2, cv, dst_cv, dst_nopost, prefix=''):
-      assert (mip<=8 and mip>=5)
+  def compute_fcorr(self, cm, src_cv, dst_pre_cv, dst_post_cv, bbox, src_mip, 
+                    dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0, 
+                    prefix=''):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
-                                      cm.dst_voxel_offsets[mip], mip=mip,
+                                      cm.dst_voxel_offsets[src_mip], mip=src_mip,
                                       max_mip=cm.max_mip)
       if prefix == '':
-        prefix = '{}'.format(mip)
+        prefix = '{}'.format(src_mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.ComputeFcorrTask(cv, dst_cv, dst_nopost, chunk, mip, z1, z2, prefix))
+        batch.append(tasks.ComputeFcorrTask(src_cv, dst_pre_cv, dst_post_cv, chunk, 
+                                            src_mip, dst_mip, src_z, tgt_z, dst_z, 
+                                            fcorr_chunk_size, fill_value, prefix))
       return batch
 
-  def get_fcorr(self, bbox, cv, mip, z1, z2):
-      """ perform fcorr for two images
+  def get_fcorr(self, cv, src_z, tgt_z, bbox, mip, chunk_size=16, fill_value=0):
+      """Perform fcorr for two images
       """
-      image1 = self.get_data(cv, z1, bbox, src_mip=mip, dst_mip=mip,
+      src = self.get_data(cv, src_z, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True).float()
-      image2 = self.get_data(cv, z2, bbox, src_mip=mip, dst_mip=mip,
+      tgt = self.get_data(cv, tgt_z, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True).float()
 
       # std1 = image1[image1!=0].std()
       # std2 = image2[image2!=0].std()
       # scaling = 8 * pow(std1*std2, 1/2)
       scaling = 240 # Fixed threshold
-      fcorr_chunk_size = 16
 
-      new_image1 = self.rechunck_image(fcorr_chunk_size, image1)
-      new_image2 = self.rechunck_image(fcorr_chunk_size, image2)
+      new_image1 = self.rechunck_image(chunk_size, src)
+      new_image2 = self.rechunck_image(chunk_size, tgt)
       f1, p1 = get_fft_power2(new_image1)
       f2, p2 = get_fft_power2(new_image2)
-      tmp_image = get_hp_fcorr(f1, p1, f2, p2, scaling=scaling)
+      tmp_image = get_hp_fcorr(f1, p1, f2, p2, scaling=scaling, fill_value=fill_value)
       tmp_image = tmp_image.permute(2,3,0,1)
       tmp_image = tmp_image.numpy()
       tmp = deepcopy(tmp_image)
       tmp[tmp==2]=1
-      blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp, sigma=(0, 0, 1, 1))
+      std = 1.
+      blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp, sigma=(0, 0, std, std))
       s = scipy.ndimage.generate_binary_structure(2, 1)[None, None, :, :]
       closed = scipy.ndimage.morphology.grey_closing(blurred, footprint=s)
       closed = 2*closed

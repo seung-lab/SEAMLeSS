@@ -648,28 +648,42 @@ class MaskOutTask(RegisteredTask):
     print('Mask out: section {}'.format(z))
 
 class ComputeFcorrTask(RegisteredTask):
-  def __init__(self, cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix):
-    super(). __init__(cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix)
+  def __init__(self, src_cv, dst_pre_cv, dst_post_cv, patch_bbox, src_mip, dst_mip,
+               src_z, tgt_z, dst_z, chunk_size, fill_value, prefix):
+    super(). __init__(src_cv, dst_pre_cv, dst_post_cv, patch_bbox, src_mip, dst_mip,
+                      src_z, tgt_z, dst_z, chunk_size, fill_value, prefix)
 
   def execute(self, aligner):
-    cv = DCV(self.cv)
-    dst_cv = DCV(self.dst_cv)
-    dst_nopost = DCV(self.dst_nopost)
-    z1 = self.z1
-    z2 = self.z2
+    src_cv = DCV(self.src_cv)
+    dst_pre_cv = DCV(self.dst_pre_cv)
+    dst_post_cv = DCV(self.dst_post_cv)
+    src_z = self.src_z
+    tgt_z = self.tgt_z
+    dst_z = self.dst_z
     patch_bbox = deserialize_bbox(self.patch_bbox)
-    mip = self.mip
-    print("\nFcorring "
-          "cv {}\n"
-          "z={} to z={}\n"
-          "at MIP{}"
-          "\n".format(cv, z1, z2, mip), flush=True)
+    src_mip = self.src_mip
+    dst_mip = self.dst_mip
+    chunk_size = self.chunk_size
+    fill_value = self.fill_value
+    print("\nFCorr"
+          "src_cv {}\n"
+          "dst_pre_cv {}\n"
+          "dst_post_cv {}\n"
+          "src_z={} to tgt_z={}\n"
+          "dst_z={}\n"
+          "src_mip={}, dst_mip={}\n"
+          "chunk_size={}\n"
+          "fill_value={}"
+          "\n".format(src_cv, dst_pre_cv, dst_post_cv, src_z, tgt_z, dst_z, src_mip, 
+                      dst_mip, chunk_size, fill_value), flush=True)
     start = time()
-    image, image_no = aligner.get_fcorr(patch_bbox, cv, mip, z1, z2)
-    aligner.save_image(image, dst_cv, z2, patch_bbox, mip+4, to_uint8=False)
-    aligner.save_image(image_no, dst_nopost, z2, patch_bbox, mip+4, to_uint8=False)
-    with Storage(dst_cv.path) as stor:
-      path = 'Fcorr_done/{}/{}'.format(self.prefix, patch_bbox.stringify(z2))
+    post_image, pre_image = aligner.get_fcorr(src_cv, src_z, tgt_z, patch_bbox, src_mip,
+                                              chunk_size, fill_value)
+    aligner.save_image(pre_image, dst_pre_cv, dst_z, patch_bbox, dst_mip, to_uint8=False)
+    aligner.save_image(post_image, dst_post_cv, dst_z, patch_bbox, dst_mip, 
+                       to_uint8=False)
+    with Storage(dst_post_cv.path) as stor:
+      path = 'fcorr_done/{}/{}'.format(self.prefix, patch_bbox.stringify(dst_z))
       stor.put_file(path, '')
       print('Marked finished at {}'.format(path))
     end = time()
