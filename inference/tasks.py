@@ -8,6 +8,7 @@ from mipless_cloudvolume import deserialize_miplessCV as DCV
 from cloudvolume import Storage
 from cloudvolume.lib import scatter 
 from boundingbox import BoundingBox, deserialize_bbox
+from fcorr import fcorr_conjunction
 
 from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue
 from concurrent.futures import ProcessPoolExecutor
@@ -600,6 +601,56 @@ class FilterThreeOpTask(RegisteredTask):
     diff = end - start
     print('Task: {:.3f} s'.format(diff))
 
+class FcorrMaskTask(RegisteredTask):
+  def __init__(self, src, tgt, dst_pre, dst_post, src_z, tgt_z, dst_z, bbox, mip, 
+               operators, threshold, prefix):
+    super().__init__(src, tgt, dst_pre, dst_post, src_z, tgt_z, dst_z, bbox, mip, 
+                     operators, threshold, prefix)
+
+  def execute(self, aligner):
+    src = DCV(self.src)
+    tgt = DCV(self.tgt)
+    dst_pre = DCV(self.dst_pre)
+    dst_post = DCV(self.dst_post)
+    src_z = self.src_z
+    tgt_z = self.tgt_z
+    dst_z = self.dst_z
+    patch_bbox = deserialize_bbox(self.bbox)
+    mip = self.mip
+    operators = self.operators
+    threshold = self.threshold
+    print("\nFcorrMaskTask\n"
+          "src {}\n"
+          "tgt {}\n"
+          "dst_pre {}\n"
+          "dst_post {}\n"
+          "src_z {}\n"
+          "tgt_z {}\n"
+          "dst_z {}\n"
+          "MIP{}\n"
+          "operators {}\n"
+          "threshold {}\n"
+          .format(src, tgt, dst_pre, dst_post, src_z, tgt_z, dst_z, mip, operators, 
+                  threshold),
+          flush=True)
+    start = time()
+    images = []
+    for cv, z in zip([src, tgt], [src_z, tgt_z]):
+      image = aligner.get_data(cv, z, patch_bbox, src_mip=mip, dst_mip=mip,
+                            to_float=False, to_tensor=True)
+      images.append(image)
+    cjn = fcorr_conjunction(images, operators)
+    aligner.save_image(cjn.numpy(), dst_pre, dst_z, patch_bbox, mip, to_uint8=False)
+    mask = (cjn > threshold) 
+    aligner.save_image(mask.numpy(), dst_post, dst_z, patch_bbox, mip, to_uint8=True)
+    with Storage(dst_post.path) as stor:
+      path = 'fcorr_mask_done/{}/{}'.format(self.prefix,
+                                         patch_bbox.stringify(dst_z))
+      stor.put_file(path, '')
+      print('Marked finished at {}'.format(path))
+    end = time()
+    diff = end - start
+    print('FcorrMaskTask: {:.3f} s'.format(diff))
 
 class MaskOpTask(RegisteredTask):
   def __init__(self, bbox, cv1, cv2, z1, z2, mip, dst_cv, dst_z, z1_thres,

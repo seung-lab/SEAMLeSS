@@ -1652,24 +1652,6 @@ class Aligner:
       #print("++++closed shape",closed.shape)
       return closed, tmp_image
 
-  def slip_mask_op(self, bbox, cv1, cv2, z1, z2, mip, z1_thres, z2_thres):
-      z1mask1 = self.get_data(cv1, z1, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True)
-      z1mask2 = self.get_data(cv1, z1-1, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True)
-      z2mask = self.get_data(cv2, z2, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True)
-      
-      z1mask1_bin = torch.zeros(z1mask1.shape)
-      z1mask2_bin = torch.zeros(z1mask2.shape)
-      z2mask_bin = torch.zeros(z2mask.shape)
-
-      z1mask1_bin[z1mask1>z1_thres] = 1
-      z1mask2_bin[z1mask2>z1_thres] = 1
-      z2mask_bin[z2mask<=z2_thres] = 1
-
-      return z1mask1_bin * z1mask2_bin * z2mask_bin
-
   def three_mask_op_chunk(self, bbox, fold_cv, slip_cv, tissue_cv, fold_z, slip_z,
                     tissue_z, fold_mip, slip_mip, tissue_mip):
       fold_mask = self.get_data(fold_cv, fold_z, bbox, src_mip=fold_mip,
@@ -1729,6 +1711,18 @@ class Aligner:
         batch.append(tasks.FilterThreeOpTask(chunk, mask_cv, dst_cv, z, dst_z, mip))
       return batch
 
+  def make_fcorr_masks(self, cm, src, tgt, dst_pre, dst_post, src_z, tgt_z, dst_z, 
+                       bbox, mip, operators, threshold, prefix=''):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+                                      cm.dst_voxel_offsets[mip], mip=mip,
+                                      max_mip=cm.max_mip)
+      if prefix == '':
+        prefix = '{}'.format(mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.FcorrMaskTask(src, tgt, dst_pre, dst_post, src_z, tgt_z, 
+                                         dst_z, chunk, mip, operators, threshold, prefix))
+      return batch
 
   def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, z1_thres,
               z2_thres, prefix=''):
