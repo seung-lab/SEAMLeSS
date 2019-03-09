@@ -99,7 +99,7 @@ if __name__ == '__main__':
               t = a.four_mask_op(cm, bbox, fold_cv.path, slip_cv.path, 
                                   tissue_cv.path, dst.path, z, z, z, z, 
                                   fold_mip, slip_mip, tissue_mip,
-                                  slip2_cv, slip2_mip)
+                                  slip2_cv.path, slip2_mip)
               yield from t
 
   range_list = make_range(full_range, a.threads)
