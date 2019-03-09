@@ -602,40 +602,36 @@ class FilterThreeOpTask(RegisteredTask):
     print('Task: {:.3f} s'.format(diff))
 
 class FcorrMaskTask(RegisteredTask):
-  def __init__(self, src, tgt, dst_pre, dst_post, src_z, tgt_z, dst_z, bbox, mip, 
+  def __init__(self, cv_list, dst_pre, dst_post, z_list, dst_z, bbox, mip, 
                operators, threshold, prefix):
-    super().__init__(src, tgt, dst_pre, dst_post, src_z, tgt_z, dst_z, bbox, mip, 
+    super().__init__(cv_list, dst_pre, dst_post, z_list, dst_z, bbox, mip, 
                      operators, threshold, prefix)
 
   def execute(self, aligner):
-    src = DCV(self.src)
-    tgt = DCV(self.tgt)
+    cv_list = [DCV(f) for f in self.cv_list]
     dst_pre = DCV(self.dst_pre)
     dst_post = DCV(self.dst_post)
-    src_z = self.src_z
-    tgt_z = self.tgt_z
+    z_list = self.z_list
     dst_z = self.dst_z
     patch_bbox = deserialize_bbox(self.bbox)
     mip = self.mip
     operators = self.operators
     threshold = self.threshold
     print("\nFcorrMaskTask\n"
-          "src {}\n"
-          "tgt {}\n"
+          "cv_list {}\n"
           "dst_pre {}\n"
           "dst_post {}\n"
-          "src_z {}\n"
-          "tgt_z {}\n"
+          "z_list {}\n"
           "dst_z {}\n"
           "MIP{}\n"
           "operators {}\n"
           "threshold {}\n"
-          .format(src, tgt, dst_pre, dst_post, src_z, tgt_z, dst_z, mip, operators, 
+          .format(cv_list, dst_pre, dst_post, z_list, dst_z, mip, operators, 
                   threshold),
           flush=True)
     start = time()
     images = []
-    for cv, z in zip([src, tgt], [src_z, tgt_z]):
+    for cv, z in zip(cv_list, z_list):
       image = aligner.get_data(cv, z, patch_bbox, src_mip=mip, dst_mip=mip,
                             to_float=False, to_tensor=True)
       images.append(image)

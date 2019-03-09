@@ -34,14 +34,15 @@ def make_range(block_range, part_num):
 
 if __name__ == '__main__':
   parser = get_argparser()
-  parser.add_argument('--src_path', type=str)
-  parser.add_argument('--tgt_path', type=str)
+  parser.add_argument('--paths', type=str, nargs='+')
   parser.add_argument('--dst_path', type=str)
-  parser.add_argument('--z_offset', type=int, 
-    help='offset from src & tgt z where dst will be written')
+  parser.add_argument('--z_offsets', type=int, nargs='+',
+    help='offsets from z to evaluate each image from paths')
+  parser.add_argument('--dst_offset', type=int, 
+    help='offset from z where dst will be written')
   parser.add_argument('--threshold', type=float, 
     help='threshold for final binarization of fcorr postprocessing output')
-  parser.add_argument('--operators', nargs=2, type=int,
+  parser.add_argument('--operators', type=int, nargs='+',
     help='tuple of +1,-1 indicating if either/both fcorr should be negated')
   parser.add_argument('--mip', type=int)
   parser.add_argument('--bbox_start', nargs=3, type=int,
@@ -64,25 +65,28 @@ if __name__ == '__main__':
   mip = args.mip
   max_mip = args.max_mip
   pad = args.pad
-  z_offset = args.z_offset
+  z_offsets = args.z_offsets
   threshold = args.threshold
   operators = args.operators
+  dst_offset = args.dst_offset
   print('mip {}'.format(mip))
-  print('z_offset {}'.format(z_offset))
+  print('z_offsets {}'.format(z_offsets))
+  print('dst_offset {}'.format(dst_offset))
   print('threshold {}'.format(threshold))
   print('operators {}'.format(operators))
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
   # Create CloudVolume Manager
-  cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
+  cm = CloudManager(args.paths[0], max_mip, pad, provenance, batch_size=1,
                     size_chunk=256, batch_mip=mip)
 
   # Create src CloudVolumes
-  src = cm.create(args.src_path, data_type='float32', num_channels=1,
-                     fill_missing=True, overwrite=False)
-  tgt = cm.create(args.tgt_path, data_type='float32', num_channels=1,
-                     fill_missing=True, overwrite=False)
+  cv_list = []
+  for path in args.paths:
+    cv = cm.create(path, data_type='float32', num_channels=1,
+                   fill_missing=True, overwrite=False)
+    cv_list.append(cv.path)
 
   # Create dst CloudVolumes
   dst_pre = cm.create(join(args.dst_path, 'pre'), data_type='float32', num_channels=1, 
@@ -96,8 +100,9 @@ if __name__ == '__main__':
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-            t = a.make_fcorr_masks(cm, src.path, tgt.path, dst_pre.path, dst_post.path,
-                                   z, z, z+z_offset, bbox, mip, operators, 
+            z_list = [z+zo for zo in z_offsets]
+            t = a.make_fcorr_masks(cm, cv_list, dst_pre.path, dst_post.path, z_list,
+                                   z+dst_offset, bbox, mip, operators, 
                                    threshold, prefix=prefix)
             yield from t
 
@@ -126,10 +131,4 @@ if __name__ == '__main__':
   print("Sending Tasks use time:", diff)
   print('Running Tasks')
   # wait
-  start = time()
-  #if args.use_sqs_wait:
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing Tasks use time:", diff)
 

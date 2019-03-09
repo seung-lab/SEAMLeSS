@@ -1711,7 +1711,7 @@ class Aligner:
         batch.append(tasks.FilterThreeOpTask(chunk, mask_cv, dst_cv, z, dst_z, mip))
       return batch
 
-  def make_fcorr_masks(self, cm, src, tgt, dst_pre, dst_post, src_z, tgt_z, dst_z, 
+  def make_fcorr_masks(self, cm, cv_list, dst_pre, dst_post, z_list, dst_z, 
                        bbox, mip, operators, threshold, prefix=''):
       chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                       cm.dst_voxel_offsets[mip], mip=mip,
@@ -1720,8 +1720,8 @@ class Aligner:
         prefix = '{}'.format(mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.FcorrMaskTask(src, tgt, dst_pre, dst_post, src_z, tgt_z, 
-                                         dst_z, chunk, mip, operators, threshold, prefix))
+        batch.append(tasks.FcorrMaskTask(cv_list, dst_pre, dst_post, z_list, dst_z, 
+                                         chunk, mip, operators, threshold, prefix))
       return batch
 
   def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, z1_thres,
