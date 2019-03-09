@@ -574,6 +574,43 @@ class ThreeMaskOpTask(RegisteredTask):
     diff = end - start
     print('Task: {:.3f} s'.format(diff))
 
+class FiveMaskOpTask(RegisteredTask):
+  def __init__(self, bbox, fold_cv, slip_cv, tissue_cv, dst_cv, fold_z, slip_z,
+               tissue_z, dst_z, fold_mip, slip_mip, tissue_mip, slip2_cv, slip2_mip, 
+               trans_cv, trans_mip):
+    super(). __init__(bbox, fold_cv, slip_cv, tissue_cv, dst_cv, fold_z, slip_z,
+               tissue_z, dst_z, fold_mip, slip_mip, tissue_mip, slip2_cv, slip2_mip,
+               trans_cv, trans_mip)
+
+  def execute(self, aligner):
+    fold_cv = DCV(self.fold_cv)
+    slip_cv = DCV(self.slip_cv)
+    tissue_cv = DCV(self.tissue_cv)
+    dst_cv = DCV(self.dst_cv)
+    fold_z = self.fold_z
+    slip_z = self.slip_z
+    tissue_z = self.tissue_z
+    dst_z = self.dst_z
+    patch_bbox = deserialize_bbox(self.bbox)
+    fold_mip = self.fold_mip
+    slip_mip = self.slip_mip
+    tissue_mip = self.tissue_mip
+    slip2_cv = DCV(self.slip2_cv)
+    slip2_mip = self.slip2_mip
+    trans_cv = DCV(self.trans_cv)
+    trans_mip = DCV(self.trans_mip)
+    print("\n Mask conjunction \n" )
+    start = time()
+    res = aligner.five_mask_op_chunk(patch_bbox,fold_cv, slip_cv, tissue_cv, fold_z,
+                                     slip_z, tissue_z, fold_mip, slip_mip, tissue_mip
+                                     slip2_cv, slip2_mip)
+    aligner.save_image(res, dst_cv, dst_z, patch_bbox, tissue_mip, to_uint8=True)
+    end = time()
+    diff = end - start
+    print('Task: {:.3f} s'.format(diff))
+
+
+
 class FourMaskOpTask(RegisteredTask):
   def __init__(self, bbox, fold_cv, slip_cv, tissue_cv, dst_cv, fold_z, slip_z,
                tissue_z, dst_z, fold_mip, slip_mip, tissue_mip, slip2_cv, slip2_mip):
@@ -601,11 +638,6 @@ class FourMaskOpTask(RegisteredTask):
                                      slip_z, tissue_z, fold_mip, slip_mip, tissue_mip
                                      slip2_cv, slip2_mip)
     aligner.save_image(res, dst_cv, dst_z, patch_bbox, tissue_mip, to_uint8=True)
-    #with Storage(dst_cv.path) as stor:
-    #  path = 'Mask_op_done/{}/{}'.format(self.prefix,
-    #                                     patch_bbox.stringify(dst_z))
-    #  stor.put_file(path, '')
-    #  print('Marked finished at {}'.format(path))
     end = time()
     diff = end - start
     print('Task: {:.3f} s'.format(diff))

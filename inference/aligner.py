@@ -1705,6 +1705,34 @@ class Aligner:
                                            slip_mip, tissue_mip))
       return batch
 
+  def five_mask_op(self, cm, bbox, fold_cv, slip_cv, tissue_cv, dst_cv,
+                    fold_z, slip_z, tissue_z, dst_z, fold_mip, slip_mip,
+                    tissue_mip, slip2_cv, slip2_mip, trans_cv, trans_mip):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[tissue_mip],
+                                      cm.dst_voxel_offsets[tissue_mip],
+                                      mip=tissue_mip, max_mip=cm.max_mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.FiveMaskOpTask(chunk, fold_cv, slip_cv, tissue_cv, dst_cv,
+                                           fold_z, slip_z, tissue_z, dst_z, fold_mip,
+                                           slip_mip, tissue_mip, slip2_cv, slip2_mip,
+                                           trans_cv, trans_mip))
+      return batch
+
+  def five_mask_op_chunk(self, bbox, fold_cv, slip_cv, tissue_cv, fold_z, slip_z,
+                    tissue_z, fold_mip, slip_mip, tissue_mip, slip2_cv, slip2_mip, trans_cv, trans_mip):
+      fold_mask = self.get_data(fold_cv, fold_z, bbox, src_mip=fold_mip,
+                                dst_mip=tissue_mip, to_float=False, to_tensor=False)
+      slip_mask = self.get_data(slip_cv, slip_z, bbox, src_mip=slip_mip, dst_mip=tissue_mip,
+                                to_float=False, to_tensor=False)
+      tissue_mask = self.get_data(tissue_cv, tissue_z, bbox, src_mip=tissue_mip, dst_mip=tissue_mip,
+                                to_float=False, to_tensor=False)
+      slip2_mask = self.get_data(slip2_cv, slip_z, bbox, src_mip=slip2_mip, dst_mip=tissue_mip,
+                                to_float=False, to_tensor=False)
+      trans_mask = self.get_data(trans_cv, slip_z, bbox, src_mip=trans_mip, dst_mip=tissue_mip,
+                                to_float=False, to_tensor=False)
+      return np.logical_or(np.logical_or(np.logical_or(tissue_mask, np.logical_or(slip_mask,slip2_mask)), fold_mask), trans_mask)
+
 
   def four_mask_op(self, cm, bbox, fold_cv, slip_cv, tissue_cv, dst_cv,
                     fold_z, slip_z, tissue_z, dst_z, fold_mip, slip_mip,
