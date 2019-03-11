@@ -1797,7 +1797,7 @@ class Aligner:
           mask_list.append(mask)
 
       res = np.logical_or(mask_list[0],mask_list[1])
-      for i in range(2:len(mask_list)):
+      for i in range(2,len(mask_list)):
           res = np.logical_or(res, mask_list[i])
       return res
 
