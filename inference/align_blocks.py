@@ -203,11 +203,11 @@ if __name__ == '__main__':
   range_list, odd_even = make_range(block_range, a.threads)
   
   start = time()
-#   for i, irange in enumerate(range_list):
-#       ptask.append(CopyTaskIterator(irange, i*odd_even))
-  
-#   with ProcessPoolExecutor(max_workers=a.threads) as executor:
-#       executor.map(remote_upload, ptask)
+  for i, irange in enumerate(range_list):
+      ptask.append(CopyTaskIterator(irange, i*odd_even))
+
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+      executor.map(remote_upload, ptask)
  
   end = time()
   diff = end - start
@@ -216,7 +216,7 @@ if __name__ == '__main__':
   # wait
   start = time()
   #if args.use_sqs_wait:
-#   a.wait_for_sqs_empty()
+  a.wait_for_sqs_empty()
   end = time()
   diff = end - start
   print("Executing Copy Tasks use time:", diff)
