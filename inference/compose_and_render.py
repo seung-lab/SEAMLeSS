@@ -39,7 +39,11 @@ if __name__ == '__main__':
     help='temporary hack to account for half pixel shifts caused by downsampling')
   parser.add_argument('--section_lookup', type=str, 
     help='path to json file with section specific settings')
+  parser.add_argument('--z_range_path', type=str, 
+    help='path to csv file with list of z indices to use')
   parser.add_argument('--src_path', type=str)
+  parser.add_argument('--info_path', type=str,
+    help='path to CloudVolume to use as template info file')
   parser.add_argument('--field_path', type=str)
   parser.add_argument('--fine_field_path', type=str)
   parser.add_argument('--coarse_field_path', type=str)
@@ -72,9 +76,23 @@ if __name__ == '__main__':
 
   # Compile ranges
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
+  if args.z_range_path:
+    print('Compiling z_range from {}'.format(args.z_range_path))
+    z_range = []
+    with open(args.z_range_path) as f:
+      reader = csv.reader(f, delimiter=',')
+      for k, r in enumerate(reader):
+         if k != 0:
+           z_start = int(r[0])
+           z_stop  = int(r[1])
+           print('adding to z_range {}:{}'.format(z_start, z_stop))
+           z_range.extend(list(range(z_start, z_stop)))
 
   # Create CloudVolume Manager
-  cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
+  template_path = args.src_path
+  if args.info_path:
+    template_path = args.info_path
+  cm = CloudManager(template_path, max_mip, pad, provenance, batch_size=1,
                     size_chunk=chunk_size, batch_mip=src_mip)
 
   # Create src CloudVolumes
