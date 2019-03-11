@@ -1779,6 +1779,29 @@ class Aligner:
         batch.append(tasks.FilterThreeOpTask(chunk, mask_cv, dst_cv, z, dst_z, mip))
       return batch
 
+  def multi_mask_op(self, cm, bbox, mip_list, cv_list, dst_mip, dst_cv, z):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[dst_mip],
+                                      cm.dst_voxel_offsets[dst_mip],
+                                      mip=dst_mip, max_mip=cm.max_mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.MultiMaskOpTask(chunk, mip_list, cv_list, dst_mip,
+                                           dst_cv, z))
+      return batch
+
+  def multi_mask_op_chunk(self, bbox, mip_list, cv_list, dst_mip, z):
+      mask_list = []
+      for cv, mip in zip(cv_list, mip_list):
+          mask = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=dst_mip,
+                               to_float=False, to_tensor=False)
+          mask_list.append(mask)
+
+      res = np.logical_or(mask_list[0],mask_list[1])
+      for i in range(2:len(mask_list)):
+          res = np.logical_or(res, mask_list[i])
+      return res
+
+
 
   def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, z1_thres,
               z2_thres, prefix=''):

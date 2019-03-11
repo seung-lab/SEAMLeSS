@@ -610,7 +610,6 @@ class FiveMaskOpTask(RegisteredTask):
     print('Task: {:.3f} s'.format(diff))
 
 
-
 class FourMaskOpTask(RegisteredTask):
   def __init__(self, bbox, fold_cv, slip_cv, tissue_cv, dst_cv, fold_z, slip_z,
                tissue_z, dst_z, fold_mip, slip_mip, tissue_mip, slip2_cv, slip2_mip):
@@ -641,6 +640,28 @@ class FourMaskOpTask(RegisteredTask):
     end = time()
     diff = end - start
     print('Task: {:.3f} s'.format(diff))
+
+class MultiMaskOpTask(RegisteredTask):
+  def __init__(self, bbox, mip_list, cv_list, dst_mip, dst_cv, z):
+    super(). __init__(bbox, mip_list, cv_list, dst_mip, dst_cv, z)
+
+  def execute(self, aligner):
+    cv_list = []
+    mip_list = self.mip_list
+    for cv in self.cv_list:
+        cv_list.append(DCV(cv))
+    z = self.z
+    patch_bbox = deserialize_bbox(self.bbox)
+    dst_mip = self.dst_mip
+    dst_cv = DCV(self.dst_cv)
+    print("\n Mask conjunction \n" )
+    start = time()
+    res = aligner.multi_mask_op_chunk(patch_bbox, mip_list, cv_list, dst_mip, z)
+    aligner.save_image(res, dst_cv, z, patch_bbox, dst_mip, to_uint8=True)
+    end = time()
+    diff = end - start
+    print('Task: {:.3f} s'.format(diff))
+
 
 class FilterThreeOpTask(RegisteredTask):
   def __init__(self, bbox, mask_cv, dst_cv, z, dst_z, mip):
