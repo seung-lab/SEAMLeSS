@@ -1,3 +1,19 @@
+"""
+Stitch even and odd blocks together
+T Macrina
+190305
+
+TODO: This script does not properly handle the last block (reverse compose)
+      or the first block (forward compose). Proper handling should be put
+      in place.
+"""
+import gevent.monkey
+gevent.monkey.patch_all()
+
+from concurrent.futures import ProcessPoolExecutor
+import taskqueue
+from taskqueue import TaskQueue, GreenTaskQueue
+
 import sys
 import torch
 import json
@@ -14,6 +30,24 @@ def print_run(diff, n_tasks):
   if n_tasks > 0:
     print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
 
+def make_range(block_range, part_num):
+    rangelen = len(block_range)
+    if(rangelen < part_num):
+        srange =1
+        part = rangelen
+    else:
+        part = part_num
+        srange = rangelen//part
+    if srange%2 == 0:
+        odd_even = 0
+    else:
+        odd_even = 1
+    range_list = []
+    for i in range(part-1):
+        range_list.append(block_range[i*srange:(i+1)*srange])
+    range_list.append(block_range[(part-1)*srange:])
+    return range_list, odd_even
+
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--model_lookup', type=str,
@@ -24,15 +58,26 @@ if __name__ == '__main__':
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--tgt_radius', type=int, default=3,
+  parser.add_argument('--overlap', type=int, default=3,
+    help='int for number of sections in overlap between even & odd blocks')
+  parser.add_argument('--stitching_vvote', type=int, default=3,
     help='int for number of sections to include in vector voting')
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
+  parser.add_argument('--decay_size', type=int, default=10)
+  parser.add_argument('--min_interface', type=int, default=0,
+    help='the minimum index of a block to be used for broadcasting')
   parser.add_argument('--odd_start', 
-     help='indicate that the first block is odd (default is even)',
-     action='store_true')
+    help='indicate that the first block is odd (default is even)',
+    action='store_true')
+  parser.add_argument('--forward_compose', 
+    help='stitch blocks by broadcast composing vector field from previous block across' \
+         ' current block (default is to reverse compose from next block across current)',
+    action='store_true')
+  parser.add_argument('--suffix', type=str, default='',
+    help='string to append to directory names')
   args = parse_args(parser)
   # Only compute matches to previous sections
   a = get_aligner(args)
@@ -72,21 +117,33 @@ if __name__ == '__main__':
 
   # Compile ranges
   block_range = range(args.z_start, args.z_stop, args.block_size)
-  overlap = args.tgt_radius
-  full_range = range(args.block_size + 2*overlap)
+  overlap = args.overlap
+  stitching_vvote = args.stitching_vvote 
+  full_range = range(args.block_size + overlap + stitching_vvote)
 
   copy_range = full_range[-overlap:]
-  overlap_range = full_range[-2*overlap:-overlap][::-1]
-  copy_field_range = range(overlap, args.block_size+overlap)
+  overlap_range = full_range[-overlap-stitching_vvote:-overlap][::-1]
+  decay_start = overlap
+  decay_stop = overlap + args.decay_size
   broadcast_field_range = range(overlap, args.block_size+overlap)
-  overlap_offsets = [i for i in range(1, overlap+1)]
+  overlap_vvote_offsets = [i for i in range(1, overlap+1)]
+  broadcast_vvote_offsets = [i for i in range(1, stitching_vvote+1)]
+  if args.forward_compose:
+    copy_range = full_range[:overlap]
+    overlap_range = full_range[overlap:overlap+stitching_vvote]
+    broadcast_field_range = range(overlap, args.block_size+overlap)
+    overlap_vvote_offsets = [-i for i in range(1, overlap+1)]
+    broadcast_vvote_offsets = [-i for i in range(1, stitching_vvote+1)]
 
+  print('block_range {}'.format(block_range))
   print('overlap_range {}'.format(overlap_range))
-  print('overlap_offsets {}'.format(overlap_offsets))
+  print('overlap_vvote_offsets {}'.format(overlap_vvote_offsets))
+  print('broadcast_vvote_offsets {}'.format(broadcast_vvote_offsets))
+  print('broadcast_field_range {}'.format(broadcast_field_range))
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
-                  fill_missing=True, overwrite=False)
+                  fill_missing=True, overwrite=False).path
   src_mask_cv = None
   tgt_mask_cv = None
 
@@ -98,159 +155,259 @@ if __name__ == '__main__':
   for block_type in block_types:
     dst = cm.create(join(args.dst_path, 'image_blocks', block_type), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
-                    overwrite=False)
+                    overwrite=False).path
     dsts[block_type] = dst 
 
   # Create field CloudVolumes
   pair_fields = {}
-  for z_offset in overlap_offsets:
+  for z_offset in overlap_vvote_offsets:
     pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
-                                           'stitch_reverse', str(z_offset)), 
+                                           'stitch{}'.format(args.suffix), str(z_offset)), 
                                       data_type='int16', num_channels=2,
-                                      fill_missing=True, overwrite=True)
-  temp_vvote_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'vvote', 'field'), 
+                                      fill_missing=True, overwrite=True).path
+  temp_vvote_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format(args.suffix), 
+                                    'vvote', 'field'), 
                                  data_type='int16', num_channels=2,
-                                 fill_missing=True, overwrite=True)
-  temp_vvote_image = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'vvote', 'image'), 
+                                 fill_missing=True, overwrite=True).path
+  temp_vvote_image = cm.create(join(args.dst_path, 'field', 'stitch{}'.format(args.suffix), 
+                                    'vvote', 'image'), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
-                    overwrite=True)
+                    overwrite=True).path
   stitch_fields = {}
-  for z_offset in overlap_offsets:
+  for z_offset in broadcast_vvote_offsets:
     stitch_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
-                                             'stitch_reverse', 'vvote', str(z_offset)), 
+                                             'stitch{}'.format(args.suffix), 
+                                             'vvote', str(z_offset)), 
                                       data_type='int16', num_channels=2,
-                                      fill_missing=True, overwrite=True)
-  broadcasting_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 
+                                      fill_missing=True, overwrite=True).path
+  broadcasting_field = cm.create(join(args.dst_path, 'field', 
+                                      'stitch{}'.format(args.suffix), 
                                       'broadcasting'),
                                  data_type='int16', num_channels=2,
-                                 fill_missing=True, overwrite=True)
+                                 fill_missing=True, overwrite=True).path
   block_field = cm.create(join(args.dst_path, 'field', 'vvote_{}'.format(overlap)), 
                           data_type='int16', num_channels=2,
-                          fill_missing=True, overwrite=False)
+                          fill_missing=True, overwrite=False).path
 
-  compose_field = cm.create(join(args.dst_path, 'field', 'stitch_reverse', 'compose'),
+  compose_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format(args.suffix), 
+                                 'compose'),
                           data_type='int16', num_channels=2,
-                          fill_missing=True, overwrite=True)
-  final_dst = cm.create(join(args.dst_path, 'image_compose_reverse'), 
+                          fill_missing=True, overwrite=True).path
+  final_dst = cm.create(join(args.dst_path, 'image_stitch{}'.format(args.suffix)), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
-                    overwrite=True)
+                    overwrite=True).path
 
   ###################################################################
   # Create multiple fields aligning current block to next block #
   ###################################################################
 
   # Copy initial overlap sections (for this test) 
-  batch = []
-  for block_offset in copy_range:
-    prefix = block_offset
-    for i, block_start in enumerate(block_range):
-      next_block_type = block_types[(i+1) % 2]
-      next_block = dsts[next_block_type]
-      z = block_start + block_offset 
-      bbox = bbox_lookup[z]
-      t = a.copy(cm, next_block, temp_vvote_image, z, z, bbox, mip, 
-                     is_field=False, mask_cv=src_mask_cv, mask_mip=src_mask_mip, 
-                     mask_val=src_mask_val, prefix=prefix)
-      batch.extend(t)
+
+  def remote_upload(tasks):
+      with GreenTaskQueue(queue_name=args.queue_name) as tq:
+          tq.insert_all(tasks)
+
+  class CopyTaskIteratorImage():
+      def __init__(self, brange, odd_even):
+          self.brange = brange
+          self.odd_even = odd_even
+      def __iter__(self):
+          for block_offset in copy_range:
+            prefix = block_offset
+            for i, block_start in enumerate(self.brange):
+              next_block_type = block_types[(i+self.odd_even+1) % 2]
+              next_block = dsts[next_block_type]
+              z = block_start + block_offset 
+              bbox = bbox_lookup[z]
+              t = a.copy(cm, next_block, temp_vvote_image, z, z, bbox, mip, 
+                             is_field=False, mask_cv=src_mask_cv, mask_mip=src_mask_mip, 
+                             mask_val=src_mask_val, prefix=prefix) 
+              yield from t
 
   print('Scheduling CopyTasks')
+  range_list, odd_even = make_range(block_range, a.threads)
+
+  ptask = []
   start = time()
-  run(a, batch)
+  for i, irange in enumerate(range_list):
+      ptask.append(CopyTaskIteratorImage(irange, i*odd_even))
+
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+      executor.map(remote_upload, ptask)
   end = time()
   diff = end - start
-  print_run(diff, len(batch))
+  print("Sending Copy Tasks use time:", diff)
   # wait
   start = time()
   a.wait_for_sqs_empty()
   end = time()
   diff = end - start
-  print_run(diff, len(batch))
+  print("Executing Copy Tasks use time:", diff) 
+
+  class CopyTaskIteratorField():
+      def __init__(self, brange, odd_even):
+          self.brange = brange
+          self.odd_even = odd_even
+      def __iter__(self):
+          for block_offset in copy_range:
+            prefix = block_offset
+            for i, block_start in enumerate(self.brange):
+              next_block_type = block_types[(i+self.odd_even+1) % 2]
+              next_block = dsts[next_block_type]
+              z = block_start + block_offset 
+              bbox = bbox_lookup[z]
+              t = a.copy(cm, block_field, temp_vvote_field, z, z, bbox, mip, 
+                             is_field=True, prefix=prefix) 
+              yield from t
+
+  print('Scheduling CopyTasks')
+  range_list, odd_even = make_range(block_range, a.threads)
+
+  ptask = []
+  start = time()
+  for i, irange in enumerate(range_list):
+      ptask.append(CopyTaskIteratorField(irange, i*odd_even))
+
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+      executor.map(remote_upload, ptask)
+  end = time()
+  diff = end - start
+  print("Sending Copy Tasks use time:", diff)
+  # wait
+  start = time()
+  a.wait_for_sqs_empty()
+  end = time()
+  diff = end - start
+  print("Executing Copy Tasks use time:", diff) 
 
   # Vector vote the last sections of current block with first sections of next block
   for block_offset in overlap_range:
     print('BLOCK OFFSET {}'.format(block_offset))
-    batch = []
     prefix = block_offset
-    for i, block_start in enumerate(block_range):
-      current_block_type = block_types[i % 2]
-      next_block_type = block_types[(i+1) % 2]
-      current_block = dsts[current_block_type]
-      next_block = dsts[next_block_type]
-      z = block_start + block_offset 
-      bbox = bbox_lookup[z]
-      model_path = model_lookup[z]
-      for z_offset in overlap_offsets:
-        field = pair_fields[z_offset]
-        t = a.compute_field(cm, model_path, current_block, temp_vvote_image, field, 
-                            z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
-                            src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                            tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                            tgt_mask_val=src_mask_val, prefix=prefix,
-                            prev_field_cv=block_field, prev_field_z=z,
-                            prev_field_inverse=True)
-        batch.extend(t)
+
+    class ComputeFieldTaskIterator(object):
+        def __init__(self, brange, odd_even):
+            self.brange = brange
+            self.odd_even = odd_even
+        def __iter__(self):
+            for i, block_start in enumerate(self.brange): 
+              current_block_type = block_types[(i+self.odd_even)% 2]
+              next_block_type = block_types[(i+self.odd_even+1) % 2]
+              current_block = dsts[current_block_type]
+              next_block = dsts[next_block_type]
+              z = block_start + block_offset 
+              prev_field_z = z
+              prev_field_cv = temp_vvote_field
+              prev_field_inverse = False
+              if not args.forward_compose:
+                prev_field_cv = block_field
+                prev_field_z = z
+                prev_field_inverse = True 
+                if block_offset != overlap_range[0]:
+                  prev_field_cv = temp_vvote_field
+                  prev_field_z = z + 1
+                  prev_field_inverse = False
+              bbox = bbox_lookup[z]
+              model_path = model_lookup[z]
+              for z_offset in overlap_vvote_offsets:
+                field = pair_fields[z_offset]
+                if args.forward_compose:
+                  prev_field_z = z+z_offset
+                t = a.compute_field(cm, model_path, current_block, temp_vvote_image, field, 
+                                    z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
+                                    src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                                    tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+                                    tgt_mask_val=src_mask_val, prefix=prefix,
+                                    prev_field_cv=prev_field_cv, prev_field_z=prev_field_z,
+                                    prev_field_inverse=prev_field_inverse)
+                yield from t
 
     print('\nScheduling ComputeFieldTasks')
-    start = time()
-    run(a, batch)
+    start = time() 
+    ptask = []
+    for i, irange in enumerate(range_list):
+        ptask.append(ComputeFieldTaskIterator(irange, i*odd_even))
+
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
     end = time()
     diff = end - start
-    print_run(diff, len(batch))
+    print("Sending Compute Field Tasks use time:", diff)
+    print('Running Compute field')
     start = time()
     # wait 
     print('block offset {}'.format(block_offset))
     a.wait_for_sqs_empty()
     end = time()
     diff = end - start
-    print_run(diff, len(batch))
+    print("Executing Compute Tasks use time:", diff)
 
-    batch = []
-    for block_start in block_range:
-      z = block_start + block_offset 
-      bbox = bbox_lookup[z]
-      t = a.vector_vote(cm, pair_fields, temp_vvote_field, z, bbox, mip, inverse=False, 
-                        serial=True, prefix=prefix)
-      batch.extend(t)
-
+    class VvoteTaskIterator(object):
+        def __init__(self, brange):
+            self.brange = brange
+        def __iter__(self):
+            for block_start in self.brange:
+              z = block_start + block_offset
+              bbox = bbox_lookup[z]
+              t = a.vector_vote(cm, pair_fields, temp_vvote_field,
+                                z, bbox, mip, inverse=False,
+                                serial=True, prefix=prefix, softmin_temp=2**mip,
+                                blur_sigma=1)
+              yield from t
     print('\nScheduling VectorVoteTasks')
+    ptask = []
     start = time()
-    run(a, batch)
+    for irange in range_list:
+        ptask.append(VvoteTaskIterator(irange))
+
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
     end = time()
     diff = end - start
-    print_run(diff, len(batch))
+    print("Sending Vvote Tasks for vvote use time:", diff)
+    print('Run vvoting')
     start = time()
     # wait 
     print('block offset {}'.format(block_offset))
     a.wait_for_sqs_empty()
     end = time()
     diff = end - start
-    print_run(diff, len(batch))
+    print("Executing vvote use time:", diff)
 
-    batch = []
-    task_counter = {}
-    for i, block_start in enumerate(block_range):
-      current_block_type = block_types[i % 2]
-      current_block = dsts[current_block_type]
-      z = block_start + block_offset 
-      bbox = bbox_lookup[z]
-      t = a.render(cm, current_block, temp_vvote_field, temp_vvote_image, 
-                   src_z=z, field_z=z, dst_z=z, bbox=bbox, src_mip=mip, field_mip=mip, 
-                   mask_cv=src_mask_cv, mask_val=src_mask_val, mask_mip=src_mask_mip,
-                   prefix=prefix)
-      batch.extend(t)
-
+    class RenderTaskIterator(object):
+        def __init__(self, brange, odd_even):
+            self.brange = brange
+            self.odd_even = odd_even
+        def __iter__(self):
+            for i, block_start in enumerate(self.brange):
+              current_block_type = block_types[(i+self.odd_even) % 2]
+              current_block = dsts[current_block_type]
+              z = block_start + block_offset
+              bbox = bbox_lookup[z]
+              t = a.render(cm, current_block, temp_vvote_field, temp_vvote_image, 
+                           src_z=z, field_z=z, dst_z=z, bbox=bbox, src_mip=mip, field_mip=mip, 
+                           mask_cv=src_mask_cv, mask_val=src_mask_val, mask_mip=src_mask_mip,
+                           prefix=prefix)
+              yield from t
     print('\nScheduling RenderTasks')
+    ptask = []
     start = time()
-    run(a, batch)
+    for i, irange in enumerate(range_list):
+        ptask.append(RenderTaskIterator(irange, i*odd_even))
+
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+
     end = time()
     diff = end - start
-    print_run(diff, len(batch))
+    print("Sending Render Tasks use time:", diff)
+    print('Run rendering')
     start = time()
     print('block offset {}'.format(block_offset))
     a.wait_for_sqs_empty()
     end = time()
     diff = end - start
-    print_run(diff, len(batch))
+    print("Executing Rendering use time:", diff)
 
   #############################################################################
   # Combine multiple fields aligning current block to previous block into one #
@@ -258,102 +415,168 @@ if __name__ == '__main__':
 
   # Copy vvote fields to be at the same z index, so they can be vvoted again
   # TODO: Modify the ComputeFieldTask to make dst_z a parameter
-  batch = []
-  for i, block_start in enumerate(block_range):
-    prefix = block_start
-    for j, block_offset in enumerate(overlap_range):
-      z = block_start + block_offset
-      z_offset = j+1
-      stitch_field = stitch_fields[z_offset]
-      bbox = bbox_lookup[z]
-      t = a.copy(cm, temp_vvote_field, stitch_field, z, block_start, bbox, mip, 
-                     is_field=True, prefix=prefix)
-      batch.extend(t)
 
-  run(a, batch)
+  class CopyTaskIteratorII():
+      def __init__(self, brange, odd_even):
+          self.brange = brange
+          self.odd_even = odd_even
+      def __iter__(self):
+          for i, block_start in enumerate(self.brange):
+            prefix = block_start
+            for j, block_offset in enumerate(overlap_range):
+              z = block_start + block_offset
+              z_offset = j+1
+              if args.forward_compose:
+                z_offset = -1*z_offset
+              stitch_field = stitch_fields[z_offset]
+              bbox = bbox_lookup[z]
+              t = a.copy(cm, temp_vvote_field, stitch_field, z, block_start, bbox, mip, 
+                             is_field=True, prefix=prefix)
+              yield from t
+  ptask = []
+  start = time() 
+  for i, irange in enumerate(range_list):
+      ptask.append(CopyTaskIteratorII(irange, i*odd_even))
+
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+      executor.map(remote_upload, ptask)
+
+  end = time()
+  diff = end - start
+  print("Sending Copy Tasks use time:", diff)
   start = time()
   # wait
   a.wait_for_sqs_empty()
   end = time()
   diff = end - start
-  print_run(diff, len(batch))
+  print("Executing Copy task use time:", diff)
 
   # Vector vote these fields together to remove any folds
-  batch = []
-  for block_start in block_range:
-    z = block_start
-    bbox = bbox_lookup[z]
-    t = a.vector_vote(cm, stitch_fields, broadcasting_field, z, bbox, mip, inverse=False, 
-                      serial=True, prefix=prefix)
-    batch.extend(t)
+  class VvoteTaskIteratorII(object):
+    def __init__(self, brange):
+        self.brange = brange
+    def __iter__(self):
+        for block_start in self.brange:
+          z = block_start
+          bbox = bbox_lookup[z]
+          t = a.vector_vote(cm, stitch_fields, broadcasting_field,
+                            z, bbox, mip, inverse=False,
+                            serial=True, prefix=prefix, softmin_temp=2**mip,
+                            blur_sigma=1)
+          yield from t
 
   print('\nScheduling VectorVoteTasks')
+  ptask = []
   start = time()
-  run(a, batch)
+  for irange in range_list:
+      ptask.append(VvoteTaskIteratorII(irange))
+
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+      executor.map(remote_upload, ptask)
   end = time()
   diff = end - start
-  print_run(diff, len(batch))
+  print("Sending Vvote Tasks for vvote use time:", diff)
+  print('Run vvoting')
+ 
   start = time()
   # wait 
   a.wait_for_sqs_empty()
   end = time()
   diff = end - start
-  print_run(diff, len(batch))
-
+  print("Executing vvtote use time:", diff)
 
   ###########################
   # Serial broadcast script #
   ###########################
   
   # Compose next block with last vector field from the previous composed block
-  n_tasks = 0
-  prefix = '' 
-  start = time()
-  # for i, block_start in enumerate(block_range[1:]):
-  for i, block_start in enumerate(block_range):
-    batch = []
-    # z_broadcast = block_start + overlap - 1
-    z_broadcast = block_start 
-    for block_offset in broadcast_field_range:
-      # decay the composition over the length of the block
-      fixed_z = float(broadcast_field_range[0])
-      factor = (block_offset - fixed_z) / (broadcast_field_range[-1] - fixed_z)
-      z = block_start + block_offset
-      bbox = bbox_lookup[z]
-      t = a.compose(cm, broadcasting_field, block_field, compose_field, z_broadcast, z, z, 
-                    bbox, mip, mip, mip, factor, prefix=prefix)
-      batch.extend(t)
-      n_tasks += len(t)
 
+  def interpolate(x, start, stop):
+    """Return interpolation value of x for range(start, stop)
+
+    Args
+       x: int location
+       start: location corresponding to 1
+       stop: location corresponding to 0 
+    """
+    assert(stop != start)
+    d = (stop - x) / (stop - start) 
+    return min(max(d, 0.), 1.)
+
+  broadcast_range_list, brodd_even = make_range(broadcast_field_range, a.threads)
+  prefix = '' 
+  for j, block_start in enumerate(block_range):
+    # z_broadcast = block_start
+    i = max(j - int(math.ceil(args.decay_size / args.block_size)) + 1, args.min_interface)
+    block_starts = block_range[i:j+1]
+    bcast_tuples = [(x+decay_start, x+decay_stop) for x in block_starts] 
+    class ComposeTaskIterator(object):
+      def __init__(self, brange):
+        self.brange = brange
+      def __iter__(self):
+        for block_offset in self.brange:
+          z = block_start + block_offset
+          print('z {}'.format(z))
+          factors = [interpolate(z, bstart, bstop) for (bstart, bstop) in bcast_tuples]
+          factors += [1.]
+          print('factors {}'.format(factors))
+          bbox = bbox_lookup[z]
+          cv_list = [broadcasting_field]*len(block_starts) + [block_field]
+          z_list = list(block_starts) + [z]
+          t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox, 
+                              mip, mip, factors, pad, prefix=prefix)
+          yield from t
+
+    ptask = []
+    start = time()
+    for irange in broadcast_range_list:
+        print('irange {}'.format(irange))
+        ptask.append(ComposeTaskIterator(irange))
+
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
     print('Scheduling compose for block_start {}, block {} / {}'.format(block_start, i+1, 
                                                                     len(block_range[1:])))
-    start = time()
-    run(a, batch)
     end = time()
     diff = end - start
-    print_run(diff, len(batch))
+    print("Sending Compose Tasks use time:", diff)
   # wait
+  start = time()
   a.wait_for_sqs_empty()
   end = time()
   diff = end - start
-  print_run(diff, len(batch))
+  print("Executing Compose tasks use time:", diff)
 
   prefix = ''
   start = time()
   for i, block_start in enumerate(block_range):
-    batch = []
-    for block_offset in broadcast_field_range:
-      z = block_start + block_offset 
-      bbox = bbox_lookup[z]
-      t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
-                   bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
-      batch.extend(t)
-
+    class RenderTaskIteratorII(object):
+        def __init__(self, brange):
+            self.brange = brange
+        def __iter__(self): 
+            for block_offset in self.brange:
+              z = block_start + block_offset 
+              bbox = bbox_lookup[z]
+              t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
+                           bbox=bbox, src_mip=mip, field_mip=mip, prefix=prefix)
+              yield from t
     print('Scheduling render for block_start {}, block {} / {}'.format(block_start, i+1, 
                                                                     len(block_range[1:])))
     start = time()
-    run(a, batch)
+    ptask = []
+    for irange in broadcast_range_list:
+        ptask.append(RenderTaskIteratorII(irange))
+  
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
     end = time()
     diff = end - start
-    print_run(diff, len(batch))
+    print("Sending Render Tasks use time:", diff)
+ 
+  start = time()
+  # wait 
+  a.wait_for_sqs_empty()
+  end = time()
+  diff = end - start
+  print("Executing Rendering for copied range use time:", diff)
 
