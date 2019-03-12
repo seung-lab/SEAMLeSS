@@ -3,7 +3,7 @@ gevent.monkey.patch_all()
 
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
-from taskqueue import TaskQueue, GreenTaskQueue
+from taskqueue import TaskQueue, GreenTaskQueue 
 
 import sys
 import torch
@@ -35,6 +35,14 @@ def make_range(block_range, part_num):
         range_list.append(block_range[i*srange:(i+1)*srange])
     range_list.append(block_range[(part-1)*srange:])
     return range_list
+ 
+def ranges_overlap(a_pair, b_pair):
+  a_start, a_stop = a_pair
+  b_start, b_stop = b_pair
+  return ((b_start <= a_start and b_stop >= a_start) or
+         (b_start >= a_start and b_stop <= a_stop) or
+         (b_start <= a_stop  and b_stop >= a_stop))
+
 
 if __name__ == '__main__':
   parser = get_argparser()
@@ -106,16 +114,17 @@ if __name__ == '__main__':
   even_odd_range = [i % 2 for i in range(len(block_range))]
   if args.z_range_path:
     print('Compiling z_range from {}'.format(args.z_range_path))
+    block_endpoints = range(args.z_start, args.z_stop+args.block_size, args.block_size)
+    block_pairs = list(zip(block_endpoints[:-1], block_endpoints[1:]))
     tmp_block_range = []
     tmp_even_odd_range = []
     with open(args.z_range_path) as f:
       reader = csv.reader(f, delimiter=',')
       for k, r in enumerate(reader):
          if k != 0:
-           z_start = int(r[0])
-           z_stop  = int(r[1])
-           print('Filtering block_range by {},{}'.format(z_start, z_stop))
-           block_filter = [(b > z_start and b < z_stop) for b in block_range]
+           z_pair = int(r[0]), int(r[1])
+           print('Filtering block_range by {}'.format(z_pair))
+           block_filter = [ranges_overlap(z_pair, b_pair) for b_pair in block_pairs]
            affected_blocks = list(compress(block_range, block_filter))
            affected_even_odd = list(compress(even_odd_range, block_filter))
            print('Affected block_starts {}'.format(affected_blocks))
@@ -123,6 +132,9 @@ if __name__ == '__main__':
            tmp_even_odd_range.extend(affected_even_odd)
     block_range = tmp_block_range
     even_odd_range = tmp_even_odd_range
+
+  print('block_range {}'.format(block_range))
+  print('even_odd_range {}'.format(even_odd_range))
 
   overlap = args.tgt_radius
   full_range = range(args.block_size + overlap)
@@ -160,11 +172,11 @@ if __name__ == '__main__':
   # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius 
   dsts = {}
   block_types = ['even', 'odd']
-  for block_type in block_types:
+  for i, block_type in enumerate(block_types):
     dst = cm.create(join(args.dst_path, 'image_blocks', block_type), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True)
-    dsts[block_type] = dst.path 
+    dsts[i] = dst.path 
 
   # Create field CloudVolumes
   serial_fields = {}
@@ -207,6 +219,7 @@ if __name__ == '__main__':
           self.brange = brange
           self.even_odd = even_odd
       def __iter__(self):
+          print(self.brange)
           for block_offset in copy_range:
             prefix = block_offset
             for block_start, even_odd in zip(self.brange, self.even_odd):
@@ -221,10 +234,12 @@ if __name__ == '__main__':
   ptask = []
   range_list = make_range(block_range, a.threads)
   even_odd_list = make_range(even_odd_range, a.threads)
+  print('range_list {}'.format(range_list))
+  print('even_odd_list {}'.format(even_odd_list))
   
   start = time()
-  for i, irange in enumerate(range_list):
-      ptask.append(CopyTaskIterator(irange, even_odd_list))
+  for irange, ieven_odd in zip(range_list, even_odd_list):
+      ptask.append(CopyTaskIterator(irange, ieven_odd))
 
   with ProcessPoolExecutor(max_workers=a.threads) as executor:
       executor.map(remote_upload, ptask)
@@ -268,8 +283,8 @@ if __name__ == '__main__':
     ptask = []
     start = time()
     print("block_range", block_range)
-    for i, irange in enumerate(range_list):
-        ptask.append(ComputeFieldTaskIterator(irange, even_odd_list))
+    for irange, ieven_odd in zip(range_list, even_odd_list):
+        ptask.append(ComputeFieldTaskIterator(irange, ieven_odd))
     print("-----ptask len is", len(ptask), a.threads) 
     with ProcessPoolExecutor(max_workers=a.threads) as executor:
         executor.map(remote_upload, ptask)
@@ -301,8 +316,8 @@ if __name__ == '__main__':
                 yield from t
     ptask = []
     start = time()
-    for i, irange in enumerate(range_list):
-        ptask.append(RenderTaskIterator(irange, even_odd_list))
+    for irange, ieven_odd in zip(range_list, even_odd_list):
+        ptask.append(RenderTaskIterator(irange, ieven_odd))
     
     with ProcessPoolExecutor(max_workers=a.threads) as executor:
         executor.map(remote_upload, ptask)
@@ -344,8 +359,8 @@ if __name__ == '__main__':
                     yield from t
     ptask = []
     start = time()
-    for i, irange in enumerate(range_list):
-        ptask.append(ComputeFieldTaskIteratorII(irange, even_odd_list))
+    for irange, ieven_odd in zip(range_list, even_odd_list):
+        ptask.append(ComputeFieldTaskIteratorII(irange, ieven_odd))
     
     with ProcessPoolExecutor(max_workers=a.threads) as executor:
         executor.map(remote_upload, ptask)
@@ -407,8 +422,8 @@ if __name__ == '__main__':
                 yield from t
     ptask = []
     start = time()
-    for i, irange in enumerate(range_list):
-        ptask.append(RenderTaskIteratorII(irange, even_odd_list))
+    for irange, ieven_odd in zip(range_list, even_odd_list):
+        ptask.append(RenderTaskIteratorII(irange, ieven_odd))
     
     with ProcessPoolExecutor(max_workers=a.threads) as executor:
         executor.map(remote_upload, ptask)
