@@ -162,42 +162,42 @@ if __name__ == '__main__':
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
           tq.insert_all(tasks)  
  
-  # class CopyTaskIteratorImage():
-  #     def __init__(self, brange, even_odd):
-  #         self.brange = brange
-  #         self.even_odd = even_odd
-  #     def __iter__(self):
-  #         for block_offset in copy_range:
-  #           prefix = block_offset
-  #           for block_start, even_odd in zip(self.brange, self.even_odd):
-  #             src = srcs[even_odd]
-  #             dst = dsts[even_odd]
-  #             z = block_start + block_offset
-  #             bbox = bbox_lookup[z]
-  #             print("src {}\n"
-  #                   "dst {}\n"
-  #                   "src_z {}, dst_z {}\n".format(src, dst, z, z))
-  #             t =  a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, prefix=prefix)
-  #             yield from t 
+  class CopyTaskIteratorImage():
+      def __init__(self, brange, even_odd):
+          self.brange = brange
+          self.even_odd = even_odd
+      def __iter__(self):
+          for block_offset in copy_range:
+            prefix = block_offset
+            for block_start, even_odd in zip(self.brange, self.even_odd):
+              src = srcs[even_odd]
+              dst = dsts[even_odd]
+              z = block_start + block_offset
+              bbox = bbox_lookup[z]
+              print("src {}\n"
+                    "dst {}\n"
+                    "src_z {}, dst_z {}\n".format(src, dst, z, z))
+              t =  a.copy(cm, src, dst, z, z, bbox, mip, is_field=False, prefix=prefix)
+              yield from t 
 
-  # print('Scheduling CopyTasksImage')
-  # ptask = []
+  print('Scheduling CopyTasksImage')
+  ptask = []
   range_list = make_range(block_range, a.threads)
-  # even_odd_list = make_range(even_odd_range, a.threads)
-  # print('range_list {}'.format(range_list))
-  # print('even_odd_list {}'.format(even_odd_list))
-  # 
-  # start = time()
-  # for irange, ieven_odd in zip(range_list, even_odd_list):
-  #     ptask.append(CopyTaskIteratorImage(irange, ieven_odd))
+  even_odd_list = make_range(even_odd_range, a.threads)
+  print('range_list {}'.format(range_list))
+  print('even_odd_list {}'.format(even_odd_list))
+  
+  start = time()
+  for irange, ieven_odd in zip(range_list, even_odd_list):
+      ptask.append(CopyTaskIteratorImage(irange, ieven_odd))
 
-  # with ProcessPoolExecutor(max_workers=a.threads) as executor:
-  #     executor.map(remote_upload, ptask)
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+      executor.map(remote_upload, ptask)
  
-  # end = time()
-  # diff = end - start
-  # print("Sending CopyTasksImage use time:", diff)
-  # print('Run CopyTasksImage; no waiting')
+  end = time()
+  diff = end - start
+  print("Sending CopyTasksImage use time:", diff)
+  print('Run CopyTasksImage; no waiting')
  
   class CopyTaskIteratorField():
       def __init__(self, brange):
@@ -211,7 +211,7 @@ if __name__ == '__main__':
               print("src_field {}\n"
                     "dst_field {}\n"
                     "src_z {}, dst_z {}\n".format(src, dst, z, z))
-              t = a.copy(cm, src_field, dst_field, z, z, bbox, mip, 
+              t = a.copy(cm, src_field.path, dst_field.path, z, z, bbox, mip, 
                          is_field=True, prefix=prefix) 
               yield from t
 
