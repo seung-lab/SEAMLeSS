@@ -1655,7 +1655,7 @@ class Aligner:
                              to_float=False, to_tensor=True)
       z2mask = self.get_data(cv2, z2, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True)
-      
+
       z1mask1_bin = torch.zeros(z1mask1.shape)
       z1mask2_bin = torch.zeros(z1mask2.shape)
       z2mask_bin = torch.zeros(z2mask.shape)
@@ -1686,7 +1686,6 @@ class Aligner:
         batch.append(tasks.MaskOutTask(cv, mip, z, chunk))
       return batch
 
-
   def get_ones(self, bbox, mip):
       x_range = bbox.x_range(mip=mip)
       y_range = bbox.y_range(mip=mip)
@@ -1704,35 +1703,6 @@ class Aligner:
                                            fold_z, slip_z, tissue_z, dst_z, fold_mip,
                                            slip_mip, tissue_mip))
       return batch
-
-  def five_mask_op(self, cm, bbox, fold_cv, slip_cv, tissue_cv, dst_cv,
-                    fold_z, slip_z, tissue_z, dst_z, fold_mip, slip_mip,
-                    tissue_mip, slip2_cv, slip2_mip, trans_cv, trans_mip):
-      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[tissue_mip],
-                                      cm.dst_voxel_offsets[tissue_mip],
-                                      mip=tissue_mip, max_mip=cm.max_mip)
-      batch = []
-      for chunk in chunks:
-        batch.append(tasks.FiveMaskOpTask(chunk, fold_cv, slip_cv, tissue_cv, dst_cv,
-                                           fold_z, slip_z, tissue_z, dst_z, fold_mip,
-                                           slip_mip, tissue_mip, slip2_cv, slip2_mip,
-                                           trans_cv, trans_mip))
-      return batch
-
-  def five_mask_op_chunk(self, bbox, fold_cv, slip_cv, tissue_cv, fold_z, slip_z,
-                    tissue_z, fold_mip, slip_mip, tissue_mip, slip2_cv, slip2_mip, trans_cv, trans_mip):
-      fold_mask = self.get_data(fold_cv, fold_z, bbox, src_mip=fold_mip,
-                                dst_mip=tissue_mip, to_float=False, to_tensor=False)
-      slip_mask = self.get_data(slip_cv, slip_z, bbox, src_mip=slip_mip, dst_mip=tissue_mip,
-                                to_float=False, to_tensor=False)
-      tissue_mask = self.get_data(tissue_cv, tissue_z, bbox, src_mip=tissue_mip, dst_mip=tissue_mip,
-                                to_float=False, to_tensor=False)
-      slip2_mask = self.get_data(slip2_cv, slip_z, bbox, src_mip=slip2_mip, dst_mip=tissue_mip,
-                                to_float=False, to_tensor=False)
-      trans_mask = self.get_data(trans_cv, slip_z, bbox, src_mip=trans_mip, dst_mip=tissue_mip,
-                                to_float=False, to_tensor=False)
-      return np.logical_or(np.logical_or(np.logical_or(tissue_mask, np.logical_or(slip_mask,slip2_mask)), fold_mask), trans_mask)
-
 
   def four_mask_op(self, cm, bbox, fold_cv, slip_cv, tissue_cv, dst_cv,
                     fold_z, slip_z, tissue_z, dst_z, fold_mip, slip_mip,
@@ -1800,8 +1770,6 @@ class Aligner:
       for i in range(2,len(mask_list)):
           res = np.logical_or(res, mask_list[i])
       return res
-
-
 
   def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, z1_thres,
               z2_thres, prefix=''):
