@@ -1672,12 +1672,10 @@ class Aligner:
         batch.append(tasks.MaskOutTask(cv, mip, z, chunk))
       return batch
 
-
   def get_ones(self, bbox, mip):
       x_range = bbox.x_range(mip=mip)
       y_range = bbox.y_range(mip=mip)
       return np.ones([x_range[1]-x_range[0], y_range[1]-y_range[0]])
-
 
   def three_mask_op(self, cm, bbox, fold_cv, slip_cv, tissue_cv, dst_cv,
                     fold_z, slip_z, tissue_z, dst_z, fold_mip, slip_mip,
@@ -1691,6 +1689,32 @@ class Aligner:
                                            fold_z, slip_z, tissue_z, dst_z, fold_mip,
                                            slip_mip, tissue_mip))
       return batch
+
+  def four_mask_op(self, cm, bbox, fold_cv, slip_cv, tissue_cv, dst_cv,
+                    fold_z, slip_z, tissue_z, dst_z, fold_mip, slip_mip,
+                    tissue_mip, slip2_cv, slip2_mip):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[tissue_mip],
+                                      cm.dst_voxel_offsets[tissue_mip],
+                                      mip=tissue_mip, max_mip=cm.max_mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.FourMaskOpTask(chunk, fold_cv, slip_cv, tissue_cv, dst_cv,
+                                           fold_z, slip_z, tissue_z, dst_z, fold_mip,
+                                           slip_mip, tissue_mip, slip2_cv, slip2_mip))
+      return batch
+
+  def four_mask_op_chunk(self, bbox, fold_cv, slip_cv, tissue_cv, fold_z, slip_z,
+                    tissue_z, fold_mip, slip_mip, tissue_mip, slip2_cv, slip2_mip):
+      fold_mask = self.get_data(fold_cv, fold_z, bbox, src_mip=fold_mip,
+                                dst_mip=tissue_mip, to_float=False, to_tensor=False)
+      slip_mask = self.get_data(slip_cv, slip_z, bbox, src_mip=slip_mip, dst_mip=tissue_mip,
+                                to_float=False, to_tensor=False)
+      tissue_mask = self.get_data(tissue_cv, tissue_z, bbox, src_mip=tissue_mip, dst_mip=tissue_mip,
+                                to_float=False, to_tensor=False)
+      slip2_mask = self.get_data(slip2_cv, slip_z, bbox, src_mip=slip2_mip, dst_mip=tissue_mip,
+                                to_float=False, to_tensor=False)
+      return np.logical_or(np.logical_or(tissue_mask, np.logical_or(slip_mask,slip2_mask)), fold_mask)
+
 
   def filterthree_op_chunk(self, bbox, mask_cv, z, mip):
       mask1 = self.get_data(mask_cv, z, bbox, src_mip=mip, dst_mip=mip,
@@ -1723,6 +1747,28 @@ class Aligner:
         batch.append(tasks.FcorrMaskTask(cv_list, dst_pre, dst_post, z_list, dst_z, 
                                          chunk, mip, operators, threshold, prefix))
       return batch
+
+  def multi_mask_op(self, cm, bbox, mip_list, cv_list, dst_mip, dst_cv, z):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[dst_mip],
+                                      cm.dst_voxel_offsets[dst_mip],
+                                      mip=dst_mip, max_mip=cm.max_mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.MultiMaskOpTask(chunk, mip_list, cv_list, dst_mip,
+                                           dst_cv, z))
+      return batch
+
+  def multi_mask_op_chunk(self, bbox, mip_list, cv_list, dst_mip, z):
+      mask_list = []
+      for cv, mip in zip(cv_list, mip_list):
+          mask = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=dst_mip,
+                               to_float=False, to_tensor=False)
+          mask_list.append(mask)
+
+      res = np.logical_or(mask_list[0],mask_list[1])
+      for i in range(2,len(mask_list)):
+          res = np.logical_or(res, mask_list[i])
+      return res
 
   def mask_op(self, cm, bbox, mip, z1, z2, cv1, cv2, dst_cv, dst_z, z1_thres,
               z2_thres, prefix=''):
