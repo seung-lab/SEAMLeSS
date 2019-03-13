@@ -303,7 +303,7 @@ if __name__ == '__main__':
   ptask = []
   start = time()
   for irange in range_list:
-      ptask.append(CopyTaskIteratorField(irange, ieven_odd))
+      ptask.append(CopyTaskIteratorField(irange))
 
   with ProcessPoolExecutor(max_workers=a.threads) as executor:
       executor.map(remote_upload, ptask)
