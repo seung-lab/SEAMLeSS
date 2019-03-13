@@ -134,9 +134,10 @@ if __name__ == '__main__':
   even_odd_range = [i % 2 for i in range(len(working_block_range))]
   if args.z_range_path:
     print('Compiling z_range from {}'.format(args.z_range_path))
-    decay_endpoints = range(args.z_start, args.z_stop+args.block_size+args.decay_size, 
+    decay_endpoints = range(args.z_start-args.decay_size+args.block_size, args.z_stop, 
                             args.block_size)
     block_pairs = list(zip(decay_endpoints[:-overlap], decay_endpoints[overlap:]))
+    print('block_pairs {}'.format(block_pairs))
     tmp_block_range = []
     tmp_block_index = []
     tmp_even_odd_range = []
@@ -256,12 +257,11 @@ if __name__ == '__main__':
           for block_offset in copy_range:
             prefix = block_offset
             for block_start, even_odd in zip(self.brange, self.even_odd):
-              prev_block = dsts[even_odd + 1 % 2]
+              prev_block = dsts[(even_odd + 1) % 2]
               z = block_start + block_offset 
               bbox = bbox_lookup[z]
               t = a.copy(cm, prev_block, temp_vvote_image, z, z, bbox, mip, 
-                             is_field=False, mask_cv=src_mask_cv, mask_mip=src_mask_mip, 
-                             mask_val=src_mask_val, prefix=prefix) 
+                             is_field=False, prefix=prefix) 
               yield from t
 
   print('Scheduling CopyTasks')
@@ -270,6 +270,7 @@ if __name__ == '__main__':
 
   ptask = []
   start = time()
+  print('range_list {}'.format(range_list))
   for irange, ieven_odd in zip(range_list, even_odd_list):
       ptask.append(CopyTaskIteratorImage(irange, ieven_odd))
 
@@ -286,13 +287,12 @@ if __name__ == '__main__':
   print("Executing Copy Tasks use time:", diff) 
 
   class CopyTaskIteratorField():
-      def __init__(self, brange, even_odd):
+      def __init__(self, brange):
           self.brange = brange
-          self.even_odd = even_odd
       def __iter__(self):
           for block_offset in copy_range:
             prefix = block_offset
-            for block_start, even_odd in zip(self.brange, self.even_odd):
+            for block_start in self.brange:
               z = block_start + block_offset 
               bbox = bbox_lookup[z]
               t = a.copy(cm, block_field, temp_vvote_field, z, z, bbox, mip, 
@@ -302,7 +302,7 @@ if __name__ == '__main__':
   print('Scheduling CopyTasks')
   ptask = []
   start = time()
-  for irange, ieven_odd in zip(range_list, even_odd_list):
+  for irange in range_list:
       ptask.append(CopyTaskIteratorField(irange, ieven_odd))
 
   with ProcessPoolExecutor(max_workers=a.threads) as executor:
@@ -367,7 +367,7 @@ if __name__ == '__main__':
     end = time()
     diff = end - start
     print("Sending Compute Field Tasks use time:", diff)
-    print('Running Compute field')
+    print('Running Compute Field')
     start = time()
     # wait 
     print('block offset {}'.format(block_offset))
@@ -542,6 +542,9 @@ if __name__ == '__main__':
     i = max(j - int(math.ceil(args.decay_size / args.block_size)) + 1, args.min_interface)
     block_starts = complete_block_range[i:j+1]
     bcast_tuples = [(x+decay_start, x+decay_stop) for x in block_starts] 
+    print('block_start {}'.format(block_start))
+    print('block_starts {}'.format(block_starts))
+    print('bcast_tuples {}'.format(block_starts))
     class ComposeTaskIterator(object):
       def __init__(self, brange):
         self.brange = brange
