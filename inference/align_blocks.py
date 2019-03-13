@@ -193,13 +193,6 @@ if __name__ == '__main__':
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True)
 
-  compose_field = cm.create(join(args.dst_path, 'field', 'block_compose'),
-                          data_type='int16', num_channels=2,
-                          fill_missing=True, overwrite=True)
-  final_dst = cm.create(join(args.dst_path, 'image'), 
-                    data_type='uint8', num_channels=1, fill_missing=True, 
-                    overwrite=True)
-
   ###########################
   # Serial alignment script #
   ###########################
