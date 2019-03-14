@@ -69,8 +69,7 @@ if __name__ == '__main__':
   mask_cv = cm.create(args.src_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False)
   # Create dst CloudVolumes
-  dst = cm.create(join(args.dst_path, 'image'),
-                  data_type='uint8', num_channels=1, fill_missing=True,
+  dst = cm.create(args.dst_path, data_type='uint8', num_channels=1, fill_missing=True,
                   overwrite=True)
   prefix = str(mip)
   class TaskIterator():
