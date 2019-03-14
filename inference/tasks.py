@@ -613,14 +613,14 @@ class FcorrMaskTask(RegisteredTask):
       mask = ndimage.binary_dilation(mask[0,0,...], structure=s).astype(mask.dtype)
       mask = mask[np.newaxis, np.newaxis, ...]
     aligner.save_image(mask, dst_post, dst_z, patch_bbox, mip, to_uint8=True)
-    with Storage(dst_post.path) as stor:
-      path = 'fcorr_mask_done/{}/{}'.format(self.prefix,
-                                         patch_bbox.stringify(dst_z))
-      stor.put_file(path, '')
-      print('Marked finished at {}'.format(path))
-    end = time()
-    diff = end - start
-    print('FcorrMaskTask: {:.3f} s'.format(diff))
+    # with Storage(dst_post.path) as stor:
+    #   path = 'fcorr_mask_done/{}/{}'.format(self.prefix,
+    #                                      patch_bbox.stringify(dst_z))
+    #   stor.put_file(path, '')
+    #   print('Marked finished at {}'.format(path))
+    # end = time()
+    # diff = end - start
+    # print('FcorrMaskTask: {:.3f} s'.format(diff))
 
 class MaskLogicTask(RegisteredTask):
   def __init__(self, cv_list, dst_cv, z_list, dst_z, bbox, mip_list, dst_mip, op, 
@@ -655,13 +655,13 @@ class MaskLogicTask(RegisteredTask):
                                            dst_mip)
 
     aligner.save_image(res, dst, dst_z, patch_bbox, dst_mip, to_uint8=True)
-    with Storage(dst.path) as stor:
-      path = 'mask_logic_done/{}/{}'.format(self.prefix, patch_bbox.stringify(dst_z))
-      stor.put_file(path, '')
-      print('Marked finished at {}'.format(path))
-    end = time()
-    diff = end - start
-    print('Task: {:.3f} s'.format(diff))
+    # with Storage(dst.path) as stor:
+    #   path = 'mask_logic_done/{}/{}'.format(self.prefix, patch_bbox.stringify(dst_z))
+    #   stor.put_file(path, '')
+    #   print('Marked finished at {}'.format(path))
+    # end = time()
+    # diff = end - start
+    # print('Task: {:.3f} s'.format(diff))
 
 class MaskOutTask(RegisteredTask):
   def __init__(self, cv, mip, z, bbox):
