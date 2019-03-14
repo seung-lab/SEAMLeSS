@@ -130,10 +130,4 @@ if __name__ == '__main__':
   print("Sending Tasks use time:", diff)
   print('Running Tasks')
   # wait
-  start = time()
-  #if args.use_sqs_wait:
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing Tasks use time:", diff)
 
