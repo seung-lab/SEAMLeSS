@@ -1659,7 +1659,7 @@ class Aligner:
 
   def mask_conjunction_chunk(self, cv_list, z_list, bbox, mip_list, dst_mip):
       mask = self.get_data(cv_list[0], z_list[0], bbox, src_mip=mip_list[0], 
-                           dst_mip=dst_mip, to_float=False, to_tensor=False))
+                           dst_mip=dst_mip, to_float=False, to_tensor=False)
       for cv, z, mip in zip(cv_list[1:], z_list[1:], mip_list[1:]):
         mask = np.logical_and(mask, self.get_data(cv, z, bbox, src_mip=mip, 
                                                   dst_mip=dst_mip, to_float=False, 
@@ -1668,7 +1668,7 @@ class Aligner:
 
   def mask_disjunction_chunk(self, cv_list, z_list, bbox, mip_list, dst_mip):
       mask = self.get_data(cv_list[0], z_list[0], bbox, src_mip=mip_list[0], 
-                           dst_mip=dst_mip, to_float=False, to_tensor=False))
+                           dst_mip=dst_mip, to_float=False, to_tensor=False)
       for cv, z, mip in zip(cv_list[1:], z_list[1:], mip_list[1:]):
         mask = np.logical_or(mask, self.get_data(cv, z, bbox, src_mip=mip, 
                                                   dst_mip=dst_mip, to_float=False, 
@@ -1696,7 +1696,7 @@ class Aligner:
 
 
   def make_fcorr_masks(self, cm, cv_list, dst_pre, dst_post, z_list, dst_z, 
-                       bbox, mip, operators, threshold, prefix=''):
+                       bbox, mip, operators, threshold, dilate_radius=0, prefix=''):
       chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
@@ -1705,7 +1705,8 @@ class Aligner:
       batch = []
       for chunk in chunks:
         batch.append(tasks.FcorrMaskTask(cv_list, dst_pre, dst_post, z_list, dst_z, 
-                                         chunk, mip, operators, threshold, prefix))
+                                         chunk, mip, operators, threshold, dilate_radius,
+                                         prefix))
       return batch
 
   def mask_logic(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, mip_list, 
@@ -1716,7 +1717,7 @@ class Aligner:
       batch = []
       for chunk in chunks:
         batch.append(tasks.MaskLogicTask(cv_list, dst_cv, z_list, dst_z, chunk, 
-                                         mip_list, dst_mip))
+                                         mip_list, dst_mip, op))
       return batch
 
   def mask_section(self, cm, bbox, cv, z, mip):

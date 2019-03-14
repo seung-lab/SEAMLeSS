@@ -9,6 +9,7 @@ from cloudvolume import Storage
 from cloudvolume.lib import scatter 
 from boundingbox import BoundingBox, deserialize_bbox
 from fcorr import fcorr_conjunction
+from scipy import ndimage
 
 from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue
 from concurrent.futures import ProcessPoolExecutor
@@ -570,9 +571,9 @@ class FilterThreeOpTask(RegisteredTask):
 
 class FcorrMaskTask(RegisteredTask):
   def __init__(self, cv_list, dst_pre, dst_post, z_list, dst_z, bbox, mip, 
-               operators, threshold, prefix):
+               operators, threshold, dilate_radius=0, prefix=''):
     super().__init__(cv_list, dst_pre, dst_post, z_list, dst_z, bbox, mip, 
-                     operators, threshold, prefix)
+                     operators, threshold, dilate_radius, prefix)
 
   def execute(self, aligner):
     cv_list = [DCV(f) for f in self.cv_list]
@@ -584,6 +585,7 @@ class FcorrMaskTask(RegisteredTask):
     mip = self.mip
     operators = self.operators
     threshold = self.threshold
+    dilate_radius = self.dilate_radius
     print("\nFcorrMaskTask\n"
           "cv_list {}\n"
           "dst_pre {}\n"
@@ -593,8 +595,9 @@ class FcorrMaskTask(RegisteredTask):
           "MIP{}\n"
           "operators {}\n"
           "threshold {}\n"
+          "dilate_radius {}\n"
           .format(cv_list, dst_pre, dst_post, z_list, dst_z, mip, operators, 
-                  threshold),
+                  threshold, dilate_radius),
           flush=True)
     start = time()
     images = []
@@ -604,8 +607,12 @@ class FcorrMaskTask(RegisteredTask):
       images.append(image)
     cjn = fcorr_conjunction(images, operators)
     aligner.save_image(cjn.numpy(), dst_pre, dst_z, patch_bbox, mip, to_uint8=False)
-    mask = (cjn > threshold) 
-    aligner.save_image(mask.numpy(), dst_post, dst_z, patch_bbox, mip, to_uint8=True)
+    mask = (cjn > threshold).numpy()
+    if dilate_radius > 0: 
+      s = np.ones((dilate_radius, dilate_radius), dtype=bool)
+      mask = ndimage.binary_dilation(mask[0,0,...], structure=s).astype(mask.dtype)
+      mask = mask[np.newaxis, np.newaxis, ...]
+    aligner.save_image(mask, dst_post, dst_z, patch_bbox, mip, to_uint8=True)
     with Storage(dst_post.path) as stor:
       path = 'fcorr_mask_done/{}/{}'.format(self.prefix,
                                          patch_bbox.stringify(dst_z))
@@ -647,8 +654,8 @@ class MaskLogicTask(RegisteredTask):
       res = aligner.mask_disjunction_chunk(cv_list, z_list, patch_bbox, mip_list,
                                            dst_mip)
 
-    aligner.save_image(res.numpy(), dst_cv, dst_z, patch_bbox, dst_mip, to_uint8=False)
-    with Storage(dst_cv.path) as stor:
+    aligner.save_image(res, dst, dst_z, patch_bbox, dst_mip, to_uint8=True)
+    with Storage(dst.path) as stor:
       path = 'mask_logic_done/{}/{}'.format(self.prefix, patch_bbox.stringify(dst_z))
       stor.put_file(path, '')
       print('Marked finished at {}'.format(path))

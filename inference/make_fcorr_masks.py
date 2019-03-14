@@ -44,6 +44,8 @@ if __name__ == '__main__':
     help='threshold for final binarization of fcorr postprocessing output')
   parser.add_argument('--operators', type=int, nargs='+',
     help='tuple of +1,-1 indicating if either/both fcorr should be negated')
+  parser.add_argument('--dilate_radius', type=int, default=0,
+    help='width/height of filter to use in dilation of the thresholded mask')
   parser.add_argument('--mip', type=int)
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
@@ -69,11 +71,13 @@ if __name__ == '__main__':
   threshold = args.threshold
   operators = args.operators
   dst_offset = args.dst_offset
+  dilate_radius = args.dilate_radius
   print('mip {}'.format(mip))
   print('z_offsets {}'.format(z_offsets))
   print('dst_offset {}'.format(dst_offset))
   print('threshold {}'.format(threshold))
   print('operators {}'.format(operators))
+  print('dilate_radius {}'.format(dilate_radius))
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -103,7 +107,7 @@ if __name__ == '__main__':
             z_list = [z+zo for zo in z_offsets]
             t = a.make_fcorr_masks(cm, cv_list, dst_pre.path, dst_post.path, z_list,
                                    z+dst_offset, bbox, mip, operators, 
-                                   threshold, prefix=prefix)
+                                   threshold, dilate_radius, prefix=prefix)
             yield from t
 
   range_list = make_range(full_range, a.threads)

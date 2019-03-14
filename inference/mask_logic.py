@@ -41,6 +41,10 @@ if __name__ == '__main__':
     help='offsets from z to evaluate each image from paths')
   parser.add_argument('--dst_offset', type=int, 
     help='offset from z where dst will be written')
+  parser.add_argument('--mip_list', type=int, nargs='+',
+    help='mip level of each image in paths')
+  parser.add_argument('--dst_mip', type=int, 
+    help='mip level of dst image')
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
   parser.add_argument('--bbox_stop', nargs=3, type=int,
@@ -60,12 +64,14 @@ if __name__ == '__main__':
   provenance = get_provenance(args)
   
   # Simplify var names
-  mip = args.mip
+  mip = args.dst_mip
+  mip_list = args.mip_list
   max_mip = args.max_mip
   pad = args.pad
   z_offsets = args.z_offsets
   dst_offset = args.dst_offset
   print('mip {}'.format(mip))
+  print('mip_list {}'.format(mip_list))
   print('z_offsets {}'.format(z_offsets))
   print('dst_offset {}'.format(dst_offset))
 
@@ -83,8 +89,7 @@ if __name__ == '__main__':
     cv_list.append(cv.path)
 
   # Create dst CloudVolumes
-  dst = cm.create(join(args.dst_path, 'image'),
-                  data_type='float32', num_channels=1, fill_missing=True,
+  dst = cm.create(args.dst_path, data_type='uint8', num_channels=1, fill_missing=True,
                   overwrite=True).path
 
   prefix = str(mip)
@@ -95,7 +100,7 @@ if __name__ == '__main__':
           for z in self.brange:
               z_list = [z+zo for zo in z_offsets]
               dst_z = z + dst_offset
-              t = a.mask_logic(cm, cv_list, dst, z_list, dst_z, bbox, mip_list, dst_mip, 
+              t = a.mask_logic(cm, cv_list, dst, z_list, dst_z, bbox, mip_list, mip, 
                                op=args.op)
               yield from t
 
