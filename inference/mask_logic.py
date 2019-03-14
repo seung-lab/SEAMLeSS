@@ -34,14 +34,13 @@ def make_range(block_range, part_num):
 
 if __name__ == '__main__':
   parser = get_argparser()
-  parser.add_argument('--model_path', type=str,
-    help='relative path to the ModelArchive to use for computing fields')
-  parser.add_argument('--src_path1', type=str)
-  parser.add_argument('--src_path2', type=str)
+  parser.add_argument('--paths', type=str, nargs='+')
   parser.add_argument('--dst_path', type=str)
-  parser.add_argument('--mip', type=int)
-  parser.add_argument('--z1_thres', type=float)
-  parser.add_argument('--z2_thres', type=float)
+  parser.add_argument('--op', type=str)
+  parser.add_argument('--z_offsets', type=int, nargs='+',
+    help='offsets from z to evaluate each image from paths')
+  parser.add_argument('--dst_offset', type=int, 
+    help='offset from z where dst will be written')
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
   parser.add_argument('--bbox_stop', nargs=3, type=int,
@@ -49,13 +48,12 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--max_displacement', 
+  parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   args = parse_args(parser)
   # Only compute matches to previous sections
-  args.serial_operation = True
   a = get_aligner(args)
   a.device = torch.device('cpu')
   bbox = get_bbox(args)
@@ -64,34 +62,41 @@ if __name__ == '__main__':
   # Simplify var names
   mip = args.mip
   max_mip = args.max_mip
-  pad = args.max_displacement
+  pad = args.pad
+  z_offsets = args.z_offsets
+  dst_offset = args.dst_offset
+  print('mip {}'.format(mip))
+  print('z_offsets {}'.format(z_offsets))
+  print('dst_offset {}'.format(dst_offset))
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
+
   # Create CloudVolume Manager
-  cm = CloudManager(args.src_path1, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=128, batch_mip=mip) 
-  #cm = CloudManager(args.src_path1, max_mip, pad, provenance)
-
+  cm = CloudManager(args.paths[0], max_mip, pad, provenance, batch_size=1,
+                    size_chunk=256, batch_mip=mip)
   # Create src CloudVolumes
-  src1 = cm.create(args.src_path1, data_type='float', num_channels=1,
-                     fill_missing=True, overwrite=False)
-
-  src2 = cm.create(args.src_path2, data_type='float', num_channels=1,
-                     fill_missing=True, overwrite=False)
+  cv_list = []
+  for path in args.paths:
+    cv = cm.create(path, data_type='float32', num_channels=1,
+                   fill_missing=True, overwrite=False)
+    cv_list.append(cv.path)
 
   # Create dst CloudVolumes
   dst = cm.create(join(args.dst_path, 'image'),
                   data_type='float32', num_channels=1, fill_missing=True,
-                  overwrite=True)
+                  overwrite=True).path
+
   prefix = str(mip)
   class TaskIterator():
       def __init__(self, brange):
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-              t = a.mask_op(cm, bbox, mip, z, z, src1.path, src2.path,
-                            dst.path, z-1, args.z1_thres, args.z2_thres)
+              z_list = [z+zo for zo in z_offsets]
+              dst_z = z + dst_offset
+              t = a.mask_logic(cm, cv_list, dst, z_list, dst_z, bbox, mip_list, dst_mip, 
+                               op=args.op)
               yield from t
 
   range_list = make_range(full_range, a.threads)
