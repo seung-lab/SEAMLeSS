@@ -16,7 +16,7 @@ import numpy as np
 import scipy
 import scipy.ndimage
 from skimage import img_as_ubyte
-from skimage.filters import gabor_kernel
+from skimage.filters import gabor
 from skimage.morphology import rectangle, dilation, closing, opening
 from taskqueue import TaskQueue, LocalTaskQueue
 import torch
@@ -1606,7 +1606,7 @@ class Aligner:
       I = I.split(chunk_size, dim=3)
       return torch.cat(I, dim=1)
 
-  def find_seams(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, frequency, prefix=''):
+  def find_seams(self, cm, src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, mip, frequency, prefix=''):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
@@ -1614,10 +1614,10 @@ class Aligner:
         prefix = '{}'.format(mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.FindSeams(src_cv, dst_cv, src_z, dst_z, chunk, mip, frequency, prefix))
+        batch.append(tasks.FindSeams(src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, chunk, mip, frequency, prefix))
       return batch
 
-  def find_seams_chunk(self, cv, z, bbox, mip, frequency=0.6):
+  def find_seams_chunk(self, cv, z, bbox, mip, pad=256, frequency=0.6):
       """Find seam errors from alignment
 
       Args:
@@ -1629,26 +1629,41 @@ class Aligner:
       Returns:
          convolution of Gabor filters over region, with some postprocessing 
       """
-      vkernel_dims = 0,0
-      gabor = np.ascontiguousarray(np.real(gabor_kernel(frequency, theta=np.pi/2))[::-1,::-1])
-      pad = 256
       padded_bbox = deepcopy(bbox) 
+      padded_bbox.max_mip = mip
       padded_bbox.uncrop(pad, mip=mip)
-      hcrop = pad - gabor.shape[-2] // 2 - vkernel_dims[-2] // 2
-      vcrop = pad - gabor.shape[-1] // 2 - vkernel_dims[-1] // 2
+      close_rad = 16 
+      elim_rad = 128 
+      print('get_data')
       img = self.get_data(cv, z, padded_bbox, src_mip=mip, dst_mip=mip,
-                             to_float=True, to_tensor=True)
-      gabor = torch.tensor(gabor, dtype=torch.float, device=img.device)
-      gabor = gabor.unsqueeze(0).unsqueeze(0)
-      out = conv2d(img, gabor) 
-      if vkernel_dims[0] > 0 and vkernel_dims[1] > 0:
-        vkernel = np.zeros(vkernel_dims, dtype=np.float)
-        vkernel[vkernel.shape[-2]//2, :] = 1 / vkernel_dims[0]
-        vkernel = torch.tensor(vkernel, dtype=torch.float, device=img.device)
-        vkernel = vkernel.unsqueeze(0).unsqueeze(0)
-        out = conv2d(out, vkernel) 
-      out = out[:,:,hcrop:-hcrop,vcrop:-vcrop]
-      return out.numpy()
+                             to_float=False, to_tensor=False)
+      print(img.shape)
+      print('gabor 0')
+      out,out2 = img_as_ubyte(gabor(img[0,0,...], theta=0, frequency=frequency))
+      # out[:,:(32-2)] = 0
+      # out[:,(32+2):] = 0
+      if close_rad > 0:
+        out = closing(out, rectangle(close_rad,1))
+      if elim_rad > 0:
+        out = opening(out, rectangle(elim_rad,1))
+        out = closing(out, rectangle(elim_rad,1))
+      print('dilate 0')
+      # out = dilation(out, rectangle(rad,2))
+      print('gabor pi/2')
+      out3,out4 = img_as_ubyte(gabor(img[0,0,...], theta=np.pi/2, frequency=frequency))
+      # out3[:(32-2),:] = 0
+      # out3[(32+2):,:] = 0
+      if close_rad > 0:
+        out3 = closing(out3, rectangle(1,close_rad))
+      if elim_rad > 0:
+        out3 = opening(out3, rectangle(1,elim_rad))
+        out3 = closing(out3, rectangle(1,elim_rad))
+      print('dilate pi/2')
+      # out3 = dilation(out3, rectangle(2,rad))
+      c = 255 - out3
+      np.putmask(out, c < out, c)
+      out += out3
+      return np.reshape(out,img.shape)
 
   def compute_fcorr(self, cm, src_cv, dst_pre_cv, dst_post_cv, bbox, src_mip, 
                     dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0, 

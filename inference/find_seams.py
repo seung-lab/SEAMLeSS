@@ -51,6 +51,7 @@ if __name__ == '__main__':
   # parser.add_argument('--save_intermediary', action='store_true')
   args = parse_args(parser)
   a = get_aligner(args)
+  a.chunk_size = (1024, 1024) 
   bbox = get_bbox(args)
   provenance = get_provenance(args)
   
@@ -65,8 +66,8 @@ if __name__ == '__main__':
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
   # Create CloudVolume Manager
-  cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=512, batch_mip=mip)
+  cm = CloudManager(args.src_path, 12, pad, provenance, batch_size=1,
+                    size_chunk=1, batch_mip=12)
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
@@ -74,8 +75,11 @@ if __name__ == '__main__':
 
   seam_dir = 'seams/{}'.format(mip)
   # Create dst CloudVolumes
-  dst = cm.create(join(args.dst_path, seam_dir),
+  dst_pre = cm.create(join(args.dst_path, seam_dir, 'pre'),
                   data_type='uint8', num_channels=1, fill_missing=True,
+                  overwrite=True).path
+  dst_post = cm.create(join(args.dst_path, seam_dir, 'post'),
+                  data_type='float32', num_channels=1, fill_missing=True,
                   overwrite=True).path
 
   class TaskIterator():
@@ -83,7 +87,7 @@ if __name__ == '__main__':
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-            t = a.find_seams(cm, src, dst, z, z, bbox, mip, frequency) 
+            t = a.find_seams(cm, src, dst_pre, dst_post, z, z, bbox, mip, frequency) 
             yield from t
 
   range_list = make_range(full_range, a.threads)

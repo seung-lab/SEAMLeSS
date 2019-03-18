@@ -721,12 +721,13 @@ class ComputeFcorrTask(RegisteredTask):
     print('FcorrTask: {:.3f} s'.format(diff))
 
 class FindSeams(RegisteredTask):
-  def __init__(self, src_cv, dst_cv, src_z, dst_z, bbox, mip, frequency, prefix):
-    super(). __init__(src_cv, dst_cv, src_z, dst_z, bbox, mip, frequency, prefix)
+  def __init__(self, src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, mip, frequency, prefix):
+    super(). __init__(src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, mip, frequency, prefix)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
-    dst_cv = DCV(self.dst_cv)
+    dst_pre_cv = DCV(self.dst_pre_cv)
+    dst_post_cv = DCV(self.dst_post_cv)
     src_z = self.src_z
     dst_z = self.dst_z
     bbox = deserialize_bbox(self.bbox)
@@ -738,10 +739,14 @@ class FindSeams(RegisteredTask):
           "src_z {}, dst_z {}\n"
           "mip {}\n"
           "frequency {}\n"
-          .format(src_cv, dst_cv, src_z, dst_z, mip, frequency), flush=True)
+          .format(src_cv, dst_pre_cv, src_z, dst_z, mip, frequency), flush=True)
     start = time()
-    seams = aligner.find_seams_chunk(src_cv, src_z, bbox, mip, frequency)
-    aligner.save_image(seams, dst_cv, dst_z, bbox, mip, to_uint8=True)
+    pad = 256
+    th = 30
+    seams = aligner.find_seams_chunk(src_cv, src_z, bbox, mip, pad, frequency)
+    s = np.full((1,1, bbox.x_size(12), bbox.y_size(12)), np.sum(seams > th) / seams.size, dtype=np.float32)
+    aligner.save_image(seams[:,:,pad:-pad,pad:-pad], dst_pre_cv, dst_z, bbox, mip, to_uint8=False)
+    aligner.save_image(s, dst_post_cv, dst_z, bbox, 12, to_uint8=False)
     end = time()
     diff = end - start
     print('FindSeams: {:.3f} s'.format(diff))
