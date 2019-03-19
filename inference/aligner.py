@@ -918,7 +918,7 @@ class Aligner:
   # Dataset operations #
   ######################
   def copy(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, is_field=False,
-                     mask_cv=None, mask_mip=0, mask_val=0, prefix=''):
+           to_uint8=False, mask_cv=None, mask_mip=0, mask_val=0, prefix=''):
     """Copy one CloudVolume to another
 
     Args:
@@ -931,7 +931,8 @@ class Aligner:
        bbox: BoundingBox for region where source and target image will be loaded,
         and where the resulting vector field will be written
        mip: int for MIP level images will be loaded and field will be stored at
-       field: bool indicating whether this is a field CloudVolume to copy
+       is_field: bool indicating whether this is a field CloudVolume to copy
+       to_uint8: bool indicating whether this image should be saved as float 
        mask_cv: MiplessCloudVolume where source mask is stored
        mask_mip: int for MIP level at which source mask is stored
        mask_val: int for pixel value in the mask that should be zero-filled
@@ -949,7 +950,8 @@ class Aligner:
     batch = []
     for chunk in chunks: 
       batch.append(tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
-                                  is_field, mask_cv, mask_mip, mask_val, prefix))
+                                  is_field, to_uint8, mask_cv, mask_mip, mask_val, 
+                                  prefix))
     return batch
 
   def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv, 
@@ -1606,15 +1608,17 @@ class Aligner:
       I = I.split(chunk_size, dim=3)
       return torch.cat(I, dim=1)
 
-  def find_seams(self, cm, src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, mip, frequency, prefix=''):
+  def find_seams(self, cm, src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, src_mip, dst_mip, frequency, prefix=''):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
-                                      cm.dst_voxel_offsets[mip], mip=mip,
+                                      cm.dst_voxel_offsets[dst_mip], mip=dst_mip,
                                       max_mip=cm.max_mip)
       if prefix == '':
-        prefix = '{}'.format(mip)
+        prefix = '{}'.format(src_mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.FindSeams(src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, chunk, mip, frequency, prefix))
+        batch.append(tasks.FindSeams(src_cv, dst_pre_cv, dst_post_cv, src_z, 
+                                     dst_z, chunk, src_mip, dst_mip, 
+                                     frequency, prefix))
       return batch
 
   def find_seams_chunk(self, cv, z, bbox, mip, pad=256, frequency=0.6):
@@ -1629,6 +1633,7 @@ class Aligner:
       Returns:
          convolution of Gabor filters over region, with some postprocessing 
       """
+      print('find_seams for {0}'.format(bbox.stringify(z)), flush=True)
       padded_bbox = deepcopy(bbox) 
       padded_bbox.max_mip = mip
       padded_bbox.uncrop(pad, mip=mip)

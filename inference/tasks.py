@@ -63,9 +63,9 @@ class PredictImageTask(RegisteredTask):
 
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, 
-               is_field, mask_cv, mask_mip, mask_val, prefix):
+               is_field, to_uint8, mask_cv, mask_mip, mask_val, prefix):
     super().__init__(src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, 
-                     is_field, mask_cv, mask_mip, mask_val, prefix)
+                     is_field, to_uint8, mask_cv, mask_mip, mask_val, prefix)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -75,6 +75,7 @@ class CopyTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
     is_field = self.is_field
+    to_uint8 = self.to_uint8
     mask_cv = None 
     if self.mask_cv:
       mask_cv = DCV(self.mask_cv)
@@ -94,12 +95,16 @@ class CopyTask(RegisteredTask):
         field =  aligner.get_field(src_cv, src_z, patch_bbox, mip, relative=False,
                                 to_tensor=False)
         aligner.save_field(field, dst_cv, dst_z, patch_bbox, mip, relative=False)
-      else:
+      elif to_uint8:
         image = aligner.get_masked_image(src_cv, src_z, patch_bbox, mip,
                                 mask_cv=mask_cv, mask_mip=mask_mip,
                                 mask_val=mask_val,
                                 to_tensor=False, normalizer=None)
-        aligner.save_image(image, dst_cv, dst_z, patch_bbox, mip)
+        aligner.save_image(image, dst_cv, dst_z, patch_bbox, mip, to_uint8=True)
+      else:
+        image = aligner.get_data(src_cv, src_z, patch_bbox, mip, mip, to_float=False,
+                                 to_tensor=False, normalizer=None)
+        aligner.save_image(image, dst_cv, dst_z, patch_bbox, mip, to_uint8=False)
       with Storage(dst_cv.path) as stor:
           path = 'copy_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
           stor.put_file(path, '')
@@ -721,8 +726,10 @@ class ComputeFcorrTask(RegisteredTask):
     print('FcorrTask: {:.3f} s'.format(diff))
 
 class FindSeams(RegisteredTask):
-  def __init__(self, src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, mip, frequency, prefix):
-    super(). __init__(src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, mip, frequency, prefix)
+  def __init__(self, src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, 
+               src_mip, dst_mip, frequency, prefix):
+    super(). __init__(src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, 
+                      src_mip, dst_mip, frequency, prefix)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -731,22 +738,28 @@ class FindSeams(RegisteredTask):
     src_z = self.src_z
     dst_z = self.dst_z
     bbox = deserialize_bbox(self.bbox)
-    mip = self.mip
+    src_mip = self.src_mip
+    dst_mip = self.dst_mip
     frequency = self.frequency
     print("\nFindSeams"
           "src_cv {}\n"
           "dst_cv {}\n"
           "src_z {}, dst_z {}\n"
-          "mip {}\n"
+          "src_mip {}\n"
+          "dst_mip {}\n"
           "frequency {}\n"
-          .format(src_cv, dst_pre_cv, src_z, dst_z, mip, frequency), flush=True)
+          .format(src_cv, dst_pre_cv, src_z, dst_z, src_mip, dst_mip, 
+                  frequency), flush=True)
     start = time()
-    pad = 256
+    pad = 256 
     th = 30
-    seams = aligner.find_seams_chunk(src_cv, src_z, bbox, mip, pad, frequency)
-    s = np.full((1,1, bbox.x_size(12), bbox.y_size(12)), np.sum(seams > th) / seams.size, dtype=np.float32)
-    aligner.save_image(seams[:,:,pad:-pad,pad:-pad], dst_pre_cv, dst_z, bbox, mip, to_uint8=False)
-    aligner.save_image(s, dst_post_cv, dst_z, bbox, 12, to_uint8=False)
+    seams = aligner.find_seams_chunk(src_cv, src_z, bbox, src_mip, pad, frequency)
+    dst_shape = (1,1,bbox.x_size(dst_mip), bbox.y_size(dst_mip))
+    print('dst_shape {}'.format(dst_shape))
+    s = np.full(dst_shape, np.sum(seams > th) / seams.size, dtype=np.float32)
+    aligner.save_image(seams[:,:,pad:-pad,pad:-pad], dst_pre_cv, dst_z, bbox, src_mip, 
+                       to_uint8=False)
+    aligner.save_image(s, dst_post_cv, dst_z, bbox, dst_mip, to_uint8=False)
     end = time()
     diff = end - start
     print('FindSeams: {:.3f} s'.format(diff))
