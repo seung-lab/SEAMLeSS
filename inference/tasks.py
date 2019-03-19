@@ -1,5 +1,6 @@
 import boto3
 from time import time
+import torch
 import json
 import tenacity
 import numpy as np
@@ -752,13 +753,17 @@ class FindSeams(RegisteredTask):
                   frequency), flush=True)
     start = time()
     pad = 256 
-    th = 30
-    seams = aligner.find_seams_chunk(src_cv, src_z, bbox, src_mip, pad, frequency)
     dst_shape = (1,1,bbox.x_size(dst_mip), bbox.y_size(dst_mip))
-    print('dst_shape {}'.format(dst_shape))
-    s = np.full(dst_shape, np.sum(seams > th) / seams.size, dtype=np.float32)
-    aligner.save_image(seams[:,:,pad:-pad,pad:-pad], dst_pre_cv, dst_z, bbox, src_mip, 
-                       to_uint8=False)
+    seams = aligner.compute_smoothness(src_cv, src_z, bbox, src_mip, pad)
+    seams_sum = torch.sum(seams, dim=[-1,-2]).cpu()[0]
+    seams = seams.data.cpu().numpy()
+    print('seams.shape {}'.format(seams.shape))
+    print('torch.sum(seams) {}'.format(seams_sum))
+    # th = 30
+    # seams = aligner.find_seams_chunk(src_cv, src_z, bbox, src_mip, pad, frequency)
+    # s = np.full(dst_shape, np.sum(seams > th) / seams.size, dtype=np.float32)
+    s = np.full(dst_shape, seams_sum, dtype=np.float32)
+    aligner.save_image(seams[:,:,pad:-pad,pad:-pad], dst_pre_cv, dst_z, bbox, src_mip, to_uint8=False)
     aligner.save_image(s, dst_post_cv, dst_z, bbox, dst_mip, to_uint8=False)
     end = time()
     diff = end - start

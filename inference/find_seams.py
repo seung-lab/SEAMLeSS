@@ -82,7 +82,7 @@ if __name__ == '__main__':
   seam_dir = 'seams/{}_{}'.format(src_mip, dst_mip)
   # Create dst CloudVolumes
   dst_pre = cm_pre.create(join(args.dst_path, seam_dir, 'pre'),
-                  data_type='uint8', num_channels=1, fill_missing=True,
+                  data_type='float32', num_channels=1, fill_missing=True,
                   overwrite=True).path
   dst_post = cm_pre.create(join(args.dst_path, seam_dir, 'post'),
                   data_type='float32', num_channels=1, fill_missing=True,
@@ -107,29 +107,29 @@ if __name__ == '__main__':
   a.chunk_size = (1,1)
   range_list = make_range(full_range, a.threads)
 
-  # start = time()
-  # ptask = []
-  # for i in range_list:
-  #     ptask.append(FindSeamsIterator(i))
+  start = time()
+  ptask = []
+  for i in range_list:
+      ptask.append(FindSeamsIterator(i))
 
-  # if a.distributed:
-  #   with ProcessPoolExecutor(max_workers=a.threads) as executor:
-  #       executor.map(remote_upload, ptask)
-  # else:
-  #     for t in ptask:
-  #       tq = LocalTaskQueue(parallel=1)
-  #       tq.insert_all(t, args= [a])
+  if a.distributed:
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+  else:
+      for t in ptask:
+        tq = LocalTaskQueue(parallel=1)
+        tq.insert_all(t, args= [a])
 
-  # end = time()
-  # diff = end - start
-  # print("Sending FindSeamsTasks use time:", diff)
-  # start = time()
-  # print('Running Tasks')
-  # if a.distributed:
-  #   a.wait_for_sqs_empty()
-  # end = time()
-  # diff = end - start
-  # print("FindSeamsTasks runtime:", diff)
+  end = time()
+  diff = end - start
+  print("Sending FindSeamsTasks use time:", diff)
+  start = time()
+  print('Running Tasks')
+  if a.distributed:
+    a.wait_for_sqs_empty()
+  end = time()
+  diff = end - start
+  print("FindSeamsTasks runtime:", diff)
 
   class CopyIterator():
       def __init__(self, brange):
