@@ -65,7 +65,7 @@ class Aligner:
     
     # self.chunk_size = (1024, 1024)
     self.chunk_size = (4096, 4096)
-    self.device = torch.device('cuda')
+    self.device = torch.device('cpu')
 
     self.model_archives = {}
     
@@ -1609,75 +1609,36 @@ class Aligner:
       I = I.split(chunk_size, dim=3)
       return torch.cat(I, dim=1)
 
-  def find_seams(self, cm, src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, src_mip, dst_mip, frequency, prefix=''):
+  def sum_pool(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, src_mip, dst_mip, prefix=''):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
-                                      cm.dst_voxel_offsets[dst_mip], mip=dst_mip,
+                                      cm.dst_voxel_offsets[dst_mip], mip=src_mip,
                                       max_mip=cm.max_mip)
       if prefix == '':
         prefix = '{}'.format(src_mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.FindSeams(src_cv, dst_pre_cv, dst_post_cv, src_z, 
-                                     dst_z, chunk, src_mip, dst_mip, 
-                                     frequency, prefix))
+        batch.append(tasks.SumPoolTask(src_cv, dst_cv, src_z, 
+                                     dst_z, chunk, src_mip, dst_mip, prefix))
       return batch
 
-  def find_seams_chunk(self, cv, z, bbox, mip, pad=256, frequency=0.6):
-      """Find seam errors from alignment
+  def compute_smoothness(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, prefix=''):
+      chunks = self.break_into_chunks(bbox, self.chunk_size,
+                                      cm.dst_voxel_offsets[mip], mip=mip,
+                                      max_mip=cm.max_mip)
+      if prefix == '':
+        prefix = '{}'.format(mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.ComputeSmoothness(src_cv, dst_cv, src_z, 
+                                     dst_z, chunk, mip, prefix))
+      return batch
 
-      Args:
-         cv: MiplessCloudVolume to analyze
-         z: int for section index to analyze
-         bbox: BoundingBox of region to analyze
-         mip: int for MIP level to analyze
-
-      Returns:
-         convolution of Gabor filters over region, with some postprocessing 
-      """
-      print('find_seams for {0}'.format(bbox.stringify(z)), flush=True)
-      padded_bbox = deepcopy(bbox) 
-      padded_bbox.max_mip = mip
-      padded_bbox.uncrop(pad, mip=mip)
-      close_rad = 16 
-      elim_rad = 128 
-      print('get_data')
-      img = self.get_data(cv, z, padded_bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=False)
-      print(img.shape)
-      print('gabor 0')
-      out,out2 = img_as_ubyte(gabor(img[0,0,...], theta=0, frequency=frequency))
-      # out[:,:(32-2)] = 0
-      # out[:,(32+2):] = 0
-      if close_rad > 0:
-        out = closing(out, rectangle(close_rad,1))
-      if elim_rad > 0:
-        out = opening(out, rectangle(elim_rad,1))
-        out = closing(out, rectangle(elim_rad,1))
-      print('dilate 0')
-      # out = dilation(out, rectangle(rad,2))
-      print('gabor pi/2')
-      out3,out4 = img_as_ubyte(gabor(img[0,0,...], theta=np.pi/2, frequency=frequency))
-      # out3[:(32-2),:] = 0
-      # out3[(32+2):,:] = 0
-      if close_rad > 0:
-        out3 = closing(out3, rectangle(1,close_rad))
-      if elim_rad > 0:
-        out3 = opening(out3, rectangle(1,elim_rad))
-        out3 = closing(out3, rectangle(1,elim_rad))
-      print('dilate pi/2')
-      # out3 = dilation(out3, rectangle(2,rad))
-      c = 255 - out3
-      np.putmask(out, c < out, c)
-      out += out3
-      return np.reshape(out,img.shape)
- 
-  def compute_smoothness(self, cv, z, bbox, mip, pad):
+  def compute_smoothness_chunk(self, cv, z, bbox, mip, pad):
       padded_bbox = deepcopy(bbox) 
       padded_bbox.max_mip = mip
       padded_bbox.uncrop(pad, mip=mip)
       field = self.get_field(cv, z, padded_bbox, mip, relative=False, to_tensor=True)
-      print('field.shape {}'.format(field.shape))
-      return lap([field]).unsqueeze(0)
+      return lap([field], device=self.device).unsqueeze(0)
 
   def compute_fcorr(self, cm, src_cv, dst_pre_cv, dst_post_cv, bbox, src_mip, 
                     dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0, 
