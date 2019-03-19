@@ -25,6 +25,7 @@ import torch.nn as nn
 
 from normalizer import Normalizer
 from temporal_regularization import create_field_bump
+from training.loss import lap
 from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               np_downsample, invert, compose_fields, upsample_field, \
                               is_identity, cpc, vector_vote, get_affine_field, is_blank, \
@@ -64,7 +65,7 @@ class Aligner:
     
     # self.chunk_size = (1024, 1024)
     self.chunk_size = (4096, 4096)
-    self.device = torch.device('cpu')
+    self.device = torch.device('cuda')
 
     self.model_archives = {}
     
@@ -1669,6 +1670,14 @@ class Aligner:
       np.putmask(out, c < out, c)
       out += out3
       return np.reshape(out,img.shape)
+ 
+  def compute_smoothness(self, cv, z, bbox, mip, pad):
+      padded_bbox = deepcopy(bbox) 
+      padded_bbox.max_mip = mip
+      padded_bbox.uncrop(pad, mip=mip)
+      field = self.get_field(cv, z, padded_bbox, mip, relative=False, to_tensor=True)
+      print('field.shape {}'.format(field.shape))
+      return lap([field]).unsqueeze(0)
 
   def compute_fcorr(self, cm, src_cv, dst_pre_cv, dst_post_cv, bbox, src_mip, 
                     dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0, 
