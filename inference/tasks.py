@@ -726,46 +726,67 @@ class ComputeFcorrTask(RegisteredTask):
     diff = end - start
     print('FcorrTask: {:.3f} s'.format(diff))
 
-class FindSeams(RegisteredTask):
-  def __init__(self, src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, 
-               src_mip, dst_mip, frequency, prefix):
-    super(). __init__(src_cv, dst_pre_cv, dst_post_cv, src_z, dst_z, bbox, 
-                      src_mip, dst_mip, frequency, prefix)
+class ComputeSmoothness(RegisteredTask):
+  def __init__(self, src_cv, dst_cv, src_z, dst_z, bbox, 
+               mip, prefix):
+    super(). __init__(src_cv, dst_cv, src_z, dst_z, bbox, 
+                      mip, prefix)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
-    dst_pre_cv = DCV(self.dst_pre_cv)
-    dst_post_cv = DCV(self.dst_post_cv)
+    dst_cv = DCV(self.dst_cv)
+    src_z = self.src_z
+    dst_z = self.dst_z
+    bbox = deserialize_bbox(self.bbox)
+    mip = self.mip
+    print("\nComputeSmoothness"
+          "src_cv {}\n"
+          "dst_cv {}\n"
+          "src_z {}, dst_z {}\n"
+          "mip {}\n"
+          .format(src_cv, dst_cv, src_z, dst_z, mip), flush=True)
+    start = time()
+    pad = 256 
+    penalty = aligner.compute_smoothness_chunk(src_cv, src_z, bbox, mip, pad)
+    penalty = penalty.data.cpu().numpy()
+    aligner.save_image(penalty[:,:,pad:-pad,pad:-pad], dst_cv, dst_z, bbox, mip, 
+                       to_uint8=False)
+    end = time()
+    diff = end - start
+    print('ComputeSmoothness: {:.3f} s'.format(diff))
+
+class SumPoolTask(RegisteredTask):
+  def __init__(self, src_cv, dst_cv, src_z, dst_z, bbox, 
+               src_mip, dst_mip, prefix):
+    super(). __init__(src_cv, dst_cv, src_z, dst_z, bbox, 
+                      src_mip, dst_mip, prefix)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
     src_z = self.src_z
     dst_z = self.dst_z
     bbox = deserialize_bbox(self.bbox)
     src_mip = self.src_mip
     dst_mip = self.dst_mip
-    frequency = self.frequency
-    print("\nFindSeams"
+    print("\nSumPool"
           "src_cv {}\n"
           "dst_cv {}\n"
           "src_z {}, dst_z {}\n"
           "src_mip {}\n"
           "dst_mip {}\n"
-          "frequency {}\n"
-          .format(src_cv, dst_pre_cv, src_z, dst_z, src_mip, dst_mip, 
-                  frequency), flush=True)
+          .format(src_cv, dst_cv, src_z, dst_z, src_mip, dst_mip), flush=True)
     start = time()
-    pad = 256 
     dst_shape = (1,1,bbox.x_size(dst_mip), bbox.y_size(dst_mip))
-    seams = aligner.compute_smoothness(src_cv, src_z, bbox, src_mip, pad)
-    seams_sum = torch.sum(seams, dim=[-1,-2]).cpu()[0]
-    seams = seams.data.cpu().numpy()
-    print('seams.shape {}'.format(seams.shape))
-    print('torch.sum(seams) {}'.format(seams_sum))
-    # th = 30
-    # seams = aligner.find_seams_chunk(src_cv, src_z, bbox, src_mip, pad, frequency)
-    # s = np.full(dst_shape, np.sum(seams > th) / seams.size, dtype=np.float32)
-    s = np.full(dst_shape, seams_sum, dtype=np.float32)
-    aligner.save_image(seams[:,:,pad:-pad,pad:-pad], dst_pre_cv, dst_z, bbox, src_mip, to_uint8=False)
-    aligner.save_image(s, dst_post_cv, dst_z, bbox, dst_mip, to_uint8=False)
+    d = aligner.get_data(src_cv, src_z, bbox, src_mip=src_mip, dst_mip=src_mip,
+                        to_float=False, to_tensor=True).float()
+    if d.is_cuda:
+      s = torch.sum(d, dim=[-1,-2]).cpu()[0]
+    else:
+      s = torch.sum(d, dim=[-1,-2])[0]
+    s = np.full(dst_shape, s, dtype=np.float32)
+    aligner.save_image(s, dst_cv, dst_z, bbox, dst_mip, to_uint8=False)
     end = time()
     diff = end - start
-    print('FindSeams: {:.3f} s'.format(diff))
+    print('SumPool: {:.3f} s'.format(diff))
 
