@@ -57,8 +57,7 @@ if __name__ == '__main__':
   # Simplify var names
   src_mip = args.src_mip
   dst_mip = args.dst_mip
-  chunk_size = 2**(dst_mip - src_mip)
-  a.chunk_size = (chunk_size, chunk_size) 
+  a.chunk_size = (1024, 1024)
   pad = 0
   print('src_mip {}'.format(src_mip))
   print('dst_mip {}'.format(dst_mip))
@@ -68,7 +67,7 @@ if __name__ == '__main__':
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, dst_mip, pad, provenance, batch_size=1,
-                    size_chunk=chunk_size, batch_mip=src_mip)
+                    size_chunk=1, batch_mip=dst_mip)
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,

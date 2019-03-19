@@ -777,15 +777,15 @@ class SumPoolTask(RegisteredTask):
           "dst_mip {}\n"
           .format(src_cv, dst_cv, src_z, dst_z, src_mip, dst_mip), flush=True)
     start = time()
-    dst_shape = (1,1,bbox.x_size(dst_mip), bbox.y_size(dst_mip))
+    chunk_dim = (2**(dst_mip - src_mip), 2**(dst_mip - src_mip))
+    sum_pool = LPPool2d(1, chunk_dim, stride=chunk_dim).to(device=aligner.device)
     d = aligner.get_data(src_cv, src_z, bbox, src_mip=src_mip, dst_mip=src_mip,
                         to_float=False, to_tensor=True).float()
-    if d.is_cuda:
-      s = torch.sum(d, dim=[-1,-2]).cpu()[0]
-    else:
-      s = torch.sum(d, dim=[-1,-2])[0]
-    s = np.full(dst_shape, s, dtype=np.float32)
-    aligner.save_image(s, dst_cv, dst_z, bbox, dst_mip, to_uint8=False)
+    o = sum_pool(d)
+    if o.is_cuda:
+      o = o.data.cpu()
+    o = o.numpy()
+    aligner.save_image(o, dst_cv, dst_z, bbox, dst_mip, to_uint8=False)
     end = time()
     diff = end - start
     print('SumPool: {:.3f} s'.format(diff))
