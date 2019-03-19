@@ -3,6 +3,7 @@ from copy import deepcopy, copy
 from cloudvolume import CloudVolume
 from cloudvolume.lib import Vec
 from os.path import join
+import json
 
 class CloudManager():
   """Manager of CloudVolumes required by the Aligner
@@ -72,6 +73,18 @@ class CloudManager():
     adjusting_chunksize = ((batch_size >= 0) and (size_chunk >0) and (batch_mip > 0))
     src_info = src_cv.info
     m = len(src_info['scales'])
+    if adjusting_chunksize:
+      m = 1
+      src_info['scales'] = src_info['scales'][:1]
+      src_info['scales'][0]["chunk_sizes"][0][0] = 2**batch_mip * size_chunk
+      src_info['scales'][0]["chunk_sizes"][0][1] = 2**batch_mip * size_chunk
+      src_info['scales'][0]["chunk_sizes"][0][2] = batch_size 
+    voff = src_info['scales'][0]['voxel_offset']
+    max_vx = 2**max_mip
+    if abs(voff[0]) < max_vx:
+      src_info['scales'][0]["voxel_offset"][0] = max_vx if voff[0] >0 else -max_vx
+    if abs(voff[1]) < max_vx:
+      src_info['scales'][0]["voxel_offset"][1] = max_vx if voff[1] >0 else -max_vx
     each_factor = Vec(2,2,1)
     factor = Vec(2**m,2**m,1)
     for k in range(m, max_mip+1):
@@ -89,9 +102,9 @@ class CloudManager():
     scales = info["scales"]
 
     # adjust the chunk size for a given mip
-    if adjusting_chunksize:
-      scales[batch_mip]["chunk_sizes"][0][0] = size_chunk
-      scales[batch_mip]["chunk_sizes"][0][1] = size_chunk
+    # if adjusting_chunksize:
+    #   scales[batch_mip]["chunk_sizes"][0][0] = size_chunk
+    #   scales[batch_mip]["chunk_sizes"][0][1] = size_chunk
 
     for i in range(len(scales)):
       scales[i]["voxel_offset"][0] -= int(dst_size_increase / (2**i))
@@ -120,7 +133,7 @@ class CloudManager():
 
     if adjusting_chunksize: 
       scales[batch_mip]["chunk_sizes"][0][2] = batch_size 
-
+    # print(json.dumps(info))
     return info
 
   def compile_scales(self):
