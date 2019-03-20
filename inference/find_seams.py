@@ -50,7 +50,6 @@ if __name__ == '__main__':
   # parser.add_argument('--save_intermediary', action='store_true')
   args = parse_args(parser)
   args.max_mip = args.dst_mip
-  args.device = 'cpu'
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
@@ -62,7 +61,6 @@ if __name__ == '__main__':
   pad = 0
   print('src_mip {}'.format(src_mip))
   print('dst_mip {}'.format(dst_mip))
-  print('chunk_size {}'.format(chunk_size))
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
