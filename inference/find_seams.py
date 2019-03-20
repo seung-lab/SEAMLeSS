@@ -120,35 +120,35 @@ if __name__ == '__main__':
   diff = end - start
   print("runtime:", diff)
 
-  class SumPoolIterator():
-      def __init__(self, brange):
-          self.brange = brange
-      def __iter__(self):
-          for z in self.brange:
-            t = a.sum_pool(cm, dst_pre, dst_post, z, z, bbox, src_mip, dst_mip)
-            yield from t
+  # class SumPoolIterator():
+  #     def __init__(self, brange):
+  #         self.brange = brange
+  #     def __iter__(self):
+  #         for z in self.brange:
+  #           t = a.sum_pool(cm, dst_pre, dst_post, z, z, bbox, src_mip, dst_mip)
+  #           yield from t
 
-  start = time()
-  ptask = []
-  for i in range_list:
-      ptask.append(SumPoolIterator(i))
+  # start = time()
+  # ptask = []
+  # for i in range_list:
+  #     ptask.append(SumPoolIterator(i))
 
-  if a.distributed:
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-  else:
-      for t in ptask:
-        tq = LocalTaskQueue(parallel=1)
-        tq.insert_all(t, args= [a])
+  # if a.distributed:
+  #   with ProcessPoolExecutor(max_workers=a.threads) as executor:
+  #       executor.map(remote_upload, ptask)
+  # else:
+  #     for t in ptask:
+  #       tq = LocalTaskQueue(parallel=1)
+  #       tq.insert_all(t, args= [a])
 
-  end = time()
-  diff = end - start
-  print("Sending SumPoolTasks use time:", diff)
-  start = time()
-  print('Running Tasks')
-  if a.distributed:
-    a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("runtime:", diff)
+  # end = time()
+  # diff = end - start
+  # print("Sending SumPoolTasks use time:", diff)
+  # start = time()
+  # print('Running Tasks')
+  # if a.distributed:
+  #   a.wait_for_sqs_empty()
+  # end = time()
+  # diff = end - start
+  # print("runtime:", diff)
 
