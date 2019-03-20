@@ -50,6 +50,7 @@ if __name__ == '__main__':
   # parser.add_argument('--save_intermediary', action='store_true')
   args = parse_args(parser)
   args.max_mip = args.dst_mip
+  args.device = 'cpu'
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
