@@ -7,6 +7,7 @@ from pathlib import Path
 from moviepy.editor import ImageSequenceClip
 import numpy as np
 import collections
+import numbers
 import tqdm
 import torch
 import torch.nn as nn
@@ -796,17 +797,22 @@ def compute_distance(U, V):
   N = pow(D, 2)
   return pow(torch.sum(N, 3), 0.5).unsqueeze(0)
 
-def vector_vote(fields, softmin_temp):
+def vector_vote(fields, softmin_temp, blur_sigma=None):
   """Produce a single, consensus vector field from a set of vector fields
 
   Args:
     fields: list of fields (torch tensors in gridsample convention)
     softmin_temp: float for temperature of softmin
+    blur_sigma: std dev of the Gaussian kernel by which to blur the inputs;
+      default None means no blurring
 
   Returns:
     single vector field
   """
   print('softmin_temp {}'.format(softmin_temp))
+  fields_blurred = fields
+  if blur_sigma:
+    fields_blurred = [blur_field(f, blur_sigma) for f in fields]
   n = len(fields)
   assert(n % 2 == 1)
   # majority
@@ -816,7 +822,7 @@ def vector_vote(fields, softmin_temp):
   # compute distances for all pairs of fields
   dists = {}
   for i,j in combinations(indices, 2):
-    dists[(i,j)] = compute_distance(fields[i], fields[j])
+    dists[(i,j)] = compute_distance(fields_blurred[i], fields_blurred[j])
   # compute mean distance for all m-tuples
   mtuple_avg = []
   mtuples = list(combinations(indices, m))
@@ -842,3 +848,77 @@ def vector_vote(fields, softmin_temp):
   field = field.permute(1,2,3,0)
   field_weights = field_weights.permute(2,3,0,1)
   return matmul(field, field_weights).permute(3,0,1,2)
+
+class GaussianSmoothing(nn.Module):
+    """
+    Apply gaussian smoothing on a
+    1d, 2d or 3d tensor. Filtering is performed seperately for each channel
+    in the input using a depthwise convolution.
+    Arguments:
+        channels (int, sequence): Number of channels of the input tensors. Output will
+            have this number of channels as well.
+        kernel_size (int, sequence): Size of the gaussian kernel.
+        sigma (float, sequence): Standard deviation of the gaussian kernel.
+        dim (int, optional): The number of dimensions of the data.
+            Default value is 2 (spatial).
+
+    Copied from https://discuss.pytorch.org/t/is-there-anyway-to-do-gaussian-filtering-for-an-image-2d-3d-in-pytorch/12351/8
+    """
+    def __init__(self, channels, kernel_size, sigma, dim=2, device='cuda'):
+        super(GaussianSmoothing, self).__init__()
+        if isinstance(kernel_size, numbers.Number):
+            kernel_size = [kernel_size] * dim
+        if isinstance(sigma, numbers.Number):
+            sigma = [sigma] * dim
+
+        # The gaussian kernel is the product of the
+        # gaussian function of each dimension.
+        kernel = 1
+        meshgrids = torch.meshgrid(
+            [
+                torch.arange(size, dtype=torch.float32)
+                for size in kernel_size
+            ]
+        )
+        for size, std, mgrid in zip(kernel_size, sigma, meshgrids):
+            mean = (size - 1) / 2
+            kernel *= 1 / (std * math.sqrt(2 * math.pi)) * \
+                      torch.exp(-((mgrid - mean) / (2 * std)) ** 2)
+
+        # Make sure sum of values in gaussian kernel equals 1.
+        kernel = kernel / torch.sum(kernel)
+
+        # Reshape to depthwise convolutional weight
+        kernel = kernel.view(1, 1, *kernel.size())
+        kernel = kernel.repeat(channels, *[1] * (kernel.dim() - 1))
+
+        self.register_buffer('weight', kernel)
+        self.weight = self.weight.to(device)
+        self.groups = channels
+
+        if dim == 1:
+            self.conv = F.conv1d
+        elif dim == 2:
+            self.conv = F.conv2d
+        elif dim == 3:
+            self.conv = F.conv3d
+        else:
+            raise RuntimeError(
+                'Only 1, 2 and 3 dimensions are supported. Received {}.'.format(dim)
+            )
+
+    def forward(self, input):
+        """
+        Apply gaussian filter to input.
+        Arguments:
+            input (torch.Tensor): Input to apply gaussian filter on.
+        Returns:
+            filtered (torch.Tensor): Filtered output.
+        """
+        return self.conv(input, weight=self.weight, groups=self.groups)
+
+def blur_field(field, sigma, pad=(2,2,2,2)):
+  smoothing = GaussianSmoothing(2, 5, 1, device=field.device)
+  field = field.permute(0,3,1,2)
+  field = F.pad(field, pad, mode='reflect')
+  return smoothing(field).permute(0,2,3,1)

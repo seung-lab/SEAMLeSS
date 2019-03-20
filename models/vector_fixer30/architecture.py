@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import copy
-from utilities.helpers import (gridsample_residual, upsample, downsample,
-                               load_model_from_dict, save_chunk, gif)
+from utilities.helpers import (grid_sample, upsample, downsample,
+                               load_model_from_dict, gif)
 import numpy as np
 
 
@@ -193,12 +193,11 @@ class AligningPyramid(nn.Module):
             if accum_field is not None:
                 accum_field = (upsample()(accum_field.permute(0, 3, 1, 2))
                                .permute(0, 2, 3, 1))
-                src = gridsample_residual(src, accum_field,
-                                          padding_mode='border')
+                src = grid_sample(src, accum_field, padding_mode='border')
             factor = 2 / src.shape[-1]  # scale to [-1,1]
             res_field = self.list[i](src, tgt) * factor
             if accum_field is not None:
-                resampled = gridsample_residual(
+                resampled = grid_sample(
                     accum_field.permute(0, 3, 1, 2), res_field,
                     padding_mode='border').permute(0, 2, 3, 1)
                 accum_field = res_field + resampled
@@ -233,12 +232,11 @@ class _SubmoduleView(nn.Module):
                 accum_field = (upsample(prev_level - i)
                                (accum_field.permute(0, 3, 1, 2))
                                .permute(0, 2, 3, 1))
-                src = gridsample_residual(src, accum_field,
-                                          padding_mode='border')
+                src = grid_sample(src, accum_field, padding_mode='border')
             factor = 2 / src.shape[-1]  # scale to [-1,1]
             res_field = aligner(src, tgt) * factor
             if accum_field is not None:
-                resampled = gridsample_residual(
+                resampled = grid_sample(
                     accum_field.permute(0, 3, 1, 2), res_field,
                     padding_mode='border').permute(0, 2, 3, 1)
                 accum_field = res_field + resampled
@@ -512,7 +510,7 @@ class EPyramid(nn.Module):
         for i in range(self.size - 1 - self.topskips, target_level - 1, -1):
             if i >= self.skip:
                 inputs_i = encodings[i]
-                resampled_source = gridsample_residual(
+                resampled_source = grid_sample(
                     inputs_i[:, 0:inputs_i.size(1)//2],
                     field_so_far, padding_mode='zeros')
                 new_input_i = torch.cat(
@@ -522,7 +520,7 @@ class EPyramid(nn.Module):
                 residuals.append(rfield)
                 # Resample field_so_far using rfield. Add rfield to the result
                 # to produce the new field_so_far.
-                resampled_field_so_far = gridsample_residual(
+                resampled_field_so_far = grid_sample(
                     field_so_far.permute(0, 3, 1, 2), rfield,
                     padding_mode='border').permute(0, 2, 3, 1)
                 field_so_far = rfield + resampled_field_so_far
