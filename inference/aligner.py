@@ -52,7 +52,7 @@ retry = tenacity.retry(
 
 class Aligner:
   def __init__(self, threads=1, queue_name=None, task_batch_size=1, 
-                     dry_run=False, **kwargs):
+               device='cuda', dry_run=False, **kwargs):
     print('Creating Aligner object')
 
     self.distributed = (queue_name != None)
@@ -65,7 +65,7 @@ class Aligner:
     
     # self.chunk_size = (1024, 1024)
     self.chunk_size = (4096, 4096)
-    self.device = torch.device('cpu')
+    self.device = torch.device(device)
 
     self.model_archives = {}
     
