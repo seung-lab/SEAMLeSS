@@ -81,6 +81,6 @@ if __name__ == "__main__":
     print (chunk.shape)
     dataset[0,:,:,:] = np.transpose(chunk, (2,0,1))
     h5f = h5py.File(args.name + '.h5', 'w')
-    h5f.create_dataset('main', data=dataset, chunks=(1, 1, 1024, 1024))
+    h5f.create_dataset('main', data=dataset, chunks=(1, 1, args.xy_dim, args.xy_dim))
     print ("dataset created")
 
