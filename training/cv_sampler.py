@@ -5,11 +5,11 @@ import sys
 import h5py
 
 class Sampler(object):
-    def __init__(self, source='gs://neuroglancer/pinky40_v11/image', mip=5, dim=1152, height=10, zs=1, ze=1000, test_fraction=0.2):
+    def __init__(self, source='gs://neuroglancer/pinky40_v11/image', mip=5, dim=1152, height=10, zs=1, ze=1000, test_fraction=0.2, parallel=False):
         import httplib2shim
         httplib2shim.patch()
         self.source = source
-        self.vol = cv.CloudVolume(source, mip=mip, fill_missing=True, bounded=False)
+        self.vol = cv.CloudVolume(source, mip=mip, fill_missing=True, bounded=False, parallel=False)
         self.dim = dim
         self.vol_info = self.vol.info['scales'][0]
         self.vol_size = self.vol_info['size']
@@ -81,5 +81,6 @@ if __name__ == "__main__":
     print (chunk.shape)
     dataset[0,:,:,:] = np.transpose(chunk, (2,0,1))
     h5f = h5py.File(args.name + '.h5', 'w')
-    h5f.create_dataset('main', data=dataset)
+    h5f.create_dataset('main', data=dataset, chunks=(1, 1, 1024, 1024))
+    print ("dataset created")
 
