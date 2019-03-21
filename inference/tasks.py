@@ -3,6 +3,7 @@ from time import time
 import torch
 import json
 import tenacity
+import operator
 import numpy as np
 from functools import partial
 from mipless_cloudvolume import deserialize_miplessCV as DCV
@@ -795,6 +796,49 @@ class ComputeFcorrTask(RegisteredTask):
     end = time()
     diff = end - start
     print('FcorrTask: {:.3f} s'.format(diff))
+
+class Threshold(RegisteredTask):
+  def __init__(self, src_cv, dst_cv, src_z, dst_z, bbox, mip, 
+               threshold, op, prefix):
+    super(). __init__(src_cv, dst_cv, src_z, dst_z, bbox, mip, 
+                      threshold, op, prefix)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
+    src_z = self.src_z
+    dst_z = self.dst_z
+    bbox = deserialize_bbox(self.bbox)
+    mip = self.mip
+    threshold = self.threshold
+    op = self.op
+    print("\nThreshold"
+          "src_cv {}\n"
+          "dst_cv {}\n"
+          "src_z {}, dst_z {}\n"
+          "mip {}\n"
+          "img {} {}\n"
+          .format(src_cv, dst_cv, src_z, dst_z, mip, op, threshold), 
+          flush=True)
+    fn_lookup = {'>': operator.gt, 
+                 '>=': operator.ge, 
+                 '<': operator.lt, 
+                 '<=': operator.le,
+                 '==': operator.eq,
+                 '!=': operator.ne} 
+    start = time()
+    assert(op in fn_lookup)
+    fn = fn_lookup[op] 
+    d = aligner.get_data(src_cv, src_z, bbox, src_mip=mip, dst_mip=mip,
+                         to_float=False, to_tensor=True)
+    o = fn(d, threshold)
+    if o.is_cuda:
+      o = o.data.cpu()
+    o = o.numpy()
+    aligner.save_image(o, dst_cv, dst_z, bbox, mip, to_uint8=True)
+    end = time()
+    diff = end - start
+    print('Threshold: {:.3f} s'.format(diff))
 
 class ComputeSmoothness(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, bbox, 

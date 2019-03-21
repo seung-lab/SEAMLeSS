@@ -1904,6 +1904,19 @@ class Aligner:
                                      dst_z, chunk, src_mip, dst_mip, prefix))
       return batch
 
+  def threshold(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, threshold=0, op='<', 
+                prefix=''):
+      chunks = self.break_into_chunks(bbox, self.chunk_size,
+                                      cm.dst_voxel_offsets[mip], mip=mip,
+                                      max_mip=cm.max_mip)
+      if prefix == '':
+        prefix = '{}'.format(mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.Threshold(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
+                                         threshold, op, prefix))
+      return batch
+
   def compute_smoothness(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, prefix=''):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[mip], mip=mip,
