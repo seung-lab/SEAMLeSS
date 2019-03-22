@@ -1953,9 +1953,9 @@ class Aligner:
                     dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0, 
                     prefix=''):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
-                                      cm.dst_voxel_offsets[src_mip], mip=src_mip,
+                                      cm.dst_voxel_offsets[dst_mip], mip=dst_mip,
                                       max_mip=cm.max_mip)
-      if prefix == '': prefix = '{}'.format(src_mip)
+      if prefix == '': prefix = '{}'.format(dst_mip)
       batch = []
       for chunk in chunks:
         batch.append(tasks.ComputeFcorrTask(src_cv, dst_pre_cv, dst_post_cv, chunk, 
