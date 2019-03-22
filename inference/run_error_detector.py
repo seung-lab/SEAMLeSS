@@ -45,6 +45,10 @@ if __name__ == '__main__':
     help='CloudVolume path of error map destination')
   parser.add_argument('--mip', type=int,
     help='Mip level of error detection')
+  parser.add_argument('--chunk_size', nargs=3, type=int,
+    help='Chunk size in designated mip level')
+  parser.add_argument('--patch_size', nargs=3, type=int,
+    help='Input sample size in designated mip level')
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
   parser.add_argument('--bbox_stop', nargs=3, type=int,
@@ -55,7 +59,7 @@ if __name__ == '__main__':
   parser.add_argument('--max_displacement', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
-  # parser.add_argument('--block_size', type=int, default=10)
+  
   args = parse_args(parser)
   args.serial_operation = True
   a = get_aligner(args)
@@ -66,13 +70,14 @@ if __name__ == '__main__':
   mip = args.mip
   max_mip = args.max_mip
   pad = args.max_displacement
-  chunk_size = (256, 256)
+  sample_size = args.sample_size
+  chunk_size = [args.chunk_size[i] + sample_size[i] for i in range(3)]
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
   # Create CloudVolume Manager
   cm = CloudManager(args.src_img_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=256, batch_mip=mip)
+                    size_chunk=chunk_size[0], batch_mip=mip)
 
   # Create src CloudVolumes
   src_img = cm.create(args.src_img_path, data_type='uint8', num_channels=1,

@@ -70,6 +70,34 @@ class PredictImageTask(RegisteredTask):
     diff = end - start
     print(':{:.3f} s'.format(diff))
 
+class ErrorDetectTask(RegisteredTask):
+  def __init__(self, model_path, src_cv, dst_cv, z, mip, bbox, prefix):
+    super().__init__(model_path, src_cv, dst_cv, z, mip, bbox, prefix)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
+    z = self.z
+    patch_bbox = deserialize_bbox(self.bbox)
+    mip = self.mip
+    prefix = self.prefix
+    print("\nPredict Image\n"
+          "src {}\n"
+          "dst {}\n"
+          "at z={}\n"
+          "MIP{}\n".format(src_cv, dst_cv, z, mip), flush=True)
+    start = time()
+    image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox)
+    image = image.cpu().numpy()
+    aligner.save_image(image, dst_cv, z, patch_bbox, mip)
+
+    with Storage(dst_cv.path) as stor:
+        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
+    end = time()
+    diff = end - start
+    print(':{:.3f} s'.format(diff))
 
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, 

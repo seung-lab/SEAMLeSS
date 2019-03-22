@@ -117,6 +117,44 @@ class Aligner:
                                  mip=mip, max_mip=max_mip))
     return chunks
 
+  def break_into_chunks_3d(self, bbox, z_range, chunk_size, offset, mip, max_mip=12):
+    """Break bbox into list of chunks with chunk_size, given offset for all data 
+
+    Args:
+       bbox: BoundingBox for region to be broken into chunks
+       chunk_size: tuple for dimensions of chunk that bbox will be broken into;
+         will be set to min(chunk_size, self.chunk_size)
+       offset: tuple for x,y origin for the entire dataset, from which chunks
+         will be aligned
+       mip: int for MIP level at which bbox is defined
+       max_mip: int for the maximum MIP level at which the bbox is valid
+    """
+    if chunk_size[0] > self.chunk_size[0] or chunk_size[1] > self.chunk_size[1]:
+      chunk_size = self.chunk_size 
+
+    raw_x_range = bbox.x_range(mip=mip)
+    raw_y_range = bbox.y_range(mip=mip)
+    
+    x_chunk = chunk_size[0]
+    y_chunk = chunk_size[1]
+    
+    x_offset = offset[0]
+    y_offset = offset[1]
+
+    x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
+    y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
+
+    calign_x_range = [raw_x_range[0] - x_remainder, raw_x_range[1]]
+    calign_y_range = [raw_y_range[0] - y_remainder, raw_y_range[1]]
+
+    chunks = []
+    for xs in range(calign_x_range[0], calign_x_range[1], chunk_size[0]):
+      for ys in range(calign_y_range[0], calign_y_range[1], chunk_size[1]):
+        chunks.append(BoundingBox(xs, xs + chunk_size[0],
+                                 ys, ys + chunk_size[1],
+                                 mip=mip, max_mip=max_mip))
+    return chunks
+
   def adjust_bbox(self, bbox, dis):
       padded_bbox = deepcopy(bbox)
       x_range = padded_bbox.x_range(mip=0)
@@ -176,10 +214,10 @@ class Aligner:
     print('get_image: {:.3f}'.format(diff), flush=True) 
     return image
 
-  def get_3D_image(self, cv, z_range, bbox, mip, to_tensor=True, normalizer=None):
+  def get_volume(self, cv, z_range, bbox, mip, to_tensor=True, normalizer=None):
     print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
     start = time()
-    image = self.get_3D_data(cv, z_range, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
+    image = self.get_data_3d(cv, z_range, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
                              to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
@@ -242,7 +280,7 @@ class Aligner:
 
     return combined
  
-  def get_3D_data(self, cv, z_range, bbox, src_mip, dst_mip, to_float=True, 
+  def get_data_3d(self, cv, z_range, bbox, src_mip, dst_mip, to_float=True, 
                      to_tensor=True, normalizer=None):
     """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
     
@@ -264,7 +302,7 @@ class Aligner:
     y_range = bbox.y_range(mip=src_mip)
     data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1],
                        z_range[0]:z_range[1]]
-    data = np.transpose(data, (2,3,0,1))
+    data = np.transpose(data, (3,0,1,2))
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
     if (normalizer is not None) and (not is_blank(data)):
@@ -613,13 +651,14 @@ class Aligner:
     return batch
 
   def predict_image_chunk(self, model_path, src_cv, z, mip, bbox):
-    archive = self.get_model_archive(model_path, readonly=2)
+    archive = self.get_model_archive(model_path)
     model = archive.model
     image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
     new_image = model(image)
     return new_image
 
-  def error_detect_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
+  # Error detection
+  def error_detect_image(self, cm, model_path, src_seg_cv, src_img_cv, dst_cv, z_range, mip, bbox,
                     chunk_size, prefix=''):
     start = time()
     chunks = self.break_into_chunks(bbox, chunk_size,
@@ -637,15 +676,21 @@ class Aligner:
       prefix = '{}'.format(mip)
     batch = []
     for patch_bbox in chunks:
-      batch.append(tasks.PredictImgTask(model_path, src_cv, dst_cv, z, mip,
+      batch.append(tasks.ErrorDetectTask(model_path, src_cv, dst_cv, z, mip,
                                         patch_bbox, prefix))
     return batch
 
-  def errdet_image_chunk(self, model_path, src_img_cv, src_seg_cv, z, mip, bbox):
-    archive = self.get_model_archive(model_path, readonly=2)
+  def errdet_image_chunk(self, model_path, src_seg_cv, src_img_cv, z_range, mip, bbox):
+    # Model
+    archive = self.get_model_archive(model_path)
     model = archive.model
-    image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
-    new_image = model(image)
+    
+    # Input
+    img = self.get_volume(src_img_cv, z_range, bbox, mip, to_tensor=True)
+    seg = self.get_volume(src_seg_cv, z_range, bbox, mip, to_tensor=True)
+
+    # Inference
+    new_image = torch.zeros(img.shape)
     return new_image
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
