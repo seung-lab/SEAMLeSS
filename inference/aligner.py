@@ -1904,6 +1904,19 @@ class Aligner:
                                      dst_z, chunk, src_mip, dst_mip, prefix))
       return batch
 
+  def dilation(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, radius=3, 
+                prefix=''):
+      chunks = self.break_into_chunks(bbox, self.chunk_size,
+                                      cm.dst_voxel_offsets[mip], mip=mip,
+                                      max_mip=cm.max_mip)
+      if prefix == '':
+        prefix = '{}'.format(mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.Dilation(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
+                                    radius, prefix))
+      return batch
+
   def threshold(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, threshold=0, op='<', 
                 prefix=''):
       chunks = self.break_into_chunks(bbox, self.chunk_size,

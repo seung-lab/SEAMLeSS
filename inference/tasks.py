@@ -1,10 +1,12 @@
 import boto3
 from time import time
 import torch
+from torch.nn.functional import conv2d
 import json
 import tenacity
 import operator
 import numpy as np
+from copy import deepcopy
 from functools import partial
 from mipless_cloudvolume import deserialize_miplessCV as DCV
 from cloudvolume import Storage
@@ -796,6 +798,48 @@ class ComputeFcorrTask(RegisteredTask):
     end = time()
     diff = end - start
     print('FcorrTask: {:.3f} s'.format(diff))
+
+class Dilation(RegisteredTask):
+  """Binary dilation only, right now
+  """
+  def __init__(self, src_cv, dst_cv, src_z, dst_z, bbox, mip, 
+               radius, prefix):
+    super(). __init__(src_cv, dst_cv, src_z, dst_z, bbox, mip, 
+                      radius, prefix)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
+    src_z = self.src_z
+    dst_z = self.dst_z
+    bbox = deserialize_bbox(self.bbox)
+    mip = self.mip
+    radius = self.radius
+    print("\nDilation"
+          "src_cv {}\n"
+          "dst_cv {}\n"
+          "src_z {}, dst_z {}\n"
+          "mip {}\n"
+          "radius {}\n"
+          .format(src_cv, dst_cv, src_z, dst_z, mip, radius), 
+          flush=True)
+    start = time()
+    pad = (radius - 1) // 2 
+    padded_bbox = deepcopy(bbox)
+    padded_bbox.max_mip = mip
+    padded_bbox.uncrop(pad, mip=mip)
+    d = aligner.get_data(src_cv, src_z, padded_bbox, src_mip=mip, dst_mip=mip,
+                         to_float=True, to_tensor=True)
+    assert(radius > 0)
+    s = torch.ones((1,1,radius,radius), device=d.device)
+    o = conv2d(d, s) > 0
+    if o.is_cuda:
+      o = o.data.cpu()
+    o = o.numpy()
+    aligner.save_image(o, dst_cv, dst_z, bbox, mip, to_uint8=True)
+    end = time()
+    diff = end - start
+    print('Dilation: {:.3f} s'.format(diff))
 
 class Threshold(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, bbox, mip, 
