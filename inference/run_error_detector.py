@@ -63,7 +63,7 @@ if __name__ == '__main__':
   args = parse_args(parser)
   args.serial_operation = True
   a = get_aligner(args)
-  bbox = get_bbox(args)
+  bbox = get_bbox_3d(args)
   provenance = get_provenance(args)
   
   # Simplify var names
@@ -90,43 +90,44 @@ if __name__ == '__main__':
                   data_type='uint8', num_channels=1, fill_missing=True,
                   overwrite=True)
 
-  def remote_upload(tasks):
-    with GreenTaskQueue(queue_name=args.queue_name) as tq:
-        tq.insert_all(tasks)
-  batch =[]
-  prefix = str(mip)
-  class TaskIterator():
-      def __init__(self, brange):
-          self.brange = brange
-      def __iter__(self):
-          for z in self.brange:
-              t = a.predict_image(cm, args.model_path, src.path, dst.path, z, mip, bbox,
-                                  chunk_size, prefix)
-              yield from t
-  range_list = make_range(full_range, a.threads)
+  a.errdet_chunk(args.model_path, src_seg.path, src_img.path, mip, bbox)
+  # def remote_upload(tasks):
+  #   with GreenTaskQueue(queue_name=args.queue_name) as tq:
+  #       tq.insert_all(tasks)
+  # batch =[]
+  # prefix = str(mip)
+  # class TaskIterator():
+  #     def __init__(self, brange):
+  #         self.brange = brange
+  #     def __iter__(self):
+  #         for z in self.brange:
+  #             t = a.error_detect_image(cm, args.model_path, src.path, dst.path, z, mip, bbox,
+  #                                 chunk_size, prefix)
+  #             yield from t
+  # range_list = make_range(full_range, a.threads)
 
-  start = time()
-  ptask = []
-  for i in range_list:
-      ptask.append(TaskIterator(i))
+  # start = time()
+  # ptask = []
+  # for i in range_list:
+  #     ptask.append(TaskIterator(i))
 
 
-  if a.distributed:
-      with ProcessPoolExecutor(max_workers=a.threads) as executor:
-          executor.map(remote_upload, ptask)
-  else:
-      for t in ptask:
-          tq = LocalTaskQueue(parallel=1)
-          tq.insert_all(t, args= [a])
+  # if a.distributed:
+  #     with ProcessPoolExecutor(max_workers=a.threads) as executor:
+  #         executor.map(remote_upload, ptask)
+  # else:
+  #     for t in ptask:
+  #         tq = LocalTaskQueue(parallel=1)
+  #         tq.insert_all(t, args= [a])
 
-  end = time()
-  diff = end - start
-  print("Sending Tasks use time:", diff)
-  print('Running Tasks')
-  # wait
-  start = time()
-  #if args.use_sqs_wait:
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing Tasks use time:", diff)
+  # end = time()
+  # diff = end - start
+  # print("Sending Tasks use time:", diff)
+  # print('Running Tasks')
+  # # wait
+  # start = time()
+  # #if args.use_sqs_wait:
+  # a.wait_for_sqs_empty()
+  # end = time()
+  # diff = end - start
+  # print("Executing Tasks use time:", diff)

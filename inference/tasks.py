@@ -71,23 +71,25 @@ class PredictImageTask(RegisteredTask):
     print(':{:.3f} s'.format(diff))
 
 class ErrorDetectTask(RegisteredTask):
-  def __init__(self, model_path, src_cv, dst_cv, z, mip, bbox, prefix):
-    super().__init__(model_path, src_cv, dst_cv, z, mip, bbox, prefix)
+  def __init__(self, model_path, src_seg_cv, src_img_cv, dst_cv, mip, bbox, prefix):
+    super().__init__(model_path, src_seg_cv, src_img_cv, dst_cv, mip, bbox, prefix)
 
   def execute(self, aligner):
-    src_cv = DCV(self.src_cv)
+    src_seg_cv = DCV(self.src_seg_cv)
+    src_img_cv = DCV(self.src_img_cv)
     dst_cv = DCV(self.dst_cv)
-    z = self.z
-    patch_bbox = deserialize_bbox(self.bbox)
+    patch_bbox = deserialize_bbox3d(self.bbox)
+    z_range = patch_bbox.z_range()
     mip = self.mip
     prefix = self.prefix
-    print("\nPredict Image\n"
-          "src {}\n"
+    print("\nError Detect Volume\n"
+          "src seg {}\n"
+          "src img {}\n"
           "dst {}\n"
-          "at z={}\n"
-          "MIP{}\n".format(src_cv, dst_cv, z, mip), flush=True)
+          "from z={} to z={}\n"
+          "MIP{}\n".format(src_seg_cv, src_img_cv, dst_cv, z_range[0], z_range[1], mip), flush=True)
     start = time()
-    image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox)
+    image = aligner.predict_image_chunk(self.model_path, src_seg_cv, src_img_cv, mip, patch_bbox)
     image = image.cpu().numpy()
     aligner.save_image(image, dst_cv, z, patch_bbox, mip)
 

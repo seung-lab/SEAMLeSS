@@ -45,6 +45,10 @@ def get_bbox(args):
   coords = [x for t in zip(args.bbox_start[:2], args.bbox_stop[:2]) for x in t]
   return BoundingBox(*coords, mip=args.bbox_mip, max_mip=args.max_mip)
 
+def get_bbox_3d(args):
+  coords = [x for t in zip(args.bbox_start[:3], args.bbox_stop[:3]) for x in t]
+  return BoundingBox3d(*coords, mip=args.bbox_mip, max_mip=args.max_mip)
+
 def get_provenance(args):
   args.user = getuser()
   args.project = 'seamless'

@@ -150,9 +150,11 @@ class Aligner:
     chunks = []
     for xs in range(calign_x_range[0], calign_x_range[1], chunk_size[0]):
       for ys in range(calign_y_range[0], calign_y_range[1], chunk_size[1]):
-        chunks.append(BoundingBox(xs, xs + chunk_size[0],
-                                 ys, ys + chunk_size[1],
-                                 mip=mip, max_mip=max_mip))
+        for zs in range(z_range[0], z_range[1], chunk_size[2]):
+          chunks.append(BoundingBox3d(xs, xs + chunk_size[0],
+                                  ys, ys + chunk_size[1],
+                                  zs, zs + chunk_size[2],
+                                  mip=mip, max_mip=max_mip))
     return chunks
 
   def adjust_bbox(self, bbox, dis):
@@ -214,15 +216,15 @@ class Aligner:
     print('get_image: {:.3f}'.format(diff), flush=True) 
     return image
 
-  def get_volume(self, cv, z_range, bbox, mip, to_tensor=True, normalizer=None):
+  def get_volume(self, cv, bbox, mip, to_tensor=True, normalizer=None):
     print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
     start = time()
-    image = self.get_data_3d(cv, z_range, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
+    volume = self.get_data_3d(cv, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
                              to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
     print('get_image: {:.3f}'.format(diff), flush=True) 
-    return image
+    return volume
 
 
   def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
@@ -280,7 +282,7 @@ class Aligner:
 
     return combined
  
-  def get_data_3d(self, cv, z_range, bbox, src_mip, dst_mip, to_float=True, 
+  def get_data_3d(self, cv, bbox, src_mip, dst_mip, to_float=True, 
                      to_tensor=True, normalizer=None):
     """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
     
@@ -300,6 +302,7 @@ class Aligner:
     """
     x_range = bbox.x_range(mip=src_mip)
     y_range = bbox.y_range(mip=src_mip)
+    z_range = bbox.z_range()
     data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1],
                        z_range[0]:z_range[1]]
     data = np.transpose(data, (3,0,1,2))
@@ -658,19 +661,20 @@ class Aligner:
     return new_image
 
   # Error detection
-  def error_detect_image(self, cm, model_path, src_seg_cv, src_img_cv, dst_cv, z_range, mip, bbox,
+  def error_detect_volume(self, cm, model_path, src_seg_cv, src_img_cv, dst_cv, z_range, mip, bbox,
                     chunk_size, prefix=''):
     start = time()
-    chunks = self.break_into_chunks(bbox, chunk_size,
+    chunks = self.break_into_chunks_3d(bbox, z_range, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.num_scales)
-    print("\nfold detect\n"
+    print("\nerror detection\n"
           "model {}\n"
-          "src {}\n"
+          "src seg {}\n"
+          "src img {}\n"
           "dst {}\n"
-          "z={} \n"
+          "z={} to z={}\n"
           "MIP{}\n"
-          "{} chunks\n".format(model_path, src_cv, dst_cv, z,
+          "{} chunks\n".format(model_path, src_seg_cv, src_img_cv, dst_cv, z_range[0], z_range[1],
                                mip, len(chunks)), flush=True)
     if prefix == '':
       prefix = '{}'.format(mip)
@@ -680,14 +684,14 @@ class Aligner:
                                         patch_bbox, prefix))
     return batch
 
-  def errdet_image_chunk(self, model_path, src_seg_cv, src_img_cv, z_range, mip, bbox):
+  def errdet_chunk(self, model_path, src_seg_cv, src_img_cv, mip, bbox):
     # Model
     archive = self.get_model_archive(model_path)
     model = archive.model
     
     # Input
-    img = self.get_volume(src_img_cv, z_range, bbox, mip, to_tensor=True)
-    seg = self.get_volume(src_seg_cv, z_range, bbox, mip, to_tensor=True)
+    seg = self.get_volume(src_seg_cv, bbox, mip, to_tensor=True)
+    img = self.get_volume(src_img_cv, bbox, mip, to_tensor=True)
 
     # Inference
     new_image = torch.zeros(img.shape)
