@@ -8,7 +8,7 @@ from taskqueue import TaskQueue, GreenTaskQueue, LocalTaskQueue
 import sys
 import torch
 import json
-from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
+from args import get_argparser, parse_args, get_aligner, get_bbox_3d, get_provenance
 from os.path import join
 from cloudmanager import CloudManager
 from time import time
@@ -70,11 +70,12 @@ if __name__ == '__main__':
   mip = args.mip
   max_mip = args.max_mip
   pad = args.max_displacement
-  sample_size = args.sample_size
-  chunk_size = [args.chunk_size[i] + sample_size[i] for i in range(3)]
+  patch_size = args.patch_size
+  chunk_size = [args.chunk_size[i] + patch_size[i] for i in range(3)]
+  chunk_size = [512,512,64]
 
   # Compile ranges
-  full_range = range(args.bbox_start[2], args.bbox_stop[2])
+  full_range = range(args.bbox_start[2], args.bbox_stop[2], chunk_size[2])
   # Create CloudVolume Manager
   cm = CloudManager(args.src_img_path, max_mip, pad, provenance, batch_size=1,
                     size_chunk=chunk_size[0], batch_mip=mip)
@@ -90,44 +91,41 @@ if __name__ == '__main__':
                   data_type='uint8', num_channels=1, fill_missing=True,
                   overwrite=True)
 
-  a.errdet_chunk(args.model_path, src_seg.path, src_img.path, mip, bbox)
-  # def remote_upload(tasks):
-  #   with GreenTaskQueue(queue_name=args.queue_name) as tq:
-  #       tq.insert_all(tasks)
-  # batch =[]
-  # prefix = str(mip)
-  # class TaskIterator():
-  #     def __init__(self, brange):
-  #         self.brange = brange
-  #     def __iter__(self):
-  #         for z in self.brange:
-  #             t = a.error_detect_image(cm, args.model_path, src.path, dst.path, z, mip, bbox,
-  #                                 chunk_size, prefix)
-  #             yield from t
+  
+  def remote_upload(tasks):
+    with GreenTaskQueue(queue_name=args.queue_name) as tq:
+        tq.insert_all(tasks)
+  batch =[]
+  prefix = str(mip)
+  class TaskIterator():
+      def __init__(self):
+          pass
+      def __iter__(self):
+          t = a.error_detect_volume(cm, args.model_path, src_seg.path, src_img.path, dst.path, mip, bbox, chunk_size, str(mip))
+          yield from t
   # range_list = make_range(full_range, a.threads)
 
-  # start = time()
-  # ptask = []
-  # for i in range_list:
-  #     ptask.append(TaskIterator(i))
+  start = time()
+  ptask = []
+  ptask.append(TaskIterator())
 
 
-  # if a.distributed:
-  #     with ProcessPoolExecutor(max_workers=a.threads) as executor:
-  #         executor.map(remote_upload, ptask)
-  # else:
-  #     for t in ptask:
-  #         tq = LocalTaskQueue(parallel=1)
-  #         tq.insert_all(t, args= [a])
+  if a.distributed:
+      with ProcessPoolExecutor(max_workers=a.threads) as executor:
+          executor.map(remote_upload, ptask)
+  else:
+      for t in ptask:
+          tq = LocalTaskQueue(parallel=1)
+          tq.insert_all(t, args= [a])
 
-  # end = time()
-  # diff = end - start
-  # print("Sending Tasks use time:", diff)
-  # print('Running Tasks')
-  # # wait
-  # start = time()
-  # #if args.use_sqs_wait:
-  # a.wait_for_sqs_empty()
-  # end = time()
-  # diff = end - start
-  # print("Executing Tasks use time:", diff)
+  end = time()
+  diff = end - start
+  print("Sending Tasks use time:", diff)
+  print('Running Tasks')
+  # wait
+  start = time()
+  #if args.use_sqs_wait:
+  a.wait_for_sqs_empty()
+  end = time()
+  diff = end - start
+  print("Executing Tasks use time:", diff)

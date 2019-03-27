@@ -29,7 +29,7 @@ from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               np_downsample, invert, compose_fields, upsample_field, \
                               is_identity, cpc, vector_vote, get_affine_field, is_blank, \
                               identity_grid
-from boundingbox import BoundingBox, deserialize_bbox
+from boundingbox import BoundingBox, deserialize_bbox, BoundingBox3d, deserialize_bbox3d
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
@@ -117,7 +117,7 @@ class Aligner:
                                  mip=mip, max_mip=max_mip))
     return chunks
 
-  def break_into_chunks_3d(self, bbox, z_range, chunk_size, offset, mip, max_mip=12):
+  def break_into_chunks_3d(self, bbox, chunk_size, offset, mip, max_mip=12):
     """Break bbox into list of chunks with chunk_size, given offset for all data 
 
     Args:
@@ -128,12 +128,11 @@ class Aligner:
          will be aligned
        mip: int for MIP level at which bbox is defined
        max_mip: int for the maximum MIP level at which the bbox is valid
-    """
-    if chunk_size[0] > self.chunk_size[0] or chunk_size[1] > self.chunk_size[1]:
-      chunk_size = self.chunk_size 
+    """ 
 
     raw_x_range = bbox.x_range(mip=mip)
     raw_y_range = bbox.y_range(mip=mip)
+    z_range = bbox.z_range()
     
     x_chunk = chunk_size[0]
     y_chunk = chunk_size[1]
@@ -217,7 +216,7 @@ class Aligner:
     return image
 
   def get_volume(self, cv, bbox, mip, to_tensor=True, normalizer=None):
-    print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
+    print('get_image for {0}'.format(bbox.stringify()), flush=True)
     start = time()
     volume = self.get_data_3d(cv, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
                              to_tensor=to_tensor, normalizer=normalizer)
@@ -303,8 +302,7 @@ class Aligner:
     x_range = bbox.x_range(mip=src_mip)
     y_range = bbox.y_range(mip=src_mip)
     z_range = bbox.z_range()
-    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1],
-                       z_range[0]:z_range[1]]
+    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range[0]:z_range[1]]
     data = np.transpose(data, (3,0,1,2))
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
@@ -661,12 +659,13 @@ class Aligner:
     return new_image
 
   # Error detection
-  def error_detect_volume(self, cm, model_path, src_seg_cv, src_img_cv, dst_cv, z_range, mip, bbox,
+  def error_detect_volume(self, cm, model_path, src_seg_cv, src_img_cv, dst_cv, mip, bbox,
                     chunk_size, prefix=''):
     start = time()
-    chunks = self.break_into_chunks_3d(bbox, z_range, chunk_size,
+    chunks = self.break_into_chunks_3d(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.num_scales)
+    z_range = bbox.z_range()
     print("\nerror detection\n"
           "model {}\n"
           "src seg {}\n"
@@ -680,7 +679,7 @@ class Aligner:
       prefix = '{}'.format(mip)
     batch = []
     for patch_bbox in chunks:
-      batch.append(tasks.ErrorDetectTask(model_path, src_cv, dst_cv, z, mip,
+      batch.append(tasks.ErrorDetectTask(model_path, src_seg_cv, src_img_cv, dst_cv, mip,
                                         patch_bbox, prefix))
     return batch
 
@@ -693,6 +692,7 @@ class Aligner:
     seg = self.get_volume(src_seg_cv, bbox, mip, to_tensor=True)
     img = self.get_volume(src_img_cv, bbox, mip, to_tensor=True)
 
+    print(seg.shape, img.shape)
     # Inference
     new_image = torch.zeros(img.shape)
     return new_image

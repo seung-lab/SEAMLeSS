@@ -7,7 +7,7 @@ from functools import partial
 from mipless_cloudvolume import deserialize_miplessCV as DCV
 from cloudvolume import Storage
 from cloudvolume.lib import scatter 
-from boundingbox import BoundingBox, deserialize_bbox
+from boundingbox import BoundingBox, deserialize_bbox, deserialize_bbox3d
 
 from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue, GreenTaskQueue
 from concurrent.futures import ProcessPoolExecutor
@@ -89,14 +89,14 @@ class ErrorDetectTask(RegisteredTask):
           "from z={} to z={}\n"
           "MIP{}\n".format(src_seg_cv, src_img_cv, dst_cv, z_range[0], z_range[1], mip), flush=True)
     start = time()
-    image = aligner.predict_image_chunk(self.model_path, src_seg_cv, src_img_cv, mip, patch_bbox)
+    image = aligner.errdet_chunk(self.model_path, src_seg_cv, src_img_cv, mip, patch_bbox)
     image = image.cpu().numpy()
-    aligner.save_image(image, dst_cv, z, patch_bbox, mip)
+    # aligner.save_image(image, dst_cv, z, patch_bbox, mip)
 
-    with Storage(dst_cv.path) as stor:
-        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
+    # with Storage(dst_cv.path) as stor:
+    #     path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
+    #     stor.put_file(path, '')
+    #     print('Marked finished at {}'.format(path))
     end = time()
     diff = end - start
     print(':{:.3f} s'.format(diff))

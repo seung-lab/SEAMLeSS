@@ -99,7 +99,7 @@ class CloudManager():
 
       scales[i]["size"][0] += int(dst_size_increase / (2**i))
       scales[i]["size"][1] += int(dst_size_increase / (2**i))
-
+      
       x_remainder = scales[i]["size"][0] % scales[i]["chunk_sizes"][0][0]
       y_remainder = scales[i]["size"][1] % scales[i]["chunk_sizes"][0][1]
 

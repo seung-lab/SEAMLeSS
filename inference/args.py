@@ -1,4 +1,4 @@
-from aligner import Aligner, BoundingBox
+from aligner import Aligner, BoundingBox, BoundingBox3d
 from getpass import getuser
 import argparse
 
