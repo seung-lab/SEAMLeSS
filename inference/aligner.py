@@ -428,12 +428,13 @@ class Aligner:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
 
-  def save_image_batch(self, cv, z_range, float_patch, bbox, mip, to_uint8=True):
+  def save_volume(self, float_patch, cv, bbox, mip, to_uint8=True):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
+    z_range = bbox.z_range()
     print("type of float_patch", type(float_patch), "shape", float_patch.shape)
-    patch = np.transpose(float_patch, (2,3,0,1))
-    # patch = np.transpose(float_patch, (2,1,0))[..., np.newaxis]
+    patch = np.transpose(float_patch, (1,2,3,0))
+    
     if to_uint8:
         patch = (np.multiply(patch, 255)).astype(np.uint8)
     print("patch shape", patch.shape)

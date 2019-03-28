@@ -87,7 +87,7 @@ if __name__ == '__main__':
                      fill_missing=True, overwrite=False)
 
   # Create dst CloudVolumes
-  dst = cm.create(join(args.dst_path, 'image'),
+  dst = cm.create(args.dst_path,
                   data_type='uint8', num_channels=1, fill_missing=True,
                   overwrite=True)
 
