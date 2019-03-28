@@ -174,12 +174,17 @@ class ComputeFieldTask(RegisteredTask):
                                           tgt_mask_cv, tgt_mask_mip, tgt_mask_val,
                                           None, prev_field_cv, prev_field_z, 
                                           prev_field_inverse)
+      compute_end =time()
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
-      with Storage(field_cv.path) as stor:
-        path = 'compute_field_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
+
+      #with Storage(field_cv.path) as stor:
+      #  path = 'compute_field_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))
+      #  stor.put_file(path, '')
+      #  print('Marked finished at {}'.format(path))
       end = time()
+      print("store field time ", end - compute_end, field_cv.path)
+      print("---------bbox  is", patch_bbox.stringify(src_z, mip), " shape ",
+            field.shape)
       diff = end - start
       print('ComputeFieldTask: {:.3f} s'.format(diff))
 
@@ -223,13 +228,15 @@ class RenderTask(RegisteredTask):
                                      mask_cv=mask_cv, mask_mip=mask_mip,
                                      mask_val=mask_val, affine=affine,
                                      use_cpu=self.use_cpu)
+      compute_end = time()
       image = image.cpu().numpy()
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
-      with Storage(dst_cv.path) as stor:
-        path = 'render_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
+      #with Storage(dst_cv.path) as stor:
+      #  path = 'render_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
+      #  stor.put_file(path, '')
+      #  print('Marked finished at {}'.format(path))
       end = time()
+      print("-----------store image time ", end - compute_end)
       diff = end - start
       print('RenderTask: {:.3f} s'.format(diff))
 
@@ -266,14 +273,19 @@ class VectorVoteTask(RegisteredTask):
       field = aligner.vector_vote_chunk(pairwise_cvs, vvote_cv, z, patch_bbox, mip, 
                                         inverse=inverse, serial=serial, 
                                         softmin_temp=softmin_temp, blur_sigma=blur_sigma)
+      start_store_t = time()
       field = field.data.cpu().numpy()
       aligner.save_field(field, vvote_cv, z, patch_bbox, mip, relative=False)
-      with Storage(vvote_cv.path) as stor:
-        path = 'vector_vote_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
+      #with Storage(vvote_cv.path) as stor:
+      #  path = 'vector_vote_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
+      #  stor.put_file(path, '')
+      #  print('Marked finished at {}'.format(path))
       end = time()
+      print("-------store field time", end - start_store_t)
+      print("---------bbox  is", patch_bbox.stringify(z), " shape ",
+            field.shape)
       diff = end - start
+      print("----field.shape", field.shape)
       print('VectorVoteTask: {:.3f} s'.format(diff))
 
 

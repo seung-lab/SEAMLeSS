@@ -254,6 +254,7 @@ class Aligner:
     data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     data = np.transpose(data, (2,3,0,1))
     if to_float:
+      print("before to float, data type", data.dtype)
       data = np.divide(data, float(255.0), dtype=np.float32)
     if (normalizer is not None) and (not is_blank(data)):
       print('Normalizing image')
@@ -266,9 +267,12 @@ class Aligner:
       print('normalizer: {:.3f}'.format(diff), flush=True) 
     # convert to tensor if requested, or if up/downsampling required
     if to_tensor | (src_mip != dst_mip):
+      s = time()
       if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
       data = data.to(device=self.device)
+      e =time()
+      print("******* from CPU to GPU time", e -s)
       if src_mip != dst_mip:
         # k = 2**(src_mip - dst_mip)
         size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
@@ -395,8 +399,8 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     field = np.transpose(field, (1,2,0,3))
-    print('save_field for {0} at MIP{1} to {2}'.format(bbox.stringify(z),
-                                                       mip, cv.path))
+    #print('save_field for {0} at MIP{1} to {2}'.format(bbox.stringify(z),
+    #                                                   mip, cv.path))
     if as_int16:
       if(np.max(field) > 8192 or np.min(field) < -8191):
         print('Value in field is out of range of int16 max: {}, min: {}'.format(
@@ -486,7 +490,7 @@ class Aligner:
       except TypeError:
         tgt_z.append(tgt_alt_z)
       print('alternative target slices:', tgt_alt_z)
-
+    loading_start = time()
     src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
                                 mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                 mask_val=src_mask_val,
@@ -495,8 +499,11 @@ class Aligner:
                                 mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
                                 mask_val=tgt_mask_val,
                                 to_tensor=True, normalizer=normalizer)
-    print('src_patch.shape {}'.format(src_patch.shape))
-    print('tgt_patch.shape {}'.format(tgt_patch.shape))
+    loading_end = time()
+    print("loading time", loading_end - loading_start, "image shape",
+          src_patch.shape)
+    #print('src_patch.shape {}'.format(src_patch.shape))
+    #print('tgt_patch.shape {}'.format(tgt_patch.shape))
 
     # Running the model is the only part that will increase memory consumption
     # significantly - only incrementing the GPU lock here should be sufficient.
@@ -510,8 +517,11 @@ class Aligner:
       # model produces field in relative coordinates
       field = model(src_patch, tgt_patch)
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+      print("--------------max memory: ", torch.cuda.max_memory_allocated())
+      print("field shape", field.shape)
       field = self.rel_to_abs_residual(field, mip)
       field = field[:,pad:-pad,pad:-pad,:]
+      print("field shape", field.shape)
       field += distance.to(device=self.device)
       field = field.data.cpu().numpy()
       # clear unused, cached memory so that other processes can allocate it
@@ -522,7 +532,8 @@ class Aligner:
       if self.gpu_lock is not None:
         print("Process {} releasing GPU lock".format(os.getpid()))
         self.gpu_lock.release()
-
+    total_end = time()
+    print("++ compuing using ", total_end - loading_end)
     return field
 
   def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
@@ -585,6 +596,7 @@ class Aligner:
        
     """
     fields = []
+    start = time()
     for z_offset, f_cv in pairwise_cvs.items():
       if serial:
         F = self.get_field(f_cv, z, bbox, mip, relative=False, to_tensor=True)
@@ -600,13 +612,19 @@ class Aligner:
           F = self.get_composed_field(G_cv, f_cv, G_z, f_z, bbox, mip, mip, mip)
       fields.append(F)
     # assign weight w if the difference between majority vector similarities are d
+    end = time()
+    print("----------loading field time", end - start)
     if not softmin_temp:
       w = 0.99
       d = 2**mip
       n = len(fields)
       m = int(binom(n, (n+1)//2)) - 1
       softmin_temp = 2**mip
-    return vector_vote(fields, softmin_temp=softmin_temp, blur_sigma=blur_sigma)
+    start = time()
+    field = vector_vote(fields, softmin_temp=softmin_temp, blur_sigma=blur_sigma)
+    end = time()
+    print("vvote time", end-start)
+    return field 
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
     """Compute the inverse vector field for a given bbox 
@@ -670,8 +688,12 @@ class Aligner:
       padded_bbox.uncrop(pad, mip=image_mip)
 
       # Load initial vector field
+      load_field = time()
       field = self.get_field(field_cv, field_z, padded_bbox, field_mip,
                              relative=False, to_tensor=True)
+      load_end = time()
+      print("-----loading field", load_end - load_field)
+
       if field_mip > image_mip:
         field = upsample_field(field, field_mip, image_mip)
 
@@ -696,6 +718,7 @@ class Aligner:
         field -= ident
 
       if is_identity(field):
+        print("identity  field****************")
         image = self.get_image(image_cv, image_z, bbox, image_mip,
                                to_tensor=True, normalizer=None)
         if mask_cv is not None:
@@ -711,14 +734,22 @@ class Aligner:
 
         field -= distance.to(device = self.device)
         field = self.abs_to_rel_residual(field, padded_bbox, image_mip)
+        print("+============== padded_bbox", padded_bbox.stringify(image_z, image_mip))
         field = field.to(device = self.device)
-
+        load_image_t = time()
         image = self.get_masked_image(image_cv, image_z, new_bbox, image_mip,
                                       mask_cv=mask_cv, mask_mip=mask_mip,
                                       mask_val=mask_val,
                                       to_tensor=True, normalizer=None)
+        load_end = time()
+        print("+============== new_bbox", new_bbox.stringify(image_z, image_mip))
+        print("loading image", load_end - load_image_t)
         image = grid_sample(image, field, padding_mode='zeros')
+        print("+========= image size", image.shape)
         image = image[:,:,pad:-pad,pad:-pad]
+        print("+========= image size", image.shape)
+        end =time()
+        print("grid_sample time", end- load_end)
         return image
 
 
