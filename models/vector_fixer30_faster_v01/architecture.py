@@ -17,6 +17,7 @@ class Model(nn.Module):
 
     def __init__(self, height, skip=0, topskips=0, k=7, *args, **kwargs):
         super().__init__()
+        print("************************************height is", height, skip)
         self.pyramid = EPyramid(height, skip, topskips, k)
 
     def forward(self, src, tgt, skip=0, in_field=None, **kwargs):
@@ -140,6 +141,7 @@ class EPyramid(nn.Module):
         enc_infms = [1] + enc_outfms[:-1]
         self.mlist = nn.ModuleList([G(k=k, infm=enc_outfms[level]*2)
                                     for level in range(size)])
+        #print("******+++++++++++++++++ moduleList", self.mlist)
         self.up = upsample()
         self.down = downsample(type='max')
         self.enclist = nn.ModuleList([Enc(infm=infm, outfm=outfm)
@@ -155,6 +157,7 @@ class EPyramid(nn.Module):
         factor = self.train_size / src.shape[-2]
 
         for i, module in enumerate(self.enclist):
+            #print("**************model in en", module, "src and tgt", src.shape, tgt.shape)
             src, tgt = module(src, tgt)
             self.src_encodings[i] = src
             self.tgt_encodings[i] = tgt
@@ -169,6 +172,7 @@ class EPyramid(nn.Module):
                     enc_src = grid_sample(
                         enc_src,
                         field_so_far, padding_mode='zeros')
+                #print("=================model", self.mlist[i], "input and output size", enc_src.shape, enc_tgt.shape)
                 rfield = self.mlist[i](enc_src, enc_tgt) * factor
                 if first_iter:
                     field_so_far = rfield
