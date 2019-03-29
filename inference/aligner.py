@@ -75,9 +75,132 @@ class Aligner:
 
     self.gpu_lock = kwargs.get('gpu_lock', None)  # multiprocessing.Semaphore
 
+  def convert_to_float(self, data):
+      data = data.type(torch.float)
+      data = data / 255.0
+      return data
+
+  def convert_to_uint8(self, data):
+      data = data * 255
+      data = data.type(torch.uint8)
+      return data
+
+  def convert_to_int16(self, data):
+      if(torch.max(data) > 8192 or torch.min(data)< -8192):
+          print('Value in field is out of range of int16 max: {}, min: {}'.format(
+                                               torch.max(data), torch.min(data)), flush=True)
+      data = data * 4
+      return data.type(torch.int16)
+
+  def break_into_overlap_chunk(self, src_img, chunk_size, pad):
+
+  def new_compute_field(self, model_path, src_img, tgt_img, chunk_size, pad):
+      archive = self.get_model_archive(model_path)
+      img_shape = src_img.shape
+      x_len = img_shape[-2]
+      y_len = img_shape[-1]
+      padded_len = chunk_size + 2*pad
+      dst_field = torch.ShortTensor(1,x_len-2*pad, y_len-2*pad,2).zero_()
+      for xs in range(0, x_len-pad, chunk_size):
+          for ys in range(0, y_len-pad, chunk_size):
+              src_patch=src_img[...,xs:xs+padded_len, ys:ys+padded_len]
+              tgt_patch=tgt_img[...,xs:xs+padded_len, ys:ys+padded_len]
+              field = new_compute_field_chunk(archive, src_patch, tgt_patch)
+              field = field[:,pad:-pad,pad:-pad,:]
+              dst_field[..,xs:xs+chunk_size,ys:ys+chunk_size,..] = field
+      return dst_field
+
+
+  def new_compute_field_chunk(self, archive, src_img, tgt_img):
+      model = archive.model
+      normalizer = archive.preprocessor
+      if (normalizer is not None): 
+          if(not is_blank(src_img)):
+              src_image =normalizer(src_img).reshape(src_img.shape)
+          if(not is_blank(tgt_img)):
+              tgt_image =normalizer(tgt_img).reshape(tgt_image.shape)
+      field = model(src_img, tgt_img)
+      return field
+
+  def get_chunk_grid(self, cm, bbox, mip, overlap, row_len):
+      chunk_grid = break_into_chunks_grid(bbox, cm.dst_chunk_size[mip],
+                                          cm.dst_voxel_offsets[mip], mip=mip,
+                                          max_mip=cm.max_mip)
+      chunks = []
+      start =0
+      while(start+row_len<len(chunk_grid)):
+          chunks.append(BoundingBox(chunk_grid[start][0].x_range[0],
+                                    chunk_grid[start][-1].x_range[1],
+                                    chunk_grid[start][0].y_range[0],
+                                    chunk_grid[start+row_len][0].y_range[1])
+          start = start + row_len - overlap
+      if start<len(chunk_grid):
+          chunks.append(BoundingBox(chunk_grid[start][0].x_range[0],
+                                    chunk_grid[start][-1].x_range[1],
+                                    chunk_grid[start][0].y_range[0],
+                                    chunk_grid[-1][0].y_range[1])
+      return chunk_grid
+
+
+  def load_part_image(self, image_cv, z, bbox, image_mip, mask_cv=None,
+                       mask_mip=0, mask_val=0):
+      tmp_device = self.device
+      self.device = 'cpu' 
+      image = self.get_image(image_cv, z, bbox, image_mip,
+                             to_tensor=True, normalizer=None, to_float=False)
+      if mask_cv is not None:
+        mask = self.get_mask(mask_cv, image_z, bbox,
+                             src_mip=mask_mip,
+                             dst_mip=image_mip, valid_val=mask_val)
+        image = image.masked_fill_(mask, 0)
+      self.device = tmp_device
+      return image
+
+
+
   ##########################
   # Chunking & BoundingBox #
   ##########################
+
+  def break_into_chunks_grid(self, bbox, chunk_size, offset, mip, max_mip=12):
+    """Break bbox into list of chunks with chunk_size, given offset for all data 
+
+    Args:
+       bbox: BoundingBox for region to be broken into chunks
+       chunk_size: tuple for dimensions of chunk that bbox will be broken into;
+         will be set to min(chunk_size, self.chunk_size)
+       offset: tuple for x,y origin for the entire dataset, from which chunks
+         will be aligned
+       mip: int for MIP level at which bbox is defined
+       max_mip: int for the maximum MIP level at which the bbox is valid
+    """
+    if chunk_size[0] > self.chunk_size[0] or chunk_size[1] > self.chunk_size[1]:
+      chunk_size = self.chunk_size 
+
+    raw_x_range = bbox.x_range(mip=mip)
+    raw_y_range = bbox.y_range(mip=mip)
+    
+    x_chunk = chunk_size[0]
+    y_chunk = chunk_size[1]
+    
+    x_offset = offset[0]
+    y_offset = offset[1]
+
+    x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
+    y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
+
+    calign_x_range = [raw_x_range[0] - x_remainder, raw_x_range[1]]
+    calign_y_range = [raw_y_range[0] - y_remainder, raw_y_range[1]]
+
+    chunks = []
+    for xs in range(calign_x_range[0], calign_x_range[1], chunk_size[0]):
+      x_chunks = [] 
+      for ys in range(calign_y_range[0], calign_y_range[1], chunk_size[1]):
+        x_chunks.append(BoundingBox(xs, xs + chunk_size[0],
+                                 ys, ys + chunk_size[1],
+                                 mip=mip, max_mip=max_mip))
+      chunks.append(x_chunks)
+    return chunks
 
   def break_into_chunks(self, bbox, chunk_size, offset, mip, max_mip=12):
     """Break bbox into list of chunks with chunk_size, given offset for all data 
@@ -166,11 +289,12 @@ class Aligner:
     print('get_mask: {:.3f}'.format(diff), flush=True) 
     return mask
 
-  def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None):
+  def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None,
+                to_float=True):
     print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
     start = time()
-    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
-                             to_tensor=to_tensor, normalizer=normalizer)
+    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip,
+                          to_float=to_float, to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
     print('get_image: {:.3f}'.format(diff), flush=True) 
