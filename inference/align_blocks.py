@@ -401,7 +401,8 @@ if __name__ == '__main__':
                   vvote_offsets = vvote_lookup[z]
                   fields = {i: pair_fields[i] for i in vvote_offsets}
                   t = a.vector_vote(cm, fields, vvote_field.path, z, bbox,
-                                    mip, inverse=False, serial=True, prefix=prefix)
+                                    mip, inverse=False, serial=True, prefix=prefix,
+                                    softmin_temp=2**mip, blur_sigma=1)
                   yield from t
     ptask = []
     start = time()
