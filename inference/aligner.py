@@ -275,25 +275,27 @@ class Aligner:
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
-      # data = data.to(device=self.device)
-      # if src_mip != dst_mip:
-      #   # k = 2**(src_mip - dst_mip)
-      #   size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
-      #   if not isinstance(data, torch.cuda.ByteTensor): #TODO: handle device
-      #     data = interpolate(data, size=size, mode='bilinear')
-      #   else:
-      #     data = data.type('torch.cuda.DoubleTensor')
-      #     data = interpolate(data, size=size, mode='nearest')
-      #     data = data.type('torch.cuda.ByteTensor')
-      data = data.type(torch.float32)
-      if src_mip > dst_mip:
-        size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
-        data = interpolate(data, size=size, mode='nearest')
-        data = data.type(torch.ByteTensor)
-      elif src_mip < dst_mip:
-        ratio = 2**(dst_mip-src_mip)
-        data = max_pool2d(data, kernel_size=ratio)
-        data = data.type(torch.ByteTensor)
+      if self.device.type == 'cuda':
+        data = data.to(device=self.device)
+        if src_mip != dst_mip:
+          # k = 2**(src_mip - dst_mip)
+          size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
+          if not isinstance(data, torch.cuda.ByteTensor): 
+            data = interpolate(data, size=size, mode='bilinear')
+          else:
+            data = data.type('torch.cuda.DoubleTensor')
+            data = interpolate(data, size=size, mode='nearest')
+            data = data.type('torch.cuda.ByteTensor')
+      else:
+        data = data.type(torch.float32)
+        if src_mip > dst_mip:
+          size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
+          data = interpolate(data, size=size, mode='nearest')
+          data = data.type(torch.ByteTensor)
+        elif src_mip < dst_mip:
+          ratio = 2**(dst_mip-src_mip)
+          data = max_pool2d(data, kernel_size=ratio)
+          data = data.type(torch.ByteTensor)
       if not to_tensor:
         data = data.cpu().numpy()
     
