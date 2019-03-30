@@ -7,6 +7,7 @@ import tenacity
 import operator
 import numpy as np
 from copy import deepcopy
+from os.path import join
 from functools import partial
 from mipless_cloudvolume import deserialize_miplessCV as DCV
 from cloudvolume import Storage
@@ -883,3 +884,41 @@ class SumPoolTask(RegisteredTask):
     end = time()
     diff = end - start
     print('SumPool: {:.3f} s'.format(diff))
+
+class SummarizeTask(RegisteredTask):
+  def __init__(self, src_cv, dst_path, z, bbox, mip):
+    super(). __init__(src_cv, dst_path, z, bbox, mip)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst_path = self.dst_path 
+    z = self.z
+    bbox = deserialize_bbox(self.bbox)
+    mip = self.mip
+    print("\nSummarize"
+          "src_cv {}\n"
+          "dst_path {}\n"
+          "z {}\n"
+          "mip {}\n"
+          .format(src_cv, dst_path, z, mip), flush=True)
+    start = time()
+    d = aligner.get_data(src_cv, z, bbox, src_mip=mip, dst_mip=mip,
+                         to_float=False, to_tensor=False)
+    stats = {}
+    stats['sum'] = float(np.sum(d))
+    stats['std'] = float(np.std(d))
+    stats['count'] = float(np.prod(d.shape))
+    stats['min'] = float(np.min(d))
+    stats['max'] = float(np.max(d))
+    stats['mean'] = float(np.mean(d))
+    stats['med'] = float(np.median(d))
+    print(stats)
+    with Storage(dst_path) as stor:
+      path = '{}/{}'.format(bbox.stringify(0), z)
+      stor.put_file(path, json.dumps(stats),
+                    content_type='application/json',
+                    cache_control='no-cache')
+      print('Save summary at {}'.format(join(dst_path, path)))
+    end = time()
+    diff = end - start
+    print('SummarizeTask: {:.3f} s'.format(diff))
