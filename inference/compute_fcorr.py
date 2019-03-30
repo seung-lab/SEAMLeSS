@@ -61,8 +61,8 @@ if __name__ == '__main__':
   src_mip = args.src_mip
   dst_mip = args.dst_mip
   fcorr_chunk_size = 2**(dst_mip-src_mip)
-  # chunk_size = 2048 
-  a.chunk_size = (fcorr_chunk_size, fcorr_chunk_size)
+  chunk_size = 128 
+  a.chunk_size = (chunk_size, chunk_size)
   max_mip = args.max_mip
   pad = args.pad
   z_offset = args.z_offset
@@ -77,7 +77,7 @@ if __name__ == '__main__':
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=fcorr_chunk_size, batch_mip=dst_mip)
+                    size_chunk=chunk_size, batch_mip=dst_mip)
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
