@@ -68,10 +68,6 @@ class PredictImageTask(RegisteredTask):
     image = image.cpu().numpy()
     aligner.save_image(image, dst_cv, z, patch_bbox, mip)
 
-    with Storage(dst_cv.path) as stor:
-        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
     end = time()
     diff = end - start
     print(':{:.3f} s'.format(diff))
@@ -121,10 +117,6 @@ class CopyTask(RegisteredTask):
         image = aligner.get_data(src_cv, src_z, patch_bbox, mip, mip, to_float=False,
                                  to_tensor=False, normalizer=None)
         aligner.save_image(image, dst_cv, dst_z, patch_bbox, mip, to_uint8=False)
-      with Storage(dst_cv.path) as stor:
-          path = 'copy_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
-          stor.put_file(path, '')
-          print('Marked finished at {}'.format(path))
       end = time()
       diff = end - start
       print(':{:.3f} s'.format(diff))
@@ -186,10 +178,6 @@ class ComputeFieldTask(RegisteredTask):
                                           None, prev_field_cv, prev_field_z, 
                                           prev_field_inverse)
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
-      with Storage(field_cv.path) as stor:
-        path = 'compute_field_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
       end = time()
       diff = end - start
       print('ComputeFieldTask: {:.3f} s'.format(diff))
@@ -236,10 +224,6 @@ class RenderTask(RegisteredTask):
                                      use_cpu=self.use_cpu)
       image = image.cpu().numpy()
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
-      with Storage(dst_cv.path) as stor:
-        path = 'render_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
       end = time()
       diff = end - start
       print('RenderTask: {:.3f} s'.format(diff))
@@ -279,10 +263,6 @@ class VectorVoteTask(RegisteredTask):
                                         softmin_temp=softmin_temp, blur_sigma=blur_sigma)
       field = field.data.cpu().numpy()
       aligner.save_field(field, vvote_cv, z, patch_bbox, mip, relative=False)
-      with Storage(vvote_cv.path) as stor:
-        path = 'vector_vote_done/{}/{}'.format(prefix, patch_bbox.stringify(z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
       end = time()
       diff = end - start
       print('VectorVoteTask: {:.3f} s'.format(diff))
@@ -326,10 +306,6 @@ class CloudComposeTask(RegisteredTask):
                                      affine=affine, pad=pad)
       h = h.data.cpu().numpy()
       aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
-      with Storage(dst_cv.path) as stor:
-        path = 'compose_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
       end = time()
       diff = end - start
       print('ComposeTask: {:.3f} s'.format(diff))
@@ -368,11 +344,6 @@ class CloudMultiComposeTask(RegisteredTask):
             h = h.data.cpu().numpy()
             aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip,
                                relative=False)
-            with Storage(dst_cv.path) as stor:
-                path = 'multi_compose_done/{}/{}'.format(
-                    prefix, patch_bbox.stringify(dst_z))
-                stor.put_file(path, '')
-                print('Marked finished at {}'.format(path))
             end = time()
             diff = end - start
             print('MultiComposeTask: {:.3f} s'.format(diff))
@@ -408,10 +379,6 @@ class CPCTask(RegisteredTask):
                             dst_mip, norm)
       r = r.cpu().numpy()
       aligner.save_image(r, dst_cv, src_z, patch_bbox, dst_mip, to_uint8=norm)
-      with Storage(dst_cv.path) as stor:
-        path = 'cpc_done/{}/{}'.format(prefix, patch_bbox.stringify(src_z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
 
 class BatchRenderTask(RegisteredTask):
   def __init__(
@@ -441,8 +408,6 @@ class BatchRenderTask(RegisteredTask):
                                            patch_bbox, mip, batch)
       aligner.save_image_patch_batch(dst_cv, (dst_z, dst_z + batch),
                                   warped_patch, patch_bbox, mip)
-      with Storage(dst_cv.path) as stor:
-          stor.put_file('render_batch/'+str(mip)+'_'+str(dst_z)+'_'+str(batch)+'/'+ patch_bbox.__str__(), '')
     aligner.pool.map(chunkwise, patches)
 
 class DownsampleTask(RegisteredTask):
@@ -461,8 +426,6 @@ class DownsampleTask(RegisteredTask):
     def chunkwise(patch_bbox):
       downsampled_patch = aligner.downsample_patch(cv, z, patch_bbox, mip - 1)
       aligner.save_image_patch(cv, z, downsampled_patch, patch_bbox, mip)
-      with Storage(cv.path) as stor:
-          stor.put_file('downsample_done/'+str(mip)+'_'+str(z)+'/'+patch_bbox.__str__(), '')
     aligner.pool.map(chunkwise, patches)
 
 class InvertFieldTask(RegisteredTask):
@@ -537,8 +500,6 @@ class RenderCVTask(RegisteredTask):
               end='', flush=True)
       warped_patch = aligner.warp_using_gridsample_cv(src_z, field_cv, field_z, patch_bbox, mip)
       aligner.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, mip)
-      with Storage(dst_cv.path) as stor:
-          stor.put_file('render_cv/'+str(mip)+'_'+str(dst_z)+'/'+ patch_bbox.__str__(), '')
     aligner.pool.map(chunkwise, patches)    
 
 class RenderLowMipTask(RegisteredTask):
@@ -567,8 +528,6 @@ class RenderLowMipTask(RegisteredTask):
       warped_patch = aligner.warp_patch_at_low_mip(src_z, field_cv, field_z, 
                                                 patch_bbox, image_mip, vector_mip)
       aligner.save_image_patch(dst_cv, dst_z, warped_patch, patch_bbox, image_mip)
-      with Storage(dst_cv.path) as stor:
-          stor.put_file('render_low_mip/'+str(image_mip)+'_'+str(dst_z)+'/'+ patch_bbox.__str__(), '')
     aligner.pool.map(chunkwise, patches)
 
 class ResAndComposeTask(RegisteredTask):
@@ -586,11 +545,6 @@ class ResAndComposeTask(RegisteredTask):
     aligner.res_and_compose(self.model_path, src_cv, tgt_cv, self.z,
                             self.tgt_range, patch_bbox, self.mip, w_cv,
                             self.pad, self.softmin_temp)
-    with Storage(w_cv.path) as stor:
-      path = 'res_and_compose/{}-{}/{}'.format(self.prefix, self.mip,
-                                               patch_bbox.stringify(self.z))
-      stor.put_file(path, '')
-      print('Marked finished at {}'.format(path))
 
 class UpsampleRenderRechunkTask(RegisteredTask):
   def __init__(
@@ -639,11 +593,6 @@ class FilterThreeOpTask(RegisteredTask):
     aligner.append_image(res, dst_cv, dst_z, patch_bbox, mip, to_uint8=True)
     aligner.append_image(res, dst_cv, dst_z+1, patch_bbox, mip, to_uint8=True)
     aligner.append_image(res, dst_cv, dst_z+2, patch_bbox, mip, to_uint8=True)
-    #with Storage(dst_cv.path) as stor:
-    #  path = 'Mask_op_done/{}/{}'.format(self.prefix,
-    #                                     patch_bbox.stringify(dst_z))
-    #  stor.put_file(path, '')
-    #  print('Marked finished at {}'.format(path))
     end = time()
     diff = end - start
     print('Task: {:.3f} s'.format(diff))
@@ -692,14 +641,9 @@ class FcorrMaskTask(RegisteredTask):
       mask = ndimage.binary_dilation(mask[0,0,...], structure=s).astype(mask.dtype)
       mask = mask[np.newaxis, np.newaxis, ...]
     aligner.save_image(mask, dst_post, dst_z, patch_bbox, mip, to_uint8=True)
-    # with Storage(dst_post.path) as stor:
-    #   path = 'fcorr_mask_done/{}/{}'.format(self.prefix,
-    #                                      patch_bbox.stringify(dst_z))
-    #   stor.put_file(path, '')
-    #   print('Marked finished at {}'.format(path))
-    # end = time()
-    # diff = end - start
-    # print('FcorrMaskTask: {:.3f} s'.format(diff))
+    end = time()
+    diff = end - start
+    print('FcorrMaskTask: {:.3f} s'.format(diff))
 
 class MaskLogicTask(RegisteredTask):
   def __init__(self, cv_list, dst_cv, z_list, dst_z, bbox, mip_list, dst_mip, op, 
@@ -734,13 +678,9 @@ class MaskLogicTask(RegisteredTask):
                                            dst_mip)
 
     aligner.save_image(res, dst, dst_z, patch_bbox, dst_mip, to_uint8=True)
-    # with Storage(dst.path) as stor:
-    #   path = 'mask_logic_done/{}/{}'.format(self.prefix, patch_bbox.stringify(dst_z))
-    #   stor.put_file(path, '')
-    #   print('Marked finished at {}'.format(path))
-    # end = time()
-    # diff = end - start
-    # print('Task: {:.3f} s'.format(diff))
+    end = time()
+    diff = end - start
+    print('Task: {:.3f} s'.format(diff))
 
 class MaskOutTask(RegisteredTask):
   def __init__(self, cv, mip, z, bbox):
@@ -791,10 +731,6 @@ class ComputeFcorrTask(RegisteredTask):
     aligner.save_image(pre_image, dst_pre_cv, dst_z, patch_bbox, dst_mip, to_uint8=False)
     aligner.save_image(post_image, dst_post_cv, dst_z, patch_bbox, dst_mip, 
                        to_uint8=False)
-    with Storage(dst_post_cv.path) as stor:
-      path = 'fcorr_done/{}/{}'.format(self.prefix, patch_bbox.stringify(dst_z))
-      stor.put_file(path, '')
-      print('Marked finished at {}'.format(path))
     end = time()
     diff = end - start
     print('FcorrTask: {:.3f} s'.format(diff))
@@ -947,4 +883,3 @@ class SumPoolTask(RegisteredTask):
     end = time()
     diff = end - start
     print('SumPool: {:.3f} s'.format(diff))
-
