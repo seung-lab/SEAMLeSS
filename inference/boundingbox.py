@@ -152,10 +152,13 @@ class BoundingBox:
   def __repr__(self):
     return self.__str__(mip=0)
 
-  def stringify(self, z, mip=0):
+  def stringify(self, z_start, z_stop=None, mip=0):
     x_start = self.x_range(mip)[0]    
     x_stop = self.x_range(mip)[1]    
     y_start = self.y_range(mip)[0]    
     y_stop = self.y_range(mip)[1]    
-    return '[{0},{1},{2}], [{3},{4},{5}]'.format(x_start, y_start, z, x_stop, y_stop, z+1)
+    if not z_stop:
+      z_stop = z_start+ 1
+    return '{0},{1},{2}_{3},{4},{5}'.format(x_start, y_start, z_start, 
+                                            x_stop, y_stop, z_stop)
     
