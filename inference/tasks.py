@@ -49,8 +49,8 @@ def run(aligner, tasks):
         tq.insert(task, args=[ aligner ])
 
 class PredictImageTask(RegisteredTask):
-  def __init__(self, model_path, src_cv, dst_cv, z, mip, bbox, prefix):
-    super().__init__(model_path, src_cv, dst_cv, z, mip, bbox, prefix)
+  def __init__(self, model_path, src_cv, dst_cv, z, mip, bbox):
+    super().__init__(model_path, src_cv, dst_cv, z, mip, bbox)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -58,7 +58,7 @@ class PredictImageTask(RegisteredTask):
     z = self.z
     patch_bbox = deserialize_bbox(self.bbox)
     mip = self.mip
-    prefix = self.prefix
+
     print("\nPredict Image\n"
           "src {}\n"
           "dst {}\n"
@@ -76,9 +76,9 @@ class PredictImageTask(RegisteredTask):
 
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, 
-               is_field, to_uint8, mask_cv, mask_mip, mask_val, prefix):
+               is_field, to_uint8, mask_cv, mask_mip, mask_val):
     super().__init__(src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, 
-                     is_field, to_uint8, mask_cv, mask_mip, mask_val, prefix)
+                     is_field, to_uint8, mask_cv, mask_mip, mask_val)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -94,7 +94,7 @@ class CopyTask(RegisteredTask):
       mask_cv = DCV(self.mask_cv)
     mask_mip = self.mask_mip
     mask_val = self.mask_val
-    prefix = self.prefix
+
     print("\nCopy\n"
           "src {}\n"
           "dst {}\n"
@@ -125,11 +125,11 @@ class CopyTask(RegisteredTask):
 class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
-                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix,
+                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
                      prev_field_cv, prev_field_z, prev_field_inverse):
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
-                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix,
+                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
                      prev_field_cv, prev_field_z, prev_field_inverse)
 
   def execute(self, aligner):
@@ -158,7 +158,7 @@ class ComputeFieldTask(RegisteredTask):
       tgt_mask_cv = DCV(self.tgt_mask_cv)
     tgt_mask_mip = self.tgt_mask_mip
     tgt_mask_val = self.tgt_mask_val
-    prefix = self.prefix
+
     print("\nCompute field\n"
           "model {}\n"
           "src {}\n"
@@ -185,9 +185,9 @@ class ComputeFieldTask(RegisteredTask):
 
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
-               field_mip, mask_cv, mask_mip, mask_val, affine, prefix, use_cpu=False):
+               field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
-                     field_mip, mask_cv, mask_mip, mask_val, affine, prefix, use_cpu)
+                     field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
@@ -207,7 +207,7 @@ class RenderTask(RegisteredTask):
     affine = None 
     if self.affine:
       affine = np.array(self.affine)
-    prefix = self.prefix
+
     print("\nRendering\n"
           "src {}\n"
           "field {}\n"
@@ -230,9 +230,9 @@ class RenderTask(RegisteredTask):
       print('RenderTask: {:.3f} s'.format(diff))
 
 class VectorVoteTask(RegisteredTask):
-  def __init__(self, pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial, prefix,
+  def __init__(self, pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial,
                softmin_temp, blur_sigma):
-    super().__init__(pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial, prefix,
+    super().__init__(pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial,
                      softmin_temp, blur_sigma)
 
   def execute(self, aligner):
@@ -243,7 +243,7 @@ class VectorVoteTask(RegisteredTask):
     mip = self.mip
     inverse = bool(self.inverse)
     serial = bool(self.serial)
-    prefix = self.prefix
+
     softmin_temp = self.softmin_temp
     blur_sigma = self.blur_sigma
     print("\nVector vote\n"
@@ -271,9 +271,9 @@ class VectorVoteTask(RegisteredTask):
 
 class CloudComposeTask(RegisteredTask):
   def __init__(self, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
-                     dst_mip, factor, affine, pad, prefix):
+                     dst_mip, factor, affine, pad):
     super().__init__(f_cv, g_cv, dst_cv, f_z, g_z, dst_z, patch_bbox, f_mip, g_mip, 
-                     dst_mip, factor, affine, pad, prefix)
+                     dst_mip, factor, affine, pad)
 
   def execute(self, aligner):
     f_cv = DCV(self.f_cv)
@@ -291,7 +291,7 @@ class CloudComposeTask(RegisteredTask):
     affine = None
     if self.affine:
       affine = np.array(self.affine)
-    prefix = self.prefix
+
     print("\nCompose\n"
           "f {}\n"
           "g {}\n"
@@ -314,9 +314,9 @@ class CloudComposeTask(RegisteredTask):
 
 class CloudMultiComposeTask(RegisteredTask):
     def __init__(self, cv_list, dst_cv, z_list, dst_z, patch_bbox, mip_list,
-                 dst_mip, factors, pad, prefix):
+                 dst_mip, factors, pad):
         super().__init__(cv_list, dst_cv, z_list, dst_z, patch_bbox, mip_list,
-                         dst_mip, factors, pad, prefix)
+                         dst_mip, factors, pad)
 
     def execute(self, aligner):
         cv_list = [DCV(f) for f in self.cv_list]
@@ -328,7 +328,7 @@ class CloudMultiComposeTask(RegisteredTask):
         dst_mip = self.dst_mip
         factors = self.factors
         pad = self.pad
-        prefix = self.prefix
+    
         print("\nCompose\n"
               "cv {}\n"
               "z={}\n"
@@ -352,9 +352,9 @@ class CloudMultiComposeTask(RegisteredTask):
 
 class CPCTask(RegisteredTask):
   def __init__(self, src_cv, tgt_cv, dst_cv, src_z, tgt_z, patch_bbox, 
-                    src_mip, dst_mip, norm, prefix):
+                    src_mip, dst_mip, norm):
     super().__init__(src_cv, tgt_cv, dst_cv, src_z, tgt_z, patch_bbox, 
-                    src_mip, dst_mip, norm, prefix)
+                    src_mip, dst_mip, norm)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
@@ -366,7 +366,6 @@ class CPCTask(RegisteredTask):
     src_mip = self.src_mip
     dst_mip = self.dst_mip
     norm = self.norm
-    prefix = self.prefix
     print("\nCPC\n"
           "src {}\n"
           "tgt {}\n"
@@ -533,9 +532,9 @@ class RenderLowMipTask(RegisteredTask):
 
 class ResAndComposeTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, z, tgt_range, patch_bbox, mip,
-               w_cv, pad, softmin_temp, prefix):
+               w_cv, pad, softmin_temp):
     super().__init__(model_path, src_cv, tgt_cv, z, tgt_range, patch_bbox, mip,
-               w_cv, pad, softmin_temp, prefix)
+               w_cv, pad, softmin_temp)
 
   def execute(self, aligner):
     patch_bbox = deserialize_bbox(self.patch_bbox)
@@ -600,9 +599,9 @@ class FilterThreeOpTask(RegisteredTask):
 
 class FcorrMaskTask(RegisteredTask):
   def __init__(self, cv_list, dst_pre, dst_post, z_list, dst_z, bbox, mip, 
-               operators, threshold, dilate_radius=0, prefix=''):
+               operators, threshold, dilate_radius=0=''):
     super().__init__(cv_list, dst_pre, dst_post, z_list, dst_z, bbox, mip, 
-                     operators, threshold, dilate_radius, prefix)
+                     operators, threshold, dilate_radius)
 
   def execute(self, aligner):
     cv_list = [DCV(f) for f in self.cv_list]
@@ -647,9 +646,8 @@ class FcorrMaskTask(RegisteredTask):
     print('FcorrMaskTask: {:.3f} s'.format(diff))
 
 class MaskLogicTask(RegisteredTask):
-  def __init__(self, cv_list, dst_cv, z_list, dst_z, bbox, mip_list, dst_mip, op, 
-               prefix=''):
-    super(). __init__(cv_list, dst_cv, z_list, dst_z, bbox, mip_list, dst_mip, op, prefix)
+  def __init__(self, cv_list, dst_cv, z_list, dst_z, bbox, mip_list, dst_mip, op)
+    super(). __init__(cv_list, dst_cv, z_list, dst_z, bbox, mip_list, dst_mip, op)
 
   def execute(self, aligner):
     cv_list = [DCV(f) for f in self.cv_list]
@@ -699,9 +697,9 @@ class MaskOutTask(RegisteredTask):
 
 class ComputeFcorrTask(RegisteredTask):
   def __init__(self, src_cv, dst_pre_cv, dst_post_cv, patch_bbox, src_mip, dst_mip,
-               src_z, tgt_z, dst_z, chunk_size, fill_value, prefix):
+               src_z, tgt_z, dst_z, chunk_size, fill_value):
     super(). __init__(src_cv, dst_pre_cv, dst_post_cv, patch_bbox, src_mip, dst_mip,
-                      src_z, tgt_z, dst_z, chunk_size, fill_value, prefix)
+                      src_z, tgt_z, dst_z, chunk_size, fill_value)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -740,9 +738,9 @@ class Dilation(RegisteredTask):
   """Binary dilation only, right now
   """
   def __init__(self, src_cv, dst_cv, src_z, dst_z, bbox, mip, 
-               radius, prefix):
+               radius):
     super(). __init__(src_cv, dst_cv, src_z, dst_z, bbox, mip, 
-                      radius, prefix)
+                      radius)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -780,9 +778,9 @@ class Dilation(RegisteredTask):
 
 class Threshold(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, bbox, mip, 
-               threshold, op, prefix):
+               threshold, op):
     super(). __init__(src_cv, dst_cv, src_z, dst_z, bbox, mip, 
-                      threshold, op, prefix)
+                      threshold, op)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -823,9 +821,9 @@ class Threshold(RegisteredTask):
 
 class ComputeSmoothness(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, bbox, 
-               mip, prefix):
+               mip):
     super(). __init__(src_cv, dst_cv, src_z, dst_z, bbox, 
-                      mip, prefix)
+                      mip)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -852,9 +850,9 @@ class ComputeSmoothness(RegisteredTask):
 
 class SumPoolTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, bbox, 
-               src_mip, dst_mip, prefix):
+               src_mip, dst_mip):
     super(). __init__(src_cv, dst_cv, src_z, dst_z, bbox, 
-                      src_mip, dst_mip, prefix)
+                      src_mip, dst_mip)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
