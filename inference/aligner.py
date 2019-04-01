@@ -564,7 +564,7 @@ class Aligner:
     return field
 
   def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
-                    chunk_size, prefix=''):
+                    chunk_size):
     start = time()
     chunks = self.break_into_chunks(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
@@ -577,12 +577,10 @@ class Aligner:
           "MIP{}\n"
           "{} chunks\n".format(model_path, src_cv, dst_cv, z,
                                mip, len(chunks)), flush=True)
-    if prefix == '':
-      prefix = '{}'.format(mip)
     batch = []
     for patch_bbox in chunks:
       batch.append(tasks.PredictImgTask(model_path, src_cv, dst_cv, z, mip,
-                                        patch_bbox, prefix))
+                                        patch_bbox))
     return batch
 
   def predict_image_chunk(self, model_path, src_cv, z, mip, bbox):
@@ -1000,7 +998,7 @@ class Aligner:
   # Dataset operations #
   ######################
   def copy(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, is_field=False,
-           to_uint8=False, mask_cv=None, mask_mip=0, mask_val=0, prefix='',
+           to_uint8=False, mask_cv=None, mask_mip=0, mask_val=0,
            return_iterator=False):
     """Copy one CloudVolume to another
 
@@ -1019,15 +1017,10 @@ class Aligner:
        mask_cv: MiplessCloudVolume where source mask is stored
        mask_mip: int for MIP level at which source mask is stored
        mask_val: int for pixel value in the mask that should be zero-filled
-       prefix: str used to write "finished" files for each task 
-        (only used for distributed)
 
     Returns:
        a list of CopyTasks
     """
-    if prefix == '':
-      prefix = '{}_{}'.format(mip, dst_z)
-
     class CopyTaskIterator():
         def __init__(self, cl, start, stop):
           self.chunklist = cl
@@ -1044,7 +1037,7 @@ class Aligner:
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
             yield tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, chunk, mip,
-                                 is_field, to_uint8, mask_cv, mask_mip, mask_val, prefix)
+                                 is_field, to_uint8, mask_cv, mask_mip, mask_val)
 
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 
@@ -1057,14 +1050,13 @@ class Aligner:
         batch = []
         for chunk in chunks: 
           batch.append(tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
-                                      is_field, to_uint8, mask_cv, mask_mip, mask_val, 
-                                      prefix))
+                                      is_field, to_uint8, mask_cv, mask_mip, mask_val))
         return batch
   
   def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv,
                     src_z, tgt_z, bbox, mip, pad=2048, src_mask_cv=None,
                     src_mask_mip=0, src_mask_val=0, tgt_mask_cv=None,
-                    tgt_mask_mip=0, tgt_mask_val=0, prefix='',
+                    tgt_mask_mip=0, tgt_mask_val=0,
                     return_iterator=False, prev_field_cv=None, prev_field_z=None,
                     prev_field_inverse=False):
     """Compute field to warp src section to tgt section 
@@ -1082,8 +1074,6 @@ class Aligner:
        mip: int for MIP level images will be loaded and field will be stored at
        pad: int for amount of padding to add to bbox before processing
        wait: bool indicating whether to wait for all tasks must finish before proceeding
-       prefix: str used to write "finished" files for each task 
-        (only used for distributed)
        prev_field_cv: MiplessCloudVolume where field prior is stored. Field will be used 
         to apply initial translation to target image. If None, will ignore.
        prev_field_z: int for section index of previous field
@@ -1095,9 +1085,6 @@ class Aligner:
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 
                                     max_mip=cm.max_mip)
-    if prefix == '':
-      prefix = '{}_{}_{}'.format(mip, src_z, tgt_z)
-
     class ComputeFieldTaskIterator():
         def __init__(self, cl, start, stop):
           self.chunklist = cl
@@ -1116,7 +1103,7 @@ class Aligner:
             yield tasks.ComputeFieldTask(model_path, src_cv, tgt_cv, field_cv,
                                           src_z, tgt_z, chunk, mip, pad,
                                           src_mask_cv, src_mask_val, src_mask_mip, 
-                                          tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix,
+                                          tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
                                           prev_field_cv, prev_field_z, prev_field_inverse)
     if return_iterator:
         return ComputeFieldTaskIterator(chunks,0, len(chunks))
@@ -1126,13 +1113,13 @@ class Aligner:
           batch.append(tasks.ComputeFieldTask(model_path, src_cv, tgt_cv, field_cv,
                                               src_z, tgt_z, chunk, mip, pad,
                                               src_mask_cv, src_mask_val, src_mask_mip, 
-                                              tgt_mask_cv, tgt_mask_val, tgt_mask_mip, prefix,
+                                              tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
                                               prev_field_cv, prev_field_z, prev_field_inverse))
         return batch
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
                    bbox, src_mip, field_mip, mask_cv=None, mask_mip=0, 
-                   mask_val=0, affine=None, prefix='', use_cpu=False,
+                   mask_val=0, affine=None, use_cpu=False,
              return_iterator= False):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
@@ -1153,15 +1140,11 @@ class Aligner:
        mask_val: int for pixel value in the mask that should be zero-filled
        wait: bool indicating whether to wait for all tasks must finish before proceeding
        affine: 2x3 ndarray for preconditioning affine to use (default: None means identity)
-       prefix: str used to write "finished" files for each task 
-        (only used for distributed)
     """
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[src_mip],
                                     cm.dst_voxel_offsets[src_mip], mip=src_mip, 
                                     max_mip=cm.max_mip)
-    if prefix == '':
-      prefix = '{}_{}_{}'.format(src_mip, src_z, dst_z)
     class RenderTaskIterator():
         def __init__(self, cl, start, stop):
           self.chunklist = cl
@@ -1179,7 +1162,7 @@ class Aligner:
             chunk = self.chunklist[i]
             yield tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
                        field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                       mask_mip, mask_val, affine, prefix, use_cpu)
+                       mask_mip, mask_val, affine, use_cpu)
     if return_iterator:
         return RenderTaskIterator(chunks,0, len(chunks))
     else:
@@ -1187,11 +1170,11 @@ class Aligner:
         for chunk in chunks:
           batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
                            field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                           mask_mip, mask_val, affine, prefix, use_cpu))
+                           mask_mip, mask_val, affine, use_cpu))
         return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,
-                  inverse=False, serial=True, prefix='', return_iterator=False,
+                  inverse=False, serial=True, return_iterator=False,
                   softmin_temp=None, blur_sigma=None):
     """Compute consensus field from a set of vector fields
 
@@ -1209,14 +1192,10 @@ class Aligner:
        serial: bool indicating to if a previously composed field is 
         not necessary
        wait: bool indicating whether to wait for all tasks must finish before proceeding
-       prefix: str used to write "finished" files for each task 
-        (only used for distributed)
     """
     start = time()
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[mip],
                                     cm.vec_voxel_offsets[mip], mip=mip)
-    if prefix == '':
-      prefix = '{}_{}'.format(mip, z)
     class VvoteTaskIterator():
         def __init__(self, cl, start, stop):
           self.chunklist = cl
@@ -1233,7 +1212,7 @@ class Aligner:
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
             yield tasks.VectorVoteTask(deepcopy(pairwise_cvs), vvote_cv, z,
-                                        chunk, mip, inverse, serial, prefix,
+                                        chunk, mip, inverse, serial, 
                                         softmin_temp=softmin_temp, blur_sigma=blur_sigma)
     if return_iterator:
         return VvoteTaskIterator(chunks,0, len(chunks))
@@ -1241,13 +1220,13 @@ class Aligner:
         batch = []
         for chunk in chunks:
           batch.append(tasks.VectorVoteTask(deepcopy(pairwise_cvs), vvote_cv, z,
-                                            chunk, mip, inverse, serial, prefix,
+                                            chunk, mip, inverse, serial, 
                                             softmin_temp=softmin_temp, 
                                             blur_sigma=blur_sigma))
         return batch
 
   def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 
-                          f_mip, g_mip, dst_mip, factor, affine, pad, prefix='',
+                          f_mip, g_mip, dst_mip, factor, affine, pad,
                           return_iterator=False):
     """Compose two vector field CloudVolumes
 
@@ -1269,16 +1248,11 @@ class Aligner:
        dst_mip: MIP of composed vector field
        affine: affine matrix
        pad: padding size
-       prefix: str used to write "finished" files for each task 
-        (only used for distributed)
     """
     start = time()
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
                                     cm.vec_voxel_offsets[dst_mip], 
                                     mip=dst_mip)
-    if prefix == '':
-      prefix = '{}_{}'.format(dst_mip, dst_z)
-
     class CloudComposeIterator():
         def __init__(self, cl, start, stop):
           self.chunklist = cl
@@ -1296,7 +1270,7 @@ class Aligner:
             chunk = self.chunklist[i]
             yield tasks.CloudComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
                                      dst_z, chunk, f_mip, g_mip, dst_mip,
-                                     factor, affine, pad, prefix)
+                                     factor, affine, pad)
     if return_iterator:
         return CloudComposeIterator(chunks,0, len(chunks))
     else:
@@ -1304,11 +1278,11 @@ class Aligner:
         for chunk in chunks:
           batch.append(tasks.CloudComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
                                          dst_z, chunk, f_mip, g_mip, dst_mip,
-                                         factor, affine, pad, prefix))
+                                         factor, affine, pad))
         return batch
 
   def multi_compose(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, 
-                                mip_list, dst_mip, factors, pad, prefix='',
+                                mip_list, dst_mip, factors, pad,
                                 return_iterator=False):
     """Compose a list of field CloudVolumes
 
@@ -1327,15 +1301,10 @@ class Aligner:
        mip_list: int or list of ints for MIPs of the input fields
        dst_mip: MIP of composed vector field
        pad: padding size
-       prefix: str used to write "finished" files for each task
-        (only used for distributed)
     """
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
                                     cm.vec_voxel_offsets[dst_mip], 
                                     mip=dst_mip)
-    if prefix == '':
-        prefix = '{}_{}'.format(dst_mip, dst_z)
-
     if return_iterator:
         class CloudMultiComposeIterator():
             def __init__(self, cl, start, stop):
@@ -1354,19 +1323,19 @@ class Aligner:
                     chunk = self.chunklist[i]
                     yield tasks.CloudMultiComposeTask(cv_list, dst_cv, z_list,
                                                       dst_z, chunk, mip_list,
-                                                      dst_mip, factors, pad,
-                                                      prefix)
+                                                      dst_mip, factors, pad)
+                                                      
         return CloudMultiComposeIterator(chunks, 0, len(chunks))
     else:
         batch = []
         for chunk in chunks:
             batch.append(tasks.CloudMultiComposeTask(cv_list, dst_cv, z_list,
                                                 dst_z, chunk, mip_list,
-                                                dst_mip, factors, pad, prefix))
+                                                dst_mip, factors, pad))
         return batch
 
   def cpc(self, cm, src_cv, tgt_cv, dst_cv, src_z, tgt_z, bbox, src_mip, dst_mip, 
-                norm=True, prefix='', return_iterator=False):
+                norm=True, return_iterator=False):
     """Chunked Pearson Correlation between two CloudVolume images
 
     Args:
@@ -1381,16 +1350,11 @@ class Aligner:
        dst_mip: int MIP level of output image, will dictate the size of the chunks
         used for the pearson r
        norm: bool for whether to normalize or not
-       prefix: str used to write "finished" files for each task 
-        (only used for distributed)
     """
     start = time()
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
                                     cm.vec_voxel_offsets[dst_mip], 
                                     mip=dst_mip)
-    if prefix == '':
-      prefix = '{}_{}'.format(dst_mip, src_z)
-
     class CpcIterator():
         def __init__(self, cl, start, stop):
           self.chunklist = cl
@@ -1407,14 +1371,14 @@ class Aligner:
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
             yield tasks.CPCTask(src_cv, tgt_cv, dst_cv, src_z, tgt_z, 
-                                 chunk, src_mip, dst_mip, norm, prefix)
+                                 chunk, src_mip, dst_mip, norm)
     if return_iterator:
         return CpcIterator(chunks,0, len(chunks))
     else:
         batch = []
         for chunk in chunks:
           batch.append(tasks.CPCTask(src_cv, tgt_cv, dst_cv, src_z, tgt_z, 
-                                     chunk, src_mip, dst_mip, norm, prefix))
+                                     chunk, src_mip, dst_mip, norm))
         return batch
 
   def render_batch_chunkwise(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, mip,
@@ -1565,7 +1529,7 @@ class Aligner:
     print (": {} sec".format(end - start))
 
   def res_and_compose(self, model_path, src_cv, tgt_cv, z, tgt_range, bbox,
-                      mip, write_F_cv, pad, softmin_temp, prefix=""):
+                      mip, write_F_cv, pad, softmin_temp):
       T = 2**mip
       fields = []
       for z_offset in tgt_range:
@@ -1666,7 +1630,7 @@ class Aligner:
       print (": {} sec".format(end - start))
 
   def compute_field_and_vector_vote(self, cm, model_path, src_cv, tgt_cv, vvote_field,
-                          tgt_range, z, bbox, mip, pad, softmin_temp, prefix):
+                          tgt_range, z, bbox, mip, pad, softmin_temp):
     """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in
     TGT_RADIUS and perform vetor voting
     """
@@ -1679,8 +1643,7 @@ class Aligner:
     for patch_bbox in chunks:
         batch.append(tasks.ResAndComposeTask(model_path, src_cv, tgt_cv, z,
                                             tgt_range, patch_bbox, mip,
-                                            vvote_field, pad, softmin_temp,
-                                            prefix))
+                                            vvote_field, pad, softmin_temp))
     return batch
 
   def generate_pairwise(self, z_range, bbox, forward_match, reverse_match, 
@@ -1895,54 +1858,43 @@ class Aligner:
       I = I.split(chunk_size, dim=3)
       return torch.cat(I, dim=1)
 
-  def sum_pool(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, src_mip, dst_mip, prefix=''):
+  def sum_pool(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, src_mip, dst_mip):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[dst_mip], mip=src_mip,
                                       max_mip=cm.max_mip)
-      if prefix == '':
-        prefix = '{}'.format(src_mip)
       batch = []
       for chunk in chunks:
         batch.append(tasks.SumPoolTask(src_cv, dst_cv, src_z, 
-                                     dst_z, chunk, src_mip, dst_mip, prefix))
+                                     dst_z, chunk, src_mip, dst_mip))
       return batch
 
-  def dilation(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, radius=3, 
-                prefix=''):
+  def dilation(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, radius=3):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
-      if prefix == '':
-        prefix = '{}'.format(mip)
       batch = []
       for chunk in chunks:
         batch.append(tasks.Dilation(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
-                                    radius, prefix))
+                                    radius))
       return batch
 
-  def threshold(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, threshold=0, op='<', 
-                prefix=''):
+  def threshold(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, threshold=0, op='<'):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
-      if prefix == '':
-        prefix = '{}'.format(mip)
       batch = []
       for chunk in chunks:
         batch.append(tasks.Threshold(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
-                                         threshold, op, prefix))
+                                     threshold, op))
       return batch
 
-  def compute_smoothness(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, prefix=''):
+  def compute_smoothness(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
-      if prefix == '':
-        prefix = '{}'.format(mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.ComputeSmoothness(src_cv, dst_cv, src_z, 
-                                     dst_z, chunk, mip, prefix))
+        batch.append(tasks.ComputeSmoothness(src_cv, dst_cv, src_z, dst_z, chunk, mip))
       return batch
 
   def compute_smoothness_chunk(self, cv, z, bbox, mip, pad):
@@ -1953,17 +1905,15 @@ class Aligner:
       return lap([field], device=self.device).unsqueeze(0)
 
   def compute_fcorr(self, cm, src_cv, dst_pre_cv, dst_post_cv, bbox, src_mip, 
-                    dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0, 
-                    prefix=''):
+                    dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[dst_mip], mip=dst_mip,
                                       max_mip=cm.max_mip)
-      if prefix == '': prefix = '{}'.format(dst_mip)
       batch = []
       for chunk in chunks:
         batch.append(tasks.ComputeFcorrTask(src_cv, dst_pre_cv, dst_post_cv, chunk, 
                                             src_mip, dst_mip, src_z, tgt_z, dst_z, 
-                                            fcorr_chunk_size, fill_value, prefix))
+                                            fcorr_chunk_size, fill_value))
       return batch
 
   def get_fcorr(self, cv, src_z, tgt_z, bbox, mip, chunk_size=16, fill_value=0):
@@ -2042,17 +1992,14 @@ class Aligner:
 
 
   def make_fcorr_masks(self, cm, cv_list, dst_pre, dst_post, z_list, dst_z, 
-                       bbox, mip, operators, threshold, dilate_radius=0, prefix=''):
+                       bbox, mip, operators, threshold, dilate_radius=0):
       chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
-      if prefix == '':
-        prefix = '{}'.format(mip)
       batch = []
       for chunk in chunks:
         batch.append(tasks.FcorrMaskTask(cv_list, dst_pre, dst_post, z_list, dst_z, 
-                                         chunk, mip, operators, threshold, dilate_radius,
-                                         prefix))
+                                         chunk, mip, operators, threshold, dilate_radius))
       return batch
 
   def mask_logic(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, mip_list, 
