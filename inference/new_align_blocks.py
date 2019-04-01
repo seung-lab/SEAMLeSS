@@ -248,96 +248,44 @@ if __name__ == '__main__':
   end = time()
   diff = end - start
   print("Executing Copy Tasks use time:", diff)
- 
-  chunk_grid = get_chunk_grid(cm, bbox)
+
+  # Align without vector voting
+  # field need to in float since all are relative value
+  block_start = args.z_start
+  chunk_grid = get_chunk_grid(cm, bbox, mip, overlap, rows)
   for chunk in chunk_grid:
-      for block_offset in serial_range:
+     image_list = []
+     tgt_image = load_part_image(dst, block_start+serial_range[0],
+                                 chunk, mip, mask_cv=src_mask_cv,
+                                 mask_mip=src_mask_mip, mask_val=src_mask_val)
+     for block_offset in serial_range:
           z_offset = serial_offsets[block_offset]
           serial_field = serial_fields[z_offset]
           dst = dsts[even_odd]
           z = block_start + block_offset
           model_path = model_lookup[z]
- 
+          src_image = load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
+                                      mask_mip=src_mask_mip,
+                                      mask_val=src_mask_val)
+          tgt_image = new_compute_field(model_path, src_image, tgt_image,
+                                        chunk_size, pad)
+          image_list.insert(0,tgt_image)
+     for block_offset in vvote_range:
+          dst = dsts[even_odd]
+          z = block_start + block_offset 
+          bbox = bbox_lookup[z]
+          model_path = model_lookup[z]
+          src_image = load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
+                                      mask_mip=src_mask_mip,
+                                      mask_val=src_mask_val)
+          image, dst_field = a.new_vector_vote(model_path, src_image, image_list, chunk_size, pad,
+                           vvote_way, inverse=False, serial=True)
+          del image_list[0]
+          image_list.append(image)
+          a.save_field(dst_field, vvote_field, z, chunk, mip, relative=True,
+                       as_int16=False)
 
-
-  # Align without vector voting
-  for block_offset in serial_range:
-    print('BLOCK OFFSET {}'.format(block_offset))
-    z_offset = serial_offsets[block_offset] 
-    serial_field = serial_fields[z_offset]
-    prefix = block_offset
-    class ComputeFieldTaskIterator(object):
-        def __init__(self, brange, even_odd):
-            self.brange = brange
-            self.even_odd = even_odd
-        def __iter__(self):
-            for block_start, even_odd in zip(self.brange, self.even_odd):
-                dst = dsts[even_odd]
-                z = block_start + block_offset 
-                model_path = model_lookup[z]
-                bbox = bbox_lookup[z]
-                t = a.compute_field(cm, model_path, src.path, dst, serial_field, 
-                                    z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
-                                    src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                                    tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                                    tgt_mask_val=src_mask_val, prefix=prefix,
-                                    prev_field_cv=None, prev_field_z=None)
-                yield from t
-    ptask = []
-    start = time()
-    print("block_range", block_range)
-    for irange, ieven_odd in zip(range_list, even_odd_list):
-        ptask.append(ComputeFieldTaskIterator(irange, ieven_odd))
-    print("-----ptask len is", len(ptask), a.threads) 
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-   
-    end = time()
-    diff = end - start
-    print("Sending Compute Field Tasks use time:", diff)
-    print('Run Compute field')
- 
-    start = time()
-    # wait 
-    a.wait_for_sqs_empty()
-    end = time()
-    diff = end - start
-    print("Executing Compute Tasks use time:", diff)
- 
-    class RenderTaskIterator(object):
-        def __init__(self, brange, even_odd):
-            self.brange = brange
-            self.even_odd = even_odd
-        def __iter__(self):
-            for block_start, even_odd in zip(self.brange, self.even_odd):
-                dst = dsts[even_odd]
-                z = block_start + block_offset
-                bbox = bbox_lookup[z]
-                t = a.render(cm, src.path, serial_field, dst, src_z=z, field_z=z, dst_z=z,
-                             bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
-                             mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
-                yield from t
-    ptask = []
-    start = time()
-    for irange, ieven_odd in zip(range_list, even_odd_list):
-        ptask.append(RenderTaskIterator(irange, ieven_odd))
-    
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-   
-    end = time()
-    diff = end - start
-    print("Sending Render Tasks use time:", diff)
-    print('Run rendering')
- 
-    start = time()
-    # wait 
-    a.wait_for_sqs_empty()
-    end = time()
-    diff = end - start
-    print("Executing Rendering use time:", diff)
-
-  # Align with vector voting
+ # Align with vector voting
   for block_offset in vvote_range:
     print('BLOCK OFFSET {}'.format(block_offset))
     prefix = block_offset

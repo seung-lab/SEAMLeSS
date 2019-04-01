@@ -61,12 +61,12 @@ class Aligner:
     self.queue_url = None
     if queue_name:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
-    
+ 
     self.chunk_size = (1024, 1024)
     self.device = torch.device('cuda')
 
     self.model_archives = {}
-    
+ 
     # self.pool = None #ThreadPool(threads)
     self.threads = threads
     self.task_batch_size = task_batch_size
@@ -91,27 +91,50 @@ class Aligner:
                                                torch.max(data), torch.min(data)), flush=True)
       data = data * 4
       return data.type(torch.int16)
+  def int16_to_float(self, data):
 
-  def break_into_overlap_chunk(self, src_img, chunk_size, pad):
+      return data.type(torch.float)/4.0
 
-  def new_compute_field(self, model_path, src_img, tgt_img, chunk_size, pad):
-      archive = self.get_model_archive(model_path)
+  def new_compute_field(self, model_path, src_img, tgt_img, chunk_size, pad,
+                        warp=False):
       img_shape = src_img.shape
       x_len = img_shape[-2]
       y_len = img_shape[-1]
       padded_len = chunk_size + 2*pad
-      dst_field = torch.ShortTensor(1,x_len-2*pad, y_len-2*pad,2).zero_()
+      if(warp):
+          image = torch.ByteTensor(1, 1,x_len-2*pad, y_len-2*pad).zero_()
+      else:
+          dst_field = torch.ShortTensor(1,x_len-2*pad, y_len-2*pad,2).zero_()
+
       for xs in range(0, x_len-pad, chunk_size):
           for ys in range(0, y_len-pad, chunk_size):
-              src_patch=src_img[...,xs:xs+padded_len, ys:ys+padded_len]
-              tgt_patch=tgt_img[...,xs:xs+padded_len, ys:ys+padded_len]
-              field = new_compute_field_chunk(archive, src_patch, tgt_patch)
-              field = field[:,pad:-pad,pad:-pad,:]
-              dst_field[..,xs:xs+chunk_size,ys:ys+chunk_size,..] = field
-      return dst_field
+              src_patch = src_img[...,xs:xs+padded_len, ys:ys+padded_len]
+              tgt_patch = tgt_img[...,xs:xs+padded_len, ys:ys+padded_len]
+              src_patch = src_patch.to(device=self.device)
+              tgt_patch = tgt_patch.to(device=self.device)
+              src_patch = self.convert_to_float(src_patch)
+              tgt_patch = self.convert_to_float(tgt_patch)
+              if warp:
+                  image_patch = self.new_compute_field_chunk(model_path, src_patch,
+                                                   tgt_patch, warp)
+                  image_patch = image_patch[:,:,pad:-pad,pad:-pad]
+                  image_patch = self.convert_to_uint8(image_patch)
+                  image_patch = image_patch.to(device='CPU')
+                  image[.., .., xs:xs+chunk_size,ys:ys+chunk_size] = image_patch
+              else:
+                  field = self.new_compute_field_chunk(model_path, src_patch,
+                                                   tgt_patch, warp) 
+                  field = field[:,pad:-pad,pad:-pad,:]
+                  field = self.convert_to_int16(field)
+                  field = field.to(device='CPU')
+                  dst_field[..,xs:xs+chunk_size,ys:ys+chunk_size,..] = field
+      if(warp):
+          return image
+      else:
+          return dst_field
 
-
-  def new_compute_field_chunk(self, archive, src_img, tgt_img):
+  def new_compute_field_chunk(self, model_path, src_img, tgt_img, warp=False):
+      archive = self.get_model_archive(model_path)
       model = archive.model
       normalizer = archive.preprocessor
       if (normalizer is not None): 
@@ -120,20 +143,24 @@ class Aligner:
           if(not is_blank(tgt_img)):
               tgt_image =normalizer(tgt_img).reshape(tgt_image.shape)
       field = model(src_img, tgt_img)
-      return field
+      if(warp):
+          image = self.new_cloudsample_image(src_img, field)
+          return image
+      else:
+          return field
 
-  def get_chunk_grid(self, cm, bbox, mip, overlap, row_len):
-      chunk_grid = break_into_chunks_grid(bbox, cm.dst_chunk_size[mip],
+  def get_chunk_grid(self, cm, bbox, mip, overlap, rows):
+      chunk_grid = self.break_into_chunks_grid(bbox, cm.dst_chunk_size[mip],
                                           cm.dst_voxel_offsets[mip], mip=mip,
                                           max_mip=cm.max_mip)
       chunks = []
       start =0
-      while(start+row_len<len(chunk_grid)):
+      while(start+rows<len(chunk_grid)):
           chunks.append(BoundingBox(chunk_grid[start][0].x_range[0],
                                     chunk_grid[start][-1].x_range[1],
                                     chunk_grid[start][0].y_range[0],
                                     chunk_grid[start+row_len][0].y_range[1])
-          start = start + row_len - overlap
+          start = start + rows - overlap
       if start<len(chunk_grid):
           chunks.append(BoundingBox(chunk_grid[start][0].x_range[0],
                                     chunk_grid[start][-1].x_range[1],
@@ -155,6 +182,71 @@ class Aligner:
         image = image.masked_fill_(mask, 0)
       self.device = tmp_device
       return image
+
+  def new_cloudsample_image(self, image, field):
+      pad = 256
+      if is_identity(field):
+        return image
+      else:
+        image = grid_sample(image, field, padding_mode='zeros')
+        return image
+
+  def new_vector_vote(self, model_path, src_img, image_list, chunk_size, pad,
+                      vvote_way, inverse=False, serial=True,
+                  softmin_temp=None, blur_sigma=None):
+    img_shape = src_img.shape
+    x_len = img_shape[-2]
+    y_len = img_shape[-1]
+    padded_len = chunk_size + 2*pad
+    image = torch.ByteTensor(1, 1,x_len-2*pad, y_len-2*pad).zero_()
+    dst_field = torch.ShortTensor(1,x_len-2*pad, y_len-2*pad,2).zero_()
+    for xs in range(0, x_len-pad, chunk_size):
+        for ys in range(0, y_len-pad, chunk_size):
+            vv_fields = []
+            for i in range(vvote_way):
+                src_patch = src_img[...,xs:xs+padded_len, ys:ys+padded_len]
+                tgt_patch = image_list[...,xs:xs+padded_len, ys:ys+padded_len]
+                src_patch = src_patch.to(device=self.device)
+                tgt_patch = tgt_patch.to(device=self.device)
+                src_patch = self.convert_to_float(src_patch)
+                tgt_patch = self.convert_to_float(tgt_patch)
+                field = self.new_compute_field_chunk(model_path, src_patch,
+                                                       tgt_patch)
+                field = field[:,pad:-pad,pad:-pad,:]
+                vv_fields.append(field)
+            field = self.new_vector_vote_chunk(vv_fields,
+                                               softmin_temp=softmin_temp,
+                                               blur_sigma=blur_sigma)
+            field = self.convert_to_int16(field)
+            field = field.to(device='CPU')
+            dst_field[..,xs:xs+chunk_size,ys:ys+chunk_size,..] = field
+
+    for xs in range(0, x_len-pad, chunk_size):
+        for ys in range(0, y_len-pad, chunk_size):
+            src_patch = src_img[...,xs:xs+padded_len, ys:ys+padded_len]
+            field = dst_field[..,xs:xs+padded_len, ys:ys+padded_len,..]
+            src_patch = src_patch.to(device=self.device)
+            src_patch = self.convert_to_float(src_patch)
+            field = field.to(device=self.device)
+            field = self.invert_field(field)
+            image_patch = self.new_cloudsample_image(src_patch, field)
+            image_patch = image_patch[:,:,pad:-pad,pad:-pad]
+            image_patch = self.convert_to_uint8(image_patch)
+            image_patch = image_patch.to(device='CPU')
+            image[.., .., xs:xs+chunk_size,ys:ys+chunk_size] = image_patch
+    return image, dst_field
+
+ 
+    return batch
+
+  def new_vector_vote_chunk(self, fields, softmin_temp=None, blur_sigma=None):
+    if not softmin_temp:
+      w = 0.99
+      d = 2**mip
+      n = len(fields)
+      m = int(binom(n, (n+1)//2)) - 1
+      softmin_temp = 2**mip
+    return vector_vote(fields, softmin_temp=softmin_temp, blur_sigma=blur_sigma)
 
 
 
