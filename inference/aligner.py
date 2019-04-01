@@ -501,6 +501,7 @@ class Aligner:
                                                 bbox.stringify(tgt_z)))
     print('pad: {}'.format(pad))
     padded_bbox = deepcopy(bbox)
+    padded_bbox.max_mip = mip
     padded_bbox.uncrop(pad, mip=mip)
 
     if prev_field_cv is not None:
