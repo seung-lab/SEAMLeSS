@@ -104,7 +104,7 @@ class Aligner:
       if(warp):
           image = torch.ByteTensor(1, 1,x_len-2*pad, y_len-2*pad).zero_()
       else:
-          dst_field = torch.ShortTensor(1,x_len-2*pad, y_len-2*pad,2).zero_()
+          dst_field = torch.FloatTensor(1,x_len-2*pad, y_len-2*pad,2).zero_()
 
       for xs in range(0, x_len-pad, chunk_size):
           for ys in range(0, y_len-pad, chunk_size):
@@ -120,14 +120,13 @@ class Aligner:
                   image_patch = image_patch[:,:,pad:-pad,pad:-pad]
                   image_patch = self.convert_to_uint8(image_patch)
                   image_patch = image_patch.to(device='CPU')
-                  image[.., .., xs:xs+chunk_size,ys:ys+chunk_size] = image_patch
+                  image[...,xs:xs+chunk_size,ys:ys+chunk_size] = image_patch
               else:
                   field = self.new_compute_field_chunk(model_path, src_patch,
                                                    tgt_patch, warp) 
                   field = field[:,pad:-pad,pad:-pad,:]
-                  field = self.convert_to_int16(field)
                   field = field.to(device='CPU')
-                  dst_field[..,xs:xs+chunk_size,ys:ys+chunk_size,..] = field
+                  dst_field[:,xs:xs+chunk_size,ys:ys+chunk_size,:] = field
       if(warp):
           return image
       else:
@@ -159,13 +158,13 @@ class Aligner:
           chunks.append(BoundingBox(chunk_grid[start][0].x_range[0],
                                     chunk_grid[start][-1].x_range[1],
                                     chunk_grid[start][0].y_range[0],
-                                    chunk_grid[start+row_len][0].y_range[1])
+                                    chunk_grid[start+row_len][0].y_range[1]))
           start = start + rows - overlap
       if start<len(chunk_grid):
           chunks.append(BoundingBox(chunk_grid[start][0].x_range[0],
                                     chunk_grid[start][-1].x_range[1],
                                     chunk_grid[start][0].y_range[0],
-                                    chunk_grid[-1][0].y_range[1])
+                                    chunk_grid[-1][0].y_range[1]))
       return chunk_grid
 
 
@@ -184,7 +183,6 @@ class Aligner:
       return image
 
   def new_cloudsample_image(self, image, field):
-      pad = 256
       if is_identity(field):
         return image
       else:
@@ -199,7 +197,7 @@ class Aligner:
     y_len = img_shape[-1]
     padded_len = chunk_size + 2*pad
     image = torch.ByteTensor(1, 1,x_len-2*pad, y_len-2*pad).zero_()
-    dst_field = torch.ShortTensor(1,x_len-2*pad, y_len-2*pad,2).zero_()
+    dst_field = torch.FloatTensor(1,x_len-2*pad, y_len-2*pad,2).zero_()
     for xs in range(0, x_len-pad, chunk_size):
         for ys in range(0, y_len-pad, chunk_size):
             vv_fields = []
@@ -217,14 +215,13 @@ class Aligner:
             field = self.new_vector_vote_chunk(vv_fields,
                                                softmin_temp=softmin_temp,
                                                blur_sigma=blur_sigma)
-            field = self.convert_to_int16(field)
             field = field.to(device='CPU')
-            dst_field[..,xs:xs+chunk_size,ys:ys+chunk_size,..] = field
+            dst_field[:,xs:xs+chunk_size,ys:ys+chunk_size,:] = field
 
     for xs in range(0, x_len-pad, chunk_size):
         for ys in range(0, y_len-pad, chunk_size):
             src_patch = src_img[...,xs:xs+padded_len, ys:ys+padded_len]
-            field = dst_field[..,xs:xs+padded_len, ys:ys+padded_len,..]
+            field = dst_field[:,xs:xs+padded_len, ys:ys+padded_len,:]
             src_patch = src_patch.to(device=self.device)
             src_patch = self.convert_to_float(src_patch)
             field = field.to(device=self.device)
@@ -233,10 +230,9 @@ class Aligner:
             image_patch = image_patch[:,:,pad:-pad,pad:-pad]
             image_patch = self.convert_to_uint8(image_patch)
             image_patch = image_patch.to(device='CPU')
-            image[.., .., xs:xs+chunk_size,ys:ys+chunk_size] = image_patch
+            image[..., xs:xs+chunk_size, ys:ys+chunk_size] = image_patch
     return image, dst_field
 
- 
     return batch
 
   def new_vector_vote_chunk(self, fields, softmin_temp=None, blur_sigma=None):

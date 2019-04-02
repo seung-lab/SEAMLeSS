@@ -224,35 +224,37 @@ if __name__ == '__main__':
                          prefix=prefix)
               yield from t 
 
-  ptask = []
-  range_list = make_range(block_range, a.threads)
-  even_odd_list = make_range(even_odd_range, a.threads)
-  print('range_list {}'.format(range_list))
-  print('even_odd_list {}'.format(even_odd_list))
-  
-  start = time()
-  for irange, ieven_odd in zip(range_list, even_odd_list):
-      ptask.append(CopyTaskIterator(irange, ieven_odd))
-
-  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-      executor.map(remote_upload, ptask)
- 
-  end = time()
-  diff = end - start
-  print("Sending Copy Tasks use time:", diff)
-  print('Run CopyTasks')
-  # wait
-  start = time()
-  #if args.use_sqs_wait:
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing Copy Tasks use time:", diff)
-
-  # Align without vector voting
-  # field need to in float since all are relative value
+#  ptask = []
+#  range_list = make_range(block_range, a.threads)
+#  even_odd_list = make_range(even_odd_range, a.threads)
+#  print('range_list {}'.format(range_list))
+#  print('even_odd_list {}'.format(even_odd_list))
+#  
+#  start = time()
+#  for irange, ieven_odd in zip(range_list, even_odd_list):
+#      ptask.append(CopyTaskIterator(irange, ieven_odd))
+#
+#  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+#      executor.map(remote_upload, ptask)
+# 
+#  end = time()
+#  diff = end - start
+#  print("Sending Copy Tasks use time:", diff)
+#  print('Run CopyTasks')
+#  # wait
+#  start = time()
+#  #if args.use_sqs_wait:
+#  a.wait_for_sqs_empty()
+#  end = time()
+#  diff = end - start
+#  print("Executing Copy Tasks use time:", diff)
+#
+#  # Align without vector voting
+#  # field need to in float since all are relative value
+  overlap = 1024
+  rows = 3
   block_start = args.z_start
-  chunk_grid = get_chunk_grid(cm, bbox, mip, overlap, rows)
+  chunk_grid = a.get_chunk_grid(cm, bbox, mip, overlap, rows)
   for chunk in chunk_grid:
      image_list = []
      tgt_image = load_part_image(dst, block_start+serial_range[0],
@@ -280,10 +282,12 @@ if __name__ == '__main__':
                                       mask_val=src_mask_val)
           image, dst_field = a.new_vector_vote(model_path, src_image, image_list, chunk_size, pad,
                            vvote_way, inverse=False, serial=True)
+          a.save_image(image_list[0], dst, mip, z-vvote_way, to_uint8=False)
           del image_list[0]
           image_list.append(image)
-          a.save_field(dst_field, vvote_field, z, chunk, mip, relative=True,
-                       as_int16=False)
+          dst_field = dest_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
+          a.save_field(dst_field, vvote_field, z, chunk, mip, relative=False,
+                       as_int16=True)
 
  # Align with vector voting
   for block_offset in vvote_range:
