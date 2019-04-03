@@ -97,19 +97,24 @@ class Aligner:
 
   def new_compute_field(self, model_path, src_img, tgt_img, chunk_size, pad,
                         warp=False):
+      print("--------------- src and tgt shape", src_img.shape, tgt_img.shape)
       img_shape = src_img.shape
       x_len = img_shape[-2]
       y_len = img_shape[-1]
+      unpadded_size = x_len - 2*pad
       padded_len = chunk_size + 2*pad
+      chunk_number = unpadded_size // chunk_size
       if(warp):
-          image = torch.ByteTensor(1, 1,x_len-2*pad, y_len-2*pad).zero_()
+          image = torch.ByteTensor(1, 1, unpadded_size, unpadded_size).zero_()
       else:
-          dst_field = torch.FloatTensor(1,x_len-2*pad, y_len-2*pad,2).zero_()
-
-      for xs in range(0, x_len-pad, chunk_size):
-          for ys in range(0, y_len-pad, chunk_size):
-              src_patch = src_img[...,xs:xs+padded_len, ys:ys+padded_len]
-              tgt_patch = tgt_img[...,xs:xs+padded_len, ys:ys+padded_len]
+          dst_field = torch.FloatTensor(1,unpadded_size, unpadded_size, 2).zero_()
+      print("----------pad is ", pad)
+      for xs in range(chunk_number):
+          for ys in range(chunk_number):
+              src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                  ys*chunk_size:ys*chunk_size+padded_len]
+              tgt_patch = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                  ys*chunk_size:ys*chunk_size+padded_len]
               src_patch = src_patch.to(device=self.device)
               tgt_patch = tgt_patch.to(device=self.device)
               src_patch = self.convert_to_float(src_patch)
@@ -119,14 +124,16 @@ class Aligner:
                                                    tgt_patch, warp)
                   image_patch = image_patch[:,:,pad:-pad,pad:-pad]
                   image_patch = self.convert_to_uint8(image_patch)
-                  image_patch = image_patch.to(device='CPU')
-                  image[...,xs:xs+chunk_size,ys:ys+chunk_size] = image_patch
+                  image_patch = image_patch.to(device='cpu')
+                  image[...,xs*chunk_size:xs*chunk_size+chunk_size,
+                        ys*chunk_size:ys*chunk_size+chunk_size] = image_patch
               else:
                   field = self.new_compute_field_chunk(model_path, src_patch,
                                                    tgt_patch, warp) 
                   field = field[:,pad:-pad,pad:-pad,:]
-                  field = field.to(device='CPU')
-                  dst_field[:,xs:xs+chunk_size,ys:ys+chunk_size,:] = field
+                  field = field.to(device='cpu')
+                  dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
+                            ys*chunk_size:ys*chunk_size+chunk_size,:] = field
       if(warp):
           return image
       else:
@@ -136,11 +143,12 @@ class Aligner:
       archive = self.get_model_archive(model_path)
       model = archive.model
       normalizer = archive.preprocessor
-      if (normalizer is not None): 
-          if(not is_blank(src_img)):
-              src_image =normalizer(src_img).reshape(src_img.shape)
-          if(not is_blank(tgt_img)):
-              tgt_image =normalizer(tgt_img).reshape(tgt_image.shape)
+      #if (normalizer is not None): 
+      #    if(not is_blank(src_img)):
+      #        src_img =normalizer(src_img).reshape(src_img.shape)
+      #    if(not is_blank(tgt_img)):
+      #        tgt_img =normalizer(tgt_img).reshape(tgt_img.shape)
+      print("***********", src_img.shape, tgt_img.shape, " warp ", warp)
       field = model(src_img, tgt_img)
       if(warp):
           image = self.new_cloudsample_image(src_img, field)
@@ -148,30 +156,38 @@ class Aligner:
       else:
           return field
 
-  def get_chunk_grid(self, cm, bbox, mip, overlap, rows):
-      chunk_grid = self.break_into_chunks_grid(bbox, cm.dst_chunk_size[mip],
+  def get_chunk_grid(self, cm, bbox, mip, overlap, rows, pad):
+      chunk_grid = self.break_into_chunks_grid(bbox, cm.dst_chunk_sizes[mip],
                                           cm.dst_voxel_offsets[mip], mip=mip,
                                           max_mip=cm.max_mip)
+      #print("--------------chunks_grid shape",len(chunk_grid), len(chunk_grid[0]),
+      #      chunk_grid[0][0].stringify(0))
       chunks = []
+      padded_size = pad * 2**mip
+      for i in range(len(chunk_grid)):
+          for j in range(len(chunk_grid[0])):
+              print("chunk size is", chunk_grid[i][j].stringify(0))
       start =0
       while(start+rows<len(chunk_grid)):
-          chunks.append(BoundingBox(chunk_grid[start][0].x_range[0],
-                                    chunk_grid[start][-1].x_range[1],
-                                    chunk_grid[start][0].y_range[0],
-                                    chunk_grid[start+row_len][0].y_range[1]))
+          chunks.append(BoundingBox(chunk_grid[start][0].x_range(mip=mip)[0]-padded_size,
+                                    chunk_grid[start+row_len][-1].x_range(mip=mip)[1]+padded_size,
+                                    chunk_grid[start][0].y_range(mip=mip)[0]-padded_size,
+                                    chunk_grid[start+row_len][-1].y_range(mip=mip)[1]+padded_size,
+                                    mip=mip))
           start = start + rows - overlap
       if start<len(chunk_grid):
-          chunks.append(BoundingBox(chunk_grid[start][0].x_range[0],
-                                    chunk_grid[start][-1].x_range[1],
-                                    chunk_grid[start][0].y_range[0],
-                                    chunk_grid[-1][0].y_range[1]))
-      return chunk_grid
+          chunks.append(BoundingBox(chunk_grid[start][0].x_range(mip=mip)[0]-padded_size,
+                                    chunk_grid[-1][-1].x_range(mip=mip)[1]+padded_size,
+                                    chunk_grid[start][0].y_range(mip=mip)[0]-padded_size,
+                                    chunk_grid[-1][-1].y_range(mip=mip)[1]+padded_size,
+                                    mip=mip))
+      return chunks
 
 
   def load_part_image(self, image_cv, z, bbox, image_mip, mask_cv=None,
                        mask_mip=0, mask_val=0):
       tmp_device = self.device
-      self.device = 'cpu' 
+      self.device = 'cpu'
       image = self.get_image(image_cv, z, bbox, image_mip,
                              to_tensor=True, normalizer=None, to_float=False)
       if mask_cv is not None:
@@ -215,7 +231,7 @@ class Aligner:
             field = self.new_vector_vote_chunk(vv_fields,
                                                softmin_temp=softmin_temp,
                                                blur_sigma=blur_sigma)
-            field = field.to(device='CPU')
+            field = field.to(device='cpu')
             dst_field[:,xs:xs+chunk_size,ys:ys+chunk_size,:] = field
 
     for xs in range(0, x_len-pad, chunk_size):
@@ -229,7 +245,7 @@ class Aligner:
             image_patch = self.new_cloudsample_image(src_patch, field)
             image_patch = image_patch[:,:,pad:-pad,pad:-pad]
             image_patch = self.convert_to_uint8(image_patch)
-            image_patch = image_patch.to(device='CPU')
+            image_patch = image_patch.to(device='cpu')
             image[..., xs:xs+chunk_size, ys:ys+chunk_size] = image_patch
     return image, dst_field
 
