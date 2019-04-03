@@ -254,30 +254,34 @@ if __name__ == '__main__':
   overlap = 1024
   rows = 3
   block_start = args.z_start
-  chunk_grid = a.get_chunk_grid(cm, bbox, mip, overlap, rows)
+  chunk_grid = a.get_chunk_grid(cm, bbox, mip, overlap, rows, pad)
+  print("---- len of chunks", len(chunk_grid), "orginal bbox", bbox.stringify(0))
+  for i in  chunk_grid:
+      print(i.stringify(0))
   for chunk in chunk_grid:
      image_list = []
-     tgt_image = load_part_image(dst, block_start+serial_range[0],
+     tgt_image = a.load_part_image(dst, block_start+serial_range[0],
                                  chunk, mip, mask_cv=src_mask_cv,
                                  mask_mip=src_mask_mip, mask_val=src_mask_val)
      for block_offset in serial_range:
           z_offset = serial_offsets[block_offset]
           serial_field = serial_fields[z_offset]
-          dst = dsts[even_odd]
+          #dst = dsts[even_odd]
+          dst = dsts[0]
           z = block_start + block_offset
           model_path = model_lookup[z]
-          src_image = load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
+          src_image = a.load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
                                       mask_mip=src_mask_mip,
                                       mask_val=src_mask_val)
-          tgt_image = new_compute_field(model_path, src_image, tgt_image,
-                                        chunk_size, pad)
+          tgt_image = a.new_compute_field(model_path, src_image, tgt_image,
+                                        chunk_size, pad, warp=True)
           image_list.insert(0,tgt_image)
      for block_offset in vvote_range:
           dst = dsts[even_odd]
           z = block_start + block_offset 
           bbox = bbox_lookup[z]
           model_path = model_lookup[z]
-          src_image = load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
+          src_image = a.load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
                                       mask_mip=src_mask_mip,
                                       mask_val=src_mask_val)
           image, dst_field = a.new_vector_vote(model_path, src_image, image_list, chunk_size, pad,
