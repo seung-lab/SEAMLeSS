@@ -269,21 +269,25 @@ if __name__ == '__main__':
           #dst = dsts[even_odd]
           dst = dsts[0]
           z = block_start + block_offset
+          print("---------------- z ", z, "  block_offset ", block_offset)
           model_path = model_lookup[z]
           src_image = a.load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
                                       mask_mip=src_mask_mip,
                                       mask_val=src_mask_val)
           tgt_image = a.new_compute_field(model_path, src_image, tgt_image,
-                                        chunk_size, pad, warp=True)
-          image_list.insert(0,tgt_image)
+                                          chunk_size, pad, warp=True)
+          chunk = a.adjust_chunk(chunk, mip, pad)
+          image_list.insert(0, tgt_image[...,:-pad*abs(block_offset),:])
+          print("........... image_list[0] shape", image_list[0].shape , "tgt shape", tgt_image.shape)
      for block_offset in vvote_range:
-          dst = dsts[even_odd]
+          dst = dsts[0]
           z = block_start + block_offset 
           bbox = bbox_lookup[z]
           model_path = model_lookup[z]
           src_image = a.load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
                                       mask_mip=src_mask_mip,
                                       mask_val=src_mask_val)
+          chunk = a.adjust_chunk(chunk, mip, pad)
           image, dst_field = a.new_vector_vote(model_path, src_image, image_list, chunk_size, pad,
                            vvote_way, inverse=False, serial=True)
           a.save_image(image_list[0], dst, mip, z-vvote_way, to_uint8=False)

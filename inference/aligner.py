@@ -105,9 +105,10 @@ class Aligner:
       padded_len = chunk_size + 2*pad
       chunk_number = unpadded_size // chunk_size
       if(warp):
-          image = torch.ByteTensor(1, 1, unpadded_size, unpadded_size).zero_()
+          adjust = pad
+          image = torch.ByteTensor(1, 1, adjust+unpadded_size, y_len).zero_()
       else:
-          dst_field = torch.FloatTensor(1,unpadded_size, unpadded_size, 2).zero_()
+          dst_field = torch.FloatTensor(1,unpadded_size, y_len, 2).zero_()
       print("----------pad is ", pad)
       for xs in range(chunk_number):
           for ys in range(chunk_number):
@@ -125,8 +126,8 @@ class Aligner:
                   image_patch = image_patch[:,:,pad:-pad,pad:-pad]
                   image_patch = self.convert_to_uint8(image_patch)
                   image_patch = image_patch.to(device='cpu')
-                  image[...,xs*chunk_size:xs*chunk_size+chunk_size,
-                        ys*chunk_size:ys*chunk_size+chunk_size] = image_patch
+                  image[...,adjust+xs*chunk_size:adjust+xs*chunk_size+chunk_size,
+                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch
               else:
                   field = self.new_compute_field_chunk(model_path, src_patch,
                                                    tgt_patch, warp) 
@@ -155,6 +156,14 @@ class Aligner:
           return image
       else:
           return field
+
+  def adjust_chunk(self, chunk, mip, pad):
+      x_range = chunk.x_range(mip=mip)
+      y_range = chunk.y_range(mip=mip)
+      new_chunk = BoundingBox(x_range[0]+pad,x_range[1]-pad,
+                              y_range[0],y_range[1], mip=mip)
+      return new_chunk
+
 
   def get_chunk_grid(self, cm, bbox, mip, overlap, rows, pad):
       chunk_grid = self.break_into_chunks_grid(bbox, cm.dst_chunk_sizes[mip],
