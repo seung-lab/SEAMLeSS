@@ -181,16 +181,19 @@ if __name__ == '__main__':
   block_dst_lookup = {}
   block_start_lookup = {}
   starter_dst_lookup = {}
+  stitch_vector_vote_range = []
   copy_offset_to_z_range = {0: deepcopy(block_starts)}
   overlap_copy_range = set()
   starter_offset_to_z_range = {i: set() for i in range(min_offset, 0)}
-  block_offset_to_z_range = {i: set() for i in range(1, block_size+1)}
-  block_offset_to_z_range_no_skips = {i: set() for i in range(1, block_size+1)}
+  block_offset_to_z_range = {i: set() for i in range(1, block_size+10)} #TODO: Set the padding based on max(be-bs)
+  block_offset_to_z_range_no_skips = {i: set() for i in range(1, block_size+10)}
   stitch_offset_to_z_range = {i: set() for i in range(1, block_size+1)}
   block_start_to_offsets = {i: set() for i in block_starts}
   # Reverse lookup to easily identify tgt_z for each starter z
   starter_z_to_offset = {} 
   for k, (bs, be) in enumerate(zip(block_starts, block_stops)):
+    if k > 0:
+      stitch_vector_vote_range.append(bs)
     even_odd = k % 2
     for i, z in enumerate(range(bs, be+1)):
       if i > 0:
@@ -205,19 +208,17 @@ if __name__ == '__main__':
               starter_dst_lookup[tgt_z] = block_dsts[even_odd]
               if k > 0: # ignore first block for stitching operations
                 overlap_copy_range.add(tgt_z)
+                block_start_to_offsets[bs].add(tgt_z - bs)
+                stitch_offset_to_z_range[i].add(z)
             if tgt_z < bs:
               starter_z_to_offset[tgt_z] = bs - tgt_z
               starter_offset_to_z_range[tgt_z - bs].add(tgt_z)
-              if k > 0: # ignore first block for stitching operations
-                stitch_offset_to_z_range[i].add(z)
-                block_start_to_offsets[bs].add(tgt_z - bs)
   offset_range = [i for i in range(min_offset, abs(min_offset)+1)]
   # check for restart
   print('Starting from OFFSET {}'.format(args.restart))
   starter_restart = -100 
   if args.restart <= 0:
     starter_restart = args.restart 
-  stitch_vector_vote_range = [z for z_range in copy_offset_to_z_range.values() for z in z_range]
   copy_offset_to_z_range = {k:v for k,v in copy_offset_to_z_range.items() 
                                               if k == args.restart}
   starter_offset_to_z_range = {k:v for k,v in starter_offset_to_z_range.items() 
@@ -232,15 +233,16 @@ if __name__ == '__main__':
   copy_range = [z for z_range in copy_offset_to_z_range.values() for z in z_range]
   starter_range = [z for z_range in starter_offset_to_z_range.values() for z in z_range]
   stitch_range = [z for z_range in stitch_offset_to_z_range.values() for z in z_range]
-  overlap_copy_range = list(overlap_copy_range )
-  stitch_vector_vote_range = deepcopy(copy_range)
+  overlap_copy_range = list(overlap_copy_range)
   print('overlap_copy_range {}'.format(overlap_copy_range))
+  print('block_start_to_offsets {}'.format(block_start_to_offsets))
 
   # Create field CloudVolumes
   print('Creating field & overlap CloudVolumes')
   block_pair_fields = {}
   for z_offset in offset_range:
-    block_pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
+    block_pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', 'block', 
+                                                 str(z_offset)), 
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True).path
   block_vvote_field = cm.create(join(args.dst_path, 'field', 'vvote'),
@@ -306,7 +308,7 @@ if __name__ == '__main__':
       a.wait_for_sqs_empty()
       end = time()
       diff = end - start
-      print('Executing {} use time: {}'.format(task_iterator, diff))
+      print('Executing {} use time: {}\n'.format(task_iterator, diff))
 
   # Task Scheduling Iterators
   print('Creating task scheduling iterators')
@@ -511,20 +513,20 @@ if __name__ == '__main__':
     execute(BlockAlignRender, z_range)
 
   print('END BLOCK ALIGNMENT')
-  print('START BLOCK STITCHING')
-  print('COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS')
-  execute(StitchOverlapCopy, overlap_copy_range)
-  for z_offset in sorted(stitch_offset_to_z_range.keys()):
-    z_range = list(stitch_offset_to_z_range[z_offset])
-    print('ALIGN OVERLAPPING OFFSET {}'.format(z_offset))
-    execute(StitchAlignComputeField, z_range)
-    print('VECTOR VOTE OVERLAPPING OFFSET {}'.format(z_offset))
-    execute(StitchAlignVectorVote, z_range)
-    print('RENDER OVERLAPPING OFFSET {}'.format(z_offset))
-    execute(StitchAlignRender, z_range)
+  # print('START BLOCK STITCHING')
+  # print('COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS')
+  # execute(StitchOverlapCopy, overlap_copy_range)
+  # for z_offset in sorted(stitch_offset_to_z_range.keys()):
+  #   z_range = list(stitch_offset_to_z_range[z_offset])
+  #   print('ALIGN OVERLAPPING OFFSET {}'.format(z_offset))
+  #   execute(StitchAlignComputeField, z_range)
+  #   print('VECTOR VOTE OVERLAPPING OFFSET {}'.format(z_offset))
+  #   execute(StitchAlignVectorVote, z_range)
+  #   print('RENDER OVERLAPPING OFFSET {}'.format(z_offset))
+  #   execute(StitchAlignRender, z_range)
 
-  print('COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING')
-  execute(StitchBroadcastCopy, stitch_range)
-  print('VECTOR VOTE STITCHING FIELDS')
-  execute(StitchBroadcastVectorVote, stitch_vector_vote_range)
+  # print('COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING')
+  # execute(StitchBroadcastCopy, stitch_range)
+  # print('VECTOR VOTE STITCHING FIELDS')
+  # execute(StitchBroadcastVectorVote, stitch_vector_vote_range)
 
