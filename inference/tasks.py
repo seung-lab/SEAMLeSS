@@ -599,7 +599,7 @@ class FilterThreeOpTask(RegisteredTask):
 
 class FcorrMaskTask(RegisteredTask):
   def __init__(self, cv_list, dst_pre, dst_post, z_list, dst_z, bbox, mip, 
-               operators, threshold, dilate_radius=0=''):
+               operators, threshold, dilate_radius=0):
     super().__init__(cv_list, dst_pre, dst_post, z_list, dst_z, bbox, mip, 
                      operators, threshold, dilate_radius)
 
@@ -646,7 +646,7 @@ class FcorrMaskTask(RegisteredTask):
     print('FcorrMaskTask: {:.3f} s'.format(diff))
 
 class MaskLogicTask(RegisteredTask):
-  def __init__(self, cv_list, dst_cv, z_list, dst_z, bbox, mip_list, dst_mip, op)
+  def __init__(self, cv_list, dst_cv, z_list, dst_z, bbox, mip_list, dst_mip, op):
     super(). __init__(cv_list, dst_cv, z_list, dst_z, bbox, mip_list, dst_mip, op)
 
   def execute(self, aligner):
