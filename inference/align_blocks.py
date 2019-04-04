@@ -67,7 +67,6 @@ if __name__ == '__main__':
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
-  parser.add_argument('--stitch_sections', type=int, default=5)
   parser.add_argument('--restart', type=int, default=0)
   args = parse_args(parser)
   # Only compute matches to previous sections
@@ -169,8 +168,8 @@ if __name__ == '__main__':
   if block_starts[-1] != args.z_stop:
     block_stops.append(args.z_stop)
   # print('initial_block_starts {}'.format(list(initial_block_starts)))
-  print('block_starts {}'.format(block_starts))
-  print('block_stops {}'.format(block_stops))
+  # print('block_starts {}'.format(block_starts))
+  # print('block_stops {}'.format(block_stops))
   # Assign even/odd to each block start so results are stored in appropriate CloudVolume
   # Create lookup dicts based on offset in the canonical block
   # BLOCK ALIGNMENT
@@ -311,13 +310,14 @@ if __name__ == '__main__':
       end = time()
       diff = end - start
       print('Sending {} use time: {}'.format(task_iterator, diff))
-      print('Run {}'.format(task_iterator))
-      # wait
-      start = time()
-      a.wait_for_sqs_empty()
-      end = time()
-      diff = end - start
-      print('Executing {} use time: {}\n'.format(task_iterator, diff))
+      if a.distributed:
+        print('Run {}'.format(task_iterator))
+        # wait
+        start = time()
+        a.wait_for_sqs_empty()
+        end = time()
+        diff = end - start
+        print('Executing {} use time: {}\n'.format(task_iterator, diff))
 
   # Task Scheduling Iterators
   print('Creating task scheduling iterators')
@@ -506,22 +506,22 @@ if __name__ == '__main__':
         yield from t
 
   # Serial alignment with block stitching 
-  # print('START BLOCK ALIGNMENT')
-  # print('COPY STARTING SECTION OF ALL BLOCKS')
-  # execute(StarterCopy, copy_range)
-  # print('ALIGN STARTER SECTIONS FOR EACH BLOCK')
-  # execute(StarterComputeField, starter_range)
-  # execute(StarterRender, starter_range)
-  # for z_offset in sorted(block_offset_to_z_range.keys()):
-  #   z_range = list(block_offset_to_z_range[z_offset])
-  #   print('ALIGN BLOCK OFFSET {}'.format(z_offset))
-  #   execute(BlockAlignComputeField, z_range)
-  #   print('VECTOR VOTE BLOCK OFFSET {}'.format(z_offset))
-  #   execute(BlockAlignVectorVote, z_range)
-  #   print('RENDER BLOCK OFFSET {}'.format(z_offset))
-  #   execute(BlockAlignRender, z_range)
+  print('START BLOCK ALIGNMENT')
+  print('COPY STARTING SECTION OF ALL BLOCKS')
+  execute(StarterCopy, copy_range)
+  print('ALIGN STARTER SECTIONS FOR EACH BLOCK')
+  execute(StarterComputeField, starter_range)
+  execute(StarterRender, starter_range)
+  for z_offset in sorted(block_offset_to_z_range.keys()):
+    z_range = list(block_offset_to_z_range[z_offset])
+    print('ALIGN BLOCK OFFSET {}'.format(z_offset))
+    execute(BlockAlignComputeField, z_range)
+    print('VECTOR VOTE BLOCK OFFSET {}'.format(z_offset))
+    execute(BlockAlignVectorVote, z_range)
+    print('RENDER BLOCK OFFSET {}'.format(z_offset))
+    execute(BlockAlignRender, z_range)
 
-  # print('END BLOCK ALIGNMENT')
+  print('END BLOCK ALIGNMENT')
   print('START BLOCK STITCHING')
   print('COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS')
   execute(StitchOverlapCopy, overlap_copy_range)
