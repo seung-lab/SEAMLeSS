@@ -1,90 +1,90 @@
 x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
-103192,28573,1,170298,108499,301,0,vector_fixer30_new_normalizer,5,0,original
-96493,17485,301,186004,122127,901,0,vector_fixer30_new_normalizer,5,0,original
-83901,10553,901,223193,125590,1401,0,vector_fixer30_new_normalizer,5,0,original
-83901,10553,1170,223193,125590,1171,0,vector_fixer30_new_normalizer,5,0,"partial, no adjustment"
-83901,10553,1171,223193,125590,1172,0,vector_fixer30_new_normalizer,7,0,"partial, needs adjustment"
-83901,10553,1172,223193,125590,1173,0,vector_fixer30_new_normalizer,7,0,"partial, needs adjustment"
-83901,10553,1173,223193,125590,1174,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-83901,10553,1174,223193,125590,1175,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-83901,10553,1175,223193,125590,1176,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-83901,10553,1176,223193,125590,1177,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-83901,10553,1177,223193,125590,1178,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-83901,10553,1198,223193,125590,1199,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-83901,10553,1201,223193,125590,1202,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-83901,10553,1202,223193,125590,1203,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-83901,10553,1249,223193,125590,1250,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-83901,10553,1250,223193,125590,1251,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-83901,10553,1261,223193,125590,1262,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-83901,10553,1262,223193,125590,1263,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-77201,9397,1401,225271,114963,2401,0,vector_fixer30_new_normalizer,5,0,original
-77201,9397,1504,225271,114963,1505,0,vector_fixer30_new_normalizer,7,0,history has three sections with damage
-77201,9397,1505,225271,114963,1506,0,vector_fixer30_new_normalizer,7,0,history has three sections with damage
-77201,9397,1564,225271,114963,1565,0,vector_fixer30_new_normalizer,5,0,"partial, no adjustment"
-77201,9397,1565,225271,114963,1566,0,vector_fixer30_new_normalizer,5,0,"partial, no adjustment"
-77201,9397,1566,225271,114963,1567,0,vector_fixer30_new_normalizer,7,0,"partial, needs adjustment"
-77201,9397,1567,225271,114963,1568,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-77201,9397,1568,225271,114963,1569,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-77201,9397,1569,225271,114963,1570,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-77201,9397,1570,225271,114963,1571,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-77201,9397,1571,225271,114963,1572,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-77201,9397,2176,225271,114963,2177,0,vector_fixer30_new_normalizer,5,0,"partial, no adjustment"
-77201,9397,2177,225271,114963,2178,0,vector_fixer30_new_normalizer,7,0,"partial, needs adjustment"
-77201,9397,2178,225271,114963,2179,0,vector_fixer30_new_normalizer,7,0,"partial, needs adjustment"
-77201,9397,2179,225271,114963,2180,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-77201,9397,2180,225271,114963,2181,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-77201,9397,2181,225271,114963,2182,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-77201,9397,2182,225271,114963,2183,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-77201,9397,2183,225271,114963,2184,0,vector_fixer30_new_normalizer,7,0,"after partial, needs adjustment"
-77201,9397,2201,225271,114963,2202,0,vector_fixer30_new_normalizer,9,0,history has multiple sections with damage
-77201,9397,2202,225271,114963,2203,0,vector_fixer30_new_normalizer,9,0,history has multiple sections with damage
-77201,9397,2203,225271,114963,2204,0,vector_fixer30_new_normalizer,9,0,history has multiple sections with damage
-77201,9397,2204,225271,114963,2205,0,vector_fixer30_new_normalizer,9,0,history has multiple sections with damage
-77201,9397,2205,225271,114963,2206,0,vector_fixer30_new_normalizer,9,0,history has multiple sections with damage
-77201,9397,2206,225271,114963,2207,0,vector_fixer30_new_normalizer,9,0,history has multiple sections with damage
-20375,5700,2401,236820,119582,6201,0,vector_fixer30_new_normalizer,5,0,original
-20375,5700,2566,236820,119582,2567,0,vector_fixer30_new_normalizer,5,0,history has two partial sections
-20375,5700,2635,236820,119582,2636,0,vector_fixer30_new_normalizer,5,0,history has two damaged sections
-20375,5700,3595,236820,119582,3596,0,vector_fixer30_new_normalizer,5,1,missing
-20375,5700,3596,236820,119582,3597,0,vector_fixer30_new_normalizer,5,1,missing
-20375,5700,3597,236820,119582,3598,0,vector_fixer30_new_normalizer,5,1,missing
-20375,5700,3715,236820,119582,3716,0,vector_fixer30_new_normalizer,5,1,missing
-20375,5700,3717,236820,119582,3718,0,vector_fixer30_new_normalizer,5,0,"follows missing & partial, but no need for adjustment"
-20375,5700,3742,236820,119582,3743,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-20375,5700,3743,236820,119582,3744,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-20375,5700,3744,236820,119582,3745,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-20375,5700,3745,236820,119582,3746,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-20375,5700,3746,236820,119582,3747,0,vector_fixer30_new_normalizer,7,0,history has two partial sections
-20375,5700,4163,236820,119582,4164,0,vector_fixer30_new_normalizer,7,0,history has three partial sections
-20375,5700,4164,236820,119582,4165,0,vector_fixer30_new_normalizer,7,0,history has three partial sections
-20375,5700,4165,236820,119582,4166,0,vector_fixer30_new_normalizer,7,0,history has three partial sections
-20375,5700,4166,236820,119582,4167,0,vector_fixer30_new_normalizer,7,0,history has three partial sections
-20375,5700,4167,236820,119582,4168,0,vector_fixer30_new_normalizer,7,0,history has three partial sections
-20375,5700,4192,236820,119582,4193,0,vector_fixer30_new_normalizer,5,1,missing
-20375,5700,4353,236820,119582,4354,0,vector_fixer30_new_normalizer,5,1,missing
-20375,5700,4474,236820,119582,4475,0,vector_fixer30_new_normalizer,5,1,missing
-20375,5700,4530,236820,119582,4531,0,vector_fixer30_new_normalizer,7,0,history has three partial sections
-20375,5700,4531,236820,119582,4532,0,vector_fixer30_new_normalizer,7,0,history has three partial sections
-20375,5700,4532,236820,119582,4533,0,vector_fixer30_new_normalizer,7,0,history has three partial sections
-20375,5700,4533,236820,119582,4534,0,vector_fixer30_new_normalizer,7,0,history has three partial sections
-20375,5700,4534,236820,119582,4535,0,vector_fixer30_new_normalizer,7,0,history has three partial sections
-20375,5700,4638,236820,119582,4639,0,vector_fixer30_new_normalizer,5,0,"consistent merge error, no adjustment"
-20375,5700,4639,236820,119582,4640,0,vector_fixer30_new_normalizer,7,0,"consistent merge error, needs adjustment"
-20375,5700,4640,236820,119582,4641,0,vector_fixer30_new_normalizer,7,0,"consistent merge error, needs adjustment"
-20375,5700,4641,236820,119582,4642,0,vector_fixer30_new_normalizer,7,0,"after consistent merge error, needs adjustment"
-20375,5700,4642,236820,119582,4643,0,vector_fixer30_new_normalizer,7,0,"after consistent merge error, needs adjustment"
-20375,5700,4643,236820,119582,4644,0,vector_fixer30_new_normalizer,7,0,"after consistent merge error, needs adjustment"
-20375,5700,4644,236820,119582,4645,0,vector_fixer30_new_normalizer,7,0,"after consistent merge error, needs adjustment"
-20375,5700,4645,236820,119582,4646,0,vector_fixer30_new_normalizer,7,0,"after consistent merge error, needs adjustment"
-20375,5700,4951,236820,119582,4952,0,vector_fixer30_new_normalizer,5,1,missing
-20375,5700,5247,236820,119582,5248,0,vector_fixer30_new_normalizer,7,0,history has three partial sections
-20375,5700,5248,236820,119582,5249,0,vector_fixer30_new_normalizer,9,0,history has four partial sections
-20375,5700,5249,236820,119582,5250,0,vector_fixer30_new_normalizer,9,0,history has four partial sections
-20375,5700,5250,236820,119582,5251,0,vector_fixer30_new_normalizer,9,0,history has four partial sections
-20375,5700,5251,236820,119582,5252,0,vector_fixer30_new_normalizer,5,0,history has four partial sections
-39546,29723,6201,145600,110487,7101,0,vector_fixer30_new_normalizer,5,0,original
-39546,29723,6462,145600,110487,6463,0,vector_fixer30_new_normalizer,5,1,missing
-39546,29723,6465,145600,110487,6466,0,vector_fixer30_new_normalizer,7,0,follows missing with some additional defects
-39546,29723,6883,145600,110487,6884,0,vector_fixer30_new_normalizer,5,1,missing
-39546,29723,6884,145600,110487,6885,0,vector_fixer30_new_normalizer,5,1,missing
-39546,29723,6885,145600,110487,6886,0,vector_fixer30_new_normalizer,5,1,missing
+103192,28573,1,170298,108499,301,0,vector_fixer30_faster_v01,5,0,original
+96493,17485,301,186004,122127,901,0,vector_fixer30_faster_v01,5,0,original
+83901,10553,901,223193,125590,1401,0,vector_fixer30_faster_v01,5,0,original
+83901,10553,1170,223193,125590,1171,0,vector_fixer30_faster_v01,5,0,"partial, no adjustment"
+83901,10553,1171,223193,125590,1172,0,vector_fixer30_faster_v01,7,0,"partial, needs adjustment"
+83901,10553,1172,223193,125590,1173,0,vector_fixer30_faster_v01,7,0,"partial, needs adjustment"
+83901,10553,1173,223193,125590,1174,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+83901,10553,1174,223193,125590,1175,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+83901,10553,1175,223193,125590,1176,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+83901,10553,1176,223193,125590,1177,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+83901,10553,1177,223193,125590,1178,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+83901,10553,1198,223193,125590,1199,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+83901,10553,1201,223193,125590,1202,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+83901,10553,1202,223193,125590,1203,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+83901,10553,1249,223193,125590,1250,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+83901,10553,1250,223193,125590,1251,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+83901,10553,1261,223193,125590,1262,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+83901,10553,1262,223193,125590,1263,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+77201,9397,1401,225271,114963,2401,0,vector_fixer30_faster_v01,5,0,original
+77201,9397,1504,225271,114963,1505,0,vector_fixer30_faster_v01,7,0,history has three sections with damage
+77201,9397,1505,225271,114963,1506,0,vector_fixer30_faster_v01,7,0,history has three sections with damage
+77201,9397,1564,225271,114963,1565,0,vector_fixer30_faster_v01,5,0,"partial, no adjustment"
+77201,9397,1565,225271,114963,1566,0,vector_fixer30_faster_v01,5,0,"partial, no adjustment"
+77201,9397,1566,225271,114963,1567,0,vector_fixer30_faster_v01,7,0,"partial, needs adjustment"
+77201,9397,1567,225271,114963,1568,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+77201,9397,1568,225271,114963,1569,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+77201,9397,1569,225271,114963,1570,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+77201,9397,1570,225271,114963,1571,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+77201,9397,1571,225271,114963,1572,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+77201,9397,2176,225271,114963,2177,0,vector_fixer30_faster_v01,5,0,"partial, no adjustment"
+77201,9397,2177,225271,114963,2178,0,vector_fixer30_faster_v01,7,0,"partial, needs adjustment"
+77201,9397,2178,225271,114963,2179,0,vector_fixer30_faster_v01,7,0,"partial, needs adjustment"
+77201,9397,2179,225271,114963,2180,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+77201,9397,2180,225271,114963,2181,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+77201,9397,2181,225271,114963,2182,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+77201,9397,2182,225271,114963,2183,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+77201,9397,2183,225271,114963,2184,0,vector_fixer30_faster_v01,7,0,"after partial, needs adjustment"
+77201,9397,2201,225271,114963,2202,0,vector_fixer30_faster_v01,9,0,history has multiple sections with damage
+77201,9397,2202,225271,114963,2203,0,vector_fixer30_faster_v01,9,0,history has multiple sections with damage
+77201,9397,2203,225271,114963,2204,0,vector_fixer30_faster_v01,9,0,history has multiple sections with damage
+77201,9397,2204,225271,114963,2205,0,vector_fixer30_faster_v01,9,0,history has multiple sections with damage
+77201,9397,2205,225271,114963,2206,0,vector_fixer30_faster_v01,9,0,history has multiple sections with damage
+77201,9397,2206,225271,114963,2207,0,vector_fixer30_faster_v01,9,0,history has multiple sections with damage
+20375,5700,2401,236820,119582,6201,0,vector_fixer30_faster_v01,5,0,original
+20375,5700,2566,236820,119582,2567,0,vector_fixer30_faster_v01,5,0,history has two partial sections
+20375,5700,2635,236820,119582,2636,0,vector_fixer30_faster_v01,5,0,history has two damaged sections
+20375,5700,3595,236820,119582,3596,0,vector_fixer30_faster_v01,5,1,missing
+20375,5700,3596,236820,119582,3597,0,vector_fixer30_faster_v01,5,1,missing
+20375,5700,3597,236820,119582,3598,0,vector_fixer30_faster_v01,5,1,missing
+20375,5700,3715,236820,119582,3716,0,vector_fixer30_faster_v01,5,1,missing
+20375,5700,3717,236820,119582,3718,0,vector_fixer30_faster_v01,5,0,"follows missing & partial, but no need for adjustment"
+20375,5700,3742,236820,119582,3743,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+20375,5700,3743,236820,119582,3744,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+20375,5700,3744,236820,119582,3745,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+20375,5700,3745,236820,119582,3746,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+20375,5700,3746,236820,119582,3747,0,vector_fixer30_faster_v01,7,0,history has two partial sections
+20375,5700,4163,236820,119582,4164,0,vector_fixer30_faster_v01,7,0,history has three partial sections
+20375,5700,4164,236820,119582,4165,0,vector_fixer30_faster_v01,7,0,history has three partial sections
+20375,5700,4165,236820,119582,4166,0,vector_fixer30_faster_v01,7,0,history has three partial sections
+20375,5700,4166,236820,119582,4167,0,vector_fixer30_faster_v01,7,0,history has three partial sections
+20375,5700,4167,236820,119582,4168,0,vector_fixer30_faster_v01,7,0,history has three partial sections
+20375,5700,4192,236820,119582,4193,0,vector_fixer30_faster_v01,5,1,missing
+20375,5700,4353,236820,119582,4354,0,vector_fixer30_faster_v01,5,1,missing
+20375,5700,4474,236820,119582,4475,0,vector_fixer30_faster_v01,5,1,missing
+20375,5700,4530,236820,119582,4531,0,vector_fixer30_faster_v01,7,0,history has three partial sections
+20375,5700,4531,236820,119582,4532,0,vector_fixer30_faster_v01,7,0,history has three partial sections
+20375,5700,4532,236820,119582,4533,0,vector_fixer30_faster_v01,7,0,history has three partial sections
+20375,5700,4533,236820,119582,4534,0,vector_fixer30_faster_v01,7,0,history has three partial sections
+20375,5700,4534,236820,119582,4535,0,vector_fixer30_faster_v01,7,0,history has three partial sections
+20375,5700,4638,236820,119582,4639,0,vector_fixer30_faster_v01,5,0,"consistent merge error, no adjustment"
+20375,5700,4639,236820,119582,4640,0,vector_fixer30_faster_v01,7,0,"consistent merge error, needs adjustment"
+20375,5700,4640,236820,119582,4641,0,vector_fixer30_faster_v01,7,0,"consistent merge error, needs adjustment"
+20375,5700,4641,236820,119582,4642,0,vector_fixer30_faster_v01,7,0,"after consistent merge error, needs adjustment"
+20375,5700,4642,236820,119582,4643,0,vector_fixer30_faster_v01,7,0,"after consistent merge error, needs adjustment"
+20375,5700,4643,236820,119582,4644,0,vector_fixer30_faster_v01,7,0,"after consistent merge error, needs adjustment"
+20375,5700,4644,236820,119582,4645,0,vector_fixer30_faster_v01,7,0,"after consistent merge error, needs adjustment"
+20375,5700,4645,236820,119582,4646,0,vector_fixer30_faster_v01,7,0,"after consistent merge error, needs adjustment"
+20375,5700,4951,236820,119582,4952,0,vector_fixer30_faster_v01,5,1,missing
+20375,5700,5247,236820,119582,5248,0,vector_fixer30_faster_v01,7,0,history has three partial sections
+20375,5700,5248,236820,119582,5249,0,vector_fixer30_faster_v01,9,0,history has four partial sections
+20375,5700,5249,236820,119582,5250,0,vector_fixer30_faster_v01,9,0,history has four partial sections
+20375,5700,5250,236820,119582,5251,0,vector_fixer30_faster_v01,9,0,history has four partial sections
+20375,5700,5251,236820,119582,5252,0,vector_fixer30_faster_v01,5,0,history has four partial sections
+39546,29723,6201,145600,110487,7101,0,vector_fixer30_faster_v01,5,0,original
+39546,29723,6462,145600,110487,6463,0,vector_fixer30_faster_v01,5,1,missing
+39546,29723,6465,145600,110487,6466,0,vector_fixer30_faster_v01,7,0,follows missing with some additional defects
+39546,29723,6883,145600,110487,6884,0,vector_fixer30_faster_v01,5,1,missing
+39546,29723,6884,145600,110487,6885,0,vector_fixer30_faster_v01,5,1,missing
+39546,29723,6885,145600,110487,6886,0,vector_fixer30_faster_v01,5,1,missing
