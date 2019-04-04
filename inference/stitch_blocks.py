@@ -12,7 +12,7 @@ gevent.monkey.patch_all()
 
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
-from taskqueue import TaskQueue, GreenTaskQueue
+from taskqueue import TaskQueue, GreenTaskQueue, LocalTaskQueue, MockTaskQueue
 
 import sys
 import torch
@@ -96,6 +96,7 @@ if __name__ == '__main__':
   pad = args.pad
   src_mask_val = 1
   src_mask_mip = 8
+  block_size = args.block_size
 
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
@@ -126,22 +127,28 @@ if __name__ == '__main__':
            bbox_lookup[z] = bbox 
 
   # Adjust block starts so they don't start on a skipped section
-  initial_block_starts = range(args.z_start, args.z_stop, block_size)
+  initial_block_starts = list(range(args.z_start, args.z_stop, block_size))
+  if initial_block_starts[-1] != args.z_stop:
+    initial_block_starts.append(args.z_stop)
   block_starts = []
   for bs, be in zip(initial_block_starts[:-1], initial_block_starts[1:]):
     while bs in skip_list:
       bs += 1
       assert(bs < be)
     block_starts.append(bs)
+  block_stops = block_starts[1:]
+  if block_starts[-1] != args.z_stop:
+    block_stops.append(args.z_stop)
+  print('block_starts {}'.format(block_starts))
 
   # Compile ranges
   decay_dist = args.decay_dist
   compose_range = range(args.z_start, args.z_stop)
-  influencing_blocks_lookup = {z: [] for z in z_range}
+  influencing_blocks_lookup = {z: [] for z in compose_range}
   for b_start in block_starts:
-    for z in range(b_start, b_start + decay_dist):
+    for z in range(b_start+1, b_start+decay_dist+1):
       if z < args.z_stop:
-        influencing_block_lookup[z].append(b_start)
+        influencing_blocks_lookup[z].append(b_start)
 
   # Create CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
@@ -171,43 +178,42 @@ if __name__ == '__main__':
           tq.insert_all(tasks)  
 
   def execute(task_iterator, z_range):
-    ptask = []
-    range_list = make_range(z_range, a.threads)
-    start = time()
+    if len(z_range) > 0:
+      ptask = []
+      range_list = make_range(z_range, a.threads)
+      start = time()
 
-    for irange in range_list:
-        ptask.append(task_iterator(irange))
-    if args.dry_run:
-      for t in ptask:
-       tq = MockTaskQueue(parallel=1)
-       tq.insert_all(t, args=[a])
-    else:
-      if a.distributed:
-        with ProcessPoolExecutor(max_workers=a.threads) as executor:
-            executor.map(remote_upload, ptask)
-      else:
+      for irange in range_list:
+          ptask.append(task_iterator(irange))
+      if args.dry_run:
         for t in ptask:
-         tq = LocalTaskQueue(parallel=1)
+         tq = MockTaskQueue(parallel=1)
          tq.insert_all(t, args=[a])
+      else:
+        if a.distributed:
+          with ProcessPoolExecutor(max_workers=a.threads) as executor:
+              executor.map(remote_upload, ptask)
+        else:
+          for t in ptask:
+           tq = LocalTaskQueue(parallel=1)
+           tq.insert_all(t, args=[a])
  
-    end = time()
-    diff = end - start
-    print('Sending {} use time: {}'.format(task_iterator, diff))
-    print('Run {}'.format(task_iterator)
-    # wait
-    start = time()
-    a.wait_for_sqs_empty()
-    end = time()
-    diff = end - start
-    print('Executing {} use time: {}'.format(task_iterator, diff))
+      end = time()
+      diff = end - start
+      print('Sending {} use time: {}'.format(task_iterator, diff))
+      if a.distributed:
+        print('Run {}'.format(task_iterator))
+        # wait
+        start = time()
+        a.wait_for_sqs_empty()
+        end = time()
+        diff = end - start
+        print('Executing {} use time: {}\n'.format(task_iterator, diff))
 
   # Task Scheduling Iterators
   class StitchCompose(object):
     def __init__(self, z_range):
       self.z_range = z_range
-
-    def __repr__(self):
-      return 'Stitch ComposeTask'
 
     def __iter__(self):
       for z in self.z_range:
@@ -226,9 +232,6 @@ if __name__ == '__main__':
   class StitchRender(object):
     def __init__(self, z_range):
       self.z_range = z_range
-
-    def __repr__(self):
-      return 'Stitch RenderTask'
 
     def __iter__(self): 
       for z in self.z_range:
