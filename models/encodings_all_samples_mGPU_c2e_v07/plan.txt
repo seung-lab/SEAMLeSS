@@ -2406,3 +2406,1223 @@ At epoch 856, iteration 1242:
 Time: 2019-03-06 12:55:23.504519
 Commit: d85b619641e060248bc060bf6838c3bf48f10b14
 ./train.py --num_workers 12 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 856, iteration 2600:
+Time: 2019-03-07 00:19:53.214024
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 857, iteration None:
+Time: 2019-03-07 01:02:16.709007
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 857, iteration 1142:
+Time: 2019-03-07 03:23:25.216559
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 857, iteration 1948:
+Time: 2019-03-07 05:00:43.536899
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 857, iteration 2740:
+Time: 2019-03-07 06:37:46.188125
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 858, iteration None:
+Time: 2019-03-07 07:03:28.724934
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 858, iteration 1012:
+Time: 2019-03-07 09:06:44.742847
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 858, iteration 1794:
+Time: 2019-03-07 10:42:16.671636
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 858, iteration 2768:
+Time: 2019-03-07 12:40:25.005065
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 859, iteration None:
+Time: 2019-03-07 13:03:15.766244
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 859, iteration 1213:
+Time: 2019-03-07 15:34:50.197426
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 859, iteration 1822:
+Time: 2019-03-07 16:47:55.604272
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 859, iteration 2603:
+Time: 2019-03-07 18:22:22.449729
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 860, iteration None:
+Time: 2019-03-07 19:05:11.073788
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 860, iteration 1146:
+Time: 2019-03-07 21:39:12.458550
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 860, iteration 1930:
+Time: 2019-03-07 23:28:26.428901
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 860, iteration 2326:
+Time: 2019-03-08 00:15:40.271462
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 861, iteration None:
+Time: 2019-03-08 01:32:57.383754
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 861, iteration 630:
+Time: 2019-03-08 02:49:50.396354
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 861, iteration 1419:
+Time: 2019-03-08 06:09:39.571996
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 861, iteration 2667:
+Time: 2019-03-08 08:43:53.996340
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 862, iteration None:
+Time: 2019-03-08 09:18:58.421628
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 862, iteration 1005:
+Time: 2019-03-08 11:25:57.546328
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 862, iteration 1799:
+Time: 2019-03-08 13:03:04.274435
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 862, iteration 2745:
+Time: 2019-03-08 15:01:16.097867
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 863, iteration None:
+Time: 2019-03-08 15:26:59.118170
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 863, iteration 362:
+Time: 2019-03-08 16:12:02.679774
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 863, iteration 1143:
+Time: 2019-03-08 17:48:18.515109
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 863, iteration 2278:
+Time: 2019-03-08 20:15:25.919616
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 863, iteration 2853:
+Time: 2019-03-08 21:26:19.527691
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 864, iteration None:
+Time: 2019-03-08 21:39:18.391436
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 864, iteration 237:
+Time: 2019-03-08 22:08:17.533890
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 864, iteration 373:
+Time: 2019-03-08 23:14:55.198428
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 864, iteration 1516:
+Time: 2019-03-09 01:39:07.417819
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 864, iteration 2367:
+Time: 2019-03-09 03:24:47.223745
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 865, iteration None:
+Time: 2019-03-09 04:37:45.463928
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 865, iteration 484:
+Time: 2019-03-09 05:36:52.377120
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 865, iteration 744:
+Time: 2019-03-09 06:08:20.919239
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 865, iteration 2061:
+Time: 2019-03-09 08:55:05.685155
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 865, iteration 2735:
+Time: 2019-03-09 10:18:31.456800
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 866, iteration None:
+Time: 2019-03-09 10:45:46.642401
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 866, iteration 1088:
+Time: 2019-03-09 13:02:50.254383
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 866, iteration 1899:
+Time: 2019-03-09 16:40:01.847639
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 866, iteration 2661:
+Time: 2019-03-09 18:15:42.648624
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 867, iteration None:
+Time: 2019-03-09 18:52:13.997346
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 867, iteration 250:
+Time: 2019-03-09 19:22:54.587843
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 867, iteration 1355:
+Time: 2019-03-09 21:45:55.044659
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 867, iteration 2116:
+Time: 2019-03-09 23:21:08.778919
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 867, iteration 2874:
+Time: 2019-03-10 00:56:08.401796
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 868, iteration None:
+Time: 2019-03-10 01:06:44.024650
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 868, iteration 1083:
+Time: 2019-03-10 03:25:01.367513
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 868, iteration 1838:
+Time: 2019-03-10 04:59:45.990808
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 868, iteration 2599:
+Time: 2019-03-10 06:37:43.562194
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 869, iteration None:
+Time: 2019-03-10 07:21:49.360653
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 869, iteration 943:
+Time: 2019-03-10 09:22:34.981205
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 869, iteration 2059:
+Time: 2019-03-10 11:45:29.536834
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 870, iteration None:
+Time: 2019-03-10 13:43:43.594571
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 870, iteration 1285:
+Time: 2019-03-10 16:30:25.583632
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 870, iteration 1950:
+Time: 2019-03-10 17:54:03.033383
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 871, iteration None:
+Time: 2019-03-10 20:04:25.955238
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 871, iteration 650:
+Time: 2019-03-10 21:26:46.100466
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 871, iteration 1548:
+Time: 2019-03-10 23:23:01.038513
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 871, iteration 1998:
+Time: 2019-03-11 00:19:40.079416
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 872, iteration None:
+Time: 2019-03-11 02:23:16.225877
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 872, iteration 534:
+Time: 2019-03-11 03:31:25.187176
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 872, iteration 811:
+Time: 2019-03-11 04:07:34.195705
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 872, iteration 1552:
+Time: 2019-03-11 05:41:30.485665
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 872, iteration 1929:
+Time: 2019-03-11 06:28:43.237630
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 872, iteration 2125:
+Time: 2019-03-11 06:52:56.812135
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 872, iteration 2225:
+Time: 2019-03-11 07:05:26.774894
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 873, iteration None:
+Time: 2019-03-11 08:39:03.627097
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 873, iteration 443:
+Time: 2019-03-11 09:35:14.345101
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 873, iteration 1201:
+Time: 2019-03-11 11:11:30.333031
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 873, iteration 2534:
+Time: 2019-03-11 14:06:27.943279
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 874, iteration None:
+Time: 2019-03-11 15:00:25.134928
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 874, iteration 529:
+Time: 2019-03-11 16:07:32.077813
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 874, iteration 1270:
+Time: 2019-03-11 18:19:52.896622
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 874, iteration 2301:
+Time: 2019-03-11 20:35:51.523506
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 875, iteration None:
+Time: 2019-03-11 22:00:17.408477
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 875, iteration 426:
+Time: 2019-03-11 22:54:31.540185
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 875, iteration 1161:
+Time: 2019-03-12 00:31:39.294791
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 875, iteration 2487:
+Time: 2019-03-12 03:27:34.182376
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 876, iteration None:
+Time: 2019-03-12 04:28:23.146238
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 876, iteration 498:
+Time: 2019-03-12 05:54:26.777621
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 876, iteration 1224:
+Time: 2019-03-12 07:27:56.393228
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 876, iteration 1997:
+Time: 2019-03-12 09:08:21.684459
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 876, iteration 2403:
+Time: 2019-03-12 10:00:14.306007
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 877, iteration None:
+Time: 2019-03-12 11:12:08.292388
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 877, iteration 461:
+Time: 2019-03-12 12:11:45.898509
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 877, iteration 1687:
+Time: 2019-03-12 15:02:37.181202
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 877, iteration 2414:
+Time: 2019-03-12 16:37:45.742407
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 877, iteration 2793:
+Time: 2019-03-12 17:26:23.381547
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 878, iteration None:
+Time: 2019-03-12 17:47:32.093347
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 878, iteration 637:
+Time: 2019-03-12 19:10:40.691661
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 878, iteration 1463:
+Time: 2019-03-12 20:59:17.833501
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 878, iteration 2369:
+Time: 2019-03-12 23:33:33.852833
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 879, iteration None:
+Time: 2019-03-13 00:50:19.330356
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 879, iteration 438:
+Time: 2019-03-13 01:47:36.105616
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 879, iteration 1537:
+Time: 2019-03-13 04:18:49.316176
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 879, iteration 2259:
+Time: 2019-03-13 05:55:16.992264
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 880, iteration None:
+Time: 2019-03-13 07:27:09.851095
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 880, iteration 902:
+Time: 2019-03-13 09:27:07.783216
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 880, iteration 1622:
+Time: 2019-03-13 11:01:25.743132
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 880, iteration 2825:
+Time: 2019-03-13 13:45:02.863224
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 881, iteration None:
+Time: 2019-03-13 14:02:20.496608
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 881, iteration 733:
+Time: 2019-03-13 15:39:34.227586
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 881, iteration 1618:
+Time: 2019-03-13 17:39:49.186128
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 881, iteration 2086:
+Time: 2019-03-13 18:47:53.343760
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 882, iteration None:
+Time: 2019-03-13 20:44:18.859488
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 882, iteration 1014:
+Time: 2019-03-13 23:23:20.440460
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 882, iteration 2060:
+Time: 2019-03-14 01:44:41.363285
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 883, iteration None:
+Time: 2019-03-14 03:45:26.455075
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 883, iteration 474:
+Time: 2019-03-14 04:48:54.916126
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 883, iteration 1187:
+Time: 2019-03-14 06:42:59.919491
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 883, iteration 2385:
+Time: 2019-03-14 09:27:28.986372
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 884, iteration None:
+Time: 2019-03-14 10:43:50.568772
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 884, iteration 432:
+Time: 2019-03-14 12:34:06.837568
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 884, iteration 1134:
+Time: 2019-03-14 14:08:53.660663
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 884, iteration 1841:
+Time: 2019-03-14 15:43:27.887379
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 884, iteration 2587:
+Time: 2019-03-14 17:23:38.015698
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 885, iteration None:
+Time: 2019-03-14 18:12:42.403783
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 885, iteration 534:
+Time: 2019-03-14 19:26:28.910419
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 885, iteration 1212:
+Time: 2019-03-14 20:57:45.391615
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 885, iteration 2140:
+Time: 2019-03-14 23:03:59.895843
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 886, iteration None:
+Time: 2019-03-15 00:54:57.067561
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 886, iteration 1123:
+Time: 2019-03-15 03:29:17.369700
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 886, iteration 2232:
+Time: 2019-03-15 06:02:25.234091
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 886, iteration 2931:
+Time: 2019-03-15 07:37:15.373214
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 887, iteration None:
+Time: 2019-03-15 07:41:26.755261
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 887, iteration 1006:
+Time: 2019-03-15 09:59:51.566409
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 887, iteration 1742:
+Time: 2019-03-15 11:40:50.063924
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 887, iteration 2603:
+Time: 2019-03-15 13:39:11.095333
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 888, iteration None:
+Time: 2019-03-15 14:26:56.682973
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 888, iteration 277:
+Time: 2019-03-15 15:03:50.357364
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 888, iteration 1230:
+Time: 2019-03-15 19:10:27.932592
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 888, iteration 1929:
+Time: 2019-03-15 20:45:57.070061
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 889, iteration None:
+Time: 2019-03-15 23:08:59.715888
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 889, iteration 958:
+Time: 2019-03-16 01:23:06.103537
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 889, iteration 1444:
+Time: 2019-03-16 02:29:03.949507
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 889, iteration 2241:
+Time: 2019-03-16 04:20:24.402231
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 889, iteration 2648:
+Time: 2019-03-16 05:26:13.659414
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 890, iteration None:
+Time: 2019-03-16 06:07:57.576027
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 890, iteration 1086:
+Time: 2019-03-16 09:15:07.013848
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 890, iteration 1777:
+Time: 2019-03-16 12:12:01.159578
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 890, iteration 2450:
+Time: 2019-03-16 13:44:41.532457
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 891, iteration None:
+Time: 2019-03-16 14:54:02.493395
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 891, iteration 706:
+Time: 2019-03-16 16:53:28.684678
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 891, iteration 1381:
+Time: 2019-03-16 18:26:28.867376
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 891, iteration 2394:
+Time: 2019-03-16 20:48:15.594248
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 892, iteration None:
+Time: 2019-03-16 22:05:14.144952
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 892, iteration 574:
+Time: 2019-03-16 23:28:34.088371
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 892, iteration 1574:
+Time: 2019-03-17 01:48:44.159578
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 892, iteration 2069:
+Time: 2019-03-17 02:56:44.931216
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 892, iteration 2933:
+Time: 2019-03-17 04:56:58.036146
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 893, iteration None:
+Time: 2019-03-17 05:00:52.269642
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 893, iteration 983:
+Time: 2019-03-17 07:19:28.620312
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 893, iteration 1502:
+Time: 2019-03-17 08:36:21.904627
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 893, iteration 2492:
+Time: 2019-03-17 10:57:01.382480
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 894, iteration None:
+Time: 2019-03-17 12:02:13.207925
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 894, iteration 459:
+Time: 2019-03-17 13:05:45.712461
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 894, iteration 1124:
+Time: 2019-03-17 14:37:44.625723
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 894, iteration 1798:
+Time: 2019-03-17 16:11:47.317643
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 894, iteration 2523:
+Time: 2019-03-17 17:53:31.276384
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 894, iteration 2904:
+Time: 2019-03-17 20:47:43.874401
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 895, iteration None:
+Time: 2019-03-17 20:55:35.436232
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 895, iteration 632:
+Time: 2019-03-17 22:23:18.696041
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 895, iteration 964:
+Time: 2019-03-17 23:08:29.936644
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 895, iteration 1981:
+Time: 2019-03-18 01:32:19.817576
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 895, iteration 2638:
+Time: 2019-03-18 03:04:10.896731
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 896, iteration None:
+Time: 2019-03-18 03:47:57.923941
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 896, iteration 527:
+Time: 2019-03-18 05:03:26.517578
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 896, iteration 1186:
+Time: 2019-03-18 06:35:07.253920
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 896, iteration 1961:
+Time: 2019-03-18 08:24:31.967560
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 897, iteration None:
+Time: 2019-03-18 10:47:08.265527
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 897, iteration 596:
+Time: 2019-03-18 12:12:48.720697
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 897, iteration 1523:
+Time: 2019-03-18 14:24:13.915738
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 897, iteration 1988:
+Time: 2019-03-18 15:29:11.573316
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 897, iteration 2755:
+Time: 2019-03-18 17:18:01.483672
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 898, iteration None:
+Time: 2019-03-18 17:45:51.119626
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 898, iteration 305:
+Time: 2019-03-18 18:28:13.924624
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 898, iteration 1264:
+Time: 2019-03-18 20:46:11.538321
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 898, iteration 2382:
+Time: 2019-03-18 23:27:19.080000
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 899, iteration None:
+Time: 2019-03-19 00:48:26.926798
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 899, iteration 314:
+Time: 2019-03-19 01:33:39.434530
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 899, iteration 1139:
+Time: 2019-03-19 03:57:17.937979
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 899, iteration 1788:
+Time: 2019-03-19 05:29:23.526747
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 899, iteration 2594:
+Time: 2019-03-19 07:25:03.906573
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 900, iteration None:
+Time: 2019-03-19 08:15:43.529606
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 900, iteration 247:
+Time: 2019-03-19 08:50:14.500082
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 900, iteration 982:
+Time: 2019-03-19 10:37:25.865371
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 900, iteration 1348:
+Time: 2019-03-19 11:30:52.002868
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 900, iteration 2018:
+Time: 2019-03-19 13:06:24.962586
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 900, iteration 2674:
+Time: 2019-03-19 14:39:16.132121
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 901, iteration None:
+Time: 2019-03-19 15:18:50.999961
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 901, iteration 741:
+Time: 2019-03-19 17:05:30.280340
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 901, iteration 1544:
+Time: 2019-03-19 19:09:35.166590
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 901, iteration 2200:
+Time: 2019-03-19 21:02:36.298704
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 901, iteration 2839:
+Time: 2019-03-19 22:34:05.641441
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 902, iteration None:
+Time: 2019-03-19 22:50:49.455331
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 902, iteration 617:
+Time: 2019-03-20 00:19:03.362771
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 902, iteration 1268:
+Time: 2019-03-20 01:53:55.290134
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 902, iteration 2224:
+Time: 2019-03-20 04:14:55.182906
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 903, iteration None:
+Time: 2019-03-20 06:01:39.808363
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 903, iteration 489:
+Time: 2019-03-20 07:12:10.601454
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 903, iteration 1123:
+Time: 2019-03-20 08:43:40.906933
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 903, iteration 1762:
+Time: 2019-03-20 10:15:56.707064
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 903, iteration 2071:
+Time: 2019-03-20 10:59:41.595854
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 903, iteration 2228:
+Time: 2019-03-20 11:22:13.810065
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 904, iteration None:
+Time: 2019-03-20 13:09:46.859091
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 904, iteration 642:
+Time: 2019-03-20 14:45:37.631944
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 904, iteration 1291:
+Time: 2019-03-20 16:19:39.639620
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 904, iteration 1938:
+Time: 2019-03-20 17:53:09.207275
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 904, iteration 2649:
+Time: 2019-03-20 19:37:18.640762
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 905, iteration None:
+Time: 2019-03-20 20:21:02.524675
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 905, iteration 208:
+Time: 2019-03-20 20:50:33.497043
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 905, iteration 845:
+Time: 2019-03-20 22:23:04.729405
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 905, iteration 1167:
+Time: 2019-03-20 23:09:01.186360
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 905, iteration 2288:
+Time: 2019-03-21 02:00:55.787818
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 905, iteration 2925:
+Time: 2019-03-21 03:34:56.583097
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 906, iteration None:
+Time: 2019-03-21 03:40:20.697138
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 906, iteration 626:
+Time: 2019-03-21 05:10:58.732663
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 906, iteration 1262:
+Time: 2019-03-21 11:29:54.550471
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 906, iteration 2055:
+Time: 2019-03-21 13:26:20.749461
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 907, iteration None:
+Time: 2019-03-21 15:41:16.226087
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 907, iteration 856:
+Time: 2019-03-21 17:48:14.337795
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 907, iteration 1895:
+Time: 2019-03-21 20:24:26.711883
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 907, iteration 2534:
+Time: 2019-03-21 22:05:44.430370
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 908, iteration None:
+Time: 2019-03-21 23:07:09.282275
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 908, iteration 434:
+Time: 2019-03-22 00:11:45.967619
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 908, iteration 1508:
+Time: 2019-03-22 02:54:25.238578
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 908, iteration 2141:
+Time: 2019-03-22 04:27:45.330740
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 908, iteration 2770:
+Time: 2019-03-22 06:12:51.655885
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 909, iteration None:
+Time: 2019-03-22 06:39:44.350652
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 909, iteration 544:
+Time: 2019-03-22 08:00:04.264795
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 909, iteration 1510:
+Time: 2019-03-22 10:25:19.678469
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 909, iteration 2133:
+Time: 2019-03-22 11:57:14.955441
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 909, iteration 2762:
+Time: 2019-03-22 13:30:08.312478
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 910, iteration None:
+Time: 2019-03-22 13:58:35.096671
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 910, iteration 811:
+Time: 2019-03-22 16:00:58.899888
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 910, iteration 1211:
+Time: 2019-03-22 16:59:38.528286
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 910, iteration 2133:
+Time: 2019-03-22 19:16:58.707074
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 910, iteration 2593:
+Time: 2019-03-22 20:24:25.332842
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 910, iteration 2840:
+Time: 2019-03-22 22:20:00.662382
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
+
+At epoch 911, iteration None:
+Time: 2019-03-22 22:37:05.917652
+Commit: 4b3ffd631f2a649122108649dde2d6a58d7db64d
+./train.py --num_workers 6 --gpu_ids 2,3 --repeats 36 resume encodings_all_samples_mGPU_c2e_v07
