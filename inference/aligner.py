@@ -702,6 +702,7 @@ class Aligner:
       assert(field_mip >= image_mip)
       pad = 256
       padded_bbox = deepcopy(bbox)
+      padded_bbox.max_mip = image_mip
       print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
 
@@ -784,6 +785,7 @@ class Aligner:
       assert(f_mip >= dst_mip)
       assert(g_mip >= dst_mip)
       padded_bbox = deepcopy(bbox)
+      padded_bbox.max_mip = dst_mip
       print('Padding by {} at MIP{}'.format(pad, dst_mip))
       padded_bbox.uncrop(pad, mip=dst_mip)
       # Load warper vector field
@@ -875,6 +877,7 @@ class Aligner:
     else:
         assert(len(factors) == len(field_list))
     padded_bbox = deepcopy(bbox)
+    padded_bbox.max_mip = dst_mip
     print('Padding by {} at MIP{}'.format(pad, dst_mip))
     padded_bbox.uncrop(pad, mip=dst_mip)
 
@@ -886,6 +889,8 @@ class Aligner:
     f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
                        relative=False, to_tensor=True)
     f = f * f_factor
+    if len(field_list) == 0:
+        return f[:, pad:-pad, pad:-pad, :]
 
     # skip any empty / identity fields
     while is_identity(f):
@@ -897,7 +902,7 @@ class Aligner:
                            relative=False, to_tensor=True)
         f = f * f_factor
         if len(field_list) == 0:
-            return f
+            return f[:, pad:-pad, pad:-pad, :]
 
     if f_mip > dst_mip:
         f = upsample_field(f, f_mip, dst_mip)
@@ -927,9 +932,7 @@ class Aligner:
         h = self.rel_to_abs_residual(h, dst_mip)
         h += distance.to(device=self.device)
         f = h
-
-    f = f[:, pad:-pad, pad:-pad, :]
-    return f
+    return f[:, pad:-pad, pad:-pad, :]
 
   def cloudsample_image_batch(self, z_range, image_cv, field_cv, 
                               bbox, image_mip, field_mip,
