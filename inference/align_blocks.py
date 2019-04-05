@@ -219,31 +219,32 @@ if __name__ == '__main__':
                                               if k <= starter_restart}
   block_offset_to_z_range = {k:v for k,v in block_offset_to_z_range.items() 
                                               if k >= args.restart}
-  print('copy_offset_to_z_range {}'.format(copy_offset_to_z_range))
-  print('starter_offset_to_z_range {}'.format(starter_offset_to_z_range))
-  print('block_offset_to_z_range {}'.format(block_offset_to_z_range))
-  print('offset_range {}'.format(offset_range))
+  # print('copy_offset_to_z_range {}'.format(copy_offset_to_z_range))
+  # print('starter_offset_to_z_range {}'.format(starter_offset_to_z_range))
+  # print('block_offset_to_z_range {}'.format(block_offset_to_z_range))
+  # print('offset_range {}'.format(offset_range))
   copy_range = [z for z_range in copy_offset_to_z_range.values() for z in z_range]
   starter_range = [z for z_range in starter_offset_to_z_range.values() for z in z_range]
   overlap_copy_range = list(overlap_copy_range)
-  print('overlap_copy_range {}'.format(overlap_copy_range))
+  # print('overlap_copy_range {}'.format(overlap_copy_range))
 
   # Determine the number of sections needed to stitch (no stitching for block 0)
-  stitch_offset_to_z_range = {i: set() for i in range(1, block_size+1)}
-  block_start_to_stitch_offsets = {i: set() for i in block_starts[1:]}
+  stitch_offset_to_z_range = {i: [] for i in range(1, block_size+1)}
+  block_start_to_stitch_offsets = {i: [] for i in block_starts[1:]}
   for bs, be in zip(block_starts[1:], block_stops[1:]):
     max_offset = 0
     for i, z in enumerate(range(bs, be+1)):
       if i > 0 and z not in skip_list:
         max_offset = max(max_offset, tgt_radius_lookup[z])
         if len(block_start_to_stitch_offsets[bs]) < max_offset:
-          stitch_offset_to_z_range[i].add(z)
-          block_start_to_stitch_offsets[bs].add(bs - z)
+          stitch_offset_to_z_range[i].append(z)
+          block_start_to_stitch_offsets[bs].append(bs - z)
         else:
-          continue
+          break 
   stitch_range = [z for z_range in stitch_offset_to_z_range.values() for z in z_range]
-  print('stitch_offset_to_z_range {}'.format(stitch_offset_to_z_range))
-  print('block_start_to_stitch_offsets {}'.format(block_start_to_stitch_offsets))
+  for b,v in block_start_to_stitch_offsets.items():
+    print(b)
+    assert(len(v) % 2 == 1)
 
   # Create field CloudVolumes
   print('Creating field & overlap CloudVolumes')
