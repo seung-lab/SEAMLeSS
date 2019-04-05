@@ -96,22 +96,25 @@ class Aligner:
       return data.type(torch.float)/4.0
 
   def new_compute_field(self, model_path, src_img, tgt_img, chunk_size, pad,
-                        warp=False):
+                        warp=False, first_chunk=False):
       print("--------------- src and tgt shape", src_img.shape, tgt_img.shape)
       img_shape = src_img.shape
       x_len = img_shape[-2]
       y_len = img_shape[-1]
       unpadded_size = x_len - 2*pad
       padded_len = chunk_size + 2*pad
-      chunk_number = unpadded_size // chunk_size
+      y_chunk_number = (y_len -2*pad) // chunk_size
+      x_chunk_number = unpadded_size // chunk_size
       if(warp):
-          adjust = pad
+          if(first_chunk):
+              adjust = pad
+          else:
+              adjust = 0
           image = torch.ByteTensor(1, 1, adjust+unpadded_size, y_len).zero_()
       else:
           dst_field = torch.FloatTensor(1,unpadded_size, y_len, 2).zero_()
-      print("----------pad is ", pad)
-      for xs in range(chunk_number):
-          for ys in range(chunk_number):
+      for xs in range(x_chunk_number):
+          for ys in range(y_chunk_number):
               src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
                                   ys*chunk_size:ys*chunk_size+padded_len]
               tgt_patch = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
@@ -144,12 +147,12 @@ class Aligner:
       archive = self.get_model_archive(model_path)
       model = archive.model
       normalizer = archive.preprocessor
-      #if (normalizer is not None): 
-      #    if(not is_blank(src_img)):
-      #        src_img =normalizer(src_img).reshape(src_img.shape)
-      #    if(not is_blank(tgt_img)):
-      #        tgt_img =normalizer(tgt_img).reshape(tgt_img.shape)
-      print("***********", src_img.shape, tgt_img.shape, " warp ", warp)
+      if (normalizer is not None): 
+          if(not is_blank(src_img)):
+              src_img =normalizer(src_img).reshape(src_img.shape)
+          if(not is_blank(tgt_img)):
+              tgt_img =normalizer(tgt_img).reshape(tgt_img.shape)
+      #print("***********", src_img.shape, tgt_img.shape, " warp ", warp)
       field = model(src_img, tgt_img)
       if(warp):
           image = self.new_cloudsample_image(src_img, field)
@@ -157,10 +160,14 @@ class Aligner:
       else:
           return field
 
-  def adjust_chunk(self, chunk, mip, pad):
+  def adjust_chunk(self, chunk, mip, chunk_size, first_chunk=False):
+      if first_chunk:
+          start = 0;
+      else:
+          start= chunk_size;
       x_range = chunk.x_range(mip=mip)
       y_range = chunk.y_range(mip=mip)
-      new_chunk = BoundingBox(x_range[0]+pad,x_range[1]-pad,
+      new_chunk = BoundingBox(x_range[0]+start,x_range[1]-chunk_size,
                               y_range[0],y_range[1], mip=mip)
       return new_chunk
 
@@ -215,20 +222,24 @@ class Aligner:
         return image
 
   def new_vector_vote(self, model_path, src_img, image_list, chunk_size, pad,
-                      vvote_way, inverse=False, serial=True,
-                  softmin_temp=None, blur_sigma=None):
+                      vvote_way, mip, inverse=False, serial=True, softmin_temp=None,
+                      blur_sigma=None, first_chunk=False):
     img_shape = src_img.shape
     x_len = img_shape[-2]
     y_len = img_shape[-1]
     padded_len = chunk_size + 2*pad
-    image = torch.ByteTensor(1, 1,x_len-2*pad, y_len-2*pad).zero_()
+    if(first_chunk):
+        adjust = pad
+    else:
+        adjust = 0
+    image = torch.ByteTensor(1, 1, adjust+x_len-2*pad, y_len-2*pad).zero_()
     dst_field = torch.FloatTensor(1,x_len-2*pad, y_len-2*pad,2).zero_()
     for xs in range(0, x_len-pad, chunk_size):
         for ys in range(0, y_len-pad, chunk_size):
             vv_fields = []
             for i in range(vvote_way):
                 src_patch = src_img[...,xs:xs+padded_len, ys:ys+padded_len]
-                tgt_patch = image_list[...,xs:xs+padded_len, ys:ys+padded_len]
+                tgt_patch = image_list[i][...,xs:xs+padded_len, ys:ys+padded_len]
                 src_patch = src_patch.to(device=self.device)
                 tgt_patch = tgt_patch.to(device=self.device)
                 src_patch = self.convert_to_float(src_patch)
@@ -237,7 +248,7 @@ class Aligner:
                                                        tgt_patch)
                 field = field[:,pad:-pad,pad:-pad,:]
                 vv_fields.append(field)
-            field = self.new_vector_vote_chunk(vv_fields,
+            field = self.new_vector_vote_chunk(vv_fields, mip,
                                                softmin_temp=softmin_temp,
                                                blur_sigma=blur_sigma)
             field = field.to(device='cpu')
@@ -258,9 +269,7 @@ class Aligner:
             image[..., xs:xs+chunk_size, ys:ys+chunk_size] = image_patch
     return image, dst_field
 
-    return batch
-
-  def new_vector_vote_chunk(self, fields, softmin_temp=None, blur_sigma=None):
+  def new_vector_vote_chunk(self, fields, mip,softmin_temp=None, blur_sigma=None):
     if not softmin_temp:
       w = 0.99
       d = 2**mip
