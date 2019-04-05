@@ -101,7 +101,7 @@ if __name__ == '__main__':
       def __init__(self):
           pass
       def __iter__(self):
-          t = a.error_detect_volume(cm, args.model_path, src_seg.path, src_img.path, dst.path, mip, bbox, chunk_size, str(mip))
+          t = a.error_detect_volume(cm, args.model_path, src_seg.path, src_img.path, dst.path, mip, bbox, chunk_size, patch_size, str(mip))
           yield from t
   # range_list = make_range(full_range, a.threads)
 

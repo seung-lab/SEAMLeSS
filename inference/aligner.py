@@ -42,6 +42,7 @@ import tasks
 import tenacity
 import boto3
 from fcorr import get_fft_power2, get_hp_fcorr
+from error_detector import inference
 
 retry = tenacity.retry(
   reraise=True, 
@@ -304,6 +305,7 @@ class Aligner:
     z_range = bbox.z_range()
     data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range[0]:z_range[1]]
     data = np.transpose(data, (3,0,1,2))
+    data = np.reshape(data, (1,)+data.shape)
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
     if (normalizer is not None) and (not is_blank(data)):
@@ -661,7 +663,7 @@ class Aligner:
 
   # Error detection
   def error_detect_volume(self, cm, model_path, src_seg_cv, src_img_cv, dst_cv, mip, bbox,
-                    chunk_size, prefix=''):
+                    chunk_size, patch_size, prefix=''):
     start = time()
     chunks = self.break_into_chunks_3d(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
@@ -679,12 +681,12 @@ class Aligner:
     if prefix == '':
       prefix = '{}'.format(mip)
     batch = []
-    for patch_bbox in chunks:
+    for chunk_bbox in chunks:
       batch.append(tasks.ErrorDetectTask(model_path, src_seg_cv, src_img_cv, dst_cv, mip,
-                                        patch_bbox, prefix))
+                                        chunk_bbox, patch_size, prefix))
     return batch
 
-  def errdet_chunk(self, model_path, src_seg_cv, src_img_cv, mip, bbox):
+  def errdet_chunk(self, model_path, src_seg_cv, src_img_cv, mip, bbox, patch_size):
     # Model
     archive = self.get_model_archive(model_path)
     model = archive.model
@@ -692,10 +694,10 @@ class Aligner:
     # Input
     seg = self.get_volume(src_seg_cv, bbox, mip, to_tensor=True)
     img = self.get_volume(src_img_cv, bbox, mip, to_tensor=True)
-
-    print(seg.shape, img.shape)
+    
     # Inference
-    new_image = torch.zeros(img.shape)
+    new_image = inference(model, seg, img, patch_size)
+    
     return new_image
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
