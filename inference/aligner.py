@@ -113,7 +113,7 @@ class Aligner:
           image = torch.ByteTensor(1, 1, adjust+unpadded_size, y_len).zero_()
       else:
           dst_field = torch.FloatTensor(1,unpadded_size, y_len, 2).zero_()
-      for xs in range(x_chunk_number):
+      for xs in range(x_chunk_number-1):
           for ys in range(y_chunk_number):
               src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
                                   ys*chunk_size:ys*chunk_size+padded_len]
@@ -138,6 +138,33 @@ class Aligner:
                   field = field.to(device='cpu')
                   dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
                             ys*chunk_size:ys*chunk_size+chunk_size,:] = field
+
+      for xs in [x_chunk_number-1]:
+          for ys in range(y_chunk_number):
+              src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                  ys*chunk_size:ys*chunk_size+padded_len]
+              tgt_patch = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                  ys*chunk_size:ys*chunk_size+padded_len]
+              src_patch = src_patch.to(device=self.device)
+              tgt_patch = tgt_patch.to(device=self.device)
+              src_patch = self.convert_to_float(src_patch)
+              tgt_patch = self.convert_to_float(tgt_patch)
+              if warp:
+                  image_patch = self.new_compute_field_chunk(model_path, src_patch,
+                                                   tgt_patch, warp)
+                  image_patch = image_patch[:,:,pad:-pad,pad:-pad]
+                  image_patch = self.convert_to_uint8(image_patch)
+                  image_patch = image_patch.to(device='cpu')
+                  image[...,adjust+xs*chunk_size:adjust+xs*chunk_size+chunk_size,
+                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch
+              else:
+                  field = self.new_compute_field_chunk(model_path, src_patch,
+                                                   tgt_patch, warp) 
+                  field = field[:,pad:-pad,pad:-pad,:]
+                  field = field.to(device='cpu')
+                  dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
+                            ys*chunk_size:ys*chunk_size+chunk_size,:] = field
+
       if(warp):
           return image
       else:
@@ -228,21 +255,53 @@ class Aligner:
     x_len = img_shape[-2]
     y_len = img_shape[-1]
     padded_len = chunk_size + 2*pad
+    x_chunk_number = (x_len - 2*pad) // chunk_size
+    y_chunk_number = (y_len - 2*pad) // chunk_size
     if(first_chunk):
         adjust = pad
     else:
         adjust = 0
-    image = torch.ByteTensor(1, 1, adjust+x_len-2*pad, y_len-2*pad).zero_()
-    dst_field = torch.FloatTensor(1,x_len-2*pad, y_len-2*pad,2).zero_()
-    for xs in range(0, x_len-pad, chunk_size):
-        for ys in range(0, y_len-pad, chunk_size):
+    image = torch.ByteTensor(1, 1, adjust+x_len-2*pad, y_len).zero_()
+    dst_field = torch.FloatTensor(1,x_len, y_len,2).zero_()
+    #vector voting 
+    for ys in range(y_chunk_number):
+        vv_fields = []
+        src_patch = src_img[...,:chunk_size+padded_len, ys*chunk_size:ys*chunk_size+padded_len]
+        src_patch = src_patch.to(device=self.device)
+        src_patch = self.convert_to_float(src_patch)
+        for i in range(vvote_way):
+            if first_chunk:
+                offset = 0
+            else:
+                offset = (image_list[i].shape[-2] - src_img.shape[-2])//2
+            tgt_patch = image_list[i][..., offset:offset+chunk_size+padded_len, ys*chunk_size:ys+padded_len]
+            tgt_patch = tgt_patch.to(device=self.device)
+            tgt_patch = self.convert_to_float(tgt_patch)
+            field = self.new_compute_field_chunk(model_path, src_patch,
+                                                   tgt_patch)
+            #field = field[:,pad:-pad,pad:-pad,:]
+            vv_fields.append(field)
+        field = self.new_vector_vote_chunk(vv_fields, mip,
+                                           softmin_temp=softmin_temp,
+                                           blur_sigma=blur_sigma)
+        field = field[:,0:-pad,pad:-pad,:]
+        field = field.to(device='cpu')
+        dst_field[:,0:chunk_size+pad, pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field
+
+    for xs in range(1, x_chunk_number-1):
+        for ys in range(y_chunk_number):
             vv_fields = []
+            src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                    ys*chunk_size:ys*chunk_size+padded_len]
+            src_patch = src_patch.to(device=self.device)
+            src_patch = self.convert_to_float(src_patch)
             for i in range(vvote_way):
-                src_patch = src_img[...,xs:xs+padded_len, ys:ys+padded_len]
-                tgt_patch = image_list[i][...,xs:xs+padded_len, ys:ys+padded_len]
-                src_patch = src_patch.to(device=self.device)
+                if first_chunk:
+                    offset = 0
+                else:
+                    offset = (image_list[i].shape[-2] - src_img.shape[-2])//2
+                tgt_patch = image_list[i][..., offset+xs*chunk_size:offset+xs*chunk_size+padded_len, ys*chunk_size:ys+padded_len]
                 tgt_patch = tgt_patch.to(device=self.device)
-                src_patch = self.convert_to_float(src_patch)
                 tgt_patch = self.convert_to_float(tgt_patch)
                 field = self.new_compute_field_chunk(model_path, src_patch,
                                                        tgt_patch)
@@ -252,12 +311,45 @@ class Aligner:
                                                softmin_temp=softmin_temp,
                                                blur_sigma=blur_sigma)
             field = field.to(device='cpu')
-            dst_field[:,xs:xs+chunk_size,ys:ys+chunk_size,:] = field
+            dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
+                      pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field
 
-    for xs in range(0, x_len-pad, chunk_size):
-        for ys in range(0, y_len-pad, chunk_size):
-            src_patch = src_img[...,xs:xs+padded_len, ys:ys+padded_len]
-            field = dst_field[:,xs:xs+padded_len, ys:ys+padded_len,:]
+    for xs in [x_chunk_number]:
+        for ys in range(y_chunk_number):
+            vv_fields = []
+            src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                    ys*chunk_size:ys*chunk_size+padded_len]
+            src_patch = src_patch.to(device=self.device)
+            src_patch = self.convert_to_float(src_patch)
+            for i in range(vvote_way):
+                if first_chunk:
+                    offset = 0
+                else:
+                    offset = (image_list[i].shape[-2] - src_img.shape[-2])//2
+                tgt_patch = image_list[i][..., offset+xs*chunk_size:offset+xs*chunk_size+padded_len, ys*chunk_size:ys+padded_len]
+                tgt_patch = tgt_patch.to(device=self.device)
+                tgt_patch = self.convert_to_float(tgt_patch)
+                field = self.new_compute_field_chunk(model_path, src_patch,
+                                                       tgt_patch)
+                #field = field[:,pad:-pad,pad:-pad,:]
+                vv_fields.append(field)
+            field = self.new_vector_vote_chunk(vv_fields, mip,
+                                               softmin_temp=softmin_temp,
+                                               blur_sigma=blur_sigma)
+            # to verify wherther non-square size is good
+            field = field[:,:-pad,pad:-pad,:]
+            field = field.to(device='cpu')
+            dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size+pad,
+                      pad+ys*chunk_size:ys*chunk_size+chunk_size,:] = field
+
+
+    #warp the image
+    for xs in range(x_chunk_number):
+        for ys in range(y_chunk_number):
+            src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                ys*chunk_size:ys*chunk_size+padded_len]
+            field = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
+                              ys*chunk_size:ys*chunk_size+padded_len,:]
             src_patch = src_patch.to(device=self.device)
             src_patch = self.convert_to_float(src_patch)
             field = field.to(device=self.device)
@@ -266,7 +358,8 @@ class Aligner:
             image_patch = image_patch[:,:,pad:-pad,pad:-pad]
             image_patch = self.convert_to_uint8(image_patch)
             image_patch = image_patch.to(device='cpu')
-            image[..., xs:xs+chunk_size, ys:ys+chunk_size] = image_patch
+            image[...,adjust+xs*chunk_size:adjust+xs*chunk_size+chunk_size,
+                  pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch
     return image, dst_field
 
   def new_vector_vote_chunk(self, fields, mip,softmin_temp=None, blur_sigma=None):
