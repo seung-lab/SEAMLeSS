@@ -217,7 +217,7 @@ class Aligner:
     return image
 
   def get_volume(self, cv, bbox, mip, to_tensor=True, normalizer=None):
-    print('get_image for {0}'.format(bbox.stringify()), flush=True)
+    print('get_volume for {0}'.format(bbox.stringify()), flush=True)
     start = time()
     volume = self.get_data_3d(cv, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
                              to_tensor=to_tensor, normalizer=normalizer)
@@ -303,8 +303,11 @@ class Aligner:
     x_range = bbox.x_range(mip=src_mip)
     y_range = bbox.y_range(mip=src_mip)
     z_range = bbox.z_range()
-    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z_range[0]:z_range[1]]
-    data = np.transpose(data, (3,0,1,2))
+    volume_size = cv[src_mip].shape[:3]
+    xs = max(x_range[0],0); ys = max(y_range[0],0); zs = max(z_range[0],0)
+    xe = min(x_range[1],volume_size[0]); ye = min(y_range[1],volume_size[1]); ze = min(z_range[1],volume_size[2])
+    data = cv[src_mip][xs:xe, ys:ye, zs:ze]
+    data = np.transpose(data, (3,2,0,1))
     data = np.reshape(data, (1,)+data.shape)
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)

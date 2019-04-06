@@ -78,23 +78,24 @@ class ErrorDetectTask(RegisteredTask):
     src_seg_cv = DCV(self.src_seg_cv)
     src_img_cv = DCV(self.src_img_cv)
     dst_cv = DCV(self.dst_cv)
-    chunk_bbox = deserialize_bbox3d(self.bbox)
-    z_range = patch_bbox.z_range()
+    chunk_bbox_in = deserialize_bbox3d(self.bbox)
+    chunk_bbox_out = deserialize_bbox3d(self.bbox)
+    patch_size = self.patch_size
+    chunk_bbox_in.extend((patch_size[0]//2,patch_size[1]//2,patch_size[2]//2))
     mip = self.mip
     prefix = self.prefix
     print("\nError Detect Volume\n"
           "src seg {}\n"
           "src img {}\n"
           "dst {}\n"
-          "from z={} to z={}\n"
-          "MIP{}\n".format(src_seg_cv, src_img_cv, dst_cv, z_range[0], z_range[1], mip), flush=True)
+          "MIP{}\n".format(src_seg_cv, src_img_cv, dst_cv, mip), flush=True)
     start = time()
-    image = aligner.errdet_chunk(self.model_path, src_seg_cv, src_img_cv, mip, chunk_bbox, patch_size)
+    image = aligner.errdet_chunk(self.model_path, src_seg_cv, src_img_cv, mip, chunk_bbox_in, patch_size)
     image = image.cpu().numpy()
-    aligner.save_volume(image, dst_cv, patch_bbox, mip)
+    aligner.save_volume(image, dst_cv, chunk_bbox_out, mip)
 
     with Storage(dst_cv.path) as stor:
-        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox.stringify())
+        path = 'predict_image_done/{}/{}'.format(prefix, chunk_bbox_out.stringify())
         stor.put_file(path, '')
         print('Marked finished at {}'.format(path))
     end = time()

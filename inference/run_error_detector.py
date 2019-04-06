@@ -71,8 +71,8 @@ if __name__ == '__main__':
   max_mip = args.max_mip
   pad = args.max_displacement
   patch_size = args.patch_size
-  chunk_size = [args.chunk_size[i] + patch_size[i] for i in range(3)]
-  chunk_size = [512,512,64]
+  chunk_size = args.chunk_size
+  # chunk_size = [512,512,64]
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2], chunk_size[2])

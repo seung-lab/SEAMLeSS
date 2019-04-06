@@ -27,7 +27,7 @@ class Volume():
     else:
       raise Exception("Bad indexing scheme.")
 
-    patch = A[(0,0,)+tuple([slice(corner[i],corner[i]+patch_size[i]) for i in range(len(patch_size))])]
+    patch = A[:,:,corner[0]:corner[0]+patch_size[0],corner[1]:corner[1]+patch_size[1],corner[2]:corner[2]+patch_size[2]]
 
     return patch
 
@@ -45,17 +45,14 @@ class Volume():
   	else:
   		raise Exception("Bad indexing scheme.")
 
-  	self.A[(0,0,)+tuple([slice(corner[i],corner[i]+patch_size[i]) for i in range(len(patch_size))])] = val
+  	self.A[:,:,corner[0]:corner[0]+patch_size[0],corner[1]:corner[1]+patch_size[1],corner[2]:corner[2]+patch_size[2]] = val
 
 
 # Create binary object mask
 def object_mask(img):
 
   shape = img.shape
-  if len(shape) == 3:
-    obj_id = img[shape[0]//2, shape[1]//2, shape[2]//2]
-  elif len(shape) == 4:
-    obj_id = img[shape[0]//2, shape[1]//2, shape[2]//2, shape[3]//2]
+  obj_id = img[tuple([shape[i]//2 for i in range(len(shape))])]
   
   if isinstance(img, (torch.Tensor)):    
     mask = torch.tensor(img==obj_id, dtype=torch.float32)
@@ -92,7 +89,7 @@ def pack_inputs(obj, img):
 # Create visited array
 def visited_init(volume_size, patch_size):
 
-	visited = np.zeros((1,1,)+patch_size, dtype='uint8')
+	visited = np.zeros((1,1,)+tuple(patch_size), dtype='uint8')
 
 	# Mark out edge
 	visited[0,0,:patch_size[0]//2,:,:] = 1
@@ -110,7 +107,8 @@ def visited_init(volume_size, patch_size):
 # Inference chunk.
 def inference(model, seg, img, patch_size):
 	
-	volume_size = seg.shape
+	volume_size = seg.shape[2:]
+	patch_size = patch_size[::-1]
 
 	# Input volumes
 	seg_vol = Volume(seg, patch_size)
@@ -122,7 +120,7 @@ def inference(model, seg, img, patch_size):
 	vis_vol = Volume(visited, visited_patch_size)
 
 	# Output volume
-	error_map = np.zeros((1,1,)+patch_size, dtype='uint8')
+	error_map = np.zeros((1,1,)+tuple(patch_size), dtype='uint8')
 	error_vol = Volume(error_map, patch_size)
 
 	coverage = 0
@@ -132,16 +130,17 @@ def inference(model, seg, img, patch_size):
 
 		seg_patch = seg_vol[focus]
 		obj_patch = object_mask(seg_patch)
-		img_patch = seg_img[focus]
+		img_patch = img_vol[focus]
 		input_patch = pack_inputs(obj_patch, img_patch)
 
 		pred = torch.sigmoid(model(input_patch))
 		pred_reshape = torch.reshape(torch.tensor(pred*255,dtype=torch.uint8), (1,)+pred.shape[2:]) 
 		pred_upsample = F.interpolate(pred_reshape, scale_factor=16, mode="nearest").cpu().detach().numpy()
-		error_vol[focus] = np.maximum(error_vol[focus], pred_upsample*obj_patch)
+		error_vol[focus] = np.maximum(error_vol[focus], pred_upsample*obj_patch) 
 
 		vis_vol[focus] = torch.from_numpy(vis_vol[focus]) + obj_patch[:,:,8:24,80:240,80:240]
 
 		coverage = np.round(np.sum(vis_vol.A>=1)/np.prod(volume_size),4)
+		print("Coverage = {}".format(coverage))
 
 	return error_vol.A
