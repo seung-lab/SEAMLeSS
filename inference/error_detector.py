@@ -131,7 +131,7 @@ def inference(model, seg, img, patch_size):
 		seg_patch = seg_vol[focus]
 		obj_patch = object_mask(seg_patch)
 		img_patch = img_vol[focus]
-		input_patch = pack_inputs(obj_patch, img_patch)
+		input_patch = pack_inputs(obj_patch.cuda(), img_patch.cuda())
 
 		pred = torch.sigmoid(model(input_patch))
 		pred_reshape = torch.reshape(pred, (1,)+pred.shape[2:]) 
