@@ -136,6 +136,7 @@ def inference(model, seg, img, patch_size):
 		pred = torch.sigmoid(model(input_patch))
 		pred_reshape = torch.reshape(pred, (1,)+pred.shape[2:]) 
 		pred_upsample = F.interpolate(pred_reshape, scale_factor=16, mode="nearest").cpu().detach()
+		print(error_vol[focus].shape, pred_upsample.shape)
 		error_vol[focus] = np.maximum(error_vol[focus], pred_upsample*obj_patch).numpy().astype('uint8')
 
 		vis_vol[focus] = torch.from_numpy(vis_vol[focus]) + obj_patch[:,:,8:24,80:240,80:240]
