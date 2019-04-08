@@ -174,11 +174,11 @@ class Aligner:
       archive = self.get_model_archive(model_path)
       model = archive.model
       normalizer = archive.preprocessor
-      if (normalizer is not None): 
-          if(not is_blank(src_img)):
-              src_img =normalizer(src_img).reshape(src_img.shape)
-          if(not is_blank(tgt_img)):
-              tgt_img =normalizer(tgt_img).reshape(tgt_img.shape)
+      #if (normalizer is not None): 
+      #    if(not is_blank(src_img)):
+      #        src_img =normalizer(src_img).reshape(src_img.shape)
+      #    if(not is_blank(tgt_img)):
+      #        tgt_img =normalizer(tgt_img).reshape(tgt_img.shape)
       #print("***********", src_img.shape, tgt_img.shape, " warp ", warp)
       field = model(src_img, tgt_img)
       if(warp):
@@ -274,9 +274,13 @@ class Aligner:
                 offset = 0
             else:
                 offset = (image_list[i].shape[-2] - src_img.shape[-2])//2
-            tgt_patch = image_list[i][..., offset:offset+chunk_size+padded_len, ys*chunk_size:ys+padded_len]
+            print("---------- in vv tgt image shape", image_list[i].shape)
+            tgt_patch = image_list[i][..., offset:offset+chunk_size+padded_len,
+                                      ys*chunk_size:ys*chunk_size+padded_len]
             tgt_patch = tgt_patch.to(device=self.device)
             tgt_patch = self.convert_to_float(tgt_patch)
+            print(" in vvoting src_patch size ", src_patch.shape, " tgt_patch",
+                 tgt_patch.shape)
             field = self.new_compute_field_chunk(model_path, src_patch,
                                                    tgt_patch)
             #field = field[:,pad:-pad,pad:-pad,:]
@@ -300,7 +304,9 @@ class Aligner:
                     offset = 0
                 else:
                     offset = (image_list[i].shape[-2] - src_img.shape[-2])//2
-                tgt_patch = image_list[i][..., offset+xs*chunk_size:offset+xs*chunk_size+padded_len, ys*chunk_size:ys+padded_len]
+                tgt_patch = image_list[i][...,
+                                          offset+xs*chunk_size:offset+xs*chunk_size+padded_len,
+                                          ys*chunk_size:ys*chunk_size+padded_len]
                 tgt_patch = tgt_patch.to(device=self.device)
                 tgt_patch = self.convert_to_float(tgt_patch)
                 field = self.new_compute_field_chunk(model_path, src_patch,
@@ -314,7 +320,7 @@ class Aligner:
             dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field
 
-    for xs in [x_chunk_number]:
+    for xs in [x_chunk_number-1]:
         for ys in range(y_chunk_number):
             vv_fields = []
             src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
@@ -326,7 +332,9 @@ class Aligner:
                     offset = 0
                 else:
                     offset = (image_list[i].shape[-2] - src_img.shape[-2])//2
-                tgt_patch = image_list[i][..., offset+xs*chunk_size:offset+xs*chunk_size+padded_len, ys*chunk_size:ys+padded_len]
+                tgt_patch = image_list[i][...,
+                                          offset+xs*chunk_size:offset+xs*chunk_size+padded_len,
+                                          ys*chunk_size:ys*chunk_size+padded_len]
                 tgt_patch = tgt_patch.to(device=self.device)
                 tgt_patch = self.convert_to_float(tgt_patch)
                 field = self.new_compute_field_chunk(model_path, src_patch,
@@ -337,10 +345,11 @@ class Aligner:
                                                softmin_temp=softmin_temp,
                                                blur_sigma=blur_sigma)
             # to verify wherther non-square size is good
-            field = field[:,:-pad,pad:-pad,:]
+            field = field[:,pad:,pad:-pad,:]
             field = field.to(device='cpu')
+            print("--------field shape", field.shape )
             dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size+pad,
-                      pad+ys*chunk_size:ys*chunk_size+chunk_size,:] = field
+                      pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field
 
 
     #warp the image
@@ -353,7 +362,7 @@ class Aligner:
             src_patch = src_patch.to(device=self.device)
             src_patch = self.convert_to_float(src_patch)
             field = field.to(device=self.device)
-            field = self.invert_field(field)
+            #field = self.invert_field(field)
             image_patch = self.new_cloudsample_image(src_patch, field)
             image_patch = image_patch[:,:,pad:-pad,pad:-pad]
             image_patch = self.convert_to_uint8(image_patch)

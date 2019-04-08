@@ -267,12 +267,16 @@ if __name__ == '__main__':
       tgt_image = a.load_part_image(src, block_start+copy_range[0],
                                   chunk, mip, mask_cv=src_mask_cv,
                                   mask_mip=src_mask_mip, mask_val=src_mask_val)
+      print("----------------copy range", copy_range[0])
       if(first_chunk):
           image_list.append(tgt_image[...,
-                                      :-(chunk_size*copy_range[0]-chunk_size),:])
+                                      :-(chunk_size*copy_range[0]),:])
       else:
           image_list.append(tgt_image[..., chunk_size*copy_range[0]-chunk_size-pad:-(chunk_size*copy_range[0]-chunk_size+pad),:])
-      #bbox_list.append()
+      bbox_list.append(a.adjust_chunk(chunk, mip,
+                                      chunk_size*copy_range[0]+pad,
+                                      first_chunk))
+
       for block_offset in serial_range:
            z_offset = serial_offsets[block_offset]
            serial_field = serial_fields[z_offset]
@@ -287,14 +291,12 @@ if __name__ == '__main__':
            tgt_image = a.new_compute_field(model_path, src_image, tgt_image,
                                            chunk_size, pad, warp=True,
                                            first_chunk=first_chunk)
+           image_list.insert(0, tgt_image[...,:-(chunk_size*block_offset+(chunk_size-pad)),:])
+           bbox_list.insert(0, a.adjust_bbox(chunk, mip, chunk_size*block_offset+(chunk_size-pad),first_chunk))
            chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
-           if block_offset == 0:
-               image_list.insert(0,tgt_image)
-           else:
-               image_list.insert(0,
-                                 tgt_image[...,:-(chunk_size*block_offset-pad),:])
            print("........... image_list[0] shape", image_list[0].shape , "tgt shape", tgt_image.shape)
            print("block_offset is ", block_offset)
+      # align with vector voting
       for block_offset in vvote_range:
            dst = dsts[0]
            z = block_start + block_offset
@@ -309,12 +311,13 @@ if __name__ == '__main__':
            chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
            image, dst_field = a.new_vector_vote(model_path, src_image, image_list, chunk_size, pad,
                             vvote_way, mip, inverse=False, serial=True)
-           a.save_image(image_list[0], dst, mip, z-vvote_way, to_uint8=False)
-           del image_list[0]
+           a.save_image(image_list[0], dst, z-vvote_way, bbox_list[0], mip, to_uint8=True)
            image_list.append(image)
-           dst_field = dest_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
-           a.save_field(dst_field, vvote_field, z, chunk, mip, relative=False,
+           dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
+           a.save_field(dst_field, vvote_field, z, bbox_list[0], mip, relative=False,
                         as_int16=True)
+           del image_list[0]
+           del bbox_list[0]
       first_chunk = False
   for offset in vvote_large_range:
       first_chunk = True
@@ -336,7 +339,7 @@ if __name__ == '__main__':
               a.save_image(image_list[0], dst, mip, z-vvote_way, to_uint8=False)
               del image_list[0]
               image_list.append(image)
-              dst_field = dest_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
+              dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
               a.save_field(dst_field, vvote_field, z, chunk, mip, relative=False,
                            as_int16=True)
           first_chunk = False
