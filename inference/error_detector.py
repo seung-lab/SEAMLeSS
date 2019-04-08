@@ -129,8 +129,8 @@ def inference(model, seg, img, patch_size):
 		focus = random_coord_valid(volume_size, patch_size)
 
 		seg_patch = seg_vol[focus]
-		obj_patch = object_mask(seg_patch)
-		img_patch = img_vol[focus]
+		obj_patch = torch.tensor(object_mask(seg_patch))
+		img_patch = torch.tensor(img_vol[focus])
 		input_patch = pack_inputs(obj_patch.cuda(), img_patch.cuda())
 
 		pred = torch.sigmoid(model(input_patch))
