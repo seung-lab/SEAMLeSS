@@ -81,7 +81,7 @@ def random_coord_valid(volume_size, patch_size, n=1):
 # Pack images into multichannel image.
 def pack_inputs(obj, img):
 
-	input_list = [obj, img]
+	input_list = [obj.cuda(), img.cuda()]
 
 	return torch.cat(input_list, dim=1)
 
@@ -131,7 +131,7 @@ def inference(model, seg, img, patch_size):
 		seg_patch = seg_vol[focus]
 		obj_patch = object_mask(seg_patch)
 		img_patch = img_vol[focus]
-		input_patch = pack_inputs(obj_patch.cuda(), img_patch.cuda())
+		input_patch = pack_inputs(obj_patch, img_patch)
 
 		pred = torch.sigmoid(model(input_patch))
 		pred_reshape = torch.reshape(pred, (1,)+pred.shape[2:]) 

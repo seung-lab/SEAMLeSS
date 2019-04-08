@@ -695,8 +695,8 @@ class Aligner:
     model = archive.model
     
     # Input
-    seg = self.get_volume(src_seg_cv, bbox, mip, to_tensor=True)
-    img = self.get_volume(src_img_cv, bbox, mip, to_tensor=True)
+    seg = self.get_volume(src_seg_cv, bbox, mip, to_tensor=False)
+    img = self.get_volume(src_img_cv, bbox, mip, to_tensor=False)
     
     # Inference
     new_image = inference(model, seg, img, patch_size)
