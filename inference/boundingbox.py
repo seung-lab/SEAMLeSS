@@ -283,6 +283,12 @@ class BoundingBox3d:
     ze = self.m0_z[1]
     return (zs, ze)
 
+  def range(self, mip):
+    x = self.x_range(mip)
+    y = self.y_range(mip)
+    z = self.z_range()
+    return (x,y,z)
+
   def x_size(self, mip):
     assert(mip <= self.max_mip)
     x_range = self.x_range(mip)
@@ -296,6 +302,12 @@ class BoundingBox3d:
   def z_size(self):
     z_range = self.z_range()
     return int(z_range[1] - z_range[0])
+
+  def size(self, mip):
+    x = self.x_size(mip)
+    y = self.y_size(mip)
+    z = self.z_size()
+    return(x, y, z)
 
   def check_mips(self):
     for m in range(1, self.max_mip + 1):

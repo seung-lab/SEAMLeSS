@@ -87,20 +87,20 @@ def pack_inputs(obj, img):
 
 
 # Create visited array
-def visited_init(volume_size, patch_size):
+def visited_init(seg, volume_size, patch_size):
 
-	visited = np.zeros((1,1,)+tuple(patch_size), dtype='uint8')
+	visited = np.zeros((1,1,)+tuple(volume_size), dtype='uint8')
 
 	# Mark out edge
 	visited[0,0,:patch_size[0]//2,:,:] = 1
-	visited[0,0,:,patch_size[1]//2,:] = 1
-	visited[0,0,:,:,patch_size[2]//2] = 1
-	visited[0,0,volume_size[0]-patch_size[0]//2:,:,:]
-	visited[0,0,:,volume_size[1]-patch_size[1]//2:,:]
-	visited[0,0,:,:,volume_size[2]-patch_size[2]//2:]
+	visited[0,0,:,:patch_size[1]//2,:] = 1
+	visited[0,0,:,:,:patch_size[2]//2] = 1
+	visited[0,0,volume_size[0]-patch_size[0]//2:,:,:] = 1
+	visited[0,0,:,volume_size[1]-patch_size[1]//2:,:] = 1
+	visited[0,0,:,:,volume_size[2]-patch_size[2]//2:] = 1
 
 	# Mark out boundaries
-	visited[np.where(visited==0)] = 1
+	visited[np.where(seg==0)] = 1
 
 	return visited
 
@@ -116,14 +116,15 @@ def inference(model, seg, img, patch_size):
 
 	# Visited volume
 	visited_patch_size = (16,160,160)
-	visited = visited_init(volume_size, patch_size)
-	vis_vol = Volume(visited, visited_patch_size)
+	visited = visited_init(seg, volume_size, patch_size)
+	vis_vol = Volume(visited, patch_size)
 
 	# Output volume
-	error_map = np.zeros((1,1,)+tuple(patch_size), dtype='uint8')
+	error_map = np.zeros((1,1,)+tuple(volume_size), dtype='float32')
 	error_vol = Volume(error_map, patch_size)
 
 	coverage = 0
+	i = 0
 	while coverage < 1:
 
 		focus = random_coord_valid(volume_size, patch_size)
@@ -133,15 +134,17 @@ def inference(model, seg, img, patch_size):
 		img_patch = torch.tensor(img_vol[focus])
 		input_patch = pack_inputs(obj_patch.cuda(), img_patch.cuda())
 
-		pred = torch.sigmoid(model.discriminate(input_patch))
+		pred = torch.sigmoid(model(input_patch))
 		pred_reshape = torch.reshape(pred, (1,1,)+pred.shape[2:]) 
-		pred_upsample = F.interpolate(pred_reshape, scale_factor=16, mode="nearest").cpu().detach()
-		print(seg_vol[focus].shape,error_vol[focus].shape, pred_upsample.shape)
-		error_vol[focus] = np.maximum(error_vol[focus], pred_upsample*obj_patch).numpy().astype('uint8')
+		pred_upsample = F.interpolate(pred_reshape, scale_factor=(1,8,8), mode="nearest").cpu().detach()
+		error_vol[focus] = np.maximum(error_vol[focus], pred_upsample*obj_patch)
 
-		vis_vol[focus] = torch.from_numpy(vis_vol[focus]) + obj_patch[:,:,8:24,80:240,80:240]
+		vis_vol[focus] = torch.from_numpy(vis_vol[focus]) + torch.tensor(obj_patch, dtype=torch.uint8)
 
-		coverage = np.round(np.sum(vis_vol.A>=1)/np.prod(volume_size),4)
-		print("Coverage = {}".format(coverage))
+		i = i + 1
 
+		coverage = np.round(np.sum(vis_vol.A>=1)/np.prod(volume_size),2)
+		if i % 100 == 0:
+			print("Coverage = {}".format(coverage))
+		
 	return error_vol.A

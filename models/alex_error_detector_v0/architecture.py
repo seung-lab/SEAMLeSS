@@ -17,7 +17,7 @@ class Model(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.encode = UNet()
-        self.forward = self.encode.forward
+        self.forward = self.encode.discrim
 
     def __getitem__(self, index):
         return self.submodule(index)

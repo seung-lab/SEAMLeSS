@@ -78,11 +78,13 @@ class ErrorDetectTask(RegisteredTask):
     src_seg_cv = DCV(self.src_seg_cv)
     src_img_cv = DCV(self.src_img_cv)
     dst_cv = DCV(self.dst_cv)
-    chunk_bbox_in = deserialize_bbox3d(self.bbox)
-    chunk_bbox_out = deserialize_bbox3d(self.bbox)
-    patch_size = self.patch_size
-    chunk_bbox_in.extend((patch_size[0]//2,patch_size[1]//2,patch_size[2]//2))
     mip = self.mip
+    chunk_bbox_in = deserialize_bbox3d(self.bbox)
+    patch_size = self.patch_size
+    chunk_bbox_in.extend(((patch_size[0]*(2**mip))//2,(patch_size[1]*(2**mip))//2,patch_size[2]//2))
+    chunk_range = chunk_bbox_in.range(mip)
+    chunk_bbox_out = deserialize_bbox3d(self.bbox)
+    chunk_size = chunk_bbox_out.size(mip)
     prefix = self.prefix
     print("\nError Detect Volume\n"
           "src seg {}\n"
@@ -91,8 +93,9 @@ class ErrorDetectTask(RegisteredTask):
           "MIP{}\n".format(src_seg_cv, src_img_cv, dst_cv, mip), flush=True)
     start = time()
     image = aligner.errdet_chunk(self.model_path, src_seg_cv, src_img_cv, mip, chunk_bbox_in, patch_size)
-    image = image.cpu().numpy()
-    aligner.save_volume(image, dst_cv, chunk_bbox_out, mip)
+    image = np.transpose(np.reshape(image, image.shape[1:]),(0,2,3,1))
+    image = image[(slice(0,1),)+tuple([slice((chunk_range[i][0]+(patch_size[i]//2)*(chunk_range[i][0]>0))%chunk_size[i],(chunk_range[i][0]+(patch_size[i]//2)*(chunk_range[i][0]>0))%chunk_size[i]+chunk_size[i]) for i in [0,1,2]])]
+    aligner.save_volume(image, dst_cv, chunk_bbox_out, mip, to_uint8=True)
 
     with Storage(dst_cv.path) as stor:
         path = 'predict_image_done/{}/{}'.format(prefix, chunk_bbox_out.stringify())

@@ -438,8 +438,13 @@ class Aligner:
     y_range = bbox.y_range(mip=mip)
     z_range = bbox.z_range()
     print("type of float_patch", type(float_patch), "shape", float_patch.shape)
-    patch = np.transpose(float_patch, (1,2,3,0))
-    
+    if len(float_patch.shape) == 4:
+      patch = np.transpose(float_patch, (1,2,3,0))
+    elif len(float_patch.shape) == 3:
+      patch = np.reshape(float_patch, float_patch.shape+(1,))
+    else:
+      raise Exception("Not a volume.")
+
     if to_uint8:
         patch = (np.multiply(patch, 255)).astype(np.uint8)
     print("patch shape", patch.shape)
@@ -699,7 +704,8 @@ class Aligner:
     img = self.get_volume(src_img_cv, bbox, mip, to_tensor=False)
     
     # Inference
-    new_image = inference(model, seg, img, patch_size)
+    # new_image = inference(model, seg, img, patch_size)
+    new_image = seg
     
     return new_image
 
