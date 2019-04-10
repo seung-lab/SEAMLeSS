@@ -704,8 +704,7 @@ class Aligner:
     img = self.get_volume(src_img_cv, bbox, mip, to_tensor=False)
     
     # Inference
-    # new_image = inference(model, seg, img, patch_size)
-    new_image = seg
+    new_image = inference(model, seg, img, patch_size)
     
     return new_image
 
