@@ -198,6 +198,12 @@ class Aligner:
                               y_range[0],y_range[1], mip=mip)
       return new_chunk
 
+  def crop_chunk(self, chunk, mip, x_start, x_end, y_start, y_end):
+      x_range = chunk.x_range(mip=mip)
+      y_range = chunk.y_range(mip=mip)
+      new_chunk = BoundingBox(x_range[0]+x_start, x_range[1]-x_end,
+                              y_range[0]+y_start, y_range[1]-y_end, mip=mip)
+      return new_chunk
 
   def get_chunk_grid(self, cm, bbox, mip, overlap, rows, pad):
       chunk_grid = self.break_into_chunks_grid(bbox, cm.dst_chunk_sizes[mip],
@@ -206,23 +212,23 @@ class Aligner:
       #print("--------------chunks_grid shape",len(chunk_grid), len(chunk_grid[0]),
       #      chunk_grid[0][0].stringify(0))
       chunks = []
-      padded_size = pad * 2**mip
       for i in range(len(chunk_grid)):
           for j in range(len(chunk_grid[0])):
-              print("chunk size is", chunk_grid[i][j].stringify(0))
+              print("i j ", i, j ,"chunk size is",
+                    chunk_grid[i][j].stringify(0,mip=mip))
       start =0
       while(start+rows<len(chunk_grid)):
-          chunks.append(BoundingBox(chunk_grid[start][0].x_range(mip=mip)[0]-padded_size,
-                                    chunk_grid[start+row_len][-1].x_range(mip=mip)[1]+padded_size,
-                                    chunk_grid[start][0].y_range(mip=mip)[0]-padded_size,
-                                    chunk_grid[start+row_len][-1].y_range(mip=mip)[1]+padded_size,
+          chunks.append(BoundingBox(chunk_grid[start][0].x_range(mip=mip)[0]-pad,
+                                    chunk_grid[start+row][-1].x_range(mip=mip)[1]+pad,
+                                    chunk_grid[start][0].y_range(mip=mip)[0]-pad,
+                                    chunk_grid[start+row][-1].y_range(mip=mip)[1]+pad,
                                     mip=mip))
           start = start + rows - overlap
       if start<len(chunk_grid):
-          chunks.append(BoundingBox(chunk_grid[start][0].x_range(mip=mip)[0]-padded_size,
-                                    chunk_grid[-1][-1].x_range(mip=mip)[1]+padded_size,
-                                    chunk_grid[start][0].y_range(mip=mip)[0]-padded_size,
-                                    chunk_grid[-1][-1].y_range(mip=mip)[1]+padded_size,
+          chunks.append(BoundingBox(chunk_grid[start][0].x_range(mip=mip)[0]-pad,
+                                    chunk_grid[-1][-1].x_range(mip=mip)[1]+pad,
+                                    chunk_grid[start][0].y_range(mip=mip)[0]-pad,
+                                    chunk_grid[-1][-1].y_range(mip=mip)[1]+pad,
                                     mip=mip))
       return chunks
 
@@ -249,8 +255,8 @@ class Aligner:
         return image
 
   def new_vector_vote(self, model_path, src_img, image_list, chunk_size, pad,
-                      vvote_way, mip, inverse=False, serial=True, softmin_temp=None,
-                      blur_sigma=None, first_chunk=False):
+                      vvote_way, mip, inverse=False, serial=True, first_chunk=False,
+                      softmin_temp=None, blur_sigma=None):
     img_shape = src_img.shape
     x_len = img_shape[-2]
     y_len = img_shape[-1]
@@ -263,10 +269,12 @@ class Aligner:
         adjust = 0
     image = torch.ByteTensor(1, 1, adjust+x_len-2*pad, y_len).zero_()
     dst_field = torch.FloatTensor(1,x_len, y_len,2).zero_()
+    print("===============x_chunk_number is ", x_chunk_number)
     #vector voting 
     for ys in range(y_chunk_number):
         vv_fields = []
-        src_patch = src_img[...,:chunk_size+padded_len, ys*chunk_size:ys*chunk_size+padded_len]
+        src_patch = src_img[...,:padded_len, ys*chunk_size:ys*chunk_size+padded_len]
+        print("--------------in vv src image shape", src_img.shape)
         src_patch = src_patch.to(device=self.device)
         src_patch = self.convert_to_float(src_patch)
         for i in range(vvote_way):
@@ -275,7 +283,7 @@ class Aligner:
             else:
                 offset = (image_list[i].shape[-2] - src_img.shape[-2])//2
             print("---------- in vv tgt image shape", image_list[i].shape)
-            tgt_patch = image_list[i][..., offset:offset+chunk_size+padded_len,
+            tgt_patch = image_list[i][..., offset:offset+padded_len,
                                       ys*chunk_size:ys*chunk_size+padded_len]
             tgt_patch = tgt_patch.to(device=self.device)
             tgt_patch = self.convert_to_float(tgt_patch)
@@ -288,7 +296,7 @@ class Aligner:
         field = self.new_vector_vote_chunk(vv_fields, mip,
                                            softmin_temp=softmin_temp,
                                            blur_sigma=blur_sigma)
-        field = field[:,0:-pad,pad:-pad,:]
+        field = field[:, 0:-pad, pad:-pad,:]
         field = field.to(device='cpu')
         dst_field[:,0:chunk_size+pad, pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field
 
@@ -350,7 +358,6 @@ class Aligner:
             print("--------field shape", field.shape )
             dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size+pad,
                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field
-
 
     #warp the image
     for xs in range(x_chunk_number):

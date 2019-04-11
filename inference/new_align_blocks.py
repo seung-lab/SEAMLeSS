@@ -176,14 +176,14 @@ if __name__ == '__main__':
     dst = cm.create(join(args.dst_path, 'image_blocks', block_type), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True)
-    dsts[i] = dst.path 
+    dsts[i] = dst 
 
   # Create field CloudVolumes
   serial_fields = {}
   for z_offset in serial_offsets.values():
     serial_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
                                   data_type='int16', num_channels=2,
-                                  fill_missing=True, overwrite=True).path
+                                  fill_missing=True, overwrite=True)
   pair_fields = {}
   for z_offset in vvote_offsets:
     pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
@@ -206,23 +206,6 @@ if __name__ == '__main__':
   def remote_upload(tasks):
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
           tq.insert_all(tasks)  
- 
-  class CopyTaskIterator():
-      def __init__(self, brange, even_odd):
-          self.brange = brange
-          self.even_odd = even_odd
-      def __iter__(self):
-          print(self.brange)
-          for block_offset in copy_range:
-            prefix = block_offset
-            for block_start, even_odd in zip(self.brange, self.even_odd):
-              dst = dsts[even_odd]
-              z = block_start + block_offset
-              bbox = bbox_lookup[z]
-              t =  a.copy(cm, src.path, dst, z, z, bbox, mip, is_field=False,
-                         mask_cv=src_mask_cv, mask_mip=src_mask_mip, mask_val=src_mask_val,
-                         prefix=prefix)
-              yield from t 
 
 #  ptask = []
 #  range_list = make_range(block_range, a.threads)
@@ -251,31 +234,50 @@ if __name__ == '__main__':
 #
 #  # Align without vector voting
 #  # field need to in float since all are relative value
-  overlap = 1024
-  rows = 3
+  rows = 15
   block_start = args.z_start
-  chunk_grid = a.get_chunk_grid(cm, bbox, mip, overlap, rows, pad)
+  large_chunk_size = 6
+  overlap_chunks = (large_chunk_size -1) * chunk_size
+  chunk_grid = a.get_chunk_grid(cm, bbox, mip, overlap_chunks, rows, pad)
   print("copy range ", copy_range)
   print("---- len of chunks", len(chunk_grid), "orginal bbox", bbox.stringify(0))
+  vvote_range_small = vvote_range[:large_chunk_size-overlap]
+  print("--------overlap is ", overlap, "vvote_range is ", "vvote_range_small",
+        vvote_range_small)
   for i in  chunk_grid:
-      print(i.stringify(0))
+      print("--------grid size is ", i.stringify(0, mip=mip))
   first_chunk = True;
   for chunk in chunk_grid:
       image_list = []
       bbox_list = []
-      #load from copy range 
+      if first_chunk:
+          final_chunk = a.crop_chunk(chunk, mip, pad,
+                                     chunk_size*(large_chunk_size-1)+pad,
+                                     pad, pad)
+      else:
+          final_chunk = a.crop_chunk(chunk, mip, chunk_size*(large_chunk_size-1)+pad,
+                                     chunk_size*(large_chunk_size-1)+pad,
+                                     pad, pad)
+
+      #load from copy range
+      print("---- chunk is ", chunk.stringify(0, mip=mip), " z is",
+            block_start+copy_range[0])
       tgt_image = a.load_part_image(src, block_start+copy_range[0],
                                   chunk, mip, mask_cv=src_mask_cv,
                                   mask_mip=src_mask_mip, mask_val=src_mask_val)
       print("----------------copy range", copy_range[0])
       if(first_chunk):
-          image_list.append(tgt_image[...,
-                                      :-(chunk_size*copy_range[0]),:])
+          add_image = tgt_image[...,:-(chunk_size*copy_range[0]),:]
+          print("---------add image size", add_image.shape)
+          image_list.append(add_image)
       else:
-          image_list.append(tgt_image[..., chunk_size*copy_range[0]-chunk_size-pad:-(chunk_size*copy_range[0]-chunk_size+pad),:])
-      bbox_list.append(a.adjust_chunk(chunk, mip,
-                                      chunk_size*copy_range[0]+pad,
-                                      first_chunk))
+          image_list.append(tgt_image[...,
+                                      chunk_size*copy_range[0]:-(chunk_size*copy_range[0]),:])
+      adjusted_box = a.adjust_chunk(chunk, mip,
+                                      chunk_size*copy_range[0],
+                                      first_chunk)
+      print("-----------------adjusted_box", adjusted_box.stringify(0, mip=mip))
+      #bbox_list.append(adjusted_box)
 
       for block_offset in serial_range:
            z_offset = serial_offsets[block_offset]
@@ -288,16 +290,32 @@ if __name__ == '__main__':
            src_image = a.load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
                                        mask_mip=src_mask_mip,
                                        mask_val=src_mask_val)
+           print("++++++chunk is", chunk.stringify(0, mip=mip), "src_image shape",
+                                             src_image.shape, "tgt_image",
+                                             tgt_image.shape)
            tgt_image = a.new_compute_field(model_path, src_image, tgt_image,
                                            chunk_size, pad, warp=True,
                                            first_chunk=first_chunk)
-           image_list.insert(0, tgt_image[...,:-(chunk_size*block_offset+(chunk_size-pad)),:])
-           bbox_list.insert(0, a.adjust_bbox(chunk, mip, chunk_size*block_offset+(chunk_size-pad),first_chunk))
+           if first_chunk:
+               image_list.insert(0, tgt_image[...,0:-(chunk_size*block_offset+(chunk_size-pad)),:])
+               tgt_image = tgt_image[..., 0:-(chunk_size-pad),:]
+           else:
+               image_list.insert(0, tgt_image[...,chunk_size*block_offset+(chunk_size-pad):-(chunk_size*block_offset+(chunk_size-pad)),:])
+               tgt_image = tgt_image[..., chunk_size-pad:-(chunk_size-pad),:]
+           print("------------tgt_image shape", tgt_image.shape)
+           #adjusted_box= a.adjust_chunk(chunk, mip,
+           #                             chunk_size*block_offset+chunk_size, first_chunk)
+           #print("-----------------adjusted_box", adjusted_box.stringify(0,
+           #                                                              mip=mip),
+           #     "chunk is", chunk.stringify(0, mip=mip))
+           #bbox_list.insert(0, adjusted_box)
            chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
            print("........... image_list[0] shape", image_list[0].shape , "tgt shape", tgt_image.shape)
            print("block_offset is ", block_offset)
+      print("============================ start vector voting")
       # align with vector voting
-      for block_offset in vvote_range:
+      for block_offset in vvote_range_small:
+           print("===========block offset is", block_offset)
            dst = dsts[0]
            z = block_start + block_offset
            bbox = bbox_lookup[z]
@@ -306,19 +324,61 @@ if __name__ == '__main__':
            src_image = a.load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
                                        mask_mip=src_mask_mip,
                                        mask_val=src_mask_val)
-           for i in image_list:
-               print("************shape of image", i.shape)
-           chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
-           image, dst_field = a.new_vector_vote(model_path, src_image, image_list, chunk_size, pad,
-                            vvote_way, mip, inverse=False, serial=True)
-           a.save_image(image_list[0], dst, z-vvote_way, bbox_list[0], mip, to_uint8=True)
-           image_list.append(image)
-           dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
-           a.save_field(dst_field, vvote_field, z, bbox_list[0], mip, relative=False,
-                        as_int16=True)
+           print("chunk shape for vvoting is", chunk.stringify(0, mip=mip))
+           for i in range(len(image_list)):
+               print("************shape of image", image_list[i].shape)
+               #print("************shape of image", image_list[i].shape, "bbox",bbox_list[i].stringify(0, mip=mip))
+
+           image, dst_field = a.new_vector_vote(model_path, src_image, image_list,
+                                                chunk_size, pad, vvote_way, mip,
+                                                inverse=False,
+                                                serial=True,
+                                                first_chunk=first_chunk)
+           #image_bbox = a.crop_chunk(bbox_list[0], mip, pad, pad, pad, pad)
+           print("image shape after vvoting", image.shape)
+           #del bbox_list[0]
+           print("image_list[0] range ", image_list[0].shape)
+           image_len = image_list[0].shape[-2] - 2*pad;
+           x_range = final_chunk.x_range(mip=mip)
+           x_range_len = x_range[1] - x_range[0]
+
+           if(first_chunk):
+               head_crop =0;
+               end_crop = image_len - x_range_len
+           else:
+               head_crop = (image_len - x_range_len)/2
+               end_crop = head_crop
+
+           image_chunk =image_list[0][..., pad+head_crop:-(pad+end_crop), pad:-pad]
+
            del image_list[0]
-           del bbox_list[0]
+           print("************ image_chunk", image_chunk.shape,
+                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
+           a.save_image(image_chunk.cpu().numpy(), dst, z-vvote_way,
+                        final_chunk, mip, to_uint8=True)
+           if first_chunk:
+               image_list.append(image[...,0:-(chunk_size-pad),:])
+           else:
+               image_list.append(image[..., chunk_size-pad:-(chunk_size-pad),:])
+
+           field_len = dst_field.shape[1] - 2*pad
+
+           if(first_chunk):
+               head_crop =0;
+               end_crop = field_len - x_range_len
+           else:
+               head_crop = (field_len - x_range_len)/2
+               end_crop = head_crop
+
+           dst_field = dst_field[:,pad+head_crop:-(pad+end_crop),pad:-pad,:]
+           print("***********dst_field shape", dst_field.shape)
+           dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
+           a.save_field(dst_field, vvote_field, z, final_chunk, mip, relative=False,
+                        as_int16=True)
+           chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
+           #bbox_list.append(chunk)
       first_chunk = False
+
   for offset in vvote_large_range:
       first_chunk = True
       for chunk in chunk_grid:
