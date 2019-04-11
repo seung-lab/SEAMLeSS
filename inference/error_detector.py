@@ -127,7 +127,10 @@ def inference(model, seg, img, patch_size):
 	i = 0
 	while coverage < 1:
 
-		focus = random_coord_valid(volume_size, patch_size)
+		focus = random_coord_valid(volume_size, patch_size)[0]
+
+		if vis_vol.A[0,0,focus[0],focus[1],focus[2]] >= 1:
+			continue
 
 		seg_patch = seg_vol[focus]
 		obj_patch = torch.tensor(object_mask(seg_patch))
@@ -135,8 +138,7 @@ def inference(model, seg, img, patch_size):
 		input_patch = pack_inputs(obj_patch.cuda(), img_patch.cuda())
 
 		pred = torch.sigmoid(model(input_patch))
-		pred_reshape = torch.reshape(pred, (1,1,)+pred.shape[2:]) 
-		pred_upsample = F.interpolate(pred_reshape, scale_factor=(1,8,8), mode="nearest").cpu().detach()
+		pred_upsample = F.interpolate(pred, scale_factor=(1,8,8), mode="nearest").cpu().detach()
 		error_vol[focus] = np.maximum(error_vol[focus], pred_upsample*obj_patch)
 
 		vis_vol[focus] = torch.from_numpy(vis_vol[focus]) + torch.tensor(obj_patch, dtype=torch.uint8)
