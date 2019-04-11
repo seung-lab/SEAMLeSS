@@ -51,7 +51,7 @@ if __name__ == '__main__':
   cm = CloudManager(args.src_info_path, max_mip, pad, provenance)
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
-                     fill_missing=True, overwrite=False)
+                     fill_missing=True, overwrite=False).path
   data_type = 'uint8'
   if args.unnormalized:
     data_type = 'float32'
@@ -60,17 +60,16 @@ if __name__ == '__main__':
   dst = cm.create(join(args.src_path, 'cpc', '{}_{}'.format(args.src_mip, args.dst_mip),
                        '{}'.format(args.z_offset)), 
                   data_type=data_type, num_channels=1, fill_missing=True, 
-                  overwrite=True)
+                  overwrite=True).path
 
   ##############
   # CPC script #
   ##############
   k = 0
   batch = []
-  prefix = ''
   for z in z_range:
     t = a.cpc(cm, src, src, dst, z, z+args.z_offset, bbox, 
-                  args.src_mip, args.dst_mip, norm=not args.unnormalized, prefix=prefix)
+                  args.src_mip, args.dst_mip, norm=not args.unnormalized)
     batch.extend(t)
     k += 1
     if k >= 100:
