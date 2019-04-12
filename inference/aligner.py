@@ -218,10 +218,11 @@ class Aligner:
                     chunk_grid[i][j].stringify(0,mip=mip))
       start =0
       while(start+rows<len(chunk_grid)):
+          print("start + row is", start+rows)
           chunks.append(BoundingBox(chunk_grid[start][0].x_range(mip=mip)[0]-pad,
-                                    chunk_grid[start+row][-1].x_range(mip=mip)[1]+pad,
+                                    chunk_grid[start+rows-1][-1].x_range(mip=mip)[1]+pad,
                                     chunk_grid[start][0].y_range(mip=mip)[0]-pad,
-                                    chunk_grid[start+row][-1].y_range(mip=mip)[1]+pad,
+                                    chunk_grid[start+rows-1][-1].y_range(mip=mip)[1]+pad,
                                     mip=mip))
           start = start + rows - overlap
       if start<len(chunk_grid):
@@ -496,7 +497,7 @@ class Aligner:
        the ModelArchive at that model_path
     """
     if model_path in self.model_archives:
-      print('Loading model {0} from cache'.format(model_path), flush=True)
+      #print('Loading model {0} from cache'.format(model_path), flush=True)
       return self.model_archives[model_path]
     else:
       print('Adding model {0} to the cache'.format(model_path), flush=True)

@@ -234,10 +234,10 @@ if __name__ == '__main__':
 #
 #  # Align without vector voting
 #  # field need to in float since all are relative value
-  rows = 15
+  rows = 14
   block_start = args.z_start
   large_chunk_size = 6
-  overlap_chunks = (large_chunk_size -1) * chunk_size
+  overlap_chunks = 2 * (large_chunk_size -1)
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, overlap_chunks, rows, pad)
   print("copy range ", copy_range)
   print("---- len of chunks", len(chunk_grid), "orginal bbox", bbox.stringify(0))
@@ -247,7 +247,8 @@ if __name__ == '__main__':
   for i in  chunk_grid:
       print("--------grid size is ", i.stringify(0, mip=mip))
   first_chunk = True;
-  for chunk in chunk_grid:
+  for i in range(len(chunk_grid)-1):
+      chunk = chunk_grid[i]
       image_list = []
       bbox_list = []
       if first_chunk:
@@ -273,12 +274,6 @@ if __name__ == '__main__':
       else:
           image_list.append(tgt_image[...,
                                       chunk_size*copy_range[0]:-(chunk_size*copy_range[0]),:])
-      adjusted_box = a.adjust_chunk(chunk, mip,
-                                      chunk_size*copy_range[0],
-                                      first_chunk)
-      print("-----------------adjusted_box", adjusted_box.stringify(0, mip=mip))
-      #bbox_list.append(adjusted_box)
-
       for block_offset in serial_range:
            z_offset = serial_offsets[block_offset]
            serial_field = serial_fields[z_offset]
@@ -342,13 +337,15 @@ if __name__ == '__main__':
            x_range = final_chunk.x_range(mip=mip)
            x_range_len = x_range[1] - x_range[0]
 
+           print("************ image_list[0]", image_list[0].shape,
+                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
+
            if(first_chunk):
-               head_crop =0;
+               head_crop = 0;
                end_crop = image_len - x_range_len
            else:
                head_crop = (image_len - x_range_len)/2
                end_crop = head_crop
-
            image_chunk =image_list[0][..., pad+head_crop:-(pad+end_crop), pad:-pad]
 
            del image_list[0]
@@ -377,6 +374,23 @@ if __name__ == '__main__':
                         as_int16=True)
            chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
            #bbox_list.append(chunk)
+      for i in range(len(image_list)):
+           image_len = image_list[i].shape[-2] - 2*pad;
+           x_range = final_chunk.x_range(mip=mip)
+           x_range_len = x_range[1] - x_range[0]
+           if(first_chunk):
+               head_crop = 0;
+               end_crop = image_len - x_range_len
+           else:
+               head_crop = (image_len - x_range_len)/2
+               end_crop = head_crop
+           image_chunk = image_list[i][..., pad+head_crop:-(pad+end_crop), pad:-pad]
+           #del image_list[0]
+           print("************ image_chunk", image_chunk.shape,
+                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
+           a.save_image(image_chunk.cpu().numpy(), dst, z-(vvote_way-i-1),
+                        final_chunk, mip, to_uint8=True)
+ 
       first_chunk = False
 
   for offset in vvote_large_range:
