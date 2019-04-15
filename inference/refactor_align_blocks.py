@@ -207,31 +207,6 @@ if __name__ == '__main__':
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
           tq.insert_all(tasks)  
 
-#  ptask = []
-#  range_list = make_range(block_range, a.threads)
-#  even_odd_list = make_range(even_odd_range, a.threads)
-#  print('range_list {}'.format(range_list))
-#  print('even_odd_list {}'.format(even_odd_list))
-#  
-#  start = time()
-#  for irange, ieven_odd in zip(range_list, even_odd_list):
-#      ptask.append(CopyTaskIterator(irange, ieven_odd))
-#
-#  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-#      executor.map(remote_upload, ptask)
-# 
-#  end = time()
-#  diff = end - start
-#  print("Sending Copy Tasks use time:", diff)
-#  print('Run CopyTasks')
-#  # wait
-#  start = time()
-#  #if args.use_sqs_wait:
-#  a.wait_for_sqs_empty()
-#  end = time()
-#  diff = end - start
-#  print("Executing Copy Tasks use time:", diff)
-#
 #  # Align without vector voting
 #  # field need to in float since all are relative value
   rows = 14
@@ -246,152 +221,57 @@ if __name__ == '__main__':
         vvote_range_small)
   for i in  chunk_grid:
       print("--------grid size is ", i.stringify(0, mip=mip))
-  first_chunk = True;
-  for i in range(len(chunk_grid)-1):
+  first_chunk = True; 
+
+  for i in range(len(chunk_grid)):
       chunk = chunk_grid[i]
-      image_list = []
-      bbox_list = []
-      if first_chunk:
+      if(len(chunk_grid) == 1):
+          head_crop = False
+          end_crop = False
+      else:
+          if i == 0:
+              head_crop = False
+              end_crop = True
+          elif i == (len(chunk_grid) -1):
+              head_crop = True
+              end_crop = False
+          else:
+              head_crop = True
+              end_crop = True
+
+      if head_crop == False and end_crop == True:
           final_chunk = a.crop_chunk(chunk, mip, pad,
                                      chunk_size*(super_chunk_len-1)+pad,
                                      pad, pad)
-      else:
+      elif head_crop and end_crop:
           final_chunk = a.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
                                      chunk_size*(super_chunk_len-1)+pad,
                                      pad, pad)
-
-      #load from copy range
-      print("---- chunk is ", chunk.stringify(0, mip=mip), " z is",
-            block_start+copy_range[0])
-      tgt_image = a.load_part_image(src, block_start+copy_range[0],
-                                  chunk, mip, mask_cv=src_mask_cv,
-                                  mask_mip=src_mask_mip, mask_val=src_mask_val)
-      print("----------------copy range", copy_range[0])
-      if(first_chunk):
-          add_image = tgt_image[...,:-(chunk_size*copy_range[0]),:]
-          print("---------add image size", add_image.shape)
-          image_list.append(add_image)
+      elif head_crop and end_crop == False:
+          final_chunk = a.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
+                                     pad, pad, pad)
       else:
-          image_list.append(tgt_image[...,
-                                      chunk_size*copy_range[0]:-(chunk_size*copy_range[0]),:])
-      for block_offset in serial_range:
-           z_offset = serial_offsets[block_offset]
-           serial_field = serial_fields[z_offset]
-           #dst = dsts[even_odd]
-           dst = dsts[0]
-           z = block_start + block_offset
-           print("---------------- z ", z, "  block_offset ", block_offset)
-           model_path = model_lookup[z]
-           src_image = a.load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
-                                       mask_mip=src_mask_mip,
-                                       mask_val=src_mask_val)
-           print("++++++chunk is", chunk.stringify(0, mip=mip), "src_image shape",
-                                             src_image.shape, "tgt_image",
-                                             tgt_image.shape)
-           tgt_image = a.new_compute_field(model_path, src_image, tgt_image,
-                                           chunk_size, pad, warp=True,
-                                           first_chunk=first_chunk)
-           if first_chunk:
-               image_list.insert(0, tgt_image[...,0:-(chunk_size*block_offset+(chunk_size-pad)),:])
-               tgt_image = tgt_image[..., 0:-(chunk_size-pad),:]
-           else:
-               image_list.insert(0, tgt_image[...,chunk_size*block_offset+(chunk_size-pad):-(chunk_size*block_offset+(chunk_size-pad)),:])
-               tgt_image = tgt_image[..., chunk_size-pad:-(chunk_size-pad),:]
-           print("------------tgt_image shape", tgt_image.shape)
-           #adjusted_box= a.adjust_chunk(chunk, mip,
-           #                             chunk_size*block_offset+chunk_size, first_chunk)
-           #print("-----------------adjusted_box", adjusted_box.stringify(0,
-           #                                                              mip=mip),
-           #     "chunk is", chunk.stringify(0, mip=mip))
-           #bbox_list.insert(0, adjusted_box)
-           chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
-           print("........... image_list[0] shape", image_list[0].shape , "tgt shape", tgt_image.shape)
-           print("block_offset is ", block_offset)
+          final_chunk = a.crop_chunk(chunk, mip, pad,
+                                     pad, pad, pad)
+
+      image_list, chunk = a.process_super_chunk_serial(src, block_start, copy_range[0],
+                                                       serial_range, serial_offsets,
+                                                       serial_fields, dsts, model_lookup,
+                                                       chunk, mip, pad, chunk_size,
+                                                       head_crop, end_crop,
+                                                       mask_cv=src_mask_cv,
+                                                       mask_mip=src_mask_mip,
+                                                       mask_val=src_mask_val)
       print("============================ start vector voting")
       # align with vector voting
-      for block_offset in vvote_range_small:
-           print("===========block offset is", block_offset)
-           dst = dsts[0]
-           z = block_start + block_offset
-           bbox = bbox_lookup[z]
-           model_path = model_lookup[z]
-           vvote_way = args.tgt_radius
-           src_image = a.load_part_image(src, z, chunk, mip, mask_cv=src_mask_cv,
-                                       mask_mip=src_mask_mip,
-                                       mask_val=src_mask_val)
-           print("chunk shape for vvoting is", chunk.stringify(0, mip=mip))
-           for i in range(len(image_list)):
-               print("************shape of image", image_list[i].shape)
-               #print("************shape of image", image_list[i].shape, "bbox",bbox_list[i].stringify(0, mip=mip))
-
-           image, dst_field = a.new_vector_vote(model_path, src_image, image_list,
-                                                chunk_size, pad, vvote_way, mip,
-                                                inverse=False,
-                                                serial=True,
-                                                first_chunk=first_chunk)
-           #image_bbox = a.crop_chunk(bbox_list[0], mip, pad, pad, pad, pad)
-           print("image shape after vvoting", image.shape)
-           #del bbox_list[0]
-           print("image_list[0] range ", image_list[0].shape)
-           image_len = image_list[0].shape[-2] - 2*pad;
-           x_range = final_chunk.x_range(mip=mip)
-           x_range_len = x_range[1] - x_range[0]
-
-           print("************ image_list[0]", image_list[0].shape,
-                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
-
-           if(first_chunk):
-               head_crop = 0;
-               end_crop = image_len - x_range_len
-           else:
-               head_crop = (image_len - x_range_len)/2
-               end_crop = head_crop
-           image_chunk =image_list[0][..., pad+head_crop:-(pad+end_crop), pad:-pad]
-
-           del image_list[0]
-           print("************ image_chunk", image_chunk.shape,
-                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
-           a.save_image(image_chunk.cpu().numpy(), dst, z-vvote_way,
-                        final_chunk, mip, to_uint8=True)
-           if first_chunk:
-               image_list.append(image[...,0:-(chunk_size-pad),:])
-           else:
-               image_list.append(image[..., chunk_size-pad:-(chunk_size-pad),:])
-
-           field_len = dst_field.shape[1] - 2*pad
-
-           if(first_chunk):
-               head_crop =0;
-               end_crop = field_len - x_range_len
-           else:
-               head_crop = (field_len - x_range_len)/2
-               end_crop = head_crop
-
-           dst_field = dst_field[:,pad+head_crop:-(pad+end_crop),pad:-pad,:]
-           print("***********dst_field shape", dst_field.shape)
-           dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
-           a.save_field(dst_field, vvote_field, z, final_chunk, mip, relative=False,
-                        as_int16=True)
-           chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
-           #bbox_list.append(chunk)
-      for i in range(len(image_list)):
-           image_len = image_list[i].shape[-2] - 2*pad;
-           x_range = final_chunk.x_range(mip=mip)
-           x_range_len = x_range[1] - x_range[0]
-           if(first_chunk):
-               head_crop = 0;
-               end_crop = image_len - x_range_len
-           else:
-               head_crop = (image_len - x_range_len)/2
-               end_crop = head_crop
-           image_chunk = image_list[i][..., pad+head_crop:-(pad+end_crop), pad:-pad]
-           #del image_list[0]
-           print("************ image_chunk", image_chunk.shape,
-                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
-           a.save_image(image_chunk.cpu().numpy(), dst, z-(vvote_way-i-1),
-                        final_chunk, mip, to_uint8=True)
- 
-      first_chunk = False
+      vvote_way = args.tgt_radius
+      a.process_super_chunk_vvote(src, block_start, vvote_range_small, dsts,
+                                  model_lookup, vvote_way, image_list, chunk,
+                                  mip, pad, chunk_size, super_chunk_len,
+                                  vvote_field,
+                                  head_crop, end_crop, final_chunk,
+                                  mask_cv=src_mask_cv, mask_mip=src_mask_mip,
+                                  mask_val=src_mask_val)
 
   for offset in vvote_large_range:
       first_chunk = True
