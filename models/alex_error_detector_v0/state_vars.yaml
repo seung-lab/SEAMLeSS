@@ -3,7 +3,7 @@ net: >
     (conv_in): ConvBlock3(
       (conv1): Conv3d(2, 16, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
       (conv2): Conv3d(16, 16, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
-      (norm): BatchNorm3d(16, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (norm): BatchNorm3d(16, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
       (relu): ReLU()
     )
     (dconv1): DownConvBlock3(
@@ -11,7 +11,7 @@ net: >
       (convblock): ConvBlock3(
         (conv1): Conv3d(16, 32, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
         (conv2): Conv3d(32, 32, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
-        (norm): BatchNorm3d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (norm): BatchNorm3d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
         (relu): ReLU()
       )
     )
@@ -20,7 +20,7 @@ net: >
       (convblock): ConvBlock3(
         (conv1): Conv3d(32, 64, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
         (conv2): Conv3d(64, 64, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
-        (norm): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (norm): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
         (relu): ReLU()
       )
     )
@@ -29,7 +29,7 @@ net: >
       (convblock): ConvBlock3(
         (conv1): Conv3d(64, 128, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
         (conv2): Conv3d(128, 128, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
-        (norm): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (norm): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
         (relu): ReLU()
       )
     )
@@ -38,7 +38,7 @@ net: >
       (convblock): ConvBlock3(
         (conv1): Conv3d(128, 256, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
         (conv2): Conv3d(256, 256, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
-        (norm): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (norm): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
         (relu): ReLU()
       )
     )
@@ -47,7 +47,7 @@ net: >
       (convblock): ConvBlock3(
         (conv1): Conv3d(256, 512, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
         (conv2): Conv3d(512, 512, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
-        (norm): BatchNorm3d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (norm): BatchNorm3d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
         (relu): ReLU()
       )
     )
@@ -59,7 +59,7 @@ net: >
       (convblock): ConvBlock3(
         (conv1): Conv3d(512, 256, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
         (conv2): Conv3d(256, 256, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
-        (norm): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (norm): BatchNorm3d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
         (relu): ReLU()
       )
     )
@@ -71,7 +71,7 @@ net: >
       (convblock): ConvBlock3(
         (conv1): Conv3d(256, 128, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
         (conv2): Conv3d(128, 128, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
-        (norm): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (norm): BatchNorm3d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
         (relu): ReLU()
       )
     )
@@ -86,7 +86,7 @@ net: >
       (convblock): ConvBlock3(
         (conv1): Conv3d(128, 64, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
         (conv2): Conv3d(64, 64, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
-        (norm): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (norm): BatchNorm3d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
         (relu): ReLU()
       )
     )
@@ -98,7 +98,7 @@ net: >
       (convblock): ConvBlock3(
         (conv1): Conv3d(64, 32, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
         (conv2): Conv3d(32, 32, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
-        (norm): BatchNorm3d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (norm): BatchNorm3d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
         (relu): ReLU()
       )
     )
@@ -110,7 +110,7 @@ net: >
       (convblock): ConvBlock3(
         (conv1): Conv3d(32, 16, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
         (conv2): Conv3d(16, 16, kernel_size=(3, 3, 3), stride=(1, 1, 1), padding=(1, 1, 1))
-        (norm): BatchNorm3d(16, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (norm): BatchNorm3d(16, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
         (relu): ReLU()
       )
     )

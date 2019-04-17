@@ -115,9 +115,9 @@ def inference(model, seg, img, patch_size):
 	img_vol = Volume(img, patch_size)
 
 	# Visited volume
-	visited_patch_size = (16,160,160)
+	visited_patch_size = (16,80,80)
 	visited = visited_init(seg, volume_size, patch_size)
-	vis_vol = Volume(visited, patch_size)
+	vis_vol = Volume(visited, visited_patch_size)
 
 	# Output volume
 	error_map = np.zeros((1,1,)+tuple(volume_size), dtype='float32')
@@ -135,17 +135,17 @@ def inference(model, seg, img, patch_size):
 		seg_patch = seg_vol[focus]
 		obj_patch = torch.tensor(object_mask(seg_patch))
 		img_patch = torch.tensor(img_vol[focus])
-		input_patch = pack_inputs(obj_patch.cuda(), img_patch.cuda())
-
+		input_patch = pack_inputs(img_patch.cuda(),obj_patch.cuda())
+		
 		pred = torch.sigmoid(model(input_patch))
 		pred_upsample = F.interpolate(pred, scale_factor=(1,8,8), mode="nearest").cpu().detach()
 		error_vol[focus] = np.maximum(error_vol[focus], pred_upsample*obj_patch)
 
-		vis_vol[focus] = torch.from_numpy(vis_vol[focus]) + torch.tensor(obj_patch, dtype=torch.uint8)
+		vis_vol[focus] = torch.from_numpy(vis_vol[focus]) + torch.tensor(obj_patch[:,:,8:24,40:120,40:120], dtype=torch.uint8)
 
 		i = i + 1
 
-		coverage = np.round(np.sum(vis_vol.A>=1)/np.prod(volume_size),2)
+		coverage = np.round(np.sum(vis_vol.A>=1)/np.prod(volume_size),4)
 		if i % 100 == 0:
 			print("Coverage = {}".format(coverage))
 		

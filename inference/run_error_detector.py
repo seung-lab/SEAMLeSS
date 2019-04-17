@@ -72,7 +72,6 @@ if __name__ == '__main__':
   pad = args.max_displacement
   patch_size = args.patch_size
   chunk_size = args.chunk_size
-  # chunk_size = [512,512,64]
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2], chunk_size[2])
@@ -83,7 +82,7 @@ if __name__ == '__main__':
   # Create src CloudVolumes
   src_img = cm.create(args.src_img_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False)
-  src_seg = cm.create(args.src_seg_path, data_type='uint8', num_channels=1,
+  src_seg = cm.create(args.src_seg_path, data_type='int32', num_channels=1,
                      fill_missing=True, overwrite=False)
 
   # Create dst CloudVolumes

@@ -42,7 +42,8 @@ import tasks
 import tenacity
 import boto3
 from fcorr import get_fft_power2, get_hp_fcorr
-from error_detector import inference
+# from error_detector import inference
+from error_detector import *
 
 retry = tenacity.retry(
   reraise=True, 
@@ -216,10 +217,10 @@ class Aligner:
     print('get_image: {:.3f}'.format(diff), flush=True) 
     return image
 
-  def get_volume(self, cv, bbox, mip, to_tensor=True, normalizer=None):
+  def get_volume(self, cv, bbox, mip, to_float=True, to_tensor=True, normalizer=None):
     print('get_volume for {0}'.format(bbox.stringify()), flush=True)
     start = time()
-    volume = self.get_data_3d(cv, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
+    volume = self.get_data_3d(cv, bbox, src_mip=mip, dst_mip=mip, to_float=to_float, 
                              to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
@@ -700,8 +701,8 @@ class Aligner:
     model = archive.model
     
     # Input
-    seg = self.get_volume(src_seg_cv, bbox, mip, to_tensor=False)
-    img = self.get_volume(src_img_cv, bbox, mip, to_tensor=False)
+    seg = self.get_volume(src_seg_cv, bbox, mip, to_float=False, to_tensor=False)
+    img = self.get_volume(src_img_cv, bbox, mip, to_float=True, to_tensor=False)
     
     # Inference
     new_image = inference(model, seg, img, patch_size)
