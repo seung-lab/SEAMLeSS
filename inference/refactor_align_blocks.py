@@ -215,13 +215,17 @@ if __name__ == '__main__':
   overlap_chunks = 2 * (super_chunk_len -1)
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, overlap_chunks, rows, pad)
   print("copy range ", copy_range)
-  print("---- len of chunks", len(chunk_grid), "orginal bbox", bbox.stringify(0))
-  vvote_range_small = vvote_range[:super_chunk_len-overlap]
+  #print("---- len of chunks", len(chunk_grid), "orginal bbox", bbox.stringify(0))
+  vvote_range_small = vvote_range[:super_chunk_len-overlap+1]
+  vvote_subblock = range(vvote_range_small[-1]+1, vvote_range[-1]+1,
+                            super_chunk_len)
   print("--------overlap is ", overlap, "vvote_range is ", "vvote_range_small",
         vvote_range_small)
+  dst = dsts[0]
+  for i in vvote_subblock:
+      print("*****>>> vvote subblock is ", i)
   for i in  chunk_grid:
       print("--------grid size is ", i.stringify(0, mip=mip))
-  first_chunk = True; 
 
   for i in range(len(chunk_grid)):
       chunk = chunk_grid[i]
@@ -253,25 +257,95 @@ if __name__ == '__main__':
       else:
           final_chunk = a.crop_chunk(chunk, mip, pad,
                                      pad, pad, pad)
+      print("----------------------- head crop ", head_crop, " end_crop",
+            end_crop)
 
+      print("<<<<<<init chunk size is ", chunk.stringify(0, mip=mip),
+            "final_chunk is ", final_chunk.stringify(0, mip=mip))
       image_list, chunk = a.process_super_chunk_serial(src, block_start, copy_range[0],
                                                        serial_range, serial_offsets,
-                                                       serial_fields, dsts, model_lookup,
+                                                       serial_fields, dst, model_lookup,
                                                        chunk, mip, pad, chunk_size,
                                                        head_crop, end_crop,
                                                        mask_cv=src_mask_cv,
                                                        mask_mip=src_mask_mip,
                                                        mask_val=src_mask_val)
+      write_image = []
+      for _ in image_list:
+          write_image.append(True)
       print("============================ start vector voting")
       # align with vector voting
       vvote_way = args.tgt_radius
-      a.process_super_chunk_vvote(src, block_start, vvote_range_small, dsts,
-                                  model_lookup, vvote_way, image_list, chunk,
+      a.process_super_chunk_vvote(src, block_start, vvote_range_small, dst,
+                                  model_lookup, vvote_way, image_list,
+                                  write_image, chunk,
                                   mip, pad, chunk_size, super_chunk_len,
                                   vvote_field,
                                   head_crop, end_crop, final_chunk,
                                   mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                   mask_val=src_mask_val)
+  print("Only vector voting ------------>>")
+  for vvote_start in vvote_subblock:
+      if vvote_start + super_chunk_len <= vvote_range[-1]+1:
+          end_range = vvote_start + super_chunk_len
+      else:
+          end_range = vvote_range[-1] +1;
+          super_chunk_len = vvote_range[-1] +1 - vvote_start;
+
+      print("<<<<<<<<-------start ", vvote_start, " end range ", end_range,
+            "vvote range is ", vvote_range )
+      overlap_chunks = 2 * (super_chunk_len -1)
+      chunk_grid = a.get_chunk_grid(cm, bbox, mip, overlap_chunks, rows, pad)
+      for j in range(len(chunk_grid)):
+          chunk = chunk_grid[j]
+          print("<<<<<<init chunk size is ", chunk.stringify(0, mip=mip))
+          if(len(chunk_grid) == 1):
+              head_crop = False
+              end_crop = False
+          else:
+              if j == 0:
+                  head_crop = False
+                  end_crop = True
+              elif j == (len(chunk_grid) -1):
+                  head_crop = True
+                  end_crop = False
+              else:
+                  head_crop = True
+                  end_crop = True
+          if head_crop == False and end_crop == True:
+              final_chunk = a.crop_chunk(chunk, mip, pad,
+                                         chunk_size*(super_chunk_len-1)+pad,
+                                         pad, pad)
+          elif head_crop and end_crop:
+              final_chunk = a.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
+                                         chunk_size*(super_chunk_len-1)+pad,
+                                         pad, pad)
+          elif head_crop and end_crop == False:
+              final_chunk = a.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
+                                         pad, pad, pad)
+          else:
+              final_chunk = a.crop_chunk(chunk, mip, pad,
+                                         pad, pad, pad)
+          vvote_way = args.tgt_radius
+          image_list = []
+          write_image = []
+          for i in range(vvote_way):
+              image_for_vv = a.load_part_image(dst,
+                                                  block_start+vvote_start-1,
+                                  chunk, mip, mask_cv=src_mask_cv,
+                                  mask_mip=src_mask_mip, mask_val=src_mask_val)
+              image_list.insert(0,image_for_vv)
+              write_image.insert(0, False)
+          vvote_range_small = range(vvote_start, end_range)
+          print("vvote_range_small is", vvote_range_small)
+          a.process_super_chunk_vvote(src, block_start, vvote_range_small, dst,
+                                      model_lookup, vvote_way, image_list,
+                                      write_image, chunk,
+                                      mip, pad, chunk_size, super_chunk_len,
+                                      vvote_field,
+                                      head_crop, end_crop, final_chunk,
+                                      mask_cv=src_mask_cv, mask_mip=src_mask_mip,
+                                      mask_val=src_mask_val)
 
   for offset in vvote_large_range:
       first_chunk = True
@@ -299,110 +373,24 @@ if __name__ == '__main__':
           first_chunk = False
 
 
-# Align with vector voting
-  for block_offset in vvote_range:
-    print('BLOCK OFFSET {}'.format(block_offset))
-    prefix = block_offset
-    class ComputeFieldTaskIteratorII(object):
-        def __init__(self, brange, even_odd):
-            self.brange = brange
-            self.even_odd = even_odd
-        def __iter__(self):
-            for block_start, even_odd in zip(self.brange, self.even_odd):
-                dst = dsts[even_odd]
-                z = block_start + block_offset 
-                bbox = bbox_lookup[z]
-                model_path = model_lookup[z]
-                for z_offset in vvote_offsets:
-                    field = pair_fields[z_offset]
-                    t = a.compute_field(cm, model_path, src.path, dst, field, 
-                                        z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
-                                        src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                                        tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                                        tgt_mask_val=src_mask_val, prefix=prefix, 
-                                        prev_field_cv=vvote_field.path, prev_field_z=z+z_offset)
-                    yield from t
-    ptask = []
-    start = time()
-    for irange, ieven_odd in zip(range_list, even_odd_list):
-        ptask.append(ComputeFieldTaskIteratorII(irange, ieven_odd))
-    
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-   
-    end = time()
-    diff = end - start
-    print("Sending Compute Field Tasks for vvote use time:", diff)
-    print('Run Compute field for vvote')
-    # wait 
-    print('block offset {}'.format(block_offset))
-    start = time()
-    a.wait_for_sqs_empty()
-    end = time()
-    diff = end - start
-    print("Executing Compute Tasks for vvtote use time:", diff)
-
-    class VvoteTaskIterator(object):
-        def __init__(self, brange):
-            self.brange = brange
-        def __iter__(self):
-            for block_start in self.brange:
-                z = block_start + block_offset
-                bbox = bbox_lookup[z]
-                t = a.vector_vote(cm, pair_fields, vvote_field.path, z, bbox,
-                                  mip, inverse=False, serial=True, prefix=prefix)
-                yield from t
-    ptask = []
-    start = time()
-    for irange in range_list:
-        ptask.append(VvoteTaskIterator(irange))
-    
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-   
-    end = time()
-    diff = end - start
-    print("Sending Vvote Tasks for vvote use time:", diff)
-    print('Run vvoting')
-    # wait 
-    print('block offset {}'.format(block_offset))
-    start = time()
-    a.wait_for_sqs_empty()
-    end = time()
-    diff = end - start
-    print("Executing vvtote use time:", diff)
-
-    class RenderTaskIteratorII(object):
-        def __init__(self, brange, even_odd):
-            self.brange = brange
-            self.even_odd = even_odd
-        def __iter__(self):
-            for block_start, even_odd in zip(self.brange, self.even_odd):
-                dst = dsts[even_odd]
-                z = block_start + block_offset
-                bbox = bbox_lookup[z]
-                t = a.render(cm, src.path, vvote_field.path, dst, src_z=z, field_z=z, dst_z=z,
-                             bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
-                             mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
-                yield from t
-    ptask = []
-    start = time()
-    for irange, ieven_odd in zip(range_list, even_odd_list):
-        ptask.append(RenderTaskIteratorII(irange, ieven_odd))
-    
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-   
-    end = time()
-    diff = end - start
-    print("Sending Render Tasks use time:", diff)
-    print('Run rendering')
-
-    start = time()
-    # wait 
-    a.wait_for_sqs_empty()
-    end = time()
-    diff = end - start
-    print("Executing Rendering use time:", diff)
-
+#    ptask = []
+#    start = time()
+#    for irange, ieven_odd in zip(range_list, even_odd_list):
+#        ptask.append(RenderTaskIteratorII(irange, ieven_odd))
+#    
+#    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+#        executor.map(remote_upload, ptask)
+#   
+#    end = time()
+#    diff = end - start
+#    print("Sending Render Tasks use time:", diff)
+#    print('Run rendering')
+#
+#    start = time()
+#    # wait 
+#    a.wait_for_sqs_empty()
+#    end = time()
+#    diff = end - start
+#    print("Executing Rendering use time:", diff)
+#
 

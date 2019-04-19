@@ -809,7 +809,7 @@ def vector_vote(fields, softmin_temp, blur_sigma=None):
   Returns:
     single vector field
   """
-  print('softmin_temp {}'.format(softmin_temp))
+  #print('softmin_temp {}'.format(softmin_temp))
   fields_blurred = fields
   if blur_sigma:
     fields_blurred = [blur_field(f, blur_sigma) for f in fields]

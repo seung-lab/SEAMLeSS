@@ -103,7 +103,7 @@ class Aligner:
       y_len = img_shape[-1]
       unpadded_size = x_len - 2*pad
       padded_len = chunk_size + 2*pad
-      y_chunk_number = (y_len -2*pad) // chunk_size
+      y_chunk_number = (y_len - 2*pad) // chunk_size
       x_chunk_number = unpadded_size // chunk_size
       if(warp):
           #if(first_chunk):
@@ -112,8 +112,8 @@ class Aligner:
           #    adjust = 0
           image = torch.ByteTensor(1, 1, unpadded_size, y_len).zero_()
       else:
-          dst_field = torch.FloatTensor(1,unpadded_size, y_len, 2).zero_()
-      for xs in range(x_chunk_number-1):
+          dst_field = torch.FloatTensor(1, unpadded_size, y_len, 2).zero_()
+      for xs in range(x_chunk_number):
           for ys in range(y_chunk_number):
               src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
                                   ys*chunk_size:ys*chunk_size+padded_len]
@@ -137,33 +137,33 @@ class Aligner:
                   field = field[:,pad:-pad,pad:-pad,:]
                   field = field.to(device='cpu')
                   dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
-                            ys*chunk_size:ys*chunk_size+chunk_size,:] = field
+                            pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field
 
-      for xs in [x_chunk_number-1]:
-          for ys in range(y_chunk_number):
-              src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
-                                  ys*chunk_size:ys*chunk_size+padded_len]
-              tgt_patch = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
-                                  ys*chunk_size:ys*chunk_size+padded_len]
-              src_patch = src_patch.to(device=self.device)
-              tgt_patch = tgt_patch.to(device=self.device)
-              src_patch = self.convert_to_float(src_patch)
-              tgt_patch = self.convert_to_float(tgt_patch)
-              if warp:
-                  image_patch = self.new_compute_field_chunk(model_path, src_patch,
-                                                   tgt_patch, warp)
-                  image_patch = image_patch[:,:,pad:-pad,pad:-pad]
-                  image_patch = self.convert_to_uint8(image_patch)
-                  image_patch = image_patch.to(device='cpu')
-                  image[...,xs*chunk_size:xs*chunk_size+chunk_size,
-                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch
-              else:
-                  field = self.new_compute_field_chunk(model_path, src_patch,
-                                                   tgt_patch, warp) 
-                  field = field[:,pad:-pad,pad:-pad,:]
-                  field = field.to(device='cpu')
-                  dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
-                            ys*chunk_size:ys*chunk_size+chunk_size,:] = field
+      #for xs in [x_chunk_number-1]:
+      #    for ys in range(y_chunk_number):
+      #        src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+      #                            ys*chunk_size:ys*chunk_size+padded_len]
+      #        tgt_patch = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+      #                            ys*chunk_size:ys*chunk_size+padded_len]
+      #        src_patch = src_patch.to(device=self.device)
+      #        tgt_patch = tgt_patch.to(device=self.device)
+      #        src_patch = self.convert_to_float(src_patch)
+      #        tgt_patch = self.convert_to_float(tgt_patch)
+      #        if warp:
+      #            image_patch = self.new_compute_field_chunk(model_path, src_patch,
+      #                                             tgt_patch, warp)
+      #            image_patch = image_patch[:,:,pad:-pad,pad:-pad]
+      #            image_patch = self.convert_to_uint8(image_patch)
+      #            image_patch = image_patch.to(device='cpu')
+      #            image[...,xs*chunk_size:xs*chunk_size+chunk_size,
+      #                 pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch
+      #        else:
+      #            field = self.new_compute_field_chunk(model_path, src_patch,
+      #                                             tgt_patch, warp) 
+      #            field = field[:,pad:-pad,pad:-pad,:]
+      #            field = field.to(device='cpu')
+      #            dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
+      #                      ys*chunk_size:ys*chunk_size+chunk_size,:] = field
 
       if(warp):
           return image
@@ -198,7 +198,7 @@ class Aligner:
            z_offset = serial_offsets[block_offset]
            serial_field = serial_fields[z_offset]
            #dst = dsts[even_odd]
-           dst = dsts[0]
+           dst = dsts
            z = block_start + block_offset
            print("---------------- z ", z, "  block_offset ", block_offset)
            model_path = model_lookup[z]
@@ -210,10 +210,10 @@ class Aligner:
                                              tgt_image.shape)
            tgt_image = self.new_compute_field(model_path, src_image, tgt_image,
                                            chunk_size, pad, warp=True)
-           if(head_crop):
+           if(not head_crop):
                pad_tensor = torch.ByteTensor(1, 1, pad, tgt_image.shape[-1]).zero_()
                tgt_image = torch.cat((pad_tensor, tgt_image), 2)
-           if(end_crop):
+           if(not end_crop):
                pad_tensor = torch.ByteTensor(1, 1, pad, tgt_image.shape[-1]).zero_()
                tgt_image = torch.cat((tgt_image,pad_tensor), 2)
            image_crop_len = chunk_size*block_offset+(chunk_size-pad)
@@ -239,105 +239,119 @@ class Aligner:
 
   def process_super_chunk_vvote(self, src, block_start, vvote_range_small,
                                 dsts, model_lookup, vvote_way, image_list,
+                                write_image,
                                 schunk, mip, pad, chunk_size, super_chunk_len,
                                 vvote_field,
                                 head_crop, end_crop, final_chunk, mask_cv=None,
                                 mask_mip=0, mask_val=0):
       chunk = deepcopy(schunk)
       for block_offset in vvote_range_small:
-           print("===========block offset is", block_offset)
-           dst = dsts[0]
-           z = block_start + block_offset
-           model_path = model_lookup[z]
-           #vvote_way = args.tgt_radius
-           src_image = self.load_part_image(src, z, chunk, mip, mask_cv=mask_cv,
-                                       mask_mip=mask_mip,
-                                       mask_val=mask_val)
-           print("chunk shape for vvoting is", chunk.stringify(0, mip=mip))
-           for i in range(len(image_list)):
-               print("************shape of image", image_list[i].shape)
+          print("===========block offset is", block_offset)
+          dst = dsts
+          z = block_start + block_offset
+          model_path = model_lookup[z]
+          #vvote_way = args.tgt_radius
+          src_image = self.load_part_image(src, z, chunk, mip, mask_cv=mask_cv,
+                                      mask_mip=mask_mip,
+                                      mask_val=mask_val)
+          print("chunk shape for vvoting is", chunk.stringify(0, mip=mip))
+          for i in range(len(image_list)):
+              print("************shape of image", image_list[i].shape)
 
-           image, dst_field = self.new_vector_vote(model_path, src_image, image_list,
-                                                   chunk_size, pad, vvote_way, mip,
-                                                   inverse=False, serial=True,
-                                                   head_crop=head_crop,
-                                                   end_crop=end_crop)
-           if(head_crop==False):
-               pad_tensor = torch.ByteTensor(1, 1, pad, image.shape[-1]).zero_()
-               image = torch.cat((pad_tensor, image), 2)
-           if(end_crop==False):
-               pad_tensor = torch.ByteTensor(1, 1, pad, image.shape[-1]).zero_()
-               image = torch.cat((image,pad_tensor), 2)
+          image, dst_field = self.new_vector_vote(model_path, src_image, image_list,
+                                                  chunk_size, pad, vvote_way, mip,
+                                                  inverse=False, serial=True,
+                                                  head_crop=head_crop,
+                                                  end_crop=end_crop)
+          if(head_crop==False):
+              pad_tensor = torch.ByteTensor(1, 1, pad, image.shape[-1]).zero_()
+              if(block_offset != vvote_range_small[-1]):
+                  image = torch.cat((pad_tensor, image), 2)
+          if(end_crop==False):
+              pad_tensor = torch.ByteTensor(1, 1, pad, image.shape[-1]).zero_()
+              if(block_offset != vvote_range_small[-1]):
+                  image = torch.cat((image,pad_tensor), 2)
 
-           #image_bbox = a.crop_chunk(bbox_list[0], mip, pad, pad, pad, pad)
-           print("image shape after vvoting", image.shape)
-           #del bbox_list[0]
-           print("image_list[0] range ", image_list[0].shape)
-           image_len = image_list[0].shape[-2] - 2*pad;
-           x_range = final_chunk.x_range(mip=mip)
-           x_range_len = x_range[1] - x_range[0]
+          #image_bbox = a.crop_chunk(bbox_list[0], mip, pad, pad, pad, pad)
+          print("image shape after vvoting", image.shape)
+          #del bbox_list[0]
+          print("image_list[0] range ", image_list[0].shape)
+          image_len = image_list[0].shape[-2] - 2*pad;
+          x_range = final_chunk.x_range(mip=mip)
+          x_range_len = x_range[1] - x_range[0]
 
-           print("************ image_list[0]", image_list[0].shape,
-                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
+          print("************ image_list[0]", image_list[0].shape,
+                "coresponding_bbx", final_chunk.stringify(0, mip=mip))
 
 
-           image_chunk =self.crop_imageX(image_list[0][...,pad:-pad], True, True,
-                                        pad)
+          image_chunk =self.crop_imageX(image_list[0][...,pad:-pad], True, True,
+                                       pad)
 
-           print("frist crop ************ image_chunk", image_chunk.shape)
-           if(head_crop and end_crop):
-               crop_amount = (image_len - x_range_len)/2
-           else:
-               crop_amount = (image_len - x_range_len)
+          print("frist crop ************ image_chunk", image_chunk.shape)
+          if(head_crop and end_crop):
+              crop_amount = (image_len - x_range_len)/2
+          else:
+              crop_amount = (image_len - x_range_len)
 
-           image_chunk =self.crop_imageX(image_chunk, head_crop, end_crop,
-                                        crop_amount)
-           #image_chunk =image_list[0][..., pad+head_crop:-(pad+end_crop), pad:-pad]
+          image_chunk =self.crop_imageX(image_chunk, head_crop, end_crop,
+                                       crop_amount)
+          #image_chunk =image_list[0][..., pad+head_crop:-(pad+end_crop), pad:-pad]
 
-           del image_list[0]
-           print("************ image_chunk", image_chunk.shape,
-                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
-           self.save_image(image_chunk.cpu().numpy(), dst, z-vvote_way,
-                        final_chunk, mip, to_uint8=True)
-           if(head_crop):
-               image = image[..., chunk_size-pad:,:]
-           if(end_crop):
-               image = image[...,0:-(chunk_size-pad),:]
-           image_list.append(image)
-           
-           #if first_chunk:
-           #    image_list.append(image[...,0:-(chunk_size-pad),:])
-           #else:
-           #    image_list.append(image[..., chunk_size-pad:-(chunk_size-pad),:])
-           field_len = dst_field.shape[1] - 2*pad
-           #if(first_chunk):
-           #    head_crop = 0;
-           #    end_crop = field_len - x_range_len
-           #else:
-           #    head_crop = (field_len - x_range_len)/2
-           #    end_crop = head_crop
-           if(head_crop and end_crop):
-               crop_amount = (field_len - x_range_len)/2
-               dst_field = dst_field[:,pad+crop_amount:-(pad+crop_amount),pad:-pad,:]
-           elif head_crop:
-               crop_amount = (field_len - x_range_len)
-               dst_field = dst_field[:,pad+crop_amount:-pad,pad:-pad,:]
-           elif end_crop:
-               crop_amount = (field_len - x_range_len)
-               dst_field = dst_field[:,pad:-(pad+crop_amount),pad:-pad,:]
-           else:
-               dst_field = dst_field[:,pad:-pad,pad:-pad,:]
-           print("***********dst_field shape", dst_field.shape)
-           dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
-           self.save_field(dst_field, vvote_field, z, final_chunk, mip, relative=False,
-                        as_int16=True)
-           head_crop_len = chunk_size if head_crop else 0
-           end_crop_len = chunk_size if end_crop else 0
-           chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
-                                  0) 
-           #chunk = self.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
-           #bbox_list.append(chunk)
+          print("************ image_chunk", image_chunk.shape,
+                "coresponding_bbx", final_chunk.stringify(0, mip=mip))
+          if write_image[0]:
+              print("write_image len is ", len(write_image), "save image")
+              self.save_image(image_chunk.cpu().numpy(), dst, z-vvote_way,
+                       final_chunk, mip, to_uint8=True)
+          del image_list[0]
+          del write_image[0]
+          if(block_offset == vvote_range_small[-1]):
+              image = image[...,pad:-pad]
+              self.save_image(image.cpu().numpy(), dst, z,
+                       final_chunk, mip, to_uint8=True)
+          else:
+              if(head_crop):
+                  image = image[..., chunk_size-pad:,:]
+              if(end_crop):
+                  image = image[...,0:-(chunk_size-pad),:]
+              image_list.append(image)
+              write_image.append(True)
+
+          #if first_chunk:
+          #    image_list.append(image[...,0:-(chunk_size-pad),:])
+          #else:
+          #    image_list.append(image[..., chunk_size-pad:-(chunk_size-pad),:])
+          field_len = dst_field.shape[1] - 2*pad
+          #if(first_chunk):
+          #    head_crop = 0;
+          #    end_crop = field_len - x_range_len
+          #else:
+          #    head_crop = (field_len - x_range_len)/2
+          #    end_crop = head_crop
+          if(head_crop and end_crop):
+              crop_amount = (field_len - x_range_len)/2
+              dst_field = dst_field[:,pad+crop_amount:-(pad+crop_amount),pad:-pad,:]
+          elif head_crop:
+              crop_amount = (field_len - x_range_len)
+              dst_field = dst_field[:,pad+crop_amount:-pad,pad:-pad,:]
+          elif end_crop:
+              crop_amount = (field_len - x_range_len)
+              dst_field = dst_field[:,pad:-(pad+crop_amount),pad:-pad,:]
+          else:
+              dst_field = dst_field[:,pad:-pad,pad:-pad,:]
+          print("***********dst_field shape", dst_field.shape)
+          dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
+          self.save_field(dst_field, vvote_field, z, final_chunk, mip, relative=False,
+                       as_int16=True)
+          head_crop_len = chunk_size if head_crop else 0
+          end_crop_len = chunk_size if end_crop else 0
+          chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
+                                 0) 
+          #chunk = self.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
+          #bbox_list.append(chunk)
       print("save image after vvoting --------------->>>>>>>")
+      for i in image_list:
+          print("************shape of image", i.shape)
       for i in range(len(image_list)):
           print("image shape", image_list[i].shape)
           image_len = image_list[i].shape[-2] - 2*pad;
@@ -408,13 +422,13 @@ class Aligner:
       chunk_grid = self.break_into_chunks_grid(bbox, cm.dst_chunk_sizes[mip],
                                           cm.dst_voxel_offsets[mip], mip=mip,
                                           max_mip=cm.max_mip)
-      #print("--------------chunks_grid shape",len(chunk_grid), len(chunk_grid[0]),
-      #      chunk_grid[0][0].stringify(0))
+      print("--------------chunks_grid shape",len(chunk_grid), len(chunk_grid[0]),
+            chunk_grid[0][0].stringify(0))
       chunks = []
-      for i in range(len(chunk_grid)):
-          for j in range(len(chunk_grid[0])):
-              print("i j ", i, j ,"chunk size is",
-                    chunk_grid[i][j].stringify(0,mip=mip))
+      #for i in range(len(chunk_grid)):
+      #    for j in range(len(chunk_grid[0])):
+      #        print("i j ", i, j ,"chunk size is",
+      #              chunk_grid[i][j].stringify(0,mip=mip))
       start =0
       while(start+rows<len(chunk_grid)):
           print("start + row is", start+rows)
@@ -470,7 +484,7 @@ class Aligner:
     #    adjust = 0
     image = torch.ByteTensor(1, 1, x_len-2*pad, y_len).zero_()
     dst_field = torch.FloatTensor(1,x_len, y_len,2).zero_()
-    print("===============x_chunk_number is ", x_chunk_number)
+    #print("===============x_chunk_number is ", x_chunk_number)
     #elif head_crop == False and end_crop:
     #    offset = 0
 
@@ -478,7 +492,7 @@ class Aligner:
     for ys in range(y_chunk_number):
         vv_fields = []
         src_patch = src_img[...,:padded_len, ys*chunk_size:ys*chunk_size+padded_len]
-        print("--------------in vv src image shape", src_img.shape)
+        #print("--------------in vv src image shape", src_img.shape)
         src_patch = src_patch.to(device=self.device)
         src_patch = self.convert_to_float(src_patch)
         for i in range(vvote_way):
@@ -488,13 +502,13 @@ class Aligner:
                 offset = (image_list[i].shape[-2] - src_img.shape[-2])
             else:
                 offset = 0;
-            print("---------- in vv tgt image shape", image_list[i].shape)
+            #print("---------- in vv tgt image shape", image_list[i].shape)
             tgt_patch = image_list[i][..., offset:offset+padded_len,
                                       ys*chunk_size:ys*chunk_size+padded_len]
             tgt_patch = tgt_patch.to(device=self.device)
             tgt_patch = self.convert_to_float(tgt_patch)
-            print(" in vvoting src_patch size ", src_patch.shape, " tgt_patch",
-                 tgt_patch.shape)
+            #print(" in vvoting src_patch size ", src_patch.shape, " tgt_patch",
+            #     tgt_patch.shape)
             field = self.new_compute_field_chunk(model_path, src_patch,
                                                    tgt_patch)
             #field = field[:,pad:-pad,pad:-pad,:]
@@ -567,7 +581,7 @@ class Aligner:
             # to verify: wherther non-square size is good
             new_field = new_field[:,pad:,pad:-pad,:]
             new_field = new_field.to(device='cpu')
-            print("--------field shape", field.shape )
+            #print("--------field shape", field.shape )
             dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size+pad,
                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = new_field
 
@@ -886,7 +900,7 @@ class Aligner:
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = np.transpose(float_patch, (2,3,0,1))
-    #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
+    print("SAVE IMG z is", z, "save image patch at mip", mip, "range at mip0", bbox.stringify(z))
     if to_uint8:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
