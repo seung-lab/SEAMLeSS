@@ -39,8 +39,12 @@ if __name__ == '__main__':
     help='Relative path to the ModelArchive to use for error detection')
   parser.add_argument('--src_img_path', type=str,
     help='CloudVolume path of source EM image')
+  parser.add_argument('--img_mip', type=int,
+    help='Mip level of image')
   parser.add_argument('--src_seg_path', type=str,
     help='CloudVolume path of source flat segmentation')
+  parser.add_argument('--seg_mip', type=int,
+    help='Mip level of segmentation')
   parser.add_argument('--dst_path', type=str,
     help='CloudVolume path of error map destination')
   parser.add_argument('--mip', type=int,
@@ -68,6 +72,9 @@ if __name__ == '__main__':
   
   # Simplify var names
   mip = args.mip
+  img_mip = args.img_mip
+  seg_mip = args.seg_mip
+  bbox_mip = args.bbox_mip
   max_mip = args.max_mip
   pad = args.max_displacement
   patch_size = args.patch_size
@@ -100,7 +107,7 @@ if __name__ == '__main__':
       def __init__(self):
           pass
       def __iter__(self):
-          t = a.error_detect_volume(cm, args.model_path, src_seg.path, src_img.path, dst.path, mip, bbox, chunk_size, patch_size, str(mip))
+          t = a.error_detect_volume(cm, args.model_path, src_seg.path, seg_mip, src_img.path, img_mip, dst.path, mip, bbox, chunk_size, patch_size, str(mip))
           yield from t
   # range_list = make_range(full_range, a.threads)
 

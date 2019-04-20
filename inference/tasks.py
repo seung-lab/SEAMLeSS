@@ -71,13 +71,15 @@ class PredictImageTask(RegisteredTask):
     print(':{:.3f} s'.format(diff))
 
 class ErrorDetectTask(RegisteredTask):
-  def __init__(self, model_path, src_seg_cv, src_img_cv, dst_cv, mip, bbox, patch_size, prefix):
-    super().__init__(model_path, src_seg_cv, src_img_cv, dst_cv, mip, bbox, patch_size, prefix)
+  def __init__(self, model_path, src_seg_cv, seg_mip, src_img_cv, img_mip, dst_cv, mip, bbox, patch_size, prefix):
+    super().__init__(model_path, src_seg_cv, seg_mip, src_img_cv, img_mip, dst_cv, mip, bbox, patch_size, prefix)
 
   def execute(self, aligner):
     src_seg_cv = DCV(self.src_seg_cv)
     src_img_cv = DCV(self.src_img_cv)
     dst_cv = DCV(self.dst_cv)
+    seg_mip = self.seg_mip
+    img_mip = self.img_mip
     mip = self.mip
     chunk_bbox_in = deserialize_bbox3d(self.bbox)
     patch_size = self.patch_size
@@ -92,7 +94,7 @@ class ErrorDetectTask(RegisteredTask):
           "dst {}\n"
           "MIP{}\n".format(src_seg_cv, src_img_cv, dst_cv, mip), flush=True)
     start = time()
-    image = aligner.errdet_chunk(self.model_path, src_seg_cv, src_img_cv, mip, chunk_bbox_in, patch_size)
+    image = aligner.errdet_chunk(self.model_path, src_seg_cv, seg_mip, src_img_cv, img_mip, chunk_bbox_in, mip, patch_size)
     image = np.transpose(np.reshape(image, image.shape[1:]),(0,2,3,1))
     image = image[(slice(0,1),)+tuple([slice((patch_size[i]//2)*(chunk_range[i][0]>0),(patch_size[i]//2)*(chunk_range[i][0]>0)+chunk_size[i]) for i in [0,1,2]])]
     aligner.save_volume(image, dst_cv, chunk_bbox_out, mip, to_uint8=True)

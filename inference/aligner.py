@@ -217,10 +217,10 @@ class Aligner:
     print('get_image: {:.3f}'.format(diff), flush=True) 
     return image
 
-  def get_volume(self, cv, bbox, mip, to_float=True, to_tensor=True, normalizer=None):
+  def get_volume(self, cv, bbox, bbox_mip, mip, to_float=True, to_tensor=True, normalizer=None):
     print('get_volume for {0}'.format(bbox.stringify()), flush=True)
     start = time()
-    volume = self.get_data_3d(cv, bbox, src_mip=mip, dst_mip=mip, to_float=to_float, 
+    volume = self.get_data_3d(cv, bbox, bbox_mip=bbox_mip, src_mip=mip, dst_mip=mip, to_float=to_float, 
                              to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
@@ -283,7 +283,7 @@ class Aligner:
 
     return combined
  
-  def get_data_3d(self, cv, bbox, src_mip, dst_mip, to_float=True, 
+  def get_data_3d(self, cv, bbox, bbox_mip, src_mip, dst_mip, to_float=True, 
                      to_tensor=True, normalizer=None):
     """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
     
@@ -301,12 +301,13 @@ class Aligner:
        if normalizer is specified, and as a uint8 or float32 torch tensor or numpy, 
        as specified
     """
-    x_range = bbox.x_range(mip=src_mip)
-    y_range = bbox.y_range(mip=src_mip)
+    x_range = bbox.x_range(mip=bbox_mip)
+    y_range = bbox.y_range(mip=bbox_mip)
     z_range = bbox.z_range()
     volume_size = cv[src_mip].shape[:3]
     xs = max(x_range[0],0); ys = max(y_range[0],0); zs = max(z_range[0],0)
     xe = min(x_range[1],volume_size[0]); ye = min(y_range[1],volume_size[1]); ze = min(z_range[1],volume_size[2])
+    # xe = x_range[1]; ye = y_range[1]; ze = z_range[1]
     data = cv[src_mip][xs:xe, ys:ye, zs:ze]
     data = np.transpose(data, (3,2,0,1))
     data = np.reshape(data, (1,)+data.shape)
@@ -671,7 +672,7 @@ class Aligner:
     return new_image
 
   # Error detection
-  def error_detect_volume(self, cm, model_path, src_seg_cv, src_img_cv, dst_cv, mip, bbox,
+  def error_detect_volume(self, cm, model_path, src_seg_cv, seg_mip, src_img_cv, img_mip, dst_cv, mip, bbox,
                     chunk_size, patch_size, prefix=''):
     start = time()
     chunks = self.break_into_chunks_3d(bbox, chunk_size,
@@ -691,18 +692,18 @@ class Aligner:
       prefix = '{}'.format(mip)
     batch = []
     for chunk_bbox in chunks:
-      batch.append(tasks.ErrorDetectTask(model_path, src_seg_cv, src_img_cv, dst_cv, mip,
+      batch.append(tasks.ErrorDetectTask(model_path, src_seg_cv, seg_mip, src_img_cv, img_mip, dst_cv, mip,
                                         chunk_bbox, patch_size, prefix))
     return batch
 
-  def errdet_chunk(self, model_path, src_seg_cv, src_img_cv, mip, bbox, patch_size):
+  def errdet_chunk(self, model_path, src_seg_cv, seg_mip, src_img_cv, img_mip, bbox, bbox_mip, patch_size):
     # Model
     archive = self.get_model_archive(model_path)
     model = archive.model
     
     # Input
-    seg = self.get_volume(src_seg_cv, bbox, mip, to_float=False, to_tensor=False)
-    img = self.get_volume(src_img_cv, bbox, mip, to_float=True, to_tensor=False)
+    seg = self.get_volume(src_seg_cv, bbox, bbox_mip, seg_mip, to_float=False, to_tensor=False)
+    img = self.get_volume(src_img_cv, bbox, bbox_mip, img_mip, to_float=True, to_tensor=False)
     
     # Inference
     new_image = inference(model, seg, img, patch_size)
