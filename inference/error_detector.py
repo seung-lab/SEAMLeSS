@@ -145,7 +145,7 @@ def inference(model, seg, img, patch_size):
 
 		i = i + 1
 
-		coverage = np.round(np.sum(vis_vol.A>=1)/np.prod(volume_size),4)
+		coverage = np.round(np.sum(vis_vol.A>=1)/np.prod(volume_size),2)
 		if i % 100 == 0:
 			print("Coverage = {}".format(coverage))
 		

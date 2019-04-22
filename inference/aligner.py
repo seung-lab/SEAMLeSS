@@ -304,10 +304,9 @@ class Aligner:
     x_range = bbox.x_range(mip=bbox_mip)
     y_range = bbox.y_range(mip=bbox_mip)
     z_range = bbox.z_range()
-    volume_size = cv[src_mip].shape[:3]
+    volume_end = cv[src_mip].bounds.maxpt
     xs = max(x_range[0],0); ys = max(y_range[0],0); zs = max(z_range[0],0)
-    xe = min(x_range[1],volume_size[0]); ye = min(y_range[1],volume_size[1]); ze = min(z_range[1],volume_size[2])
-    # xe = x_range[1]; ye = y_range[1]; ze = z_range[1]
+    xe = min(x_range[1],volume_end[0]); ye = min(y_range[1],volume_end[1]); ze = min(z_range[1],volume_end[2])
     data = cv[src_mip][xs:xe, ys:ye, zs:ze]
     data = np.transpose(data, (3,2,0,1))
     data = np.reshape(data, (1,)+data.shape)

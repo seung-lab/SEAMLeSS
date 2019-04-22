@@ -99,10 +99,6 @@ class ErrorDetectTask(RegisteredTask):
     image = image[(slice(0,1),)+tuple([slice((patch_size[i]//2)*(chunk_range[i][0]>0),(patch_size[i]//2)*(chunk_range[i][0]>0)+chunk_size[i]) for i in [0,1,2]])]
     aligner.save_volume(image, dst_cv, chunk_bbox_out, mip, to_uint8=True)
 
-    with Storage(dst_cv.path) as stor:
-        path = 'predict_image_done/{}/{}'.format(prefix, chunk_bbox_out.stringify())
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
     end = time()
     diff = end - start
     print(':{:.3f} s'.format(diff))
