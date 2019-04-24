@@ -702,7 +702,7 @@ class Aligner:
       assert(field_mip >= image_mip)
       pad = 256
       padded_bbox = deepcopy(bbox)
-      padded_bbox.max_mip = image_mip
+      padded_bbox.max_mip = max(image_mip, field_mip)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
 
