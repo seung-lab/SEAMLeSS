@@ -3,7 +3,7 @@ gevent.monkey.patch_all()
 
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
-from taskqueue import TaskQueue, GreenTaskQueue 
+from taskqueue import TaskQueue, GreenTaskQueue
 
 import sys
 import torch
@@ -209,21 +209,22 @@ if __name__ == '__main__':
 
 #  # Align without vector voting
 #  # field need to in float since all are relative value
-  rows = 14
+  rows = 80  #14
   block_start = args.z_start
-  super_chunk_len = 6
+  super_chunk_len = 15
   overlap_chunks = 2 * (super_chunk_len -1)
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, overlap_chunks, rows, pad)
   print("copy range ", copy_range)
   #print("---- len of chunks", len(chunk_grid), "orginal bbox", bbox.stringify(0))
-  vvote_range_small = vvote_range[:super_chunk_len-overlap+1]
-  vvote_subblock = range(vvote_range_small[-1]+1, vvote_range[-1]+1,
-                            super_chunk_len)
+  vvote_range_small = vvote_range
+  #vvote_range_small = vvote_range[:super_chunk_len-overlap+1]
+  #vvote_subblock = range(vvote_range_small[-1]+1, vvote_range[-1]+1,
+  #                          super_chunk_len)
   print("--------overlap is ", overlap, "vvote_range is ", "vvote_range_small",
         vvote_range_small)
   dst = dsts[0]
-  for i in vvote_subblock:
-      print("*****>>> vvote subblock is ", i)
+  #for i in vvote_subblock:
+  #    print("*****>>> vvote subblock is ", i)
   for i in  chunk_grid:
       print("--------grid size is ", i.stringify(0, mip=mip))
 

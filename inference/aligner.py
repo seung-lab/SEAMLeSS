@@ -110,9 +110,10 @@ class Aligner:
           #    adjust = pad
           #else:
           #    adjust = 0
-          image = torch.ByteTensor(1, 1, unpadded_size, y_len).zero_()
+          image = torch.FloatTensor(1, 1, unpadded_size, y_len).zero_()
       else:
           dst_field = torch.FloatTensor(1, unpadded_size, y_len, 2).zero_()
+      print("--------------IN compute field", x_chunk_number*y_chunk_number)
       for xs in range(x_chunk_number):
           for ys in range(y_chunk_number):
               src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
@@ -122,12 +123,14 @@ class Aligner:
               src_patch = src_patch.to(device=self.device)
               tgt_patch = tgt_patch.to(device=self.device)
               src_patch = self.convert_to_float(src_patch)
-              tgt_patch = self.convert_to_float(tgt_patch)
+              #if tgt_patch.dtype == torch.uint8:
+              #    tgt_patch = self.convert_to_float(tgt_patch)
+              start_t =  time()
               if warp:
                   image_patch = self.new_compute_field_chunk(model_path, src_patch,
                                                    tgt_patch, warp)
                   image_patch = image_patch[:,:,pad:-pad,pad:-pad]
-                  image_patch = self.convert_to_uint8(image_patch)
+                  #image_patch = self.convert_to_uint8(image_patch)
                   image_patch = image_patch.to(device='cpu')
                   image[...,xs*chunk_size:xs*chunk_size+chunk_size,
                        pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch
@@ -138,6 +141,8 @@ class Aligner:
                   field = field.to(device='cpu')
                   dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
                             pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field
+              end_t = time()
+              print("------------------compute field time", end_t - start_t)
 
       #for xs in [x_chunk_number-1]:
       #    for ys in range(y_chunk_number):
@@ -187,9 +192,13 @@ class Aligner:
       chunk = deepcopy(schunk)
       print("---- chunk is ", chunk.stringify(0, mip=mip), " z is",
             block_start+copy_offset)
+      load_image_start = time()
       tgt_image = self.load_part_image(src, block_start+copy_offset,
                                   chunk, mip, mask_cv=mask_cv,
                                   mask_mip=mask_mip, mask_val=mask_val)
+      load_finish = time()
+      print("----------------LOAD image time:", load_finish-load_image_start)
+      tgt_image = self.convert_to_float(tgt_image)
       crop_len = chunk_size*copy_offset
       add_image =self.crop_imageX(tgt_image, head_crop, end_crop, crop_len)
       image_list.append(add_image)
@@ -202,19 +211,23 @@ class Aligner:
            z = block_start + block_offset
            print("---------------- z ", z, "  block_offset ", block_offset)
            model_path = model_lookup[z]
+           load_image_start = time()
            src_image = self.load_part_image(src, z, chunk, mip, mask_cv=mask_cv,
                                        mask_mip=mask_mip,
                                        mask_val=mask_val)
-           print("++++++chunk is", chunk.stringify(0, mip=mip), "src_image shape",
-                                             src_image.shape, "tgt_image",
-                                             tgt_image.shape)
+           #print("++++++chunk is", chunk.stringify(0, mip=mip), "src_image shape",
+           #                                  src_image.shape, "tgt_image",
+           #                                  tgt_image.shape)
+           load_finish = time()
+           print("----------------LOAD image time:", load_finish-load_image_start)
            tgt_image = self.new_compute_field(model_path, src_image, tgt_image,
                                            chunk_size, pad, warp=True)
+           print("----------------COMPUTE FIELD time", time()- load_finish)
            if(not head_crop):
-               pad_tensor = torch.ByteTensor(1, 1, pad, tgt_image.shape[-1]).zero_()
+               pad_tensor = torch.FloatTensor(1, 1, pad, tgt_image.shape[-1]).zero_()
                tgt_image = torch.cat((pad_tensor, tgt_image), 2)
            if(not end_crop):
-               pad_tensor = torch.ByteTensor(1, 1, pad, tgt_image.shape[-1]).zero_()
+               pad_tensor = torch.FloatTensor(1, 1, pad, tgt_image.shape[-1]).zero_()
                tgt_image = torch.cat((tgt_image,pad_tensor), 2)
            image_crop_len = chunk_size*block_offset+(chunk_size-pad)
            tgt_crop_len = chunk_size-pad
@@ -251,24 +264,30 @@ class Aligner:
           z = block_start + block_offset
           model_path = model_lookup[z]
           #vvote_way = args.tgt_radius
+          load_image_start = time()
           src_image = self.load_part_image(src, z, chunk, mip, mask_cv=mask_cv,
                                       mask_mip=mask_mip,
                                       mask_val=mask_val)
+          load_finish = time()
+          print("----------------LOAD image in VV time:", load_finish-load_image_start)
           print("chunk shape for vvoting is", chunk.stringify(0, mip=mip))
           for i in range(len(image_list)):
-              print("************shape of image", image_list[i].shape)
-
+              print("************shape of image", image_list[i].shape,
+                    image_list[i].dtype)
+          vv_start = time()
           image, dst_field = self.new_vector_vote(model_path, src_image, image_list,
                                                   chunk_size, pad, vvote_way, mip,
                                                   inverse=False, serial=True,
                                                   head_crop=head_crop,
                                                   end_crop=end_crop)
+          vv_end =time()
+          print("---------------------VV time :", vv_end-vv_start)
           if(head_crop==False):
-              pad_tensor = torch.ByteTensor(1, 1, pad, image.shape[-1]).zero_()
+              pad_tensor = torch.FloatTensor(1, 1, pad, image.shape[-1]).zero_()
               if(block_offset != vvote_range_small[-1]):
                   image = torch.cat((pad_tensor, image), 2)
           if(end_crop==False):
-              pad_tensor = torch.ByteTensor(1, 1, pad, image.shape[-1]).zero_()
+              pad_tensor = torch.FloatTensor(1, 1, pad, image.shape[-1]).zero_()
               if(block_offset != vvote_range_small[-1]):
                   image = torch.cat((image,pad_tensor), 2)
 
@@ -299,11 +318,14 @@ class Aligner:
 
           print("************ image_chunk", image_chunk.shape,
                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
+          IO_start = time()
           if write_image[0]:
               print("write_image len is ", len(write_image), "save image")
               self.save_image(image_chunk.cpu().numpy(), dst, z-vvote_way,
                        final_chunk, mip, to_uint8=True)
           del image_list[0]
+          print("------------------- write_image ", write_image[0],
+                "time",time()-IO_start)
           del write_image[0]
           if(block_offset == vvote_range_small[-1]):
               image = image[...,pad:-pad]
@@ -340,9 +362,14 @@ class Aligner:
           else:
               dst_field = dst_field[:,pad:-pad,pad:-pad,:]
           print("***********dst_field shape", dst_field.shape)
+          field_from_GPU = time()
           dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
+          field_on_CPU = time()
+          print("-----------------move field from GPU to CPU time",
+                field_on_CPU-field_from_GPU)
           self.save_field(dst_field, vvote_field, z, final_chunk, mip, relative=False,
                        as_int16=True)
+          print("-------------------Saving field time:", time()-field_on_CPU)
           head_crop_len = chunk_size if head_crop else 0
           end_crop_len = chunk_size if end_crop else 0
           chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
@@ -393,9 +420,19 @@ class Aligner:
       #    if(not is_blank(tgt_img)):
       #        tgt_img =normalizer(tgt_img).reshape(tgt_img.shape)
       #print("***********", src_img.shape, tgt_img.shape, " warp ", warp)
+      torch.cuda.synchronize()
+      start_t = time() 
       field = model(src_img, tgt_img)
+      torch.cuda.synchronize()
+      end_t = time()
+      print("+++++++++++++++++compute field time", end_t - start_t)
       if(warp):
+          torch.cuda.synchronize()
+          start_t = time() 
           image = self.new_cloudsample_image(src_img, field)
+          torch.cuda.synchronize()
+          end_t = time()
+          print("+++++++++++++++++ warp time", end_t - start_t)
           return image
       else:
           return field
@@ -482,17 +519,19 @@ class Aligner:
     #    adjust = pad
     #else:
     #    adjust = 0
-    image = torch.ByteTensor(1, 1, x_len-2*pad, y_len).zero_()
+    image = torch.FloatTensor(1, 1, x_len-2*pad, y_len).zero_()
     dst_field = torch.FloatTensor(1,x_len, y_len,2).zero_()
     #print("===============x_chunk_number is ", x_chunk_number)
     #elif head_crop == False and end_crop:
     #    offset = 0
 
+    start = time()
     #vector voting 
     for ys in range(y_chunk_number):
         vv_fields = []
         src_patch = src_img[...,:padded_len, ys*chunk_size:ys*chunk_size+padded_len]
         #print("--------------in vv src image shape", src_img.shape)
+        start_cf = time()
         src_patch = src_patch.to(device=self.device)
         src_patch = self.convert_to_float(src_patch)
         for i in range(vvote_way):
@@ -506,21 +545,39 @@ class Aligner:
             tgt_patch = image_list[i][..., offset:offset+padded_len,
                                       ys*chunk_size:ys*chunk_size+padded_len]
             tgt_patch = tgt_patch.to(device=self.device)
-            tgt_patch = self.convert_to_float(tgt_patch)
+            if tgt_patch.dtype == torch.uint8:
+                tgt_patch = self.convert_to_float(tgt_patch)
             #print(" in vvoting src_patch size ", src_patch.shape, " tgt_patch",
             #     tgt_patch.shape)
+            #print("---------- in vv tgt image shape", tgt_patch.shape)
+            #torch.cuda.synchronize()
+            #f_t = time()
             field = self.new_compute_field_chunk(model_path, src_patch,
                                                    tgt_patch)
             #field = field[:,pad:-pad,pad:-pad,:]
+            #torch.cuda.synchronize()
+            #f_t_e = time()
+            #print(" each cf time", f_t_e - f_t)
             vv_fields.append(field)
+        #torch.cuda.synchronize()
+        vv_s = time()
         new_field = self.new_vector_vote_chunk(vv_fields, mip,
                                            softmin_temp=softmin_temp,
                                            blur_sigma=blur_sigma)
+        torch.cuda.synchronize()
+        end_cf = time()
+        print("+++++++++++vv time", end_cf - vv_s)
+        print("=================compute", vvote_way, " chunk fields time",
+              end_cf-start_cf)
         new_field = new_field[:, 0:-pad, pad:-pad,:]
         new_field = new_field.to(device='cpu')
         dst_field[:,0:chunk_size+pad,
                   pad+ys*chunk_size:pad+ys*chunk_size+chunk_size, :] = new_field
 
+    end = time()
+    print("================= first row in vv time is", end -start,
+          "y chunk_number is", y_chunk_number, " x_chunk_number",
+          x_chunk_number)
     for xs in range(1, x_chunk_number-1):
         for ys in range(y_chunk_number):
             vv_fields = []
@@ -539,7 +596,8 @@ class Aligner:
                                           offset+xs*chunk_size:offset+xs*chunk_size+padded_len,
                                           ys*chunk_size:ys*chunk_size+padded_len]
                 tgt_patch = tgt_patch.to(device=self.device)
-                tgt_patch = self.convert_to_float(tgt_patch)
+                if tgt_patch.dtype == torch.uint8:
+                    tgt_patch = self.convert_to_float(tgt_patch)
                 field = self.new_compute_field_chunk(model_path, src_patch,
                                                        tgt_patch)
                 field = field[:,pad:-pad,pad:-pad,:]
@@ -550,6 +608,8 @@ class Aligner:
             new_field = new_field.to(device='cpu')
             dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = new_field
+    new_end = time()
+    print("================= middle row in vv time is", new_end - end)
 
     for xs in [x_chunk_number-1]:
         for ys in range(y_chunk_number):
@@ -570,7 +630,8 @@ class Aligner:
                                           offset+xs*chunk_size:offset+xs*chunk_size+padded_len,
                                           ys*chunk_size:ys*chunk_size+padded_len]
                 tgt_patch = tgt_patch.to(device=self.device)
-                tgt_patch = self.convert_to_float(tgt_patch)
+                if tgt_patch.dtype == torch.uint8:
+                    tgt_patch = self.convert_to_float(tgt_patch)
                 field = self.new_compute_field_chunk(model_path, src_patch,
                                                        tgt_patch)
                 #field = field[:,pad:-pad,pad:-pad,:]
@@ -584,7 +645,10 @@ class Aligner:
             #print("--------field shape", field.shape )
             dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size+pad,
                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = new_field
+    last_end = time()
+    print("================= last row in vv time is", last_end - new_end)
 
+    
     #warp the image
     for xs in range(x_chunk_number):
         for ys in range(y_chunk_number):
@@ -598,10 +662,12 @@ class Aligner:
             #field = self.invert_field(field)
             image_patch = self.new_cloudsample_image(src_patch, field)
             image_patch = image_patch[:,:,pad:-pad,pad:-pad]
-            image_patch = self.convert_to_uint8(image_patch)
+            #image_patch = self.convert_to_uint8(image_patch)
             image_patch = image_patch.to(device='cpu')
             image[..., xs*chunk_size:xs*chunk_size+chunk_size,
                   pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch
+    warp_end = time()
+    print("====================== warp end time", warp_end - last_end)
     return image, dst_field
 
   def new_vector_vote_chunk(self, fields, mip,softmin_temp=None, blur_sigma=None):
