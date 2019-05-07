@@ -260,6 +260,7 @@ class Aligner:
       chunk = deepcopy(schunk)
       for block_offset in vvote_range_small:
           print("===========block offset is", block_offset)
+          whole_vv_start = time()
           dst = dsts
           z = block_start + block_offset
           model_path = model_lookup[z]
@@ -271,9 +272,9 @@ class Aligner:
           load_finish = time()
           print("----------------LOAD image in VV time:", load_finish-load_image_start)
           print("chunk shape for vvoting is", chunk.stringify(0, mip=mip))
-          for i in range(len(image_list)):
-              print("************shape of image", image_list[i].shape,
-                    image_list[i].dtype)
+          #for i in range(len(image_list)):
+          #    print("************shape of image", image_list[i].shape,
+          #          image_list[i].dtype)
           vv_start = time()
           image, dst_field = self.new_vector_vote(model_path, src_image, image_list,
                                                   chunk_size, pad, vvote_way, mip,
@@ -291,10 +292,12 @@ class Aligner:
               if(block_offset != vvote_range_small[-1]):
                   image = torch.cat((image,pad_tensor), 2)
 
+          print("--------------------Padding time", time() - vv_end)
+
           #image_bbox = a.crop_chunk(bbox_list[0], mip, pad, pad, pad, pad)
-          print("image shape after vvoting", image.shape)
+          #print("image shape after vvoting", image.shape)
           #del bbox_list[0]
-          print("image_list[0] range ", image_list[0].shape)
+          #print("image_list[0] range ", image_list[0].shape)
           image_len = image_list[0].shape[-2] - 2*pad;
           x_range = final_chunk.x_range(mip=mip)
           x_range_len = x_range[1] - x_range[0]
@@ -425,7 +428,7 @@ class Aligner:
       field = model(src_img, tgt_img)
       torch.cuda.synchronize()
       end_t = time()
-      print("+++++++++++++++++compute field time", end_t - start_t)
+      #print("+++++++++++++++++compute field time", end_t - start_t)
       if(warp):
           torch.cuda.synchronize()
           start_t = time() 
@@ -455,6 +458,73 @@ class Aligner:
                               y_range[0]+y_start, y_range[1]-y_end, mip=mip)
       return new_chunk
 
+  def random_read(self, cm, image_cv, bbox, mip, pad, z):
+      chunk_grid = self.break_into_chunks_grid(bbox, cm.dst_chunk_sizes[mip],
+                                          cm.dst_voxel_offsets[mip], mip=mip,
+                                          max_mip=cm.max_mip)
+      tmp_device = self.device
+      self.device = 'cpu'
+      chunks = []
+      print("***********chunk dim", len(chunk_grid), len(chunk_grid[0]))
+      for i in range(len(chunk_grid)):
+          chunks.append(BoundingBox(chunk_grid[i][0].x_range(mip=mip)[0]-pad,
+                                    chunk_grid[i][-1].x_range(mip=mip)[1]+pad,
+                                    chunk_grid[i][0].y_range(mip=mip)[0]-pad,
+                                    chunk_grid[i][-1].y_range(mip=mip)[1]+pad,
+                                    mip=mip))
+      newbb = BoundingBox(chunk_grid[0][0].x_range(mip=mip)[0]-pad,
+                          chunk_grid[-1][-1].x_range(mip=mip)[1]+pad,
+                          chunk_grid[0][0].y_range(mip=mip)[0]-pad,
+                          chunk_grid[-1][-1].y_range(mip=mip)[1]+pad,
+                                    mip=mip)
+      image = []
+      chunk_len = len(chunks)
+      odd = chunk_len%2
+      start = time()
+      im =self.get_image(image_cv, z, newbb, mip, to_tensor=True,
+                         normalizer=None, to_float=False)
+      #for i in range(chunk_len//2):
+      #    image.insert(i, self.get_image(image_cv, z, chunks[i], mip,
+      #                                   to_tensor=True, normalizer=None,
+      #                                   to_float=False))
+      #    image.insert(-i-1, self.get_image(image_cv, z, chunks[-i], mip,
+      #                                   to_tensor=True, normalizer=None,
+      #                                   to_float=False))
+      #if odd:
+      #    image.append(self.get_image(image_cv, z, chunks[chunk_len//2+1], mip,
+      #                                   to_tensor=True, normalizer=None,
+      #                                   to_float=False))
+      end =time()
+      print("*********random read time:", end-start, "image len", len(image))
+      self.device = tmp_device
+      print("********** data device", im.device)
+      torch.cuda.synchronize()
+      start = time()
+      new_im = im.to(device="cuda")
+      torch.cuda.synchronize()
+      end_time = time()
+      print("*********move from cpu to GPU", end_time - start)
+      del im
+      new_im = new_im *2
+      torch.cuda.synchronize()
+      start = time()
+      im = new_im.to(device="cpu")
+      torch.cuda.synchronize()
+      end_time = time()
+      print("******* move from GPU to cpu ", end_time -start)
+      del new_im
+      im = im + 2
+      torch.cuda.synchronize()
+      start = time()
+      im = im.to(device="cuda")
+      torch.cuda.synchronize()
+      end_time = time()
+      print("******* move from cpu to GUP again ", end_time -start)
+
+
+
+      return 0
+
   def get_chunk_grid(self, cm, bbox, mip, overlap, rows, pad):
       chunk_grid = self.break_into_chunks_grid(bbox, cm.dst_chunk_sizes[mip],
                                           cm.dst_voxel_offsets[mip], mip=mip,
@@ -466,6 +536,13 @@ class Aligner:
       #    for j in range(len(chunk_grid[0])):
       #        print("i j ", i, j ,"chunk size is",
       #              chunk_grid[i][j].stringify(0,mip=mip))
+      if overlap == 0:
+          chunks.append(BoundingBox(chunk_grid[0][0].x_range(mip=mip)[0]-pad,
+                                    chunk_grid[-1][-1].x_range(mip=mip)[1]+pad,
+                                    chunk_grid[0][0].y_range(mip=mip)[0]-pad,
+                                    chunk_grid[-1][-1].y_range(mip=mip)[1]+pad,
+                                    mip=mip))
+          return chunks
       start =0
       while(start+rows<len(chunk_grid)):
           print("start + row is", start+rows)
@@ -525,6 +602,7 @@ class Aligner:
     #elif head_crop == False and end_crop:
     #    offset = 0
 
+    torch.cuda.synchronize()
     start = time()
     #vector voting 
     for ys in range(y_chunk_number):
@@ -560,24 +638,24 @@ class Aligner:
             #print(" each cf time", f_t_e - f_t)
             vv_fields.append(field)
         #torch.cuda.synchronize()
-        vv_s = time()
+        #vv_s = time()
         new_field = self.new_vector_vote_chunk(vv_fields, mip,
                                            softmin_temp=softmin_temp,
                                            blur_sigma=blur_sigma)
-        torch.cuda.synchronize()
-        end_cf = time()
-        print("+++++++++++vv time", end_cf - vv_s)
-        print("=================compute", vvote_way, " chunk fields time",
-              end_cf-start_cf)
+        #torch.cuda.synchronize()
+        #end_cf = time()
+        #print("+++++++++++vv time", end_cf - vv_s)
+        #print("=================compute", vvote_way, " chunk fields time",
+        #      end_cf-start_cf)
         new_field = new_field[:, 0:-pad, pad:-pad,:]
         new_field = new_field.to(device='cpu')
         dst_field[:,0:chunk_size+pad,
                   pad+ys*chunk_size:pad+ys*chunk_size+chunk_size, :] = new_field
 
-    end = time()
-    print("================= first row in vv time is", end -start,
-          "y chunk_number is", y_chunk_number, " x_chunk_number",
-          x_chunk_number)
+    #end = time()
+    #print("================= first row in vv time is", end -start,
+    #      "y chunk_number is", y_chunk_number, " x_chunk_number",
+    #      x_chunk_number)
     for xs in range(1, x_chunk_number-1):
         for ys in range(y_chunk_number):
             vv_fields = []
@@ -608,8 +686,8 @@ class Aligner:
             new_field = new_field.to(device='cpu')
             dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = new_field
-    new_end = time()
-    print("================= middle row in vv time is", new_end - end)
+    #new_end = time()
+    #print("================= middle row in vv time is", new_end - end)
 
     for xs in [x_chunk_number-1]:
         for ys in range(y_chunk_number):
@@ -645,8 +723,10 @@ class Aligner:
             #print("--------field shape", field.shape )
             dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size+pad,
                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = new_field
+    torch.cuda.synchronize()
     last_end = time()
-    print("================= last row in vv time is", last_end - new_end)
+    print("================= whole vv time is", last_end - start)
+    #print("================= last row in vv time is", last_end - new_end)
 
     
     #warp the image
@@ -666,6 +746,7 @@ class Aligner:
             image_patch = image_patch.to(device='cpu')
             image[..., xs*chunk_size:xs*chunk_size+chunk_size,
                   pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch
+    torch.cuda.synchronize()
     warp_end = time()
     print("====================== warp end time", warp_end - last_end)
     return image, dst_field

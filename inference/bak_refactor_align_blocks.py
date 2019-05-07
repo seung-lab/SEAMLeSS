@@ -176,7 +176,7 @@ if __name__ == '__main__':
     dst = cm.create(join(args.dst_path, 'image_blocks', block_type), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True)
-    dsts[i] = dst
+    dsts[i] = dst 
 
   # Create field CloudVolumes
   serial_fields = {}
@@ -229,79 +229,75 @@ if __name__ == '__main__':
   for i in  chunk_grid:
       print("--------grid size is ", i.stringify(0, mip=mip))
 
-  #for i in range(len(chunk_grid)):
-  #    chunk = chunk_grid[i]
-  #    if(len(chunk_grid) == 1):
-  #        head_crop = False
-  #        end_crop = False
-  #    else:
-  #        if i == 0:
-  #            head_crop = False
-  #            end_crop = True
-  #        elif i == (len(chunk_grid) -1):
-  #            head_crop = True
-  #            end_crop = False
-  #        else:
-  #            head_crop = True
-  #            end_crop = True
+  for i in range(len(chunk_grid)):
+      chunk = chunk_grid[i]
+      if(len(chunk_grid) == 1):
+          head_crop = False
+          end_crop = False
+      else:
+          if i == 0:
+              head_crop = False
+              end_crop = True
+          elif i == (len(chunk_grid) -1):
+              head_crop = True
+              end_crop = False
+          else:
+              head_crop = True
+              end_crop = True
 
-  #    if head_crop == False and end_crop == True:
-  #        final_chunk = a.crop_chunk(chunk, mip, pad,
-  #                                   chunk_size*(super_chunk_len-1)+pad,
-  #                                   pad, pad)
-  #    elif head_crop and end_crop:
-  #        final_chunk = a.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
-  #                                   chunk_size*(super_chunk_len-1)+pad,
-  #                                   pad, pad)
-  #    elif head_crop and end_crop == False:
-  #        final_chunk = a.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
-  #                                   pad, pad, pad)
-  #    else:
-  #        final_chunk = a.crop_chunk(chunk, mip, pad,
-  #                                   pad, pad, pad)
-  #    print("----------------------- head crop ", head_crop, " end_crop",
-  #          end_crop)
+      if head_crop == False and end_crop == True:
+          final_chunk = a.crop_chunk(chunk, mip, pad,
+                                     chunk_size*(super_chunk_len-1)+pad,
+                                     pad, pad)
+      elif head_crop and end_crop:
+          final_chunk = a.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
+                                     chunk_size*(super_chunk_len-1)+pad,
+                                     pad, pad)
+      elif head_crop and end_crop == False:
+          final_chunk = a.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
+                                     pad, pad, pad)
+      else:
+          final_chunk = a.crop_chunk(chunk, mip, pad,
+                                     pad, pad, pad)
+      print("----------------------- head crop ", head_crop, " end_crop",
+            end_crop)
 
-  #    print("<<<<<<init chunk size is ", chunk.stringify(0, mip=mip),
-  #          "final_chunk is ", final_chunk.stringify(0, mip=mip))
-  #    image_list, chunk = a.process_super_chunk_serial(src, block_start, copy_range[0],
-  #                                                     serial_range, serial_offsets,
-  #                                                     serial_fields, dst, model_lookup,
-  #                                                     chunk, mip, pad, chunk_size,
-  #                                                     head_crop, end_crop,
-  #                                                     mask_cv=src_mask_cv,
-  #                                                     mask_mip=src_mask_mip,
-  #                                                     mask_val=src_mask_val)
-  #    write_image = []
-  #    for _ in image_list:
-  #        write_image.append(True)
-  #    print("============================ start vector voting")
-  #    # align with vector voting
-  #    vvote_way = args.tgt_radius
-  #    a.process_super_chunk_vvote(src, block_start, vvote_range_small, dst,
-  #                                model_lookup, vvote_way, image_list,
-  #                                write_image, chunk,
-  #                                mip, pad, chunk_size, super_chunk_len,
-  #                                vvote_field,
-  #                                head_crop, end_crop, final_chunk,
-  #                                mask_cv=src_mask_cv, mask_mip=src_mask_mip,
-  #                                mask_val=src_mask_val)
-
+      print("<<<<<<init chunk size is ", chunk.stringify(0, mip=mip),
+            "final_chunk is ", final_chunk.stringify(0, mip=mip))
+      image_list, chunk = a.process_super_chunk_serial(src, block_start, copy_range[0],
+                                                       serial_range, serial_offsets,
+                                                       serial_fields, dst, model_lookup,
+                                                       chunk, mip, pad, chunk_size,
+                                                       head_crop, end_crop,
+                                                       mask_cv=src_mask_cv,
+                                                       mask_mip=src_mask_mip,
+                                                       mask_val=src_mask_val)
+      write_image = []
+      for _ in image_list:
+          write_image.append(True)
+      print("============================ start vector voting")
+      # align with vector voting
+      vvote_way = args.tgt_radius
+      a.process_super_chunk_vvote(src, block_start, vvote_range_small, dst,
+                                  model_lookup, vvote_way, image_list,
+                                  write_image, chunk,
+                                  mip, pad, chunk_size, super_chunk_len,
+                                  vvote_field,
+                                  head_crop, end_crop, final_chunk,
+                                  mask_cv=src_mask_cv, mask_mip=src_mask_mip,
+                                  mask_val=src_mask_val)
   print("Only vector voting ------------>>")
-  vvote_subblock = [vvote_range[0]]
   for vvote_start in vvote_subblock:
-      #if vvote_start + super_chunk_len <= vvote_range[-1]+1:
-      #    end_range = vvote_start + super_chunk_len
-      #else:
-      #    end_range = vvote_range[-1] +1;
-      #    super_chunk_len = vvote_range[-1] +1 - vvote_start;
+      if vvote_start + super_chunk_len <= vvote_range[-1]+1:
+          end_range = vvote_start + super_chunk_len
+      else:
+          end_range = vvote_range[-1] +1;
+          super_chunk_len = vvote_range[-1] +1 - vvote_start;
 
-      #print("<<<<<<<<-------start ", vvote_start, " end range ", end_range,
-      #      "vvote range is ", vvote_range )
-      #overlap_chunks = 2 * (super_chunk_len -1)
-      overlap_chunks =0
+      print("<<<<<<<<-------start ", vvote_start, " end range ", end_range,
+            "vvote range is ", vvote_range )
+      overlap_chunks = 2 * (super_chunk_len -1)
       chunk_grid = a.get_chunk_grid(cm, bbox, mip, overlap_chunks, rows, pad)
-      #a.random_read(cm, src, bbox, mip, pad, block_start+vvote_start)
       for j in range(len(chunk_grid)):
           chunk = chunk_grid[j]
           print("<<<<<<init chunk size is ", chunk.stringify(0, mip=mip))
@@ -335,23 +331,14 @@ if __name__ == '__main__':
           vvote_way = args.tgt_radius
           image_list = []
           write_image = []
-          print("head_crop is", head_crop ," end_crop is", end_crop)
           for i in range(vvote_way):
-              start_im = time()
-              # modify dst to src for profiling purpose, remember to change
-              # back
-              image_for_vv = a.load_part_image(src,
-                                                  block_start+vvote_start-i,
+              image_for_vv = a.load_part_image(dst,
+                                                  block_start+vvote_start-1,
                                   chunk, mip, mask_cv=src_mask_cv,
                                   mask_mip=src_mask_mip, mask_val=src_mask_val)
               image_list.insert(0,image_for_vv)
-              #modify the write image for profiling purpose
-              #write_image.insert(0, False)
-              write_image.insert(0, True)
-              end_im = time()
-              print(">>>>>>>>>>>>>>>>>read image time:", end_im - start_im)
-          #vvote_range_small = range(vvote_start, end_range)
-          vvote_range_small = vvote_range
+              write_image.insert(0, False)
+          vvote_range_small = range(vvote_start, end_range)
           print("vvote_range_small is", vvote_range_small)
           a.process_super_chunk_vvote(src, block_start, vvote_range_small, dst,
                                       model_lookup, vvote_way, image_list,
