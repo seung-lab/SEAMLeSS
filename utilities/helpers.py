@@ -862,7 +862,7 @@ class GaussianSmoothing(nn.Module):
         dim (int, optional): The number of dimensions of the data.
             Default value is 2 (spatial).
 
-    Copied from https://discuss.pytorch.org/t/is-there-anyway-to-do-gaussian-filtering-for-an-image-2d-3d-in-pytorch/12351/8
+    Copied from https://bit.ly/2VDFKct
     """
     def __init__(self, channels, kernel_size, sigma, dim=2, device='cuda'):
         super(GaussianSmoothing, self).__init__()
@@ -889,8 +889,7 @@ class GaussianSmoothing(nn.Module):
         kernel = kernel / torch.sum(kernel)
 
         # Reshape to depthwise convolutional weight
-        kernel = kernel.view(1, 1, *kernel.size())
-        kernel = kernel.repeat(channels, *[1] * (kernel.dim() - 1))
+        kernel = kernel.expand(channels, 1, *kernel.shape)
 
         self.register_buffer('weight', kernel)
         self.weight = self.weight.to(device)
