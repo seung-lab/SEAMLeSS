@@ -387,6 +387,7 @@ class ModelArchive(object):
             for p in self._model.parameters():
                 p.requires_grad = False
             self._model.eval().cuda()
+            self._model = torch.nn.DataParallel(self._model)
         else:
             for p in self._model.parameters():
                 p.requires_grad = True

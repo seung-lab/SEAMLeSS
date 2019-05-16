@@ -4,7 +4,7 @@ import copy
 from utilities.helpers import (grid_sample, upsample, downsample,
                                load_model_from_dict, gif)
 import numpy as np
-
+from time import time,sleep
 
 class Model(nn.Module):
     """
@@ -25,9 +25,27 @@ class Model(nn.Module):
         return self.submodule(index)
 
     def forward(self, src, tgt, in_field=None, encodings=False, **kwargs):
+        #print("srcs shape is", srcs.shape)
+        #src = srcs[:,0:1,...]
+        #tgt = srcs[:,1:2,...]
+        #torch.cuda.synchronize()
+        start = time()
+        print("src device ++++++++++", src.device, "start time", start)
+        print("first number ", src[0,0,0], "tgt ", tgt[0,0,0])
         if self.encode is not None and encodings:
+            print("++++++++encoder working")
             src, tgt = self.encode(src, tgt)
-        field = self.align.apply(src, tgt)
+        source = src.squeeze().unsqueeze(0)
+        target = tgt.squeeze().unsqueeze(0)
+        stack = torch.cat((source, target), 0).unsqueeze(0)
+        field = self.align(stack)
+        #field = [self, tgt]
+        #torch.cuda.synchronize()
+        end = time()
+        #print("on device ++++++++++", field.device, "end time", end,
+        #      "total", end -start)
+        print("on device ++++++++++", tgt.device, "end time", end,
+              "total", end -start)
         return field
 
     def load(self, path):
@@ -555,6 +573,7 @@ class PyramidTransformer(nn.Module):
             g.requires_grad = True
 
     def forward(self, x, idx=0, vis=None, use_preencoder=False):
+        print("stack device ++++++++++", x.device, "start time", time())
         if use_preencoder == "only":
             # only run the preencoder and return the results
             return self.pyramid(x, idx, vis, use_preencoder=use_preencoder)
