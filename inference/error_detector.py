@@ -120,8 +120,8 @@ def inference(model, seg, img, patch_size):
 	vis_vol = Volume(visited, visited_patch_size)
 
 	# Output volume
-	error_map = np.zeros((1,1,)+tuple(volume_size), dtype='float32')
-	error_vol = Volume(error_map, patch_size)
+	errormap = np.zeros((1,1,)+tuple(volume_size), dtype='float32')
+	error_vol = Volume(errormap, patch_size)
 
 	coverage = 0
 	i = 0

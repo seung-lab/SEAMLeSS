@@ -705,9 +705,10 @@ class Aligner:
     img = self.get_volume(src_img_cv, bbox, bbox_mip, img_mip, to_float=True, to_tensor=False)
     
     # Inference
-    new_image = inference(model, seg, img, patch_size)
-    
-    return new_image
+    if np.sum(seg==0)/np.shape(seg) > 0.5:
+      return torch.zeros(seg.shape)
+    else:
+      return inference(model, seg, img, patch_size)
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
                         inverse=False, serial=True, softmin_temp=None,
