@@ -705,7 +705,7 @@ class Aligner:
     img = self.get_volume(src_img_cv, bbox, bbox_mip, img_mip, to_float=True, to_tensor=False)
     
     # Inference
-    if np.sum(seg==0)/np.shape(seg) > 0.5:
+    if np.sum(seg==0)/np.prod(np.shape(seg)) > 0.5:
       return torch.zeros(seg.shape)
     else:
       return inference(model, seg, img, patch_size)
