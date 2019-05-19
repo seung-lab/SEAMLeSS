@@ -195,7 +195,6 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 	vol_seg = Volume(seg, patch_size)
 	
 	print(">>>>> Sampling valid points...")
-	t0 = time()
 
 	focus_list = np.array([])
 	
@@ -242,9 +241,7 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 	focus_list[:,1] = focus_list[:,1]*mip_factor
 	focus_list[:,2] = focus_list[:,2]*mip_factor
 
-	elapsed = np.round(time()-t0, 3)
 	print(">>>>> Sampling complete!")
-	print("Elapsed time = {}".format(elapsed))
 	
 	return focus_list 
 
