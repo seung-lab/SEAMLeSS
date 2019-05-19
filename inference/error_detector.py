@@ -259,7 +259,7 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 
 			patch_seg = vol_seg[focus]
 			patch_obj_mask = object_mask(patch_seg)
-			patch_obj_mask_crop = patch_obj_mask[tuple([
+			patch_obj_mask_crop = patch_obj_mask[0,0,tuple([
 				slice(patch_size[i]//2-visited_size[i]//2, patch_size[i]//2+visited_size[i]//2)
 				for i in range(len(patch_size))])]
 
