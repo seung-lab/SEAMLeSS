@@ -205,7 +205,7 @@ def chunk_bboxes(bbox_start, bbox_end, chunk_size, overlap=(0,0,0)):
 						for (xs, ys, zs) in itertools.product(x_bnds, y_bnds, z_bnds)]
 
 	return bboxes
-	
+
 
 def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk_size, mip=0):
 
@@ -252,7 +252,7 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 
 			focus = random_coord(bbox_start_chunk, bbox_end_chunk)[0]
 
-			if vol_visited.A[focus[0],focus[1],focus[2]] >= 1:
+			if vol_visited.A[0,0,focus[0],focus[1],focus[2]] >= 1:
 				continue
 
 			focus_list = np.concatenate((focus_list, focus))
