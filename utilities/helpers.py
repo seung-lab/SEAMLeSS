@@ -27,7 +27,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: 402
 plt.switch_backend('agg')
 import matplotlib.cm as cm  # noqa: 402
-
+from time import time
 
 def compose_functions(fseq):
     def compose(f1, f2):
@@ -848,6 +848,79 @@ def vector_vote(fields, softmin_temp, blur_sigma=None):
   field = field.permute(1,2,3,0)
   field_weights = field_weights.permute(2,3,0,1)
   return matmul(field, field_weights).permute(3,0,1,2)
+
+class warp_model(nn.Module):
+    def __init__(self):
+        super(warp_model, self).__init__()
+
+    def forward(self, image, field, padding_mode):
+        return grid_sample(image, field, padding_mode=padding_mode)
+
+class vvmodel(nn.Module):
+    def __init__(self):
+        super(vvmodel, self).__init__()
+
+    def forward(self, field_tensor, softmin_temp, blur_sigma=None):
+        """Produce a single, consensus vector field from a set of vector fields
+
+        Args:
+          fields: list of fields (torch tensors in gridsample convention)
+          softmin_temp: float for temperature of softmin
+          blur_sigma: std dev of the Gaussian kernel by which to blur the inputs;
+            default None means no blurring
+
+        Returns:
+          single vector field
+        """
+        #print('softmin_temp {}'.format(softmin_temp))
+        start = time()
+        field_tensor = field_tensor.permute(1,0,2,3,4)
+        #print("-----------in forward ", field_tensor.shape, " time is",
+        #      start, "device is ", field_tensor.device)
+        fields = []
+        for i in range(field_tensor.shape[0]):
+            fields.append(field_tensor[i,...])
+        fields_blurred = fields
+        if blur_sigma:
+          fields_blurred = [blur_field(f, blur_sigma) for f in fields]
+        n = len(fields)
+        assert(n % 2 == 1)
+        # majority
+        m = n // 2 + 1
+        indices = range(n)
+
+        # compute distances for all pairs of fields
+        dists = {}
+        for i,j in combinations(indices, 2):
+          dists[(i,j)] = compute_distance(fields_blurred[i], fields_blurred[j])
+        # compute mean distance for all m-tuples
+        mtuple_avg = []
+        mtuples = list(combinations(indices, m))
+        for mt in mtuples:
+          t = []
+          for i,j in combinations(mt, 2):
+            t.append(dists[(i,j)])
+          mtuple_avg.append(torch.mean(torch.cat(t, dim=0), dim=0, keepdim=True))
+        mavg = torch.cat(mtuple_avg, dim=0)
+
+        # compute weights for mtuples, giving higher weight to mtuples w/ smaller distances
+        mtuple_weights = softmax(-mavg/softmin_temp , dim=0)
+        # assign mtuple weights back to individual fields
+        field_weights = torch.zeros((n,) + mtuple_weights.shape[1:])
+        field_weights = field_weights.to(device=mtuple_weights.device)
+        for i, mtuple in enumerate(mtuples):
+          for j in mtuple:
+            field_weights[j,...] += mtuple_weights[i,...]
+        # divy up the weight by contribution
+        field_weights = field_weights / m
+        # create a voted field by multiplying fields by field weights
+        field = torch.cat(fields, dim=0)
+        field = field.permute(1,2,3,0)
+        field_weights = field_weights.permute(2,3,0,1)
+        res = matmul(field, field_weights).permute(3,0,1,2)
+        #end = time()
+        #print("-----------vv finish, time stamp", end, "use",end-start)
+        return res
 
 class GaussianSmoothing(nn.Module):
     """

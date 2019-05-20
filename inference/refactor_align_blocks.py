@@ -1,6 +1,3 @@
-import gevent.monkey
-gevent.monkey.patch_all()
-
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
 from taskqueue import TaskQueue, GreenTaskQueue
