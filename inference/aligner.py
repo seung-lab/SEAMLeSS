@@ -187,7 +187,7 @@ class Aligner:
                                  serial_offsets, serial_fields, dsts, model_lookup,
                                  schunk, mip, pad, chunk_size,
                                  head_crop, end_crop, mask_cv=None, mask_mip=0,
-                                 mask_val=0):
+                                 mask_val=0, affine=None):
       image_list = []
       #load from copy range
       chunk = deepcopy(schunk)
@@ -610,9 +610,17 @@ class Aligner:
 
 
   def load_part_image(self, image_cv, z, bbox, image_mip, mask_cv=None,
-                       mask_mip=0, mask_val=0):
+                       mask_mip=0, mask_val=0, affine=None):
       tmp_device = self.device
       self.device = 'cpu'
+      if affine in not None:
+          aff = affine[z]
+          x_range = bbox.x_range(mip=0)
+          y_range = bbox.y_range(mip=0)
+          bbox =BoundingBox(x_range[0]-aff[:,2][1],
+                            x_range[1]-aff[:,2][1],
+                            y_range[0]-aff[:,2][0],
+                            y_range[1]-aff[:,2][0], mip=0)
       image = self.get_image(image_cv, z, bbox, image_mip,
                              to_tensor=True, normalizer=None, to_float=False)
       if mask_cv is not None:

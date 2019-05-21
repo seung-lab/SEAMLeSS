@@ -14,6 +14,7 @@ from cloudmanager import CloudManager
 from itertools import compress
 from tasks import run
 from boundingbox import BoundingBox
+import numpy as np
 
 def print_run(diff, n_tasks):
   if n_tasks > 0:
@@ -43,6 +44,8 @@ def ranges_overlap(a_pair, b_pair):
 
 if __name__ == '__main__':
   parser = get_argparser()
+  parser.add_argument('--affine_lookup', type=str,
+                      help='path to csv of affine transforms indexed by section')
   parser.add_argument('--model_lookup', type=str,
     help='relative path to CSV file identifying model to use per z range')
   parser.add_argument('--z_range_path', type=str, 
@@ -105,6 +108,15 @@ if __name__ == '__main__':
          for z in range(z_start, z_stop):
            bbox_lookup[z] = bbox 
            model_lookup[z] = model_path
+
+  affine_lookup = None
+  if args.affine_lookup:
+    affine_lookup = {}
+    with open(args.affine_lookup) as f:
+      affine_list = json.load(f)
+      for aff in affine_list:
+        z = aff['z']
+        affine_lookup[z] = np.array(aff['transform'])
 
   # Compile ranges
   block_range = range(args.z_start, args.z_stop, args.block_size)
