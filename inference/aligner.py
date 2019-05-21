@@ -706,7 +706,7 @@ class Aligner:
     
     # Inference
     if np.sum(seg==0)/np.prod(np.shape(seg)) > 0.5:
-      return torch.zeros(seg.shape)
+      return np.zeros(seg.shape)
     else:
       return inference(model, seg, img, patch_size)
 
