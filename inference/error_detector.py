@@ -211,8 +211,8 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 
 	seg = vol_seg.A
 
+	mip_factor = 2**mip
 	if mip > 0:
-		mip_factor = 2**mip
 		
 		seg = seg[:,::mip_factor,::mip_factor]
 		volume_size = (volume_size[0],
@@ -232,7 +232,7 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 	vol_visited = Volume(visited, visited_size)
 	vol_seg = Volume(seg, patch_size)
 	
-	print(">>>>> Sampling valid points...")
+	print("Sampling valid points...")
 
 	focus_list = np.array([])
 	
@@ -246,6 +246,10 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 		bbox_start_chunk = bbox[0]
 		bbox_end_chunk = bbox[1]
 		
+		print("\nSampling valid points for [{},{},{}] ~ [{},{},{}]".format(
+			bbox_start_chunk[0], bbox_start_chunk[1], bbox_start_chunk[2],
+			bbox_end_chunk[0], bbox_end_chunk[1], bbox_end_chunk[2]))
+
 		cover = 0
 		i = 0
 		while cover < 1:
@@ -255,8 +259,6 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 			if vol_visited.A[0,0,focus[0],focus[1],focus[2]] >= 1:
 				continue
 
-			focus_list = np.concatenate((focus_list, focus))
-
 			patch_seg = vol_seg[focus]
 			patch_obj_mask = object_mask(patch_seg)
 			patch_obj_mask_crop = patch_obj_mask[(0,0,)+tuple([
@@ -265,7 +267,13 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 
 			vol_visited[focus] = vol_visited[focus] + patch_obj_mask_crop
 
-			n_covered = np.sum(vol_visited.A[tuple([slice(bbox_start_chunk[i], bbox_end_chunk[i])
+			# Neglect dust pieces
+			if np.sum(patch_obj_mask_crop) < 5000:
+				continue
+			
+			focus_list = np.concatenate((focus_list, focus))
+			
+			n_covered = np.sum(vol_visited.A[(0,0)+tuple([slice(bbox_start_chunk[i], bbox_end_chunk[i])
 																		for i in range(3)])]>=1)
 			chunk_size = np.prod([bbox_end_chunk[i]-bbox_start_chunk[i] for i in range(3)])
 			cover = np.round(n_covered/chunk_size,4)
@@ -279,8 +287,6 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 	focus_list[:,1] = focus_list[:,1]*mip_factor
 	focus_list[:,2] = focus_list[:,2]*mip_factor
 
-	print(">>>>> Sampling complete!")
-	
 	return focus_list 
 
 
