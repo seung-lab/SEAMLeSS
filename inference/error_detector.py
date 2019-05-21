@@ -268,7 +268,7 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 			vol_visited[focus] = vol_visited[focus] + patch_obj_mask_crop
 
 			# Neglect dust pieces
-			if np.sum(patch_obj_mask_crop) < 5000:
+			if np.sum(patch_obj_mask_crop) < 5000/(mip_factor**2):
 				continue
 			
 			focus_list = np.concatenate((focus_list, focus))
@@ -310,7 +310,7 @@ def inference(model, seg, img, patch_size):
 	error_vol = Volume(errormap, patch_size)
 
 	# Sample points
-	focus_list = sample_objects_chunked(seg_vol, volume_size, patch_size, visited_patch_size, chunk_size)
+	focus_list = sample_objects_chunked(seg_vol, volume_size, patch_size, visited_patch_size, chunk_size, mip=2)
 	n = focus_list.shape[0]
 
 	coverage = 0
