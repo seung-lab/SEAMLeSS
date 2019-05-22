@@ -214,7 +214,7 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 	mip_factor = 2**mip
 	if mip > 0:
 		
-		seg = seg[:,::mip_factor,::mip_factor]
+		seg = seg[:,:,:,::mip_factor,::mip_factor]
 		volume_size = (volume_size[0],
 										volume_size[1]//mip_factor,
 										volume_size[2]//mip_factor)
