@@ -304,9 +304,10 @@ class Aligner:
     x_range = bbox.x_range(mip=bbox_mip)
     y_range = bbox.y_range(mip=bbox_mip)
     z_range = bbox.z_range()
-    volume_end = cv[src_mip].bounds.maxpt
-    xs = max(x_range[0],0); ys = max(y_range[0],0); zs = max(z_range[0],0)
-    xe = min(x_range[1],volume_end[0]); ye = min(y_range[1],volume_end[1]); ze = min(z_range[1],volume_end[2])
+    vol_start = cv[src_mip].bounds.minpt
+    vol_end = cv[src_mip].bounds.maxpt
+    xs = max(x_range[0],vol_start[0]); ys = max(y_range[0],vol_start[1]); zs = max(z_range[0],vol_start[2])
+    xe = min(x_range[1],vol_end[0]); ye = min(y_range[1],vol_end[1]); ze = min(z_range[1],vol_end[2])
     data = cv[src_mip][xs:xe, ys:ye, zs:ze]
     data = np.transpose(data, (3,2,0,1))
     data = np.reshape(data, (1,)+data.shape)
@@ -672,10 +673,10 @@ class Aligner:
 
   # Error detection
   def error_detect_volume(self, cm, model_path, src_seg_cv, seg_mip, src_img_cv, img_mip, dst_cv, mip, bbox,
-                    chunk_size, patch_size, prefix=''):
+                    bbox_mip, chunk_size, patch_size, prefix=''):
     start = time()
     chunks = self.break_into_chunks_3d(bbox, chunk_size,
-                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    cm.dst_voxel_offsets[mip], mip=bbox_mip,
                                     max_mip=cm.num_scales)
     z_range = bbox.z_range()
     print("\nerror detection\n"

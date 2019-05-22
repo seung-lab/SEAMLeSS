@@ -294,16 +294,12 @@ def inference(model, seg, img, patch_size):
 	
 	volume_size = seg.shape[2:]
 	patch_size = patch_size[::-1]
-	chunk_size = (128,512,512)
+	chunk_size = (128,256,256)
+	visited_patch_size = (16,80,80)
 
 	# Input volumes
 	seg_vol = Volume(seg, patch_size)
 	img_vol = Volume(img, patch_size)
-
-	# Visited volume
-	visited_patch_size = (16,80,80)
-	visited = visited_init(seg, volume_size, patch_size)
-	vis_vol = Volume(visited, visited_patch_size)
 
 	# Output volume
 	errormap = np.zeros((1,1,)+tuple(volume_size), dtype='float32')
@@ -311,9 +307,8 @@ def inference(model, seg, img, patch_size):
 
 	# Sample points
 	focus_list = sample_objects_chunked(seg_vol, volume_size, patch_size, visited_patch_size, chunk_size, mip=2)
+	
 	n = focus_list.shape[0]
-
-	coverage = 0
 	i = 0
 	for i in range(n):
 
@@ -328,13 +323,9 @@ def inference(model, seg, img, patch_size):
 		pred_upsample = F.interpolate(pred, scale_factor=(1,8,8), mode="nearest").cpu().detach()
 		error_vol[focus] = np.maximum(error_vol[focus], pred_upsample*obj_patch)
 
-		vis_vol[focus] = torch.from_numpy(vis_vol[focus]) + torch.tensor(obj_patch[:,:,8:24,40:120,40:120], dtype=torch.uint8)
-
 		i = i + 1
 
-		coverage = np.round(np.sum(vis_vol.A>=1)/np.prod(volume_size),2)
-
 		if i % 100 == 0:
-			print("Coverage = {}".format(coverage))
+			print("{} / {}".format(i,n))
 		
 	return error_vol.A
