@@ -84,7 +84,7 @@ if __name__ == '__main__':
   full_range = range(args.bbox_start[2], args.bbox_stop[2], chunk_size[2])
   # Create CloudVolume Manager
   cm = CloudManager(args.src_img_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=chunk_size[0]//(2**mip), batch_mip=mip)
+                    size_chunk=chunk_size[0], batch_mip=mip)
 
   # Create src CloudVolumes
   src_img = cm.create(args.src_img_path, data_type='uint8', num_channels=1,
@@ -107,7 +107,7 @@ if __name__ == '__main__':
       def __init__(self):
           pass
       def __iter__(self):
-          t = a.error_detect_volume(cm, args.model_path, src_seg.path, seg_mip, src_img.path, img_mip, dst.path, mip, bbox, bbox_mip, chunk_size, patch_size, str(mip))
+          t = a.error_detect_volume(cm, args.model_path, src_seg.path, seg_mip, src_img.path, img_mip, dst.path, mip, bbox, chunk_size, patch_size, str(mip))
           yield from t
   # range_list = make_range(full_range, a.threads)
 
