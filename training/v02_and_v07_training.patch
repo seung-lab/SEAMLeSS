@@ -1,0 +1,45 @@
+diff --git a/training/stack_dataset.py b/training/stack_dataset.py
+index 662f2a8..f3d6896 100644
+--- a/training/stack_dataset.py
++++ b/training/stack_dataset.py
+@@ -9,8 +9,10 @@ from utilities.helpers import (upsample, downsample, gridsample_residual,
+                                dotdict)
+ 
+ 
+-def compile_dataset(*h5_paths, transform=None, num_samples=None, repeats=1):
++def compile_dataset(h5_paths, transform=None, num_samples=None, repeats=1):
+     datasets = []
++    if not isinstance(h5_paths, list):
++        h5_paths = [h5_paths]
+     for h5_path in h5_paths:
+         h5f = h5py.File(h5_path, 'r')
+         ds = [StackDataset(v, transform=transform, num_samples=num_samples,
+diff --git a/training/train.py b/training/train.py
+index a3ff91e..5cd41d4 100755
+--- a/training/train.py
++++ b/training/train.py
+@@ -109,7 +109,7 @@ def main():
+         stack_dataset.OnlyIf(stack_dataset.RandomFlip(),
+                              not state_vars.skip_aug),
+         stack_dataset.Split(),
+-        stack_dataset.OnlyIf(stack_dataset.RandomTranslation(20),
++        stack_dataset.OnlyIf(stack_dataset.RandomTranslation(10),
+                              not state_vars.skip_aug),
+         stack_dataset.OnlyIf(stack_dataset.RandomField(),
+                              state_vars.supervised),
+@@ -117,6 +117,7 @@ def main():
+                              not state_vars.skip_aug),
+         stack_dataset.ToDevice('cpu'),
+     ])
++
+     train_dataset = stack_dataset.compile_dataset(
+         state_vars.training_set_path, transform=train_transform,
+         num_samples=state_vars.num_samples, repeats=state_vars.repeats)
+@@ -187,6 +188,7 @@ def main():
+               '\n'
+               .format(state_vars.name, epoch, train_losses=train_losses,
+                       val_losses=val_losses, epoch_time=epoch_time))
++        sys.exit()
+ 
+ 
+ def train(train_loader, archive, epoch):
