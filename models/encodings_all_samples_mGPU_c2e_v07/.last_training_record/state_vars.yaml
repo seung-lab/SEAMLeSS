@@ -1,7 +1,7 @@
 batch_size: 2
 checkpoint_time: 10000
 encodings: true
-epoch: 911
+epoch: 934
 epochs_per_mip: 4
 feature_maps: [12, 12, 12, 12, 12]
 gamma: 1
