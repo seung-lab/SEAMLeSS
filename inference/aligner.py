@@ -610,10 +610,10 @@ class Aligner:
 
 
   def load_part_image(self, image_cv, z, bbox, image_mip, mask_cv=None,
-                       mask_mip=0, mask_val=0, affine=None):
+                       mask_mip=0, mask_val=0, to_tensor=True, affine=None):
       tmp_device = self.device
       self.device = 'cpu'
-      if affine in not None:
+      if affine is not None:
           aff = affine[z]
           x_range = bbox.x_range(mip=0)
           y_range = bbox.y_range(mip=0)
@@ -622,7 +622,8 @@ class Aligner:
                             y_range[0]-aff[:,2][0],
                             y_range[1]-aff[:,2][0], mip=0)
       image = self.get_image(image_cv, z, bbox, image_mip,
-                             to_tensor=True, normalizer=None, to_float=False)
+                             to_tensor=to_tensor, normalizer=None,
+                             to_float=False)
       if mask_cv is not None:
         mask = self.get_mask(mask_cv, image_z, bbox,
                              src_mip=mask_mip,
@@ -728,6 +729,10 @@ class Aligner:
             xs, ys = coor_list[i]
             dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = new_field[i:i+1,...]
+    
+    torch.cuda.synchronize()
+    vv_end = time()
+    print("******* compute field and vv time is ", vv_end-start)
     #warp the image
     has_next = True
     get_corr = coor(x_chunk_number, y_chunk_number)
@@ -764,6 +769,10 @@ class Aligner:
             xs, ys = coor_list[i]
             image[..., xs*chunk_size:xs*chunk_size+chunk_size,
                   pad+ys*chunk_size:pad+ys*chunk_size+chunk_size]=image_patch[i:i+1,...]
+
+    torch.cuda.synchronize()
+    warp_end = time()
+    print("******** warp time is ", warp_end-vv_end)
     return image, dst_field
 
 

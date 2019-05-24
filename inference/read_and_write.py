@@ -183,7 +183,7 @@ if __name__ == '__main__':
   block_types = ['even', 'odd']
   for i, block_type in enumerate(block_types):
     dst = cm.create(join(args.dst_path, 'image_blocks', block_type),
-                    data_type='uint8', num_channels=1,compress=None,
+                    data_type='uint8', num_channels=1,
                     fill_missing=True, overwrite=True)
     dsts[i] = dst
 
@@ -360,9 +360,12 @@ if __name__ == '__main__':
               write_image.insert(0, True)
               end_im = time()
               print(">>>>>>>>>>>>>>>>>read image time:", end_im - start_im)
-              #a.save_image(image_for_vv, dst, z-(vvote_way-i-1),
-              #         chunk, mip, to_uint8=False)
-              #print(">>>>>>>>>>>>>>>>>write image time:",time() - end_im)
+              im = image_for_vv[...,pad:-pad, pad:-pad]
+              start_save = time()
+              print("image shape", im.shape, " z is", block_start+vvote_start-i)
+              a.save_image(im, dst, block_start+vvote_start-i,
+                       final_chunk, mip, to_uint8=False)
+              print(">>>>>>>>>>>>>>>>>write image time:",time() - start_save)
           #vvote_range_small = range(vvote_start, end_range)
           vvote_range_small = vvote_range
           print("vvote_range_small is", vvote_range_small)

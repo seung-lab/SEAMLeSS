@@ -134,7 +134,8 @@ class CloudManager():
       self.vec_voxel_offsets.append(scales[i]["voxel_offset"])
       self.vec_total_sizes.append(scales[i]["size"])
 
-  def create(self, path, data_type, num_channels, fill_missing, overwrite=False):
+  def create(self, path, data_type, num_channels, fill_missing,
+             overwrite=False, compress='gzip'):
     """Create a MiplessCloudVolume based on params & details of class
 
     Args:
@@ -158,6 +159,6 @@ class CloudManager():
       info = None
       provenance = None
     self.cvs[path] = CV(path, mkdir=overwrite, info=info, provenance=provenance, 
-                       fill_missing=fill_missing, **self.kwargs)
+                       fill_missing=fill_missing, compress=compress, **self.kwargs)
     return self.cvs[path]
 
