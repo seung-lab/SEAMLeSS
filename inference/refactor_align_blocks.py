@@ -14,6 +14,7 @@ from cloudmanager import CloudManager
 from itertools import compress
 from tasks import run
 from boundingbox import BoundingBox
+import random
 
 def print_run(diff, n_tasks):
   if n_tasks > 0:
@@ -334,13 +335,19 @@ if __name__ == '__main__':
           write_image = []
           print("head_crop is", head_crop ," end_crop is", end_crop)
           for i in range(vvote_way):
+              random_i = random.randint(1,300)
               start_im = time()
               # modify dst to src for profiling purpose, remember to change
               # back
               image_for_vv = a.load_part_image(src,
-                                                  block_start+vvote_start-i,
+                                                  block_start+random_i,
                                   chunk, mip, mask_cv=src_mask_cv,
                                   mask_mip=src_mask_mip, mask_val=src_mask_val)
+
+              #image_for_vv = a.load_part_image(src,
+              #                                    block_start+vvote_start-i,
+              #                    chunk, mip, mask_cv=src_mask_cv,
+              #                    mask_mip=src_mask_mip, mask_val=src_mask_val)
               image_list.insert(0,image_for_vv)
               #modify the write image for profiling purpose
               #write_image.insert(0, False)

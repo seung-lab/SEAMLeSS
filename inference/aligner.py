@@ -448,7 +448,8 @@ class Aligner:
 
 
 
-  def new_compute_field_chunk(self, model_path, src_img, tgt_img, warp=False):
+  def new_compute_field_chunk(self, model_path, src_img, tgt_img, warp=False,
+                              affine=None):
       archive = self.get_model_archive(model_path)
       model = archive.model
       #device_ids= [0,1]

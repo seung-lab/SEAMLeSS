@@ -852,8 +852,24 @@ def vector_vote(fields, softmin_temp, blur_sigma=None):
 class warp_model(nn.Module):
     def __init__(self):
         super(warp_model, self).__init__()
-
-    def forward(self, image, field, padding_mode):
+        self.affine = None
+    def set_affine(affine):
+        self.affine = torch.Tensor(affine).to('cuda')
+        self.affine = self.affine.flip(0)[:, [1, 0, 2]]  # flip x and y
+    def forward(self, image, image_mip, field, padding_mode, ox=0, oy=0): 
+        if self.affine is not None:
+            ident = self.rel_to_abs_residual(
+            identity_grid(field.shape, device=field.device), image_mip)
+            field += ident
+            field[..., 0] += ox
+            field[..., 1] += oy
+            field = torch.tensordot(
+                affine[:, 0:2], field, dims=([1], [3])).permute(1, 2, 3, 0)
+            field[..., :] += affine[:, 2]
+            field[..., 0] -= ox
+            field[..., 1] -= oy
+            field -= ident
+            #offset_y, offset_x = padded_bbox.get_offset(mip=0)
         return grid_sample(image, field, padding_mode=padding_mode)
 
 class vvmodel(nn.Module):
