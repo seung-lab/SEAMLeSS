@@ -25,7 +25,7 @@ def green_upload(ptask, aligner):
     else:
         tq = LocalTaskQueue(parallel=1)
         tq.insert_all(ptask, args= [aligner])
-   
+ 
    # for task in ptask:
    #     tq.insert(task, args=[ a ])
 
@@ -69,6 +69,37 @@ class PredictImageTask(RegisteredTask):
     end = time()
     diff = end - start
     print(':{:.3f} s'.format(diff))
+
+class LoadImageTask(RegisteredTask):
+  def __init__(self, src_cv, src_z, patch_bbox, mip, step, mask_cv, mask_mip,
+               mask_val):
+    super().__init__(src_cv, src_z, patch_bbox, mip, step, mask_cv, mask_mip,
+               mask_val)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    src_z = self.src_z
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    mip = self.mip
+    mask_cv = None
+    if self.mask_cv:
+      mask_cv = DCV(self.mask_cv)
+    mask_mip = self.mask_mip
+    mask_val = self.mask_val
+    image = []
+    for i in range(self.step):
+        print("\nLoad image from\n"
+              "src {}\n"
+              "MIP{}\n"
+              "z={} \n".format(src_cv, mip,
+                                src_z,), flush=True)
+        start = time()
+        im = aligner.load_part_image(src_cv, src_z, patch_bbox, mip)
+        image.append(im)
+        end = time()
+        diff = end - start
+        print(':{:.3f} s'.format(diff))
+    #return image
 
 
 class CopyTask(RegisteredTask):

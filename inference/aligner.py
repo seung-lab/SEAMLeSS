@@ -37,7 +37,7 @@ from utilities.archive import ModelArchive
 from utilities.helpers import vvmodel, warp_model
 
 import torch.nn as nn
-#from taskqueue import TaskQueue
+from taskqueue import TaskQueue
 import tasks
 import tenacity
 import boto3
@@ -608,6 +608,13 @@ class Aligner:
                                     mip=mip))
       return chunks
 
+  def load_range_image(self, src_cv, z_range, bbox, mip, step, mask_cv=None,
+                       mask_mip=0, mask_val=0):
+      batch = []
+      for i in z_range:
+          batch.append(tasks.LoadImageTask(src_cv, i, bbox, mip, step, mask_cv,
+                                          mask_mip, mask_val))
+      return batch
 
   def load_part_image(self, image_cv, z, bbox, image_mip, mask_cv=None,
                        mask_mip=0, mask_val=0, to_tensor=True, affine=None):

@@ -183,7 +183,7 @@ if __name__ == '__main__':
   block_types = ['even', 'odd']
   for i, block_type in enumerate(block_types):
     dst = cm.create(join(args.dst_path, 'image_blocks', block_type),
-                    data_type='uint8', num_channels=1,
+                    data_type='uint8', num_channels=1, compress=False,
                     fill_missing=True, overwrite=True)
     dsts[i] = dst
 
