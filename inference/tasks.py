@@ -71,13 +71,14 @@ class PredictImageTask(RegisteredTask):
     print(':{:.3f} s'.format(diff))
 
 class LoadImageTask(RegisteredTask):
-  def __init__(self, src_cv, src_z, patch_bbox, mip, step, mask_cv, mask_mip,
+  def __init__(self, src_cv, dst_cv, src_z, patch_bbox, mip, step, mask_cv, mask_mip,
                mask_val):
-    super().__init__(src_cv, src_z, patch_bbox, mip, step, mask_cv, mask_mip,
+    super().__init__(src_cv, dst_cv, src_z, patch_bbox, mip, step, mask_cv, mask_mip,
                mask_val)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
     src_z = self.src_z
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
@@ -86,6 +87,7 @@ class LoadImageTask(RegisteredTask):
       mask_cv = DCV(self.mask_cv)
     mask_mip = self.mask_mip
     mask_val = self.mask_val
+    prefix = mip
     image = []
     for i in range(self.step):
         print("\nLoad image from\n"
@@ -99,6 +101,12 @@ class LoadImageTask(RegisteredTask):
         end = time()
         diff = end - start
         print(':{:.3f} s'.format(diff))
+    with Storage(dst_cv.path) as stor:
+        path = 'load_image_done/{}/{}'.format(prefix,
+                                              patch_bbox.stringify(src_z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
+
     #return image
 
 

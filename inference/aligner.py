@@ -608,11 +608,11 @@ class Aligner:
                                     mip=mip))
       return chunks
 
-  def load_range_image(self, src_cv, z_range, bbox, mip, step, mask_cv=None,
+  def load_range_image(self, src_cv, dst_cv, z_range, bbox, mip, step, mask_cv=None,
                        mask_mip=0, mask_val=0):
       batch = []
       for i in z_range:
-          batch.append(tasks.LoadImageTask(src_cv, i, bbox, mip, step, mask_cv,
+          batch.append(tasks.LoadImageTask(src_cv, dst_cv, i, bbox, mip, step, mask_cv,
                                           mask_mip, mask_val))
       return batch
 
