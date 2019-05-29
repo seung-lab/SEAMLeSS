@@ -616,6 +616,16 @@ class Aligner:
                                           mask_mip, mask_val))
       return batch
 
+  def load_store_range_image(self, src_cv, dst_cv, z_range, bbox, mip, step,
+                             pad, final_chunk, mask_cv=None, mask_mip=0,
+                             mask_val=0):
+      batch = []
+      for i in z_range:
+          batch.append(tasks.LoadStoreImageTask(src_cv, dst_cv, i, bbox, mip, step, mask_cv,
+                                          mask_mip, mask_val, pad, final_chunk))
+      return batch
+
+
   def load_part_image(self, image_cv, z, bbox, image_mip, mask_cv=None,
                        mask_mip=0, mask_val=0, to_tensor=True, affine=None):
       tmp_device = self.device

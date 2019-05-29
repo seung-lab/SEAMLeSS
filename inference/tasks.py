@@ -90,13 +90,14 @@ class LoadImageTask(RegisteredTask):
     prefix = mip
     image = []
     for i in range(self.step):
+        load_z = src_z +i
         print("\nLoad image from\n"
               "src {}\n"
               "MIP{}\n"
               "z={} \n".format(src_cv, mip,
-                                src_z,), flush=True)
+                                load_z,), flush=True)
         start = time()
-        im = aligner.load_part_image(src_cv, src_z+i, patch_bbox, mip)
+        im = aligner.load_part_image(src_cv, load_z, patch_bbox, mip)
         image.append(im)
         end = time()
         diff = end - start
@@ -108,6 +109,53 @@ class LoadImageTask(RegisteredTask):
         print('Marked finished at {}'.format(path))
 
     #return image
+
+class LoadStoreImageTask(RegisteredTask):
+  def __init__(self, src_cv, dst_cv, src_z, patch_bbox, mip, step, mask_cv, mask_mip,
+               mask_val, pad, final_chunk):
+    super().__init__(src_cv, dst_cv, src_z, patch_bbox, mip, step, mask_cv, mask_mip,
+               mask_val, pad, final_chunk)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
+    src_z = self.src_z
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    final_chunk = deserialize_bbox(self.final_chunk)
+    pad = self.pad
+    mip = self.mip
+    mask_cv = None
+    if self.mask_cv:
+      mask_cv = DCV(self.mask_cv)
+    mask_mip = self.mask_mip
+    mask_val = self.mask_val
+    prefix = mip
+    image = []
+    for i in range(self.step):
+        load_z = src_z +i
+        print("\nLoad image from\n"
+              "src {}\n"
+              "MIP{}\n"
+              "z={} \n".format(src_cv, mip,
+                                load_z,), flush=True)
+        start = time()
+        im = aligner.load_part_image(src_cv, load_z, patch_bbox,
+                                     mip, to_tensor=False)
+        image.append(im)
+        end = time()
+        diff = end - start
+        print(':{:.3f} s'.format(diff))
+    im = image[0][...,pad:-pad, pad:-pad]
+    start_save = time()
+    aligner.save_image(im, dst_cv, src_z, final_chunk, mip, to_uint8=False)
+    write_end = time()
+    print("read_time:", diff, "write_time:", write_end-start_save)
+
+    #with Storage(dst_cv.path) as stor:
+    #    path = 'load_image_done/{}/{}'.format(prefix,
+    #                                          patch_bbox.stringify(src_z))
+    #    stor.put_file(path, '')
+    #    print('Marked finished at {}'.format(path))
 
 
 class CopyTask(RegisteredTask):
