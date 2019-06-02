@@ -24,10 +24,10 @@ def deserialize_miplessCV_old2(s, cache={}):
       cache[s] = mcv
       return mcv
 
-def deserialize_miplessCV(s, cache={}):
+def deserialize_miplessCV(s, cache={}, compress='gzip'):
     cv_kwargs = {'bounded': False, 'progress': False,
-              'autocrop': False, 'non_aligned_writes': False,
-              'cdn_cache': False}
+                 'autocrop': False, 'non_aligned_writes': False,
+                 'cdn_cache': False, 'compress':compress}
     if s in cache:
       return cache[s]
     else:
@@ -55,8 +55,8 @@ class MiplessCloudVolume():
   def serialize(self):
       contents = {
           "path" : self.path,
-        #  "mkdir" : self.mkdir,
-        #  "kwargs": self.kwargs,
+          #"mkdir" : self.mkdir,
+          "kwargs": self.kwargs,
       }
       s = json.dumps(contents)
       return s

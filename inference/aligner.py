@@ -617,12 +617,13 @@ class Aligner:
       return batch
 
   def load_store_range_image(self, src_cv, dst_cv, z_range, bbox, mip, step,
-                             pad, final_chunk, mask_cv=None, mask_mip=0,
+                             pad, final_chunk, compress='gzip', mask_cv=None, mask_mip=0,
                              mask_val=0):
       batch = []
       for i in z_range:
           batch.append(tasks.LoadStoreImageTask(src_cv, dst_cv, i, bbox, mip, step, mask_cv,
-                                          mask_mip, mask_val, pad, final_chunk))
+                                          mask_mip, mask_val, pad, final_chunk,
+                                               compress))
       return batch
 
 

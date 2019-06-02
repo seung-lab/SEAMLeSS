@@ -112,13 +112,13 @@ class LoadImageTask(RegisteredTask):
 
 class LoadStoreImageTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, patch_bbox, mip, step, mask_cv, mask_mip,
-               mask_val, pad, final_chunk):
+               mask_val, pad, final_chunk, compress):
     super().__init__(src_cv, dst_cv, src_z, patch_bbox, mip, step, mask_cv, mask_mip,
-               mask_val, pad, final_chunk)
+               mask_val, pad, final_chunk, compress)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
-    dst_cv = DCV(self.dst_cv)
+    dst_cv = DCV(self.dst_cv, compress=self.compress)
     src_z = self.src_z
     patch_bbox = deserialize_bbox(self.patch_bbox)
     final_chunk = deserialize_bbox(self.final_chunk)
@@ -149,7 +149,8 @@ class LoadStoreImageTask(RegisteredTask):
     start_save = time()
     aligner.save_image(im, dst_cv, src_z, final_chunk, mip, to_uint8=False)
     write_end = time()
-    print("read_time:", diff, "write_time:", write_end-start_save)
+    print("read_time: {} write_time:{}".format(diff,
+                                              write_end-start_save),flush=True)
 
     #with Storage(dst_cv.path) as stor:
     #    path = 'load_image_done/{}/{}'.format(prefix,
