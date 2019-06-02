@@ -135,7 +135,7 @@ class CloudManager():
       self.vec_total_sizes.append(scales[i]["size"])
 
   def create(self, path, data_type, num_channels, fill_missing,
-             overwrite=False, compress='gzip'):
+             overwrite=False, compress=None):
     """Create a MiplessCloudVolume based on params & details of class
 
     Args:

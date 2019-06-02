@@ -24,7 +24,7 @@ def deserialize_miplessCV_old2(s, cache={}):
       cache[s] = mcv
       return mcv
 
-def deserialize_miplessCV(s, cache={}, compress='gzip'):
+def deserialize_miplessCV(s, cache={}, compress=None):
     cv_kwargs = {'bounded': False, 'progress': False,
                  'autocrop': False, 'non_aligned_writes': False,
                  'cdn_cache': False, 'compress':compress}
