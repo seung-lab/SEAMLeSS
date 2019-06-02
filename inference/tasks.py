@@ -149,7 +149,7 @@ class LoadStoreImageTask(RegisteredTask):
     start_save = time()
     aligner.save_image(im, dst_cv, src_z, final_chunk, mip, to_uint8=False)
     write_end = time()
-    print("read_time: {} write_time:{}".format(diff,
+    print("read_time: {} write_time: {}".format(diff,
                                               write_end-start_save),flush=True)
 
     #with Storage(dst_cv.path) as stor:
