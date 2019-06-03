@@ -626,6 +626,17 @@ class Aligner:
                                                compress))
       return batch
 
+  def store_random_image(self, src_cv, dst_cv, z_range, bbox, mip, step,
+                             pad, final_chunk, compress=None, mask_cv=None, mask_mip=0,
+                             mask_val=0):
+      batch = []
+      for i in z_range:
+          batch.append(tasks.RandomStoreImageTask(dst_cv, i, mip, step, mask_cv,
+                                          mask_mip, mask_val, pad, final_chunk,
+                                               compress))
+      return batch
+
+
 
   def load_part_image(self, image_cv, z, bbox, image_mip, mask_cv=None,
                        mask_mip=0, mask_val=0, to_tensor=True, affine=None):

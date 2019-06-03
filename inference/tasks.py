@@ -158,6 +158,35 @@ class LoadStoreImageTask(RegisteredTask):
     #    stor.put_file(path, '')
     #    print('Marked finished at {}'.format(path))
 
+class RandomStoreImageTask(RegisteredTask):
+  def __init__(self, dst_cv, src_z, mip, step, mask_cv, mask_mip,
+               mask_val, pad, final_chunk, compress):
+    super().__init__(dst_cv, src_z, mip, step, mask_cv, mask_mip,
+               mask_val, pad, final_chunk, compress)
+
+  def execute(self, aligner):
+    dst_cv = DCV(self.dst_cv, compress=self.compress)
+    src_z = self.src_z
+    final_chunk = deserialize_bbox(self.final_chunk)
+    pad = self.pad
+    mip = self.mip
+    mask_cv = None
+    if self.mask_cv:
+      mask_cv = DCV(self.mask_cv)
+    mask_mip = self.mask_mip
+    mask_val = self.mask_val
+    prefix = mip
+    x_range = final_chunk.x_range(mip=mip)
+    y_range = final_chunk.y_range(mip=mip)
+    im =np.random.randint(255, size=(1,1,x_range[1]-x_range[0],
+                                     y_range[1]-y_range[0]),
+                       dtype=np.uint8)
+    start_save = time()
+    aligner.save_image(im, dst_cv, src_z, final_chunk, mip, to_uint8=False)
+    write_end = time()
+    print("Random_write_time: {}".format(write_end-start_save),flush=True)
+
+
 
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, 
