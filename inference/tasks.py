@@ -178,9 +178,12 @@ class RandomStoreImageTask(RegisteredTask):
     prefix = mip
     x_range = final_chunk.x_range(mip=mip)
     y_range = final_chunk.y_range(mip=mip)
-    im =np.random.randint(255, size=(1,1,x_range[1]-x_range[0],
-                                     y_range[1]-y_range[0]),
-                       dtype=np.uint8)
+    #im =np.random.randint(255, size=(1,1,x_range[1]-x_range[0],
+    #                                 y_range[1]-y_range[0]),
+    #                   dtype=np.uint8)
+    im = np.ones((1,1,x_range[1]-x_range[0], y_range[1]-y_range[0]),
+                 dtype=np.uint8))
+    #print("image size ", im.nbytes)
     start_save = time()
     aligner.save_image(im, dst_cv, src_z, final_chunk, mip, to_uint8=False)
     write_end = time()
