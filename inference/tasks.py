@@ -205,7 +205,7 @@ class CopyTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
     is_field = self.is_field
-    mask_cv = None 
+    mask_cv = None
     if self.mask_cv:
       mask_cv = DCV(self.mask_cv)
     mask_mip = self.mask_mip

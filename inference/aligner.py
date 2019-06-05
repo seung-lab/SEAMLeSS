@@ -96,6 +96,95 @@ class Aligner:
 
       return data.type(torch.float)/4.0
 
+  def new_compute_field_multi_GPU(self, model_path, src_img, tgt_img, chunk_size, pad,
+                        warp=False):
+      #print("--------------- src and tgt shape", src_img.shape, tgt_img.shape)
+      img_shape = src_img.shape
+      x_len = img_shape[-2]
+      y_len = img_shape[-1]
+      unpadded_size = x_len - 2*pad
+      padded_len = chunk_size + 2*pad
+      y_chunk_number = (y_len - 2*pad) // chunk_size
+      x_chunk_number = unpadded_size // chunk_size
+      if(warp):
+          #if(first_chunk):
+          #    adjust = pad
+          #else:
+          #    adjust = 0
+          image = torch.FloatTensor(1, 1, unpadded_size, y_len).zero_()
+      else:
+          dst_field = torch.FloatTensor(1, unpadded_size, y_len, 2).zero_()
+      #print("--------------IN compute field", x_chunk_number*y_chunk_number)
+      def coor(x,y):
+          for i in range(x):
+              for j in range(y):
+                  yield i ,j
+          yield -1,-1
+      gpu_num = torch.cuda.device_count()
+      get_corr = coor(x_chunk_number, y_chunk_number)
+      has_next = True
+      while(has_next):
+          coor_list = []
+          xs, ys = next(get_corr)
+          if(xs ==-1):
+              break
+          src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                            ys*chunk_size:ys*chunk_size+padded_len]
+          tgt_patch = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                            ys*chunk_size:ys*chunk_size+padded_len]
+          coor_list.append([xs, ys])
+          for i in range(1, gpu_num):
+              xs, ys = next(get_corr)
+              if(xs == -1):
+                  has_next = False
+                  break
+              else:
+                  tmp = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                  ys*chunk_size:ys*chunk_size+padded_len]
+                  src_patch = torch.cat((src_patch, tmp),0)
+                  tmp.tgt = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                            ys*chunk_size:ys*chunk_size+padded_len]
+                  tgt_patch = torch.cat((tgt_patch, tmp),0)
+                  coor_list.append([xs, ys])
+          src_patch = src_patch.to(device=self.device)
+          tgt_patch = tgt_patch.to(device=self.device)
+          src_patch = self.convert_to_float(src_patch)
+ 
+      for xs in range(x_chunk_number):
+          for ys in range(y_chunk_number):
+              src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                  ys*chunk_size:ys*chunk_size+padded_len]
+              tgt_patch = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                  ys*chunk_size:ys*chunk_size+padded_len]
+              src_patch = src_patch.to(device=self.device)
+              tgt_patch = tgt_patch.to(device=self.device)
+              src_patch = self.convert_to_float(src_patch)
+              #if tgt_patch.dtype == torch.uint8:
+              #    tgt_patch = self.convert_to_float(tgt_patch)
+              start_t =  time()
+              if warp:
+                  image_patch = self.new_compute_field_chunk(model_path, src_patch,
+                                                   tgt_patch, warp)
+                  image_patch = image_patch[:,:,pad:-pad,pad:-pad]
+                  #image_patch = self.convert_to_uint8(image_patch)
+                  image_patch = image_patch.to(device='cpu')
+                  image[...,xs*chunk_size:xs*chunk_size+chunk_size,
+                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch
+              else:
+                  field = self.new_compute_field_chunk(model_path, src_patch,
+                                                   tgt_patch, warp) 
+                  field = field[:,pad:-pad,pad:-pad,:]
+                  field = field.to(device='cpu')
+                  dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
+                            pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field
+              end_t = time()
+              #print("------------------compute field time", end_t - start_t)
+      if(warp):
+          return image
+      else:
+          return dst_field
+
+
   def new_compute_field(self, model_path, src_img, tgt_img, chunk_size, pad,
                         warp=False):
       #print("--------------- src and tgt shape", src_img.shape, tgt_img.shape)
@@ -182,6 +271,57 @@ class Aligner:
       head_crop_len = amount if head_crop else 0
       croped_image = image[..., head_crop_len:-amount,:] if end_crop else image[..., head_crop_len:,:]
       return croped_image
+
+  def get_section_field(self, src, block_start, copy_offset, serial_range,
+                        serial_offsets, field_cv0, field_cv1, model_lookup,
+                        schunk, mip, pad, chunk_size,
+                        head_crop, end_crop, final_chunk):
+      image_list = []
+      #load from copy range
+      chunk = deepcopy(schunk)
+      print("---- chunk is ", chunk.stringify(0, mip=mip), " z is",
+            block_start+copy_offset)
+      load_image_start = time()
+      tgt_image = self.load_part_image(src, block_start+copy_offset,
+                                  chunk, mip)
+      load_finish = time()
+      print("----------------LOAD image time:", load_finish-load_image_start)
+      tgt_image = self.convert_to_float(tgt_image)
+      crop_len = chunk_size*copy_offset
+      add_image =self.crop_imageX(tgt_image, head_crop, end_crop, crop_len)
+      image_list.append(add_image)
+
+      #for block_offset in serial_range:
+      block_offset = serial_range[0]
+      z_offset = serial_offsets[block_offset]
+      #dst = dsts[even_odd]
+      z = block_start + block_offset
+      print("---------------- z ", z, "  block_offset ", block_offset)
+      model_path = model_lookup[z]
+      load_image_start = time()
+      src_image = self.load_part_image(src, z, chunk, mip)
+      #print("++++++chunk is", chunk.stringify(0, mip=mip), "src_image shape",
+      #                                  src_image.shape, "tgt_image",
+      #                                  tgt_image.shape)
+      load_finish = time()
+      print("----------------LOAD image time:", load_finish-load_image_start)
+      dst_field = self.new_compute_field(model_path, src_image, tgt_image,
+                                      chunk_size, pad, warp=False)
+      print("----------------COMPUTE FIELD time", time()- load_finish)
+      dst_field = dst_field[...,pad:-pad,:].data.cpu().numpy()
+      print("++ dst_field shape", dst_field.shape, "type", type(dst_field.shape))
+      store_field_compress = time() 
+      self.save_field(dst_field, field_cv0, z, final_chunk, mip, relative=False,
+                       as_int16=True)
+      store_field_end = time() 
+      print("----------------store compressed field time:",
+            store_field_end-store_field_compress)
+      self.save_field(dst_field, field_cv1, z, final_chunk, mip, relative=False,
+                       as_int16=True)
+      print("----------------store uncompressd field time:",
+            time()-store_field_end)
+      #chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
+      #return image_list, chunk
 
   def process_super_chunk_serial(self, src, block_start, copy_offset, serial_range,
                                  serial_offsets, serial_fields, dsts, model_lookup,
@@ -464,11 +604,11 @@ class Aligner:
               if(not is_blank(tgt_img[i,...])):
                   tgt_im = tgt_img[i,...]
                   tgt_img[i,...] =normalizer(tgt_im).reshape(tgt_im.shape)
-      torch.cuda.synchronize()
-      start_t = time()
+      #torch.cuda.synchronize()
+      #start_t = time()
       field = model(src_img, tgt_img)
-      torch.cuda.synchronize()
-      end_t = time()
+      #torch.cuda.synchronize()
+      #end_t = time()
       #print("+++++++++++++++++compute field time", end_t - start_t)
       if(warp):
           torch.cuda.synchronize()
@@ -689,11 +829,11 @@ class Aligner:
     #print("===============x_chunk_number is ", x_chunk_number)
     #elif head_crop == False and end_crop:
     #    offset = 0
-    def coor(x,y): 
-        for i in range(x): 
-            for j in range(y): 
-                yield i ,j  
-        yield -1,-1 
+    def coor(x,y):
+        for i in range(x):
+            for j in range(y):
+                yield i ,j
+        yield -1,-1
     torch.cuda.synchronize()
     start = time()
     gpu_num = torch.cuda.device_count()
