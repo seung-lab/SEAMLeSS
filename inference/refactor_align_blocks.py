@@ -353,7 +353,7 @@ if __name__ == '__main__':
                                                   block_start+vvote_start-i,
                                   chunk, mip, mask_cv=src_mask_cv,
                                   mask_mip=src_mask_mip, mask_val=src_mask_val,
-                                  to_tensor=False)
+                                  to_tensor=True)
               image_list.insert(0,image_for_vv)
               #modify the write image for profiling purpose
               #write_image.insert(0, False)
