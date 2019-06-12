@@ -142,43 +142,31 @@ class Aligner:
                   tmp = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
                                   ys*chunk_size:ys*chunk_size+padded_len]
                   src_patch = torch.cat((src_patch, tmp),0)
-                  tmp.tgt = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                  tgt_tmp = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
                             ys*chunk_size:ys*chunk_size+padded_len]
-                  tgt_patch = torch.cat((tgt_patch, tmp),0)
+                  tgt_patch = torch.cat((tgt_patch, tgt_tmp),0)
                   coor_list.append([xs, ys])
           src_patch = src_patch.to(device=self.device)
           tgt_patch = tgt_patch.to(device=self.device)
           src_patch = self.convert_to_float(src_patch)
- 
-      for xs in range(x_chunk_number):
-          for ys in range(y_chunk_number):
-              src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
-                                  ys*chunk_size:ys*chunk_size+padded_len]
-              tgt_patch = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
-                                  ys*chunk_size:ys*chunk_size+padded_len]
-              src_patch = src_patch.to(device=self.device)
-              tgt_patch = tgt_patch.to(device=self.device)
-              src_patch = self.convert_to_float(src_patch)
-              #if tgt_patch.dtype == torch.uint8:
-              #    tgt_patch = self.convert_to_float(tgt_patch)
-              start_t =  time()
-              if warp:
-                  image_patch = self.new_compute_field_chunk(model_path, src_patch,
-                                                   tgt_patch, warp)
-                  image_patch = image_patch[:,:,pad:-pad,pad:-pad]
-                  #image_patch = self.convert_to_uint8(image_patch)
-                  image_patch = image_patch.to(device='cpu')
+          tgt_patch = self.convert_to_float(tgt_patch)
+          if warp:
+              image_patch = self.new_compute_field_chunk(model_path, src_patch,
+                                                        tgt_patch, warp, pad)
+              for i in range(len(coor_list)):
+                  xs, ys = coor_list[i]
                   image[...,xs*chunk_size:xs*chunk_size+chunk_size,
-                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch
-              else:
-                  field = self.new_compute_field_chunk(model_path, src_patch,
-                                                   tgt_patch, warp) 
-                  field = field[:,pad:-pad,pad:-pad,:]
-                  field = field.to(device='cpu')
+                      pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch[i]
+             #del image_patch
+          else:
+              field = self.new_compute_field_chunk(model_path, src_patch,
+                                               tgt_patch, warp)
+              field = field[:,pad:-pad,pad:-pad,:]
+              field = field.to(device='cpu')
+              for i in range(len(coor_list)):
+                  xs, ys = coor_list[i]
                   dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
-                            pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field
-              end_t = time()
-              #print("------------------compute field time", end_t - start_t)
+                        pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field[i:i+1,...]
       if(warp):
           return image
       else:
@@ -276,7 +264,7 @@ class Aligner:
                         serial_offsets, field_cv0, field_cv1, model_lookup,
                         schunk, mip, pad, chunk_size,
                         head_crop, end_crop, final_chunk):
-      image_list = []
+      #image_list = []
       #load from copy range
       chunk = deepcopy(schunk)
       print("---- chunk is ", chunk.stringify(0, mip=mip), " z is",
@@ -286,10 +274,10 @@ class Aligner:
                                   chunk, mip)
       load_finish = time()
       print("----------------LOAD image time:", load_finish-load_image_start)
-      tgt_image = self.convert_to_float(tgt_image)
+      #tgt_image = self.convert_to_float(tgt_image)
       crop_len = chunk_size*copy_offset
       add_image =self.crop_imageX(tgt_image, head_crop, end_crop, crop_len)
-      image_list.append(add_image)
+      #image_list.append(add_image)
 
       #for block_offset in serial_range:
       block_offset = serial_range[0]
@@ -305,7 +293,7 @@ class Aligner:
       #                                  tgt_image.shape)
       load_finish = time()
       print("----------------LOAD image time:", load_finish-load_image_start)
-      dst_field = self.new_compute_field(model_path, src_image, tgt_image,
+      dst_field = self.new_compute_field_multi_GPU(model_path, src_image, tgt_image,
                                       chunk_size, pad, warp=False)
       print("----------------COMPUTE FIELD time", time()- load_finish)
       dst_field = dst_field[...,pad:-pad,:].data.cpu().numpy()
@@ -320,6 +308,57 @@ class Aligner:
                        as_int16=True)
       print("----------------store uncompressd field time:",
             time()-store_field_end)
+      #chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
+      #return image_list, chunk
+
+  def get_aligned_section(self, src, block_start, copy_offset, serial_range,
+                        serial_offsets, field_cv0, field_cv1, model_lookup,
+                        schunk, mip, pad, chunk_size,
+                        head_crop, end_crop, final_chunk):
+      #image_list = []
+      #load from copy range
+      chunk = deepcopy(schunk)
+      print("---- chunk is ", chunk.stringify(0, mip=mip), " z is",
+            block_start+copy_offset)
+      load_image_start = time()
+      tgt_image = self.load_part_image(src, block_start+copy_offset,
+                                  chunk, mip)
+      load_finish = time()
+      print("----------------LOAD image time:", load_finish-load_image_start)
+      #tgt_image = self.convert_to_float(tgt_image)
+      crop_len = chunk_size*copy_offset
+      add_image =self.crop_imageX(tgt_image, head_crop, end_crop, crop_len)
+      #image_list.append(add_image)
+
+      #for block_offset in serial_range:
+      block_offset = serial_range[0]
+      z_offset = serial_offsets[block_offset]
+      #dst = dsts[even_odd]
+      z = block_start + block_offset
+      print("---------------- z ", z, "  block_offset ", block_offset)
+      model_path = model_lookup[z]
+      load_image_start = time()
+      src_image = self.load_part_image(src, z, chunk, mip)
+      #print("++++++chunk is", chunk.stringify(0, mip=mip), "src_image shape",
+      #                                  src_image.shape, "tgt_image",
+      #                                  tgt_image.shape)
+      load_finish = time()
+      print("----------------LOAD image time:", load_finish-load_image_start)
+      image = self.new_compute_field_multi_GPU(model_path, src_image, tgt_image,
+                                      chunk_size, pad, warp=True)
+      print("----------------COMPUTE FIELD time and aligned: ", time()- load_finish)
+      #dst_field = dst_field[...,pad:-pad,:].data.cpu().numpy()
+      #print("++ dst_field shape", dst_field.shape, "type", type(dst_field.shape))
+      #store_field_compress = time() 
+      #self.save_field(dst_field, field_cv0, z, final_chunk, mip, relative=False,
+      #                 as_int16=True)
+      #store_field_end = time() 
+      #print("----------------store compressed field time:",
+      #      store_field_end-store_field_compress)
+      #self.save_field(dst_field, field_cv1, z, final_chunk, mip, relative=False,
+      #                 as_int16=True)
+      #print("----------------store uncompressd field time:",
+      #      time()-store_field_end)
       #chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
       #return image_list, chunk
 
@@ -588,12 +627,11 @@ class Aligner:
 
 
 
-  def new_compute_field_chunk(self, model_path, src_img, tgt_img, warp=False):
+  def new_compute_field_chunk(self, model_path, src_img, tgt_img, warp=False,
+                              pad=None):
       archive = self.get_model_archive(model_path)
       model = archive.model
-      #device_ids= [0,1]
       model = nn.DataParallel(model).cuda()
-      #model = model.cuda()
       normalizer = archive.preprocessor
       if (normalizer is not None):
           for i in range(src_img.shape[0]):
@@ -612,8 +650,13 @@ class Aligner:
       #print("+++++++++++++++++compute field time", end_t - start_t)
       if(warp):
           torch.cuda.synchronize()
-          start_t = time() 
-          image = self.new_cloudsample_image(src_img, field)
+          start_t = time()
+          image = []
+          print("src_image shape", src_img.shape, "field shape",
+                    field.shape)
+          for i in range(src_img.shape[0]):
+              im = self.new_cloudsample_image(src_img[i:i+1,...], field[i:i+1,...])
+              image.append(im[:,:,pad:-pad,pad:-pad])
           torch.cuda.synchronize()
           end_t = time()
           #print("+++++++++++++++++ warp time", end_t - start_t)
