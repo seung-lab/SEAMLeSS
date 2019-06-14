@@ -760,8 +760,8 @@ class Aligner:
       chunk_grid = self.break_into_chunks_grid(bbox, cm.dst_chunk_sizes[mip],
                                           cm.dst_voxel_offsets[mip], mip=mip,
                                           max_mip=cm.max_mip)
-      #print("--------------chunks_grid shape",len(chunk_grid), len(chunk_grid[0]),
-      #      chunk_grid[0][0].stringify(0))
+      print("--------------chunks_grid shape",len(chunk_grid), len(chunk_grid[0]),
+            chunk_grid[0][0].stringify(0))
       chunks = []
       #for i in range(len(chunk_grid)):
       #    for j in range(len(chunk_grid[0])):
@@ -793,6 +793,7 @@ class Aligner:
 
   def load_range_image(self, src_cv, dst_cv, z_range, bbox, mip, step, mask_cv=None,
                        mask_mip=0, mask_val=0):
+      #print("---------------------------->> load image")
       batch = []
       for i in z_range:
           batch.append(tasks.LoadImageTask(src_cv, dst_cv, i, bbox, mip, step, mask_cv,

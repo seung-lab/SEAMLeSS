@@ -101,12 +101,12 @@ class LoadImageTask(RegisteredTask):
         image.append(im)
         end = time()
         diff = end - start
-        print(':{:.3f} s'.format(diff))
-    with Storage(dst_cv.path) as stor:
-        path = 'load_image_done/{}/{}'.format(prefix,
-                                              patch_bbox.stringify(src_z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
+        print('load_image time:{:.3f} s'.format(diff), flush=True)
+    #with Storage(dst_cv.path) as stor:
+    #    path = 'load_image_done/{}/{}'.format(prefix,
+    #                                          patch_bbox.stringify(src_z))
+    #    stor.put_file(path, '')
+    #    print('Marked finished at {}'.format(path))
 
     #return image
 
