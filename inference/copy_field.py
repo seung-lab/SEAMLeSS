@@ -242,13 +242,15 @@ if __name__ == '__main__':
   print("get field ---------")
   start = time()
   field =  a.get_field(src_vote, block_start, chunk_grid[0], mip, relative=False,
-                          to_tensor=False)
+                          to_tensor=False, as_int16=False)
   end = time()
   print("get field use", end-start)
-  a.save_field(field, vvote_field0, block_start, chunk_grid[0], mip, relative=False)
+  a.save_field(field, vvote_field0, block_start, chunk_grid[0], mip,
+               relative=False, as_int16)
   print("save field use", time()-end)
   start = time()
-  a.save_field(field, vvote_field1, block_start, chunk_grid[0], mip, relative=False)
+  a.save_field(field, vvote_field1, block_start, chunk_grid[0], mip,
+               relative=False, as_int16)
   print("save uncompressed field use", time()-start)
 #  for i in  chunk_grid:
 #      print("--------grid size is ", i.stringify(0, mip=mip))

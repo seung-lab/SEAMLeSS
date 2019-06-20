@@ -243,7 +243,8 @@ if __name__ == '__main__':
                             pad, pad, pad)
   z_range =range(args.z_start, args.z_stop, args.block_size)
   batch = a.load_store_range_image(src.path, dst.path, z_range, chunk_grid[0], mip,
-                                   args.block_size, pad, final_chunk, compress=False)
+                                   args.block_size, pad, final_chunk,
+                                   compress=True)
   #batch = a.load_range_image(src.path, dst.path, z_range, chunk_grid[0], mip,
   #                          args.block_size)
   remote_upload(args.queue_name, batch)

@@ -97,7 +97,7 @@ class LoadImageTask(RegisteredTask):
               "z={} \n".format(src_cv, mip,
                                 load_z,), flush=True)
         start = time()
-        im = aligner.load_part_image(src_cv, load_z, patch_bbox, mip)
+        im = aligner.load_part_image(src_cv, load_z, patch_bbox, mip, to_tensor=False)
         image.append(im)
         end = time()
         diff = end - start
