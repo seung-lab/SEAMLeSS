@@ -137,7 +137,7 @@ class ModelArchive(object):
                 current_commit = subprocess.check_output('git rev-parse HEAD'
                                                          .split()).strip()
             except subprocess.CalledProcessError:
-                current_commit = 0
+                current_commit = '0'
             if int(saved_commit, 16) != int(current_commit, 16):
                 print('Warning: The repository has changed since this '
                       'net was last trained.')
