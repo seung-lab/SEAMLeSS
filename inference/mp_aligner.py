@@ -7,6 +7,7 @@ import os
 from os.path import join
 from time import time, sleep
 from torch.autograd import Variable
+from multiprocessing import Process, Manager
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
@@ -361,6 +362,17 @@ class Aligner:
       #      time()-store_field_end)
       #chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
       #return image_list, chunk
+  
+  def mp_load(self, dic, key, src, z, chunk, mip, mask_cv, mask_mip, mask_val):
+      ppid = os.getpid()
+      print("start a new process", ppid)
+      img = self.load_part_image(src, z, chunk, mip, mask_cv=mask_cv,
+                                     mask_mip=mask_mip, mask_val=mask_val)
+      #if img.dtype == torch.uint8:
+      #    print("need to convert {}".format(os.getpid()), flush=True)
+      #    img = self.convert_to_float(img)
+      dic[key] = img
+      print("end of the new process {}".format(ppid), flush=True)
 
   def process_super_chunk_serial(self, src, block_start, copy_offset, serial_range,
                                  serial_offsets, serial_fields, dsts, model_lookup,
@@ -368,21 +380,27 @@ class Aligner:
                                  head_crop, end_crop, mask_cv=None, mask_mip=0,
                                  mask_val=0, affine=None):
       image_list = []
+      p_list = []
       #load from copy range
       chunk = deepcopy(schunk)
       print("---- chunk is ", chunk.stringify(0, mip=mip), " z is",
             block_start+copy_offset)
-      load_image_start = time()
+      #load_image_start = time()
+      m = Manager()
+      dic = m.dict()
       tgt_image = self.load_part_image(src, block_start+copy_offset,
                                   chunk, mip, mask_cv=mask_cv,
                                   mask_mip=mask_mip, mask_val=mask_val)
-      load_finish = time()
-      print("----------------LOAD image time:", load_finish-load_image_start)
-      tgt_image = self.convert_to_float(tgt_image)
+      #load_finish = time()
+      #print("----------------LOAD image time:", load_finish-load_image_start)
+      #tgt_image = self.convert_to_float(tgt_image) 
       crop_len = chunk_size*copy_offset
       add_image =self.crop_imageX(tgt_image, head_crop, end_crop, crop_len)
       image_list.append(add_image)
-
+      src_image0 = self.load_part_image(src,block_start+serial_offsets[0], chunk, mip, mask_cv=mask_cv,
+                                  mask_mip=mask_mip,
+                                  mask_val=mask_val)
+      print("serial_range:", serial_range)
       for block_offset in serial_range:
           z_offset = serial_offsets[block_offset]
           serial_field = serial_fields[z_offset]
@@ -391,32 +409,51 @@ class Aligner:
           z = block_start + block_offset
           print("---------------- z ", z, "  block_offset ", block_offset)
           model_path = model_lookup[z]
-          load_image_start = time()
-          src_image = self.load_part_image(src, z, chunk, mip, mask_cv=mask_cv,
-                                      mask_mip=mask_mip,
-                                      mask_val=mask_val)
+          #load_image_start = time()
+          #src_image = self.load_part_image(src, z, chunk, mip, mask_cv=mask_cv,
+          #                            mask_mip=mask_mip,
+          #                            mask_val=mask_val)
+          if block_offset == serial_range[0]:
+              src_image= src_image0
+          else:
+              for i in p_list:
+                  i.join()
+              #print(p_list)
+              #print("len of dic", len(dic))
+              src_image = dic["src"]
+              del dic["src"]
+          if block_offset != serial_range[-1]:
+              p_list = []
+              #self.mp_load(dic,"src", src, z-1, chunk,
+              #          mip, mask_cv, mask_mip,
+              #          mask_val)
+              p = Process(target=self.mp_load, args=(dic, "src", src, z-1, chunk,
+                                                     mip, mask_cv, mask_mip,
+                                                     mask_val))
+              p.start()
+              p_list.append(p)
           #print("++++++chunk is", chunk.stringify(0, mip=mip), "src_image shape",
           #                                  src_image.shape, "tgt_image",
           #                                  tgt_image.shape)
           load_finish = time()
-          print("----------------LOAD image time:", load_finish-load_image_start)
-          tgt_image = self.new_compute_field_multi_GPU(model_path, src_image, tgt_image,
+          #print("----------------LOAD image time:", load_finish-load_image_start)
+          new_tgt_image = self.new_compute_field_multi_GPU(model_path, src_image, tgt_image,
                                           chunk_size, pad, warp=True)
           print("----------------COMPUTE FIELD time", time()- load_finish)
           if(not head_crop):
-              pad_tensor = torch.FloatTensor(1, 1, pad, tgt_image.shape[-1]).zero_()
-              tgt_image = torch.cat((pad_tensor, tgt_image), 2)
+              pad_tensor = torch.FloatTensor(1, 1, pad, new_tgt_image.shape[-1]).zero_()
+              new_tgt_image = torch.cat((pad_tensor, new_tgt_image), 2)
           if(not end_crop):
-              pad_tensor = torch.FloatTensor(1, 1, pad, tgt_image.shape[-1]).zero_()
-              tgt_image = torch.cat((tgt_image,pad_tensor), 2)
+              pad_tensor = torch.FloatTensor(1, 1, pad,new_tgt_image.shape[-1]).zero_()
+              new_tgt_image = torch.cat((new_tgt_image,pad_tensor), 2)
           image_crop_len = chunk_size*block_offset+(chunk_size-pad)
           tgt_crop_len = chunk_size-pad
-          croped_image = self.crop_imageX(tgt_image, head_crop, end_crop,
+          croped_image = self.crop_imageX(new_tgt_image, head_crop, end_crop,
                                          image_crop_len)
           image_list.insert(0, croped_image)
-          tgt_image = self.crop_imageX(tgt_image, head_crop, end_crop,
-                                      tgt_crop_len)
-          print("------------tgt_image shape", tgt_image.shape)
+          #new_tgt_image = self.crop_imageX(new_tgt_image, head_crop, end_crop,
+          #                            tgt_crop_len)
+          #print("------------tgt_image shape", tgt_image.shape)
           #adjusted_box= a.adjust_chunk(chunk, mip,
           #                             chunk_size*block_offset+chunk_size, first_chunk)
           #print("-----------------adjusted_box", adjusted_box.stringify(0,
@@ -438,6 +475,12 @@ class Aligner:
                                 head_crop, end_crop, final_chunk, mask_cv=None,
                                 mask_mip=0, mask_val=0):
       chunk = deepcopy(schunk)
+      m = Manager()
+      dic = m.dict()
+      p_list = []
+      src_image0 = self.load_part_image(src, block_start+vvote_range_small[0], chunk,
+                                        mip, mask_cv=mask_cv, mask_mip=mask_mip,
+                                        mask_val=mask_val)
       for block_offset in vvote_range_small:
           print("===========block offset is", block_offset)
           whole_vv_start = time()
@@ -445,12 +488,31 @@ class Aligner:
           z = block_start + block_offset
           model_path = model_lookup[z]
           #vvote_way = args.tgt_radius
-          load_image_start = time()
-          src_image = self.load_part_image(src, z, chunk, mip, mask_cv=mask_cv,
-                                      mask_mip=mask_mip,
-                                      mask_val=mask_val)
-          load_finish = time()
-          print("----------------LOAD image in VV time:", load_finish-load_image_start)
+          if block_offset == vvote_range_small[0]:
+              src_image= src_image0
+          else:
+              for i in p_list:
+                  i.join()
+              #print(p_list)
+              #print("len of dic", len(dic))
+              src_image = dic["src"]
+              del dic["src"]
+          if block_offset != vvote_rane_small[-1]:
+              p_list = []
+              #self.mp_load(dic,"src", src, z-1, chunk,
+              #          mip, mask_cv, mask_mip,
+              #          mask_val)
+              p = Process(target=self.mp_load, args=(dic, "src", src, z+1, chunk,
+                                                     mip, mask_cv, mask_mip,
+                                                     mask_val))
+              p.start()
+              p_list.append(p)
+          #load_image_start = time()
+          #src_image = self.load_part_image(src, z, chunk, mip, mask_cv=mask_cv,
+          #                            mask_mip=mask_mip,
+          #                            mask_val=mask_val)
+          #load_finish = time()
+          #print("----------------LOAD image in VV time:", load_finish-load_image_start)
           print("chunk shape for vvoting is", chunk.stringify(0, mip=mip))
           #for i in range(len(image_list)):
           #    print("************shape of image", image_list[i].shape,
@@ -464,14 +526,13 @@ class Aligner:
           vv_end =time()
           print("---------------------VV time :", vv_end-vv_start)
           if(head_crop==False):
-              pad_tensor = torch.FloatTensor(1, 1, pad, image.shape[-1]).zero_()
               if(block_offset != vvote_range_small[-1]):
+                  pad_tensor = torch.FloatTensor(1, 1, pad, image.shape[-1]).zero_()
                   image = torch.cat((pad_tensor, image), 2)
           if(end_crop==False):
-              pad_tensor = torch.FloatTensor(1, 1, pad, image.shape[-1]).zero_()
               if(block_offset != vvote_range_small[-1]):
+                  pad_tensor = torch.FloatTensor(1, 1, pad, image.shape[-1]).zero_()
                   image = torch.cat((image,pad_tensor), 2)
-
           print("--------------------Padding time", time() - vv_end)
 
           #image_bbox = a.crop_chunk(bbox_list[0], mip, pad, pad, pad, pad)
@@ -481,11 +542,8 @@ class Aligner:
           image_len = image_list[0].shape[-2] - 2*pad;
           x_range = final_chunk.x_range(mip=mip)
           x_range_len = x_range[1] - x_range[0]
-
           print("************ image_list[0]", image_list[0].shape,
                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
-
-
           image_chunk =self.crop_imageX(image_list[0][...,pad:-pad], True, True,
                                        pad)
 
@@ -567,7 +625,6 @@ class Aligner:
           image_len = image_list[i].shape[-2] - 2*pad;
           x_range = final_chunk.x_range(mip=mip)
           x_range_len = x_range[1] - x_range[0]
-
           image_chunk = self.crop_imageX(image_list[i][...,pad:-pad], True, True,
                                        pad)
           if(head_crop and end_crop):
@@ -652,8 +709,8 @@ class Aligner:
           torch.cuda.synchronize()
           start_t = time()
           image = []
-          print("src_image shape", src_img.shape, "field shape",
-                    field.shape)
+          #print("src_image shape", src_img.shape, "field shape",
+          #          field.shape)
           for i in range(src_img.shape[0]):
               im = self.new_cloudsample_image(src_img[i:i+1,...], field[i:i+1,...])
               image.append(im[:,:,pad:-pad,pad:-pad])
@@ -824,8 +881,8 @@ class Aligner:
 
   def load_part_image(self, image_cv, z, bbox, image_mip, mask_cv=None,
                        mask_mip=0, mask_val=0, to_tensor=True, affine=None):
-      tmp_device = self.device
-      self.device = 'cpu'
+      #tmp_device = self.device
+      #self.device = 'cpu'
       if affine is not None:
           aff = affine[z]
           x_range = bbox.x_range(mip=0)
@@ -836,13 +893,13 @@ class Aligner:
                             y_range[1]-aff[:,2][0], mip=0)
       image = self.get_image(image_cv, z, bbox, image_mip,
                              to_tensor=to_tensor, normalizer=None,
-                             to_float=False)
+                             to_float=False, data_device='cpu')
       if mask_cv is not None:
         mask = self.get_mask(mask_cv, image_z, bbox,
                              src_mip=mask_mip,
                              dst_mip=image_mip, valid_val=mask_val)
         image = image.masked_fill_(mask, 0)
-      self.device = tmp_device
+      #self.device = tmp_device
       return image
 
   def new_cloudsample_image(self, image, field):
@@ -1363,11 +1420,12 @@ class Aligner:
     return mask
 
   def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None,
-                to_float=True):
+                to_float=True, data_device=None):
     print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
     start = time()
     image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip,
-                          to_float=to_float, to_tensor=to_tensor, normalizer=normalizer)
+                          to_float=to_float, to_tensor=to_tensor,
+                          normalizer=normalizer, data_device=data_device)
     end = time()
     diff = end - start
     print('get_image: {:.3f}'.format(diff), flush=True) 
@@ -1429,7 +1487,7 @@ class Aligner:
     return combined
 
   def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
-                     to_tensor=True, normalizer=None):
+                     to_tensor=True, normalizer=None, data_device=None):
     """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
     
     Args:
@@ -1446,6 +1504,8 @@ class Aligner:
        if normalizer is specified, and as a uint8 or float32 torch tensor or numpy, 
        as specified
     """
+    if data_device == None:
+        data_device = self.device
     x_range = bbox.x_range(mip=src_mip)
     y_range = bbox.y_range(mip=src_mip)
     #cv.green_threads = True
@@ -1457,7 +1517,7 @@ class Aligner:
       print('Normalizing image')
       start = time()
       data = torch.from_numpy(data)
-      data = data.to(device=self.device)
+      data = data.to(device=data_device)
       data = normalizer(data).reshape(data.shape)
       end = time()
       diff = end - start
@@ -1466,7 +1526,7 @@ class Aligner:
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
-      data = data.to(device=self.device)
+      data = data.to(device=data_device)
       if src_mip != dst_mip:
         # k = 2**(src_mip - dst_mip)
         size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))

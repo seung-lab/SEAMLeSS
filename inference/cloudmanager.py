@@ -135,7 +135,7 @@ class CloudManager():
       self.vec_total_sizes.append(scales[i]["size"])
 
   def create(self, path, data_type, num_channels, fill_missing,
-             overwrite=False, compress=None):
+             overwrite=False, compress=None, parallel=False):
     """Create a MiplessCloudVolume based on params & details of class
 
     Args:
@@ -158,7 +158,8 @@ class CloudManager():
       print('Use existing info file for MiplessCloudVolume at {0}'.format(path))
       info = None
       provenance = None
-    self.cvs[path] = CV(path, mkdir=overwrite, info=info, provenance=provenance, 
+    self.cvs[path] = CV(path, mkdir=overwrite, info=info,
+                        provenance=provenance, parallel=parallel,
                        fill_missing=fill_missing, compress=compress, **self.kwargs)
     return self.cvs[path]
 
