@@ -397,10 +397,12 @@ class Aligner:
       crop_len = chunk_size*copy_offset
       add_image =self.crop_imageX(tgt_image, head_crop, end_crop, crop_len)
       image_list.append(add_image)
-      src_image0 = self.load_part_image(src,block_start+serial_offsets[0], chunk, mip, mask_cv=mask_cv,
-                                  mask_mip=mask_mip,
-                                  mask_val=mask_val)
-      print("serial_range:", serial_range)
+      src_image0 = self.load_part_image(src,block_start+serial_offsets[0], chunk, mip,
+                                        mask_cv=mask_cv, mask_mip=mask_mip,
+                                        mask_val=mask_val)
+      head_crop_len = chunk_size if head_crop else 0
+      end_crop_len = chunk_size if end_crop else 0
+      chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
       for block_offset in serial_range:
           z_offset = serial_offsets[block_offset]
           serial_field = serial_fields[z_offset]
@@ -460,12 +462,53 @@ class Aligner:
           #                                                              mip=mip),
           #     "chunk is", chunk.stringify(0, mip=mip))
           #bbox_list.insert(0, adjusted_box)
-          head_crop_len = chunk_size if head_crop else 0
-          end_crop_len = chunk_size if end_crop else 0
+          #head_crop_len = chunk_size if head_crop else 0
+          #end_crop_len = chunk_size if end_crop else 0
           chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
                                  0)
           #chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
       return image_list, chunk
+
+  def mp_store_img(self, dic, key, dst, z, chunk, mip, to_uint8):
+      ppid = os.getpid()
+      print("start a new save image process", ppid)
+      image = dic[key]
+      self.save_image(image.cpu().numpy, dst z, chunk, mip, to_uint8=to_uint8)
+      del dic[key]
+      print("end of the save image process {}".format(ppid), flush=True)
+
+  def mp_store_field(self, dic, key, head_crop, end_crop, x_range_len, pad, dst, z,
+                     chunk, mip):
+      ppid = os.getpid()
+      print("start a new save field process", ppid)
+      field = dic[key] 
+      field_len = field.shape[1] - 2*pad
+      if(head_crop and end_crop):
+          crop_amount = (field_len - x_range_len)/2
+          dst_field = dst_field[:,pad+crop_amount:-(pad+crop_amount),pad:-pad,:]
+      elif head_crop:
+          crop_amount = (field_len - x_range_len)
+          dst_field = dst_field[:,pad+crop_amount:-pad,pad:-pad,:]
+      elif end_crop:
+          crop_amount = (field_len - x_range_len)
+          dst_field = dst_field[:,pad:-(pad+crop_amount),pad:-pad,:]
+      else:
+          dst_field = dst_field[:,pad:-pad,pad:-pad,:]
+      print("***********dst_field shape", dst_field.shape)
+      field_from_GPU = time()
+      dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
+      field_on_CPU = time()
+      print("-----------------move field from GPU to CPU time",
+            field_on_CPU-field_from_GPU)
+      self.save_field(field, dst, z, chunk, mip, relative=False,
+                   as_int16=True)
+      print("-------------------Saving field time:", time()-field_on_CPU)
+      head_crop_len = chunk_size if head_crop else 0
+      end_crop_len = chunk_size if end_crop else 0
+ 
+      del dic[key]
+      print("end of the save field process {}".format(ppid), flush=True)
+
 
   def process_super_chunk_vvote(self, src, block_start, vvote_range_small,
                                 dsts, model_lookup, vvote_way, image_list,
@@ -478,9 +521,13 @@ class Aligner:
       m = Manager()
       dic = m.dict()
       p_list = []
+      upload_list = []
       src_image0 = self.load_part_image(src, block_start+vvote_range_small[0], chunk,
                                         mip, mask_cv=mask_cv, mask_mip=mask_mip,
                                         mask_val=mask_val)
+      head_crop_len = chunk_size if head_crop else 0
+      end_crop_len = chunk_size if end_crop else 0
+      chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0, 0)
       for block_offset in vvote_range_small:
           print("===========block offset is", block_offset)
           whole_vv_start = time()
@@ -524,7 +571,7 @@ class Aligner:
                                                   head_crop=head_crop,
                                                   end_crop=end_crop)
           vv_end =time()
-          print("---------------------VV time :", vv_end-vv_start)
+          print("---------------------VV time :", vv_end-vv_start) 
           if(head_crop==False):
               if(block_offset != vvote_range_small[-1]):
                   pad_tensor = torch.FloatTensor(1, 1, pad, image.shape[-1]).zero_()
@@ -547,31 +594,45 @@ class Aligner:
           image_chunk =self.crop_imageX(image_list[0][...,pad:-pad], True, True,
                                        pad)
 
-          print("frist crop ************ image_chunk", image_chunk.shape)
+          print("first crop ************ image_chunk", image_chunk.shape)
           if(head_crop and end_crop):
               crop_amount = (image_len - x_range_len)/2
           else:
               crop_amount = (image_len - x_range_len)
-
           image_chunk =self.crop_imageX(image_chunk, head_crop, end_crop,
                                        crop_amount)
-          #image_chunk =image_list[0][..., pad+head_crop:-(pad+end_crop), pad:-pad]
-
           print("************ image_chunk", image_chunk.shape,
                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
-          IO_start = time()
+          #IO_start = time()
+          for i in upload_list:
+              i.join()
+          upload_list = []
           if write_image[0]:
               print("write_image len is ", len(write_image), "save image")
-              self.save_image(image_chunk.cpu().numpy(), dst, z-vvote_way,
-                       final_chunk, mip, to_uint8=True)
-          print("------------------- write_image ", write_image[0],
-                "time",time()-IO_start)
+              dic["store_img"] = image_chunk
+              p = Process(target=self.mp_store_img, args=(dic, "store_img",
+                                                          dst,
+                                                          z-vvote_way, final_chunk,
+                                                          mip, True))
+              p.start()
+              upload_list.append(p)
+              #self.save_image(image_chunk.cpu().numpy(), dst, z-vvote_way,
+              #         final_chunk, mip, to_uint8=True)
+          #print("------------------- write_image ", write_image[0],
+          #      "time",time()-IO_start)
           del image_list[0]
           del write_image[0]
           if(block_offset == vvote_range_small[-1]):
               image = image[...,pad:-pad]
-              self.save_image(image.cpu().numpy(), dst, z,
-                       final_chunk, mip, to_uint8=True)
+              dic["img"] = image
+              pi = Process(target=self.mp_store_img, args=(dic, "img",
+                                                          dst, z,
+                                                          final_chunk,
+                                                          mip, True))
+              pi.start()
+              upload_list.append(pi)
+              #self.save_image(image.cpu().numpy(), dst, z,
+              #         final_chunk, mip, to_uint8=True)
           else:
               if(head_crop):
                   image = image[..., chunk_size-pad:,:]
@@ -580,43 +641,48 @@ class Aligner:
               image_list.append(image)
               write_image.append(True)
 
-          #if first_chunk:
-          #    image_list.append(image[...,0:-(chunk_size-pad),:])
-          #else:
-          #    image_list.append(image[..., chunk_size-pad:-(chunk_size-pad),:])
-          field_len = dst_field.shape[1] - 2*pad
-          #if(first_chunk):
-          #    head_crop = 0;
-          #    end_crop = field_len - x_range_len
-          #else:
-          #    head_crop = (field_len - x_range_len)/2
-          #    end_crop = head_crop
-          if(head_crop and end_crop):
-              crop_amount = (field_len - x_range_len)/2
-              dst_field = dst_field[:,pad+crop_amount:-(pad+crop_amount),pad:-pad,:]
-          elif head_crop:
-              crop_amount = (field_len - x_range_len)
-              dst_field = dst_field[:,pad+crop_amount:-pad,pad:-pad,:]
-          elif end_crop:
-              crop_amount = (field_len - x_range_len)
-              dst_field = dst_field[:,pad:-(pad+crop_amount),pad:-pad,:]
-          else:
-              dst_field = dst_field[:,pad:-pad,pad:-pad,:]
-          print("***********dst_field shape", dst_field.shape)
-          field_from_GPU = time()
-          dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
-          field_on_CPU = time()
-          print("-----------------move field from GPU to CPU time",
-                field_on_CPU-field_from_GPU)
-          self.save_field(dst_field, vvote_field, z, final_chunk, mip, relative=False,
-                       as_int16=True)
-          print("-------------------Saving field time:", time()-field_on_CPU)
-          head_crop_len = chunk_size if head_crop else 0
-          end_crop_len = chunk_size if end_crop else 0
-          chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
-                                 0) 
-          #chunk = self.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
-          #bbox_list.append(chunk)
+          dic["field"] =dst_field
+          pf = Process(target=self.mp_store_field, args=(dic,"field", head_crop,
+                                                        end_crop, x_range_len,
+                                                        pad, vvote_field, z,
+                                                        final_chunk, mip))
+          pf.start()
+          upload_list.append(pf)
+         # #if first_chunk:
+         # #    image_list.append(image[...,0:-(chunk_size-pad),:])
+         # #else:
+         # #    image_list.append(image[..., chunk_size-pad:-(chunk_size-pad),:])
+         # field_len = dst_field.shape[1] - 2*pad
+         # #if(first_chunk):
+         # #    head_crop = 0;
+         # #    end_crop = field_len - x_range_len
+         # #else:
+         # #    head_crop = (field_len - x_range_len)/2
+         # #    end_crop = head_crop
+         # if(head_crop and end_crop):
+         #     crop_amount = (field_len - x_range_len)/2
+         #     dst_field = dst_field[:,pad+crop_amount:-(pad+crop_amount),pad:-pad,:]
+         # elif head_crop:
+         #     crop_amount = (field_len - x_range_len)
+         #     dst_field = dst_field[:,pad+crop_amount:-pad,pad:-pad,:]
+         # elif end_crop:
+         #     crop_amount = (field_len - x_range_len)
+         #     dst_field = dst_field[:,pad:-(pad+crop_amount),pad:-pad,:]
+         # else:
+         #     dst_field = dst_field[:,pad:-pad,pad:-pad,:]
+         # print("***********dst_field shape", dst_field.shape)
+         # field_from_GPU = time()
+         # dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
+         # field_on_CPU = time()
+         # print("-----------------move field from GPU to CPU time",
+         #       field_on_CPU-field_from_GPU)
+         # self.save_field(dst_field, vvote_field, z, final_chunk, mip, relative=False,
+         #              as_int16=True)
+         # print("-------------------Saving field time:", time()-field_on_CPU)
+         # chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
+         #                        0) 
+         # #chunk = self.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
+         # #bbox_list.append(chunk)
       print("save image after vvoting --------------->>>>>>>")
       for i in image_list:
           print("************shape of image", i.shape)
