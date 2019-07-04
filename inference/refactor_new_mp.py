@@ -165,7 +165,7 @@ if __name__ == '__main__':
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
-                     fill_missing=True, overwrite=False, parallel=False)
+                     fill_missing=True, overwrite=False, parallel=True)
   src_mask_cv = None
   tgt_mask_cv = None
   if args.src_mask_path:
