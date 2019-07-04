@@ -403,6 +403,7 @@ class Aligner:
       head_crop_len = chunk_size if head_crop else 0
       end_crop_len = chunk_size if end_crop else 0
       chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
+                            0)
       for block_offset in serial_range:
           z_offset = serial_offsets[block_offset]
           serial_field = serial_fields[z_offset]
@@ -473,39 +474,36 @@ class Aligner:
       ppid = os.getpid()
       print("start a new save image process", ppid)
       image = dic[key]
-      self.save_image(image.cpu().numpy, dst z, chunk, mip, to_uint8=to_uint8)
+      self.save_image(image.cpu().numpy(), dst, z, chunk, mip, to_uint8=to_uint8)
       del dic[key]
       print("end of the save image process {}".format(ppid), flush=True)
 
   def mp_store_field(self, dic, key, head_crop, end_crop, x_range_len, pad, dst, z,
-                     chunk, mip):
+                     chunk, mip, chunk_size):
       ppid = os.getpid()
       print("start a new save field process", ppid)
-      field = dic[key] 
+      field = dic[key]
       field_len = field.shape[1] - 2*pad
       if(head_crop and end_crop):
           crop_amount = (field_len - x_range_len)/2
-          dst_field = dst_field[:,pad+crop_amount:-(pad+crop_amount),pad:-pad,:]
+          field = field[:,pad+crop_amount:-(pad+crop_amount),pad:-pad,:]
       elif head_crop:
           crop_amount = (field_len - x_range_len)
-          dst_field = dst_field[:,pad+crop_amount:-pad,pad:-pad,:]
+          field = field[:,pad+crop_amount:-pad,pad:-pad,:]
       elif end_crop:
           crop_amount = (field_len - x_range_len)
-          dst_field = dst_field[:,pad:-(pad+crop_amount),pad:-pad,:]
+          field = field[:,pad:-(pad+crop_amount),pad:-pad,:]
       else:
-          dst_field = dst_field[:,pad:-pad,pad:-pad,:]
-      print("***********dst_field shape", dst_field.shape)
-      field_from_GPU = time()
-      dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
+          field = field[:,pad:-pad,pad:-pad,:]
+      print("***********dst_field shape", field.shape)
+      #field_from_GPU = time()
+      field = field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
       field_on_CPU = time()
-      print("-----------------move field from GPU to CPU time",
-            field_on_CPU-field_from_GPU)
+      #print("-----------------move field from GPU to CPU time",
+      #      field_on_CPU-field_from_GPU)
       self.save_field(field, dst, z, chunk, mip, relative=False,
                    as_int16=True)
       print("-------------------Saving field time:", time()-field_on_CPU)
-      head_crop_len = chunk_size if head_crop else 0
-      end_crop_len = chunk_size if end_crop else 0
- 
       del dic[key]
       print("end of the save field process {}".format(ppid), flush=True)
 
@@ -544,7 +542,7 @@ class Aligner:
               #print("len of dic", len(dic))
               src_image = dic["src"]
               del dic["src"]
-          if block_offset != vvote_rane_small[-1]:
+          if block_offset != vvote_range_small[-1]:
               p_list = []
               #self.mp_load(dic,"src", src, z-1, chunk,
               #          mip, mask_cv, mask_mip,
@@ -564,6 +562,7 @@ class Aligner:
           #for i in range(len(image_list)):
           #    print("************shape of image", image_list[i].shape,
           #          image_list[i].dtype)
+          print(">--------------------start vvote---------------------->")
           vv_start = time()
           image, dst_field = self.new_vector_vote(model_path, src_image, image_list,
                                                   chunk_size, pad, vvote_way, mip,
@@ -645,7 +644,8 @@ class Aligner:
           pf = Process(target=self.mp_store_field, args=(dic,"field", head_crop,
                                                         end_crop, x_range_len,
                                                         pad, vvote_field, z,
-                                                        final_chunk, mip))
+                                                        final_chunk, mip,
+                                                         chunk_size))
           pf.start()
           upload_list.append(pf)
          # #if first_chunk:
@@ -679,8 +679,8 @@ class Aligner:
          # self.save_field(dst_field, vvote_field, z, final_chunk, mip, relative=False,
          #              as_int16=True)
          # print("-------------------Saving field time:", time()-field_on_CPU)
-         # chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
-         #                        0) 
+          chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
+                                 0)
          # #chunk = self.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
          # #bbox_list.append(chunk)
       print("save image after vvoting --------------->>>>>>>")
