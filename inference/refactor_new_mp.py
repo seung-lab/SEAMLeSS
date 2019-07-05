@@ -275,7 +275,7 @@ if __name__ == '__main__':
             "final_chunk is ", final_chunk.stringify(0, mip=mip))
       image_list, chunk = a.process_super_chunk_serial(src, block_start, copy_range[0],
                                                        serial_range, serial_offsets,
-                                                       serial_fields, dst, model_lookup,
+                                                       dst, model_lookup,
                                                        chunk, mip, pad, chunk_size,
                                                        head_crop, end_crop,
                                                        mask_cv=src_mask_cv,

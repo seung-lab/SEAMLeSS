@@ -52,7 +52,7 @@ if __name__ == '__main__':
     help='path to csv file with list of z indices to use')
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--src_mask_path', type=str, default='',
-    help='CloudVolume path of mask to use with src images; default None')
+    hradiuselp='CloudVolume path of mask to use with src images; default None')
   parser.add_argument('--src_mask_mip', type=int, default=8,
     help='MIP of source mask')
   parser.add_argument('--src_mask_val', type=int, default=1,
@@ -275,7 +275,7 @@ if __name__ == '__main__':
             "final_chunk is ", final_chunk.stringify(0, mip=mip))
       image_list, chunk = a.process_super_chunk_serial(src, block_start, copy_range[0],
                                                        serial_range, serial_offsets,
-                                                       serial_fields, dst, model_lookup,
+                                                       dst, model_lookup,
                                                        chunk, mip, pad, chunk_size,
                                                        head_crop, end_crop,
                                                        mask_cv=src_mask_cv,

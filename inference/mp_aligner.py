@@ -93,9 +93,94 @@ class Aligner:
                                                torch.max(data), torch.min(data)), flush=True)
       data = data * 4
       return data.type(torch.int16)
-  def int16_to_float(self, data):
 
+  def int16_to_float(self, data):
       return data.type(torch.float)/4.0
+
+  def new_align(self, cm, src, dst, vvote_field, bbox, mip, pad, radius, block_start,
+                block_size, chunk_size, model_lookup, src_mask_cv=None, src_mask_mip=0,
+                src_mask_val=0, rows=1000, super_chunk_len=1000, overlap_chunks=0):
+      overlap = radius
+      full_range = range(block_size + overlap)
+      vvote_range = full_range[overlap:]
+
+      copy_range = full_range[overlap-1:overlap]
+      serial_range = full_range[:overlap-1][::-1]
+
+      serial_offsets = {serial_range[i]: i+1 for i in range(overlap-1)}
+      vvote_offsets = [-i for i in range(1, overlap+1)]
+
+      chunk_grid = self.get_chunk_grid(cm, bbox, mip, 0, rows, pad)
+      print("copy range ", copy_range)
+      #print("---- len of chunks", len(chunk_grid), "orginal bbox", bbox.stringify(0))
+      vvote_range_small = vvote_range
+      #vvote_range_small = vvote_range[:super_chunk_len-overlap+1]
+      #vvote_subblock = range(vvote_range_small[-1]+1, vvote_range[-1]+1,
+      #                          super_chunk_len)
+      print("--------overlap is ", overlap, "vvote_range_small",
+            vvote_range_small)
+      #dst = dsts[0]
+      #for i in vvote_subblock:
+      #    print("*****>>> vvote subblock is ", i)
+      #for i in  chunk_grid:
+      #    print("--------grid size is ", i.stringify(0, mip=mip))
+      for i in range(len(chunk_grid)):
+          chunk = chunk_grid[i]
+          if(len(chunk_grid) == 1):
+              head_crop = False
+              end_crop = False
+          else:
+              if i == 0:
+                  head_crop = False
+                  end_crop = True
+              elif i == (len(chunk_grid) -1):
+                  head_crop = True
+                  end_crop = False
+              else:
+                  head_crop = True
+                  end_crop = True
+
+          if head_crop == False and end_crop == True:
+              final_chunk = self.crop_chunk(chunk, mip, pad,
+                                         chunk_size*(super_chunk_len-1)+pad,
+                                         pad, pad)
+          elif head_crop and end_crop:
+              final_chunk = self.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
+                                         chunk_size*(super_chunk_len-1)+pad,
+                                         pad, pad)
+          elif head_crop and end_crop == False:
+              final_chunk = self.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
+                                         pad, pad, pad)
+          else:
+              final_chunk = self.crop_chunk(chunk, mip, pad,
+                                         pad, pad, pad)
+          print("----------------------- head crop ", head_crop, " end_crop",
+                end_crop)
+
+          print("<<<<<<init chunk size is ", chunk.stringify(0, mip=mip),
+                "final_chunk is ", final_chunk.stringify(0, mip=mip))
+          image_list, chunk = self.process_super_chunk_serial(src, block_start, copy_range[0],
+                                                           serial_range, serial_offsets,
+                                                           dst, model_lookup,
+                                                           chunk, mip, pad, chunk_size,
+                                                           head_crop, end_crop,
+                                                           mask_cv=src_mask_cv,
+                                                           mask_mip=src_mask_mip,
+                                                           mask_val=src_mask_val)
+          write_image = []
+          for _ in image_list:
+              write_image.append(True)
+          print("============================ start vector voting")
+          # align with vector voting
+          vvote_way = radius
+          self.process_super_chunk_vvote(src, block_start, vvote_range_small, dst,
+                                      model_lookup, vvote_way, image_list,
+                                      write_image, chunk,
+                                      mip, pad, chunk_size, super_chunk_len,
+                                      vvote_field,
+                                      head_crop, end_crop, final_chunk,
+                                      mask_cv=src_mask_cv, mask_mip=src_mask_mip,
+                                      mask_val=src_mask_val)
 
   def new_compute_field_multi_GPU(self, model_path, src_img, tgt_img, chunk_size, pad,
                         warp=False):
@@ -375,7 +460,7 @@ class Aligner:
       print("end of the new process {}".format(ppid), flush=True)
 
   def process_super_chunk_serial(self, src, block_start, copy_offset, serial_range,
-                                 serial_offsets, serial_fields, dsts, model_lookup,
+                                 serial_offsets, dsts, model_lookup,
                                  schunk, mip, pad, chunk_size,
                                  head_crop, end_crop, mask_cv=None, mask_mip=0,
                                  mask_val=0, affine=None):
@@ -406,7 +491,7 @@ class Aligner:
                             0)
       for block_offset in serial_range:
           z_offset = serial_offsets[block_offset]
-          serial_field = serial_fields[z_offset]
+          #serial_field = serial_fields[z_offset]
           #dst = dsts[even_odd]
           dst = dsts
           z = block_start + block_offset
@@ -648,41 +733,8 @@ class Aligner:
                                                          chunk_size))
           pf.start()
           upload_list.append(pf)
-         # #if first_chunk:
-         # #    image_list.append(image[...,0:-(chunk_size-pad),:])
-         # #else:
-         # #    image_list.append(image[..., chunk_size-pad:-(chunk_size-pad),:])
-         # field_len = dst_field.shape[1] - 2*pad
-         # #if(first_chunk):
-         # #    head_crop = 0;
-         # #    end_crop = field_len - x_range_len
-         # #else:
-         # #    head_crop = (field_len - x_range_len)/2
-         # #    end_crop = head_crop
-         # if(head_crop and end_crop):
-         #     crop_amount = (field_len - x_range_len)/2
-         #     dst_field = dst_field[:,pad+crop_amount:-(pad+crop_amount),pad:-pad,:]
-         # elif head_crop:
-         #     crop_amount = (field_len - x_range_len)
-         #     dst_field = dst_field[:,pad+crop_amount:-pad,pad:-pad,:]
-         # elif end_crop:
-         #     crop_amount = (field_len - x_range_len)
-         #     dst_field = dst_field[:,pad:-(pad+crop_amount),pad:-pad,:]
-         # else:
-         #     dst_field = dst_field[:,pad:-pad,pad:-pad,:]
-         # print("***********dst_field shape", dst_field.shape)
-         # field_from_GPU = time()
-         # dst_field = dst_field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
-         # field_on_CPU = time()
-         # print("-----------------move field from GPU to CPU time",
-         #       field_on_CPU-field_from_GPU)
-         # self.save_field(dst_field, vvote_field, z, final_chunk, mip, relative=False,
-         #              as_int16=True)
-         # print("-------------------Saving field time:", time()-field_on_CPU)
           chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
                                  0)
-         # #chunk = self.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
-         # #bbox_list.append(chunk)
       print("save image after vvoting --------------->>>>>>>")
       for i in image_list:
           print("************shape of image", i.shape)
@@ -765,13 +817,13 @@ class Aligner:
               if(not is_blank(tgt_img[i,...])):
                   tgt_im = tgt_img[i,...]
                   tgt_img[i,...] =normalizer(tgt_im).reshape(tgt_im.shape)
-      torch.cuda.synchronize()
-      start_t = time()
+      #torch.cuda.synchronize()
+      #start_t = time()
       field = model(src_img, tgt_img)
-      torch.cuda.synchronize()
-      end_t = time()
-      print("+++++++++++++++++compute field time", end_t - start_t, "shape is",
-           src_img.shape)
+      #torch.cuda.synchronize()
+      #end_t = time()
+      #print("+++++++++++++++++compute field time", end_t - start_t, "shape is",
+      #     src_img.shape)
       if(warp):
           torch.cuda.synchronize()
           start_t = time()
