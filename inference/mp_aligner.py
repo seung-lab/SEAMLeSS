@@ -12,6 +12,7 @@ from multiprocessing import Process, Manager
 from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
 
+import csv
 from cloudvolume import Storage
 from cloudvolume.lib import Vec
 import numpy as np
@@ -97,9 +98,42 @@ class Aligner:
   def int16_to_float(self, data):
       return data.type(torch.float)/4.0
 
-  def new_align(self, cm, src, dst, vvote_field, bbox, mip, pad, radius, block_start,
+  def new_align_task(self, z_range, src, dst, vvote_field, chunk_grid, mip,
+                     pad, radius,
                 block_size, chunk_size, model_lookup, src_mask_cv=None, src_mask_mip=0,
                 src_mask_val=0, rows=1000, super_chunk_len=1000, overlap_chunks=0):
+      #print("---------------------------->> load image")
+      batch = []
+      for i in z_range:
+          batch.append(tasks.NewAlignTask(src, dst, vvote_field, chunk_grid, mip, pad,
+                                          radius, i, block_size, chunk_size,
+                                          model_lookup, src_mask_cv, src_mask_mip,
+                                          src_mask_val, rows, super_chunk_len,
+                                          overlap_chunks))
+      return batch
+
+
+  def new_align(self, src, dst, vvote_field, chunk_grid, mip, pad, radius, block_start,
+                block_size, chunk_size, lookup_path, src_mask_cv=None, src_mask_mip=0,
+                src_mask_val=0, rows=1000, super_chunk_len=1000, overlap_chunks=0):
+      model_lookup={}
+      with open(lookup_path) as f:
+        reader = csv.reader(f, delimiter=',')
+        for k, r in enumerate(reader):
+           if k != 0:
+             x_start = int(r[0])
+             y_start = int(r[1])
+             z_start = int(r[2])
+             x_stop  = int(r[3])
+             y_stop  = int(r[4])
+             z_stop  = int(r[5])
+             bbox_mip = int(r[6])
+             model_path = join('..', 'models', r[7])
+             #bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
+             for z in range(z_start, z_stop):
+               #bbox_lookup[z] = bbox 
+               model_lookup[z] = model_path
+
       overlap = radius
       full_range = range(block_size + overlap)
       vvote_range = full_range[overlap:]
@@ -110,7 +144,7 @@ class Aligner:
       serial_offsets = {serial_range[i]: i+1 for i in range(overlap-1)}
       vvote_offsets = [-i for i in range(1, overlap+1)]
 
-      chunk_grid = self.get_chunk_grid(cm, bbox, mip, 0, rows, pad)
+      #chunk_grid = self.get_chunk_grid(cm, bbox, mip, 0, rows, pad)
       print("copy range ", copy_range)
       #print("---- len of chunks", len(chunk_grid), "orginal bbox", bbox.stringify(0))
       vvote_range_small = vvote_range

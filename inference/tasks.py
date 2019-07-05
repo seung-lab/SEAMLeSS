@@ -70,6 +70,48 @@ class PredictImageTask(RegisteredTask):
     diff = end - start
     print(':{:.3f} s'.format(diff))
 
+class NewAlignTask(RegisteredTask):
+  def __init__(self, src, dst, vvote_field, chunk_grid, mip, pad, radius, block_start,
+               block_size, chunk_size, model_lookup, mask_cv, mask_mip,
+               mask_val, rows, super_chunk_len, overlap_chunks):
+    super().__init__(src, dst, vvote_field, chunk_grid, mip, pad, radius, block_start,
+                     block_size, chunk_size, model_lookup, mask_cv, mask_mip,
+                     mask_val, rows, super_chunk_len, overlap_chunks)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src)
+    dst_cv = DCV(self.dst)
+    field_cv = DCV(self.vvote_field)
+    chunk_grid =[]
+    for i in self.chunk_grid:
+        chunk_grid.append(deserialize_bbox(i))
+    mip = self.mip
+    pad = self.pad
+    radius = self.radius
+    block_start = self.block_start
+    block_size = self.block_size
+    chunk_size = self.chunk_size
+    model_lookup = self.model_lookup
+    mask_cv = None
+    if self.mask_cv:
+      mask_cv = DCV(self.mask_cv)
+    mask_mip = self.mask_mip
+    mask_val = self.mask_val
+    print("\n Align task\n"
+          "src {}\n"
+          "MIP{}\n"
+          "start_z={} \n".format(self.src, mip,
+                        block_start,), flush=True)
+    start = time()
+    aligner.new_align(src_cv, dst_cv, field_cv, chunk_grid, mip, pad, radius, block_start,
+                block_size, chunk_size, model_lookup, src_mask_cv=mask_cv,
+                      src_mask_mip=mask_mip, src_mask_val=mask_val, rows=self.rows,
+                      super_chunk_len=self.super_chunk_len,
+                      overlap_chunks=self.overlap_chunks)
+    end = time()
+    diff = end - start
+    print('Align task time:{:.3f} s'.format(diff), flush=True)
+
 class LoadImageTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, patch_bbox, mip, step, mask_cv, mask_mip,
                mask_val):
