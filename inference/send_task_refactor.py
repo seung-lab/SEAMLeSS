@@ -252,9 +252,10 @@ if __name__ == '__main__':
           print("*********self range is ", self.brange)
       def __iter__(self):
           for i in self.brange:
-              t = a.new_align_task(range(i,i+1), src.path, dst.path, vvote_field.path, bbox,
+              t = a.new_align_task(range(i,i+1), src.path, dst.path,
+                                   vvote_field.path,
                                    chunk_grid, mip, pad, args.tgt_radius,
-                                   block_size, chunk_size, model_lookup,
+                                   block_size, chunk_size, args.model_lookup,
                                    src_mask_cv=src_mask_cv,
                                    src_mask_mip=src_mask_mip,
                                    src_mask_val=src_mask_val, rows=rows,
@@ -263,29 +264,27 @@ if __name__ == '__main__':
               yield from t
 
   #print("z_range is ", z_range)
-  #ptask = []
-  #range_list = make_range(z_range, a.threads)
+  ptask = []
+  range_list = make_range(z_range, a.threads)
   #print("range_list is ", range_list)
-  #for irange in range_list:
-  #    ptask.append(AlignT(irange))
+  for irange in range_list:
+      ptask.append(AlignT(irange))
   #print("ptask len is ", len(ptask))
-  #batch = a.load_range_image(src.path, dst.path, z_range, chunk_grid[0], mip,
-  #                          args.block_size, return_iterator=True)
   #ptask.append(batch)
   #remote_upload_it(ptask)
-  #with ProcessPoolExecutor(max_workers=a.threads) as executor:
-  #    executor.map(remote_upload_it, ptask)
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+      executor.map(remote_upload_it, ptask)
 
-  batch = a.new_align_task(z_range, src.path, dst.path, vvote_field.path,
-                           chunk_grid, mip, pad, args.tgt_radius,
-                           block_size, chunk_size, args.model_lookup,
-                           src_mask_cv=src_mask_cv,
-                           src_mask_mip=src_mask_mip,
-                           src_mask_val=src_mask_val, rows=rows,
-                           super_chunk_len=super_chunk_len,
-                           overlap_chunks=overlap_chunks)
+  #batch = a.new_align_task(z_range, src.path, dst.path, vvote_field.path,
+  #                         chunk_grid, mip, pad, args.tgt_radius,
+  #                         block_size, chunk_size, args.model_lookup,
+  #                         src_mask_cv=src_mask_cv,
+  #                         src_mask_mip=src_mask_mip,
+  #                         src_mask_val=src_mask_val, rows=rows,
+  #                         super_chunk_len=super_chunk_len,
+  #                         overlap_chunks=overlap_chunks)
 
-  remote_upload(args.queue_name, batch)
+  #remote_upload(args.queue_name, batch)
 
   start = time()
   #print("start until now time", start - begin_time)
