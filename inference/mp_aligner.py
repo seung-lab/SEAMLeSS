@@ -429,7 +429,7 @@ class Aligner:
               p_list = []
               #self.mp_load(dic,"src", src, z-1, chunk,
               #          mip, mask_cv, mask_mip,
-              #          mask_val)
+              #          mask_v)
               p = Process(target=self.mp_load, args=(dic, "src", src, z-1, chunk,
                                                      mip, mask_cv, mask_mip,
                                                      mask_val))
@@ -765,12 +765,13 @@ class Aligner:
               if(not is_blank(tgt_img[i,...])):
                   tgt_im = tgt_img[i,...]
                   tgt_img[i,...] =normalizer(tgt_im).reshape(tgt_im.shape)
-      #torch.cuda.synchronize()
-      #start_t = time()
+      torch.cuda.synchronize()
+      start_t = time()
       field = model(src_img, tgt_img)
-      #torch.cuda.synchronize()
-      #end_t = time()
-      #print("+++++++++++++++++compute field time", end_t - start_t)
+      torch.cuda.synchronize()
+      end_t = time()
+      print("+++++++++++++++++compute field time", end_t - start_t, "shape is",
+           src_img.shape)
       if(warp):
           torch.cuda.synchronize()
           start_t = time()
