@@ -226,14 +226,14 @@ class Aligner:
       padded_len = chunk_size + 2*pad
       y_chunk_number = (y_len - 2*pad) // chunk_size
       x_chunk_number = unpadded_size // chunk_size
-      if(warp):
-          #if(first_chunk):
-          #    adjust = pad
-          #else:
-          #    adjust = 0
-          image = torch.FloatTensor(1, 1, unpadded_size, y_len).zero_()
-      else:
-          dst_field = torch.FloatTensor(1, unpadded_size, y_len, 2).zero_()
+      #if(warp):
+      #    #if(first_chunk):
+      #    #    adjust = pad
+      #    #else:
+      #    #    adjust = 0
+      #    image = torch.FloatTensor(1, 1, unpadded_size, y_len).zero_()
+      #else:
+      dst_field = torch.FloatTensor(1, unpadded_size, y_len, 2).zero_()
       #print("--------------IN compute field", x_chunk_number*y_chunk_number)
       def coor(x,y):
           for i in range(x):
@@ -270,27 +270,85 @@ class Aligner:
           tgt_patch = tgt_patch.to(device=self.device)
           src_patch = self.convert_to_float(src_patch)
           tgt_patch = self.convert_to_float(tgt_patch)
-          if warp:
-              image_patch = self.new_compute_field_chunk(model_path, src_patch,
-                                                        tgt_patch, warp, pad)
-              for i in range(len(coor_list)):
-                  xs, ys = coor_list[i]
-                  image[...,xs*chunk_size:xs*chunk_size+chunk_size,
-                      pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch[i]
-             #del image_patch
-          else:
-              field = self.new_compute_field_chunk(model_path, src_patch,
-                                               tgt_patch, warp)
-              field = field[:,pad:-pad,pad:-pad,:]
-              field = field.to(device='cpu')
-              for i in range(len(coor_list)):
-                  xs, ys = coor_list[i]
-                  dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
-                        pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field[i:i+1,...]
+
+          field = self.new_compute_field_chunk(model_path, src_patch,
+                                           tgt_patch, False)
+          field = field[:,pad:-pad,pad:-pad,:]
+          field = field.to(device='cpu')
+          for i in range(len(coor_list)):
+              xs, ys = coor_list[i]
+              dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
+                    pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field[i:i+1,...]
       if(warp):
+          get_corr = coor(x_chunk_number, y_chunk_number)
+          image = self.warp_slice(chunk_size, pad, mip, src_img, dst_field,
+                                  get_corr)
           return image
       else:
           return dst_field
+
+          #if warp:
+          #    image_patch = self.new_compute_field_chunk(model_path, src_patch,
+          #                                              tgt_patch, warp, pad)
+          #    for i in range(len(coor_list)):
+          #        xs, ys = coor_list[i]
+          #        image[...,xs*chunk_size:xs*chunk_size+chunk_size,
+          #            pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch[i]
+          #   #del image_patch
+          #else:
+          #    field = self.new_compute_field_chunk(model_path, src_patch,
+          #                                     tgt_patch, warp)
+          #    field = field[:,pad:-pad,pad:-pad,:]
+          #    field = field.to(device='cpu')
+          #    for i in range(len(coor_list)):
+          #        xs, ys = coor_list[i]
+          #        dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
+          #              pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field[i:i+1,...]
+
+  def warp_slice(self, chunk_size, pad, mip, src_img, dst_field, get_corr)
+      img_shape = src_img.shape
+      x_len = img_shape[-2]
+      y_len = img_shape[-1]
+      padded_len = chunk_size + 2*pad
+      x_chunk_number = (x_len - 2*pad) // chunk_size
+      y_chunk_number = (y_len - 2*pad) // chunk_size
+
+      image = torch.FloatTensor(1, 1, x_len-2*pad, y_len).zero_()
+      has_next = True
+      while(has_next):
+          coor_list = []
+          xs, ys = next(get_corr)
+          if(xs ==-1):
+              break
+          src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                  ys*chunk_size:ys*chunk_size+padded_len]
+          field = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
+                            ys*chunk_size:ys*chunk_size+padded_len,:]
+          coor_list.append([xs, ys])
+          for i in range(1, gpu_num):
+              xs, ys = next(get_corr)
+              if(xs == -1):
+                  has_next = False
+                  break
+              else:
+                  tmp_s = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                                  ys*chunk_size:ys*chunk_size+padded_len]
+                  src_patch = torch.cat((src_patch, tmp_s),0)
+                  tmp_f = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
+                            ys*chunk_size:ys*chunk_size+padded_len,:]
+                  field = torch.cat((field, tmp_f),0)
+                  coor_list.append([xs, ys])
+          src_patch = src_patch.to(device=self.device)
+          src_patch = self.convert_to_float(src_patch)
+          field = field.to(device=self.device)
+          image_patch = self.new_cloudsample_image(src_patch, field)
+          image_patch = image_patch[:,:,pad:-pad,pad:-pad]
+          image_patch = image_patch.to(device='cpu')
+          for i in range(len(coor_list)):
+              xs, ys = coor_list[i]
+              image[..., xs*chunk_size:xs*chunk_size+chunk_size,
+                    pad+ys*chunk_size:pad+ys*chunk_size+chunk_size]=image_patch[i:i+1,...]
+      return image
 
 
   def new_compute_field(self, model_path, src_img, tgt_img, chunk_size, pad,
@@ -1088,8 +1146,8 @@ class Aligner:
             for j in range(y):
                 yield i ,j
         yield -1,-1
-    torch.cuda.synchronize()
-    start = time()
+    #torch.cuda.synchronize()
+    #start = time()
     gpu_num = torch.cuda.device_count()
     get_corr = coor(x_chunk_number, y_chunk_number)
     has_next = True
@@ -1152,50 +1210,52 @@ class Aligner:
             xs, ys = coor_list[i]
             dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = new_field[i:i+1,...]
-    
-    torch.cuda.synchronize()
-    vv_end = time()
+
+    #torch.cuda.synchronize()
+    #vv_end = time()
     print("******* compute field and vv time is ", vv_end-start)
     #warp the image
     has_next = True
     get_corr = coor(x_chunk_number, y_chunk_number)
-    while(has_next):
-        coor_list = []
-        xs, ys = next(get_corr)
-        if(xs ==-1):
-            break
-        src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
-                                ys*chunk_size:ys*chunk_size+padded_len]
-        field = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
-                          ys*chunk_size:ys*chunk_size+padded_len,:]
-        coor_list.append([xs, ys])
-        for i in range(1, gpu_num):
-            xs, ys = next(get_corr)
-            if(xs == -1):
-                has_next = False
-                break
-            else:
-                tmp_s = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
-                                ys*chunk_size:ys*chunk_size+padded_len]
-                src_patch = torch.cat((src_patch, tmp_s),0)
-                tmp_f = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
-                          ys*chunk_size:ys*chunk_size+padded_len,:]
-                field = torch.cat((field, tmp_f),0)
-                coor_list.append([xs, ys])
-        src_patch = src_patch.to(device=self.device)
-        src_patch = self.convert_to_float(src_patch)
-        field = field.to(device=self.device)
-        image_patch = self.new_cloudsample_image(src_patch, field)
-        image_patch = image_patch[:,:,pad:-pad,pad:-pad]
-        image_patch = image_patch.to(device='cpu')
-        for i in range(len(coor_list)):
-            xs, ys = coor_list[i]
-            image[..., xs*chunk_size:xs*chunk_size+chunk_size,
-                  pad+ys*chunk_size:pad+ys*chunk_size+chunk_size]=image_patch[i:i+1,...]
+    image = self.warp_slice(chunk_size, pad, mip, src_img, dst_field, get_corr)
 
-    torch.cuda.synchronize()
-    warp_end = time()
-    print("******** warp time is ", warp_end-vv_end)
+    #while(has_next):
+    #    coor_list = []
+    #    xs, ys = next(get_corr)
+    #    if(xs ==-1):
+    #        break
+    #    src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+    #                            ys*chunk_size:ys*chunk_size+padded_len]
+    #    field = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
+    #                      ys*chunk_size:ys*chunk_size+padded_len,:]
+    #    coor_list.append([xs, ys])
+    #    for i in range(1, gpu_num):
+    #        xs, ys = next(get_corr)
+    #        if(xs == -1):
+    #            has_next = False
+    #            break
+    #        else:
+    #            tmp_s = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+    #                            ys*chunk_size:ys*chunk_size+padded_len]
+    #            src_patch = torch.cat((src_patch, tmp_s),0)
+    #            tmp_f = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
+    #                      ys*chunk_size:ys*chunk_size+padded_len,:]
+    #            field = torch.cat((field, tmp_f),0)
+    #            coor_list.append([xs, ys])
+    #    src_patch = src_patch.to(device=self.device)
+    #    src_patch = self.convert_to_float(src_patch)
+    #    field = field.to(device=self.device)
+    #    image_patch = self.new_cloudsample_image(src_patch, field)
+    #    image_patch = image_patch[:,:,pad:-pad,pad:-pad]
+    #    image_patch = image_patch.to(device='cpu')
+    #    for i in range(len(coor_list)):
+    #        xs, ys = coor_list[i]
+    #        image[..., xs*chunk_size:xs*chunk_size+chunk_size,
+    #              pad+ys*chunk_size:pad+ys*chunk_size+chunk_size]=image_patch[i:i+1,...]
+
+    #torch.cuda.synchronize()
+    #warp_end = time()
+    #print("******** warp time is ", warp_end-vv_end)
     return image, dst_field
 
 
