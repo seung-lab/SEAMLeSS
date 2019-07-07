@@ -233,7 +233,8 @@ class Aligner:
       #    #    adjust = 0
       #    image = torch.FloatTensor(1, 1, unpadded_size, y_len).zero_()
       #else:
-      dst_field = torch.FloatTensor(1, unpadded_size, y_len, 2).zero_()
+      #dst_field = torch.FloatTensor(1, unpadded_size, y_len, 2).zero_()
+      dst_field = torch.FloatTensor(1, x_len, y_len, 2).zero_()
       #print("--------------IN compute field", x_chunk_number*y_chunk_number)
       def coor(x,y):
           for i in range(x):
@@ -277,11 +278,11 @@ class Aligner:
           field = field.to(device='cpu')
           for i in range(len(coor_list)):
               xs, ys = coor_list[i]
-              dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
+              dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
                     pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field[i:i+1,...]
       if(warp):
           get_corr = coor(x_chunk_number, y_chunk_number)
-          image = self.warp_slice(chunk_size, pad, mip, src_img, dst_field,
+          image = self.warp_slice(chunk_size, pad, src_img, dst_field,
                                   get_corr)
           return image
       else:
@@ -305,7 +306,7 @@ class Aligner:
           #        dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
           #              pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field[i:i+1,...]
 
-  def warp_slice(self, chunk_size, pad, mip, src_img, dst_field, get_corr)
+  def warp_slice(self, chunk_size, pad, src_img, dst_field, get_corr):
       img_shape = src_img.shape
       x_len = img_shape[-2]
       y_len = img_shape[-1]
@@ -315,6 +316,8 @@ class Aligner:
 
       image = torch.FloatTensor(1, 1, x_len-2*pad, y_len).zero_()
       has_next = True
+      #gpu_num = torch.cuda.device_count()
+      gpu_num = 1
       while(has_next):
           coor_list = []
           xs, ys = next(get_corr)
@@ -631,6 +634,7 @@ class Aligner:
           croped_image = self.crop_imageX(new_tgt_image, head_crop, end_crop,
                                          image_crop_len)
           image_list.insert(0, croped_image)
+          #Algin frist several slices to anchor
           #new_tgt_image = self.crop_imageX(new_tgt_image, head_crop, end_crop,
           #                            tgt_crop_len)
           #print("------------tgt_image shape", tgt_image.shape)
@@ -1137,7 +1141,7 @@ class Aligner:
     #else:
     #    adjust = 0
     image = torch.FloatTensor(1, 1, x_len-2*pad, y_len).zero_()
-    dst_field = torch.FloatTensor(1,x_len, y_len,2).zero_()
+    dst_field = torch.FloatTensor(1,x_len, y_len, 2).zero_()
     #print("===============x_chunk_number is ", x_chunk_number)
     #elif head_crop == False and end_crop:
     #    offset = 0
@@ -1213,11 +1217,12 @@ class Aligner:
 
     #torch.cuda.synchronize()
     #vv_end = time()
-    print("******* compute field and vv time is ", vv_end-start)
+    #print("******* compute field and vv time is ", vv_end-start)
+    print("finish compute  field and VV")
     #warp the image
     has_next = True
     get_corr = coor(x_chunk_number, y_chunk_number)
-    image = self.warp_slice(chunk_size, pad, mip, src_img, dst_field, get_corr)
+    image = self.warp_slice(chunk_size, pad, src_img, dst_field, get_corr)
 
     #while(has_next):
     #    coor_list = []

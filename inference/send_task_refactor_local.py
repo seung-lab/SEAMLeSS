@@ -238,7 +238,7 @@ if __name__ == '__main__':
   #    print("*****>>> vvote subblock is ", i)
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, 0, rows, pad)
   a.new_align(src, dst, vvote_field, chunk_grid, mip, pad, args.tgt_radius,
-              block_start, block_size, chunk_size, model_lookup,
+              block_start, block_size, chunk_size, args.model_lookup,
               src_mask_cv=src_mask_cv,
               src_mask_mip=src_mask_mip, src_mask_val=src_mask_val, rows=rows,
               super_chunk_len=super_chunk_len, overlap_chunks=overlap_chunks)
