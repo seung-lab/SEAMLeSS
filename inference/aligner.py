@@ -143,22 +143,22 @@ class Aligner:
     x_offset = offset[0]
     y_offset = offset[1]
 
-    # x_remainder_st = ((raw_x_range[0] - x_offset) % x_chunk)
-    # y_remainder_st = ((raw_y_range[0] - y_offset) % y_chunk)
-    x_remainder_end = ((raw_x_range[1] - raw_x_range[0]) % x_chunk)
-    y_remainder_end = ((raw_y_range[1] - raw_y_range[0]) % y_chunk)
+    x_remainder_st = ((raw_x_range[0] - x_offset) % x_chunk)
+    y_remainder_st = ((raw_y_range[0] - y_offset) % y_chunk)
+    x_remainder_end = ((raw_x_range[1] - x_offset) % x_chunk)
+    y_remainder_end = ((raw_y_range[1] - y_offset) % y_chunk)
 
 
-    calign_x_range = [raw_x_range[0], raw_x_range[1] - x_remainder_end]
-    calign_y_range = [raw_y_range[0], raw_y_range[1] - y_remainder_end]
+    calign_x_range = [raw_x_range[0] + (x_chunk-x_remainder_st), raw_x_range[1] - x_remainder_end]
+    calign_y_range = [raw_y_range[0] + (y_chunk-y_remainder_st), raw_y_range[1] - y_remainder_end]
 
     chunks = []
     for xs in range(calign_x_range[0], calign_x_range[1], x_chunk):
       for ys in range(calign_y_range[0], calign_y_range[1], y_chunk):
         for zs in range(z_range[0], z_range[1], z_chunk):
-          chunks.append(BoundingBox3d(xs, xs + chunk_size[0],
-                                  ys, ys + chunk_size[1],
-                                  zs, zs + chunk_size[2],
+          chunks.append(BoundingBox3d(xs, xs + x_chunk,
+                                  ys, ys + y_chunk,
+                                  zs, zs + z_chunk,
                                   mip=mip, max_mip=max_mip))
     return chunks
 
