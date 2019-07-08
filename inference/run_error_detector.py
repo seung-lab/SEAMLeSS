@@ -69,8 +69,8 @@ if __name__ == '__main__':
   a = get_aligner(args)
   provenance = get_provenance(args)
   
-  args.bbox_start = [args.bbox_start[i]+patch_size[i]//2 for i in range(3)]
-  args.bbox_stop = [args.bbox_stop[i]-patch_size[i]//2 for i in range(3)]
+  args.bbox_start = [args.bbox_start[i]+args.patch_size[i]//2 for i in range(3)]
+  args.bbox_stop = [args.bbox_stop[i]-args.patch_size[i]//2 for i in range(3)]
   bbox = get_bbox_3d(args)
   
   # Simplify var names
