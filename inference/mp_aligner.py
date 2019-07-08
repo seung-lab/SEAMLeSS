@@ -306,7 +306,6 @@ class Aligner:
           #        xs, ys = coor_list[i]
           #        dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
           #              pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field[i:i+1,...]
-
   def warp_slice(self, chunk_size, pad, src_img, dst_field, get_corr):
       img_shape = src_img.shape
       x_len = img_shape[-2]
@@ -324,10 +323,13 @@ class Aligner:
           xs, ys = next(get_corr)
           if(xs ==-1):
               break
-          src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
-                                  ys*chunk_size:ys*chunk_size+padded_len]
           field = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
                             ys*chunk_size:ys*chunk_size+padded_len,:]
+          distance = self.profile_field(field).type(torch.int32)
+          field -= distance.type(torch.float32)
+          dis = distance.flip(0)
+          src_patch = src_img[...,dis[0]+xs*chunk_size:dis[0]+xs*chunk_size+padded_len,
+                                  dis[1]+ys*chunk_size:dis[1]+ys*chunk_size+padded_len]
           coor_list.append([xs, ys])
           for i in range(1, gpu_num):
               xs, ys = next(get_corr)
@@ -335,12 +337,15 @@ class Aligner:
                   has_next = False
                   break
               else:
-                  tmp_s = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
-                                  ys*chunk_size:ys*chunk_size+padded_len]
-                  src_patch = torch.cat((src_patch, tmp_s),0)
                   tmp_f = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
                             ys*chunk_size:ys*chunk_size+padded_len,:]
+                  distance = self.profile_field(tmp_f).type(torch.int32)
+                  tmp_f -= distance.type(torch.float32)
                   field = torch.cat((field, tmp_f),0)
+                  dis = distance.flip(0)
+                  tmp_s = src_img[...,dis[0]+xs*chunk_size:dis[0]+xs*chunk_size+padded_len,
+                                  dis[1]+ys*chunk_size:dis[1]+ys*chunk_size+padded_len]
+                  src_patch = torch.cat((src_patch, tmp_s),0)
                   coor_list.append([xs, ys])
           src_patch = src_patch.to(device=self.device)
           src_patch = self.convert_to_float(src_patch)
