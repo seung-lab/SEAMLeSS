@@ -217,6 +217,81 @@ class Aligner:
                                       mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                       mask_val=src_mask_val)
 
+  def mp_compute_field_singel(self, dic, coor_list, device_num,
+                              chunk_size, pad, padded_len):
+      start = time()
+      ppid = os.getpid()
+      print("start a new process to compute vector field", ppid)
+      src_img = dic['src']
+      tgt_img = dic['tgt']
+      dst_field = dic['field']
+      for xs, ys in coor_list:
+          src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                            ys*chunk_size:ys*chunk_size+padded_len]
+          tgt_patch = tgt_img[...,xs*chunk_size:xs*chunk_size+padded_len,
+                            ys*chunk_size:ys*chunk_size+padded_len]
+
+          src_patch = src_patch.to(device='cuda:'+device_num)
+          tgt_patch = tgt_patch.to(device='cuda:'+device_num)
+          src_patch = self.convert_to_float(src_patch)
+          tgt_patch = self.convert_to_float(tgt_patch)
+          field = self.new_compute_field_chunk(model_path, src_patch,
+                                           tgt_patch, False)
+          field = field[:,pad:-pad,pad:-pad,:]
+          field = field.to(device='cpu')
+          dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
+                    pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field
+
+      print("end of the computing vector process {}, use {}".format(ppid,
+                                                                    time()-start,
+                                                                    flush=True))
+
+  def mp_compute_field_multi_GPU(self, model_path, src_img, tgt_img, chunk_size, pad,
+                        warp=False):
+      #print("--------------- src and tgt shape", src_img.shape, tgt_img.shape)
+      img_shape = src_img.shape
+      x_len = img_shape[-2]
+      y_len = img_shape[-1]
+      unpadded_size = x_len - 2*pad
+      padded_len = chunk_size + 2*pad
+      y_chunk_number = (y_len - 2*pad) // chunk_size
+      x_chunk_number = unpadded_size // chunk_size
+      dst_field = torch.FloatTensor(1, x_len, y_len, 2).zero_()
+      #print("--------------IN compute field", x_chunk_number*y_chunk_number)
+      coor_list = []
+      for i in range(x_chunk_number):
+          for j in range(y_chunk_number):
+              coor_list.apend((i, j))
+      gpu_num = torch.cuda.device_count()
+      part_len = round(len(coor_list)/gpu_num)
+      p_list = []
+      m = Manager()
+      dic = m.dict()
+      dic['src'] = src_img
+      dic['tgt'] = tgt_img
+      dic['field'] = dst_field
+      for i in range(gpu_num):
+          if(i==len(gpu_num)-1):
+              p = Process(target=self.mp_compute_field_singel,
+                          args=(dic, coor_list[i*part_len:], i, chunk_size, pad,
+                                padded_len))
+          else:
+              p = Process(target=self.mp_compute_field_singel,
+                          args=(dic, coor_list[i*part_len:(i+1)*part_len], i,
+                                chunk_size, pad, padded_len))
+          p.start()
+          p_list.append(p)
+      for i in p_list:
+          i.join()
+      if(warp):
+          get_corr = coor(x_chunk_number, y_chunk_number)
+          image = self.warp_slice(chunk_size, pad, src_img, dst_field,
+                                  get_corr)
+          return image, dst_field
+      else:
+          return dst_field
+
+
   def new_compute_field_multi_GPU(self, model_path, src_img, tgt_img, chunk_size, pad,
                         warp=False):
       #print("--------------- src and tgt shape", src_img.shape, tgt_img.shape)
@@ -306,6 +381,7 @@ class Aligner:
           #        xs, ys = coor_list[i]
           #        dst_field[:,xs*chunk_size:xs*chunk_size+chunk_size,
           #              pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field[i:i+1,...]
+
   def warp_slice(self, chunk_size, pad, src_img, dst_field, get_corr):
       img_shape = src_img.shape
       x_len = img_shape[-2]
