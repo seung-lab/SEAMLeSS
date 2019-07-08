@@ -191,7 +191,8 @@ if __name__ == '__main__':
   block_types = ['even', 'odd']
   for i, block_type in enumerate(block_types):
     dst = cm.create(join(args.dst_path, 'image_blocks', block_type),
-                    data_type='uint8', num_channels=1,compress=None,
+                    data_type='uint8', num_channels=1, compress=None,
+                    parallel=True,
                     fill_missing=True, overwrite=True)
     dsts[i] = dst
 
@@ -200,6 +201,7 @@ if __name__ == '__main__':
   for z_offset in serial_offsets.values():
     serial_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
                                   data_type='int16', num_channels=2,
+                                        parallel=True,
                                   fill_missing=True, overwrite=True)
   pair_fields = {}
   for z_offset in vvote_offsets:
@@ -207,7 +209,7 @@ if __name__ == '__main__':
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True).path
   vvote_field = cm.create(join(args.dst_path, 'field', 'vvote_{}'.format(overlap)), 
-                          data_type='int16', num_channels=2,
+                          data_type='int16', num_channels=2, parallel=True,
                           fill_missing=True, overwrite=True)
 
   ###########################
@@ -253,6 +255,7 @@ if __name__ == '__main__':
       def __iter__(self):
           for i in self.brange:
               t = a.new_align_task(range(i,i+1), src.path, dst.path,
+                                   serial_fields[1].path,
                                    vvote_field.path,
                                    chunk_grid, mip, pad, args.tgt_radius,
                                    block_size, chunk_size, args.model_lookup,

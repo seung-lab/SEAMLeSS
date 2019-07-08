@@ -71,17 +71,18 @@ class PredictImageTask(RegisteredTask):
     print(':{:.3f} s'.format(diff))
 
 class NewAlignTask(RegisteredTask):
-  def __init__(self, src, dst, vvote_field, chunk_grid, mip, pad, radius, block_start,
+  def __init__(self, src, dst, s_field, vvote_field, chunk_grid, mip, pad, radius, block_start,
                block_size, chunk_size, model_lookup, mask_cv, mask_mip,
                mask_val, rows, super_chunk_len, overlap_chunks):
-    super().__init__(src, dst, vvote_field, chunk_grid, mip, pad, radius, block_start,
+    super().__init__(src, dst, s_field, vvote_field, chunk_grid, mip, pad, radius, block_start,
                      block_size, chunk_size, model_lookup, mask_cv, mask_mip,
                      mask_val, rows, super_chunk_len, overlap_chunks)
 
   def execute(self, aligner):
     src_cv = DCV(self.src)
     dst_cv = DCV(self.dst)
-    field_cv = DCV(self.vvote_field)
+    v_field = DCV(self.vvote_field)
+    s_field = DCV(self.s_field)
     chunk_grid =[]
     for i in self.chunk_grid:
         chunk_grid.append(deserialize_bbox(i))
@@ -103,7 +104,7 @@ class NewAlignTask(RegisteredTask):
           "start_z={} \n".format(self.src, mip,
                         block_start,), flush=True)
     start = time()
-    aligner.new_align(src_cv, dst_cv, field_cv, chunk_grid, mip, pad, radius, block_start,
+    aligner.new_align(src_cv, dst_cv, s_field, v_field, chunk_grid, mip, pad, radius, block_start,
                 block_size, chunk_size, model_lookup, src_mask_cv=mask_cv,
                       src_mask_mip=mask_mip, src_mask_val=mask_val, rows=self.rows,
                       super_chunk_len=self.super_chunk_len,

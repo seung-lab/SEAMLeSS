@@ -183,7 +183,8 @@ if __name__ == '__main__':
   block_types = ['even', 'odd']
   for i, block_type in enumerate(block_types):
     dst = cm.create(join(args.dst_path, 'image_blocks', block_type),
-                    data_type='uint8', num_channels=1,compress=None,
+                    data_type='uint8', num_channels=1, compress=None,
+                    parallel=True,
                     fill_missing=True, overwrite=True)
     dsts[i] = dst
 
@@ -192,14 +193,15 @@ if __name__ == '__main__':
   for z_offset in serial_offsets.values():
     serial_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
                                   data_type='int16', num_channels=2,
+                                        parallel=True,
                                   fill_missing=True, overwrite=True)
   pair_fields = {}
   for z_offset in vvote_offsets:
     pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True).path
-  vvote_field = cm.create(join(args.dst_path, 'field', 'vvote_{}'.format(overlap)), 
-                          data_type='int16', num_channels=2,
+  vvote_field = cm.create(join(args.dst_path, 'field', 'vvote_{}'.format(overlap)),
+                          data_type='int16', num_channels=2, parallel=True,
                           fill_missing=True, overwrite=True)
 
   ###########################
@@ -237,7 +239,7 @@ if __name__ == '__main__':
   #for i in vvote_subblock:
   #    print("*****>>> vvote subblock is ", i)
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, 0, rows, pad)
-  a.new_align(src, dst, vvote_field, chunk_grid, mip, pad, args.tgt_radius,
+  a.new_align(src, dst, serial_fields[1], vvote_field, chunk_grid, mip, pad, args.tgt_radius,
               block_start, block_size, chunk_size, args.model_lookup,
               src_mask_cv=src_mask_cv,
               src_mask_mip=src_mask_mip, src_mask_val=src_mask_val, rows=rows,

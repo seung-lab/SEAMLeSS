@@ -98,14 +98,14 @@ class Aligner:
   def int16_to_float(self, data):
       return data.type(torch.float)/4.0
 
-  def new_align_task(self, z_range, src, dst, vvote_field, chunk_grid, mip,
-                     pad, radius,
-                block_size, chunk_size, model_lookup, src_mask_cv=None, src_mask_mip=0,
-                src_mask_val=0, rows=1000, super_chunk_len=1000, overlap_chunks=0):
+  def new_align_task(self, z_range, src, dst, s_field, vvote_field, chunk_grid, mip,
+                     pad, radius, block_size, chunk_size, model_lookup,
+                     src_mask_cv=None, src_mask_mip=0, src_mask_val=0, rows=1000,
+                     super_chunk_len=1000, overlap_chunks=0):
       #print("---------------------------->> load image")
       batch = []
       for i in z_range:
-          batch.append(tasks.NewAlignTask(src, dst, vvote_field, chunk_grid, mip, pad,
+          batch.append(tasks.NewAlignTask(src, dst, s_field, vvote_field, chunk_grid, mip, pad,
                                           radius, i, block_size, chunk_size,
                                           model_lookup, src_mask_cv, src_mask_mip,
                                           src_mask_val, rows, super_chunk_len,
@@ -113,7 +113,7 @@ class Aligner:
       return batch
 
 
-  def new_align(self, src, dst, vvote_field, chunk_grid, mip, pad, radius, block_start,
+  def new_align(self, src, dst, s_field, vvote_field, chunk_grid, mip, pad, radius, block_start,
                 block_size, chunk_size, lookup_path, src_mask_cv=None, src_mask_mip=0,
                 src_mask_val=0, rows=1000, super_chunk_len=1000, overlap_chunks=0):
       model_lookup={}
@@ -194,13 +194,14 @@ class Aligner:
           print("<<<<<<init chunk size is ", chunk.stringify(0, mip=mip),
                 "final_chunk is ", final_chunk.stringify(0, mip=mip))
           image_list, chunk = self.process_super_chunk_serial(src, block_start, copy_range[0],
-                                                           serial_range, serial_offsets,
-                                                           dst, model_lookup,
-                                                           chunk, mip, pad, chunk_size,
-                                                           head_crop, end_crop,
-                                                           mask_cv=src_mask_cv,
-                                                           mask_mip=src_mask_mip,
-                                                           mask_val=src_mask_val)
+                                                              serial_range, serial_offsets,
+                                                              s_field, model_lookup,
+                                                              chunk, mip, pad, chunk_size,
+                                                              head_crop, end_crop,
+                                                              final_chunk,
+                                                              mask_cv=src_mask_cv,
+                                                              mask_mip=src_mask_mip,
+                                                              mask_val=src_mask_val)
           write_image = []
           for _ in image_list:
               write_image.append(True)
@@ -284,7 +285,7 @@ class Aligner:
           get_corr = coor(x_chunk_number, y_chunk_number)
           image = self.warp_slice(chunk_size, pad, src_img, dst_field,
                                   get_corr)
-          return image
+          return image, dst_field
       else:
           return dst_field
 
@@ -557,9 +558,11 @@ class Aligner:
   def process_super_chunk_serial(self, src, block_start, copy_offset, serial_range,
                                  serial_offsets, dsts, model_lookup,
                                  schunk, mip, pad, chunk_size,
-                                 head_crop, end_crop, mask_cv=None, mask_mip=0,
+                                 head_crop, end_crop, final_chunk,
+                                 mask_cv=None, mask_mip=0,
                                  mask_val=0, affine=None):
       image_list = []
+      upload_list = []
       p_list = []
       #load from copy range
       chunk = deepcopy(schunk)
@@ -620,9 +623,10 @@ class Aligner:
           #                                  tgt_image.shape)
           load_finish = time()
           #print("----------------LOAD image time:", load_finish-load_image_start)
-          new_tgt_image = self.new_compute_field_multi_GPU(model_path, src_image, tgt_image,
-                                          chunk_size, pad, warp=True)
-          print("----------------COMPUTE FIELD time", time()- load_finish)
+          new_tgt_image, dst_field = self.new_compute_field_multi_GPU(model_path, src_image,
+                                                                      tgt_image, chunk_size,
+                                                                      pad, warp=True)
+          print("----------------COMPUTE FIELD and warp time", time()-load_finish)
           if(not head_crop):
               pad_tensor = torch.FloatTensor(1, 1, pad, new_tgt_image.shape[-1]).zero_()
               new_tgt_image = torch.cat((pad_tensor, new_tgt_image), 2)
@@ -649,6 +653,20 @@ class Aligner:
           chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
                                  0)
           #chunk = a.adjust_chunk(chunk, mip, chunk_size, first_chunk=first_chunk)
+          for i in upload_list:
+              i.join()
+          upload_list = []
+          dic["field"] =dst_field
+          # set x_range_len = None since align whole images. No head_crop and no
+          # end_crop
+          x_range_len = None
+          pf = Process(target=self.mp_store_field, args=(dic,"field", head_crop,
+                                                        end_crop, x_range_len,
+                                                        pad, dst, z,
+                                                        final_chunk, mip,
+                                                        chunk_size))
+          pf.start()
+          upload_list.append(pf)
       return image_list, chunk
 
   def mp_store_img(self, dic, key, dst, z, chunk, mip, to_uint8):
@@ -832,8 +850,8 @@ class Aligner:
           chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
                                  0)
       print("save image after vvoting --------------->>>>>>>")
-      for i in image_list:
-          print("************shape of image", i.shape)
+      #for i in image_list:
+      #    print("************shape of image", i.shape)
       for i in range(len(image_list)):
           print("image shape", image_list[i].shape)
           image_len = image_list[i].shape[-2] - 2*pad;
@@ -850,13 +868,6 @@ class Aligner:
                 crop_amount,)
           image_chunk =self.crop_imageX(image_chunk, head_crop, end_crop,
                                        crop_amount)
-#          if(first_chunk):
-#              head_crop = 0;
-#              end_crop = image_len - x_range_len
-#          else:
-#              head_crop = (image_len - x_range_len)/2
-#              end_crop = head_crop
-#          image_chunk = image_list[i][..., pad+head_crop:-(pad+end_crop), pad:-pad]
           #del image_list[0]
           print("************ image_chunk", image_chunk.shape,
                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
