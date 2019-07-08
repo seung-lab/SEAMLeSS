@@ -138,20 +138,24 @@ class Aligner:
     
     x_chunk = chunk_size[0]
     y_chunk = chunk_size[1]
+    z_chunk = chunk_size[2]
     
     x_offset = offset[0]
     y_offset = offset[1]
 
-    x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
-    y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
+    x_remainder_st = ((raw_x_range[0] - x_offset) % x_chunk)
+    y_remainder_st = ((raw_y_range[0] - y_offset) % y_chunk)
+    x_remainder_end = ((raw_x_range[1] - x_offset) % x_chunk)
+    y_remainder_end = ((raw_y_range[1] - y_offset) % y_chunk)
 
-    calign_x_range = [raw_x_range[0] - x_remainder, raw_x_range[1]]
-    calign_y_range = [raw_y_range[0] - y_remainder, raw_y_range[1]]
+
+    calign_x_range = [raw_x_range[0] - x_remainder_st, raw_x_range[1] - x_remainder_end]
+    calign_y_range = [raw_y_range[0] - y_remainder_st, raw_y_range[1] - y_remainder_end]
 
     chunks = []
-    for xs in range(calign_x_range[0], calign_x_range[1], chunk_size[0]):
-      for ys in range(calign_y_range[0], calign_y_range[1], chunk_size[1]):
-        for zs in range(z_range[0], z_range[1], chunk_size[2]):
+    for xs in range(calign_x_range[0], calign_x_range[1], x_chunk):
+      for ys in range(calign_y_range[0], calign_y_range[1], y_chunk):
+        for zs in range(z_range[0], z_range[1], z_chunk):
           chunks.append(BoundingBox3d(xs, xs + chunk_size[0],
                                   ys, ys + chunk_size[1],
                                   zs, zs + chunk_size[2],
@@ -306,8 +310,8 @@ class Aligner:
     z_range = bbox.z_range()
     vol_start = cv[src_mip].bounds.minpt
     vol_end = cv[src_mip].bounds.maxpt
-    xs = max(x_range[0],0); ys = max(y_range[0],0); zs = max(z_range[0],0)
-    # xs = max(x_range[0],vol_start[0]); ys = max(y_range[0],vol_start[1]); zs = max(z_range[0],vol_start[2])
+    # xs = max(x_range[0],0); ys = max(y_range[0],0); zs = max(z_range[0],0)
+    xs = max(x_range[0],vol_start[0]); ys = max(y_range[0],vol_start[1]); zs = max(z_range[0],vol_start[2])
     xe = min(x_range[1],vol_end[0]); ye = min(y_range[1],vol_end[1]); ze = min(z_range[1],vol_end[2])
     data = cv[src_mip][xs:xe, ys:ye, zs:ze]
     data = np.transpose(data, (3,2,0,1))
