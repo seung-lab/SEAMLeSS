@@ -684,6 +684,8 @@ class Aligner:
     chunks = self.break_into_chunks_3d(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.num_scales)
+
+    print(chunks)
     z_range = bbox.z_range()
     print("\nerror detection\n"
           "model {}\n"
