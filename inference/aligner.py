@@ -149,8 +149,8 @@ class Aligner:
     y_remainder_end = ((raw_y_range[1] - y_offset) % y_chunk)
 
 
-    calign_x_range = [raw_x_range[0] + (x_chunk-x_remainder_st), raw_x_range[1] - x_remainder_end]
-    calign_y_range = [raw_y_range[0] + (y_chunk-y_remainder_st), raw_y_range[1] - y_remainder_end]
+    calign_x_range = [raw_x_range[0] + (x_chunk-x_remainder_st)%x_chunk, raw_x_range[1] - x_remainder_end]
+    calign_y_range = [raw_y_range[0] + (y_chunk-y_remainder_st)%x_chunk, raw_y_range[1] - y_remainder_end]
 
     chunks = []
     for xs in range(calign_x_range[0], calign_x_range[1], x_chunk):
