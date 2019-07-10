@@ -175,7 +175,6 @@ class Aligner:
               else:
                   head_crop = True
                   end_crop = True
-
           if head_crop == False and end_crop == True:
               final_chunk = self.crop_chunk(chunk, mip, pad,
                                          chunk_size*(super_chunk_len-1)+pad,
@@ -426,8 +425,10 @@ class Aligner:
           field = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
                             ys*chunk_size:ys*chunk_size+padded_len,:]
           field = field.to(device=self.device)
-          distance = self.profile_field(field).type(torch.int32)
-          dis = distance.flip(0)
+          #distance = self.profile_field(field).type(torch.int32)
+          #dis = distance.flip(0)
+          #field -= distance.to(device=self.device).type(torch.float32)
+          dis =[0,0]
           src_patch = src_img[...,dis[0]+xs*chunk_size:dis[0]+xs*chunk_size+padded_len,
                                   dis[1]+ys*chunk_size:dis[1]+ys*chunk_size+padded_len]
           coor_list.append([xs, ys])
@@ -450,7 +451,6 @@ class Aligner:
           src_patch = src_patch.to(device=self.device)
           src_patch = self.convert_to_float(src_patch)
           #field = field.to(device=self.device)
-          field -= distance.to(device=self.device).type(torch.float32)
           image_patch = self.new_cloudsample_image(src_patch, field)
           image_patch = image_patch[:,:,pad:-pad,pad:-pad]
           image_patch = image_patch.to(device='cpu')
@@ -682,11 +682,12 @@ class Aligner:
                                   mask_mip=mask_mip, mask_val=mask_val)
       #load_finish = time()
       #print("----------------LOAD image time:", load_finish-load_image_start)
-      #tgt_image = self.convert_to_float(tgt_image) 
+      #tgt_image = self.convert_to_float(tgt_image)
       crop_len = chunk_size*copy_offset
       add_image =self.crop_imageX(tgt_image, head_crop, end_crop, crop_len)
       image_list.append(add_image)
-      src_image0 = self.load_part_image(src,block_start+serial_offsets[0], chunk, mip,
+      print("-----------serial offset[0] is ", serial_offsets[1], " offset is", serial_offsets)
+      src_image0 = self.load_part_image(src, block_start+serial_offsets[0], chunk, mip,
                                         mask_cv=mask_cv, mask_mip=mask_mip,
                                         mask_val=mask_val)
       head_crop_len = chunk_size if head_crop else 0
@@ -783,7 +784,12 @@ class Aligner:
       ppid = os.getpid()
       print("start a new save image process", ppid)
       image = dic[key]
-      self.save_image(image.cpu().numpy(), dst, z, chunk, mip, to_uint8=to_uint8)
+      if image.dtype == torch.uint8:
+          self.save_image(image.cpu().numpy(), dst, z, chunk, mip,
+                          to_uint8=False)
+      else:
+          self.save_image(image.cpu().numpy(), dst, z, chunk, mip,
+                          to_uint8=True)
       del dic[key]
       print("end of the save image process {}".format(ppid), flush=True)
 
