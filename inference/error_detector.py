@@ -267,17 +267,17 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 
 			vol_visited[focus] = vol_visited[focus] + patch_obj_mask_crop
 
+			n_covered = np.sum(vol_visited.A[(0,0)+tuple([slice(bbox_start_chunk[i], bbox_end_chunk[i])
+																		for i in range(3)])]>=1)
+			chunk_size = np.prod([bbox_end_chunk[i]-bbox_start_chunk[i] for i in range(3)])
+			cover = np.round(n_covered/chunk_size,4)
+
 			# Neglect dust pieces
 			if np.sum(patch_obj_mask_crop) < 5000/(mip_factor**2):
 				continue
 			
 			focus_list = np.concatenate((focus_list, focus))
 			
-			n_covered = np.sum(vol_visited.A[(0,0)+tuple([slice(bbox_start_chunk[i], bbox_end_chunk[i])
-																		for i in range(3)])]>=1)
-			chunk_size = np.prod([bbox_end_chunk[i]-bbox_start_chunk[i] for i in range(3)])
-			cover = np.round(n_covered/chunk_size,4)
-
 			i += 1
 
 			if i % 100 == 0 or i <= 10:
