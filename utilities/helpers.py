@@ -862,7 +862,7 @@ class GaussianSmoothing(nn.Module):
         dim (int, optional): The number of dimensions of the data.
             Default value is 2 (spatial).
 
-    Copied from https://discuss.pytorch.org/t/is-there-anyway-to-do-gaussian-filtering-for-an-image-2d-3d-in-pytorch/12351/8
+    Copied from https://bit.ly/2VDFKct
     """
     def __init__(self, channels, kernel_size, sigma, dim=2, device='cuda'):
         super(GaussianSmoothing, self).__init__()
@@ -889,8 +889,7 @@ class GaussianSmoothing(nn.Module):
         kernel = kernel / torch.sum(kernel)
 
         # Reshape to depthwise convolutional weight
-        kernel = kernel.view(1, 1, *kernel.size())
-        kernel = kernel.repeat(channels, *[1] * (kernel.dim() - 1))
+        kernel = kernel.expand(channels, 1, *kernel.shape)
 
         self.register_buffer('weight', kernel)
         self.weight = self.weight.to(device)
@@ -922,3 +921,85 @@ def blur_field(field, sigma, pad=(2,2,2,2)):
   field = field.permute(0,3,1,2)
   field = F.pad(field, pad, mode='reflect')
   return smoothing(field).permute(0,2,3,1)
+
+
+def list_tensors(gpu_only=False, combine_cuda=False, namespace=None):
+    """Prints a list of the Tensors being tracked by the garbage collector.
+    """
+    import gc
+    import inspect
+    import weakref
+    if not hasattr(list_tensors, 'tensors'):
+        list_tensors.tensors = weakref.WeakValueDictionary()
+
+    def namestr(obj, namespace):
+        if namespace is None:
+            namespace = inspect.currentframe().f_back.f_back.f_locals
+        names = [name for name in namespace if namespace[name] is obj]
+        if len(names) == 0:
+            list_tensors.tensors[id(obj)] = obj
+            names += [str(hex(id(obj)))]
+        del namespace
+        return names
+    cpu_total = 0
+    cuda_total = {}
+    lines = []
+    CUDA_OVERHEAD_SIZE = 588.
+    lines.append(
+        "{:37} {:6} {:7} {:5} {:21} {:.1f}MiB"
+        .format(
+            "PyTorch GPU Overhead",
+            "cuda",
+            "",
+            "",
+            "",
+            CUDA_OVERHEAD_SIZE
+        )
+    )
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj):
+                if not gpu_only or obj.is_cuda:
+                    size = obj.element_size() * obj.nelement() / 1048576  # 1MB
+                    if obj.is_cuda:
+                        if obj.device.index not in cuda_total:
+                            cuda_total[obj.device.index] = size
+                        else:
+                            cuda_total[obj.device.index] += size
+                    else:
+                        cpu_total += size
+                    names = namestr(obj, namespace)
+                    lines.append(
+                        "{:16} {:20} {:6} {:7} {:5} {:21} {:.1f}MiB"
+                        .format(
+                            ",".join(names),
+                            "(" + type(obj).__name__ + "):",
+                            str(obj.device),
+                            str(obj.dtype).replace('torch.', ''),
+                            "grad" if obj.requires_grad else "",
+                            " × ".join(map(str, obj.size())),
+                            size,
+                        )
+                    )
+            del obj
+        except Exception:
+            pass
+            raise
+    if len(lines) > 1:
+        for line in lines:
+            print(line)
+        print(
+            "".join([
+                "\nTotal:",
+                (" {:.1f}MiB CPU".format(cpu_total)
+                    if cpu_total > 0 else ""),
+            ] + ([
+                " {:.1f}MiB CUDA".format(sum(cuda_total.values()))
+                if sum(cuda_total.values()) > 0 else ""
+            ] if combine_cuda else [
+                "\n       {:.1f}MiB CUDA{}"
+                .format(cuda_total[i] + CUDA_OVERHEAD_SIZE, i)
+                for i in cuda_total if cuda_total[i] > 0
+            ])
+            )
+        )
