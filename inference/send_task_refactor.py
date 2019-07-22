@@ -243,17 +243,20 @@ if __name__ == '__main__':
   #                          super_chunk_len)
   print("--------overlap is ", overlap, "vvote_range is ", "vvote_range_small",
         vvote_range_small)
-  dst = dsts[0]
+  #dst = dsts[0]
   #for i in vvote_subblock:
   #    print("*****>>> vvote subblock is ", i)
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, 0, rows, pad)
   z_range =range(args.z_start, args.z_stop, args.block_size)
   class AlignT(object):
-      def __init__(self, brange):
+      def __init__(self, brange, even_odd):
           self.brange = brange
+          self.even_odd = even_odd
           print("*********self range is ", self.brange)
       def __iter__(self):
-          for i in self.brange:
+          #for i in self.brange:
+          for i in zip(self.brange, self.even_odd):
+              dst = dsts[even_odd]
               t = a.new_align_task(range(i,i+1), src.path, dst.path,
                                    serial_fields[1].path,
                                    vvote_field.path,
@@ -269,6 +272,7 @@ if __name__ == '__main__':
   #print("z_range is ", z_range)
   ptask = []
   range_list = make_range(z_range, a.threads)
+  even_odd_list = make_range(even_odd_range, a.threads)
   #print("range_list is ", range_list)
   for irange in range_list:
       ptask.append(AlignT(irange))

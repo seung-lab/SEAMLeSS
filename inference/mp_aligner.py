@@ -380,24 +380,16 @@ class Aligner:
       return dst_field #, simage
 
   def new_compute_field_multi_GPU(self, model_path, src_img, tgt_img,
-                                  chunk_size, pad, mip, warp=False):
+                                  chunk_size, pad, mip):
       #print("--------------- src and tgt shape", src_img.shape, tgt_img.shape)
       extra_off = pad
       img_shape = src_img.shape
       x_len = img_shape[-2] - 2*extra_off
       y_len = img_shape[-1] - 2*extra_off
       print("unpadded src_image x_len and y_len", x_len, y_len)
-      #unpadded_size = x_len - 2*pad
       padded_len = chunk_size + 2*pad
       y_chunk_number = (y_len - 2*pad) // chunk_size
       x_chunk_number = (x_len - 2*pad) // chunk_size
-      #if(warp):
-      #    #if(first_chunk):
-      #    #    adjust = pad
-      #    #else:
-      #    #    adjust = 0
-      #    image = torch.FloatTensor(1, 1, unpadded_size, y_len).zero_()
-      #else:
       #dst_field = torch.FloatTensor(1, unpadded_size, y_len, 2).zero_()
       gpu_num = torch.cuda.device_count()
       #dst_field = torch.FloatTensor(1, x_len, y_len, 2).zero_()
@@ -456,14 +448,9 @@ class Aligner:
       print(" dst_field.shape", dst_field.shape)
 
       print("-------------------compute field needs ",time() - start)
-      if(warp):
-          #get_corr = coor(x_chunk_number, y_chunk_number)
-          image = self.warp_slice(chunk_size, pad, src_img, dst_field, mip, None)
-          return image, dst_field
-      else:
-          return dst_field
+      return dst_field
 
-  def warp_slice(self, chunk_size, pad, src_img, dst_field, mip, get_corr):
+  def warp_slice(self, chunk_size, pad, src_img, dst_field, mip):
       offset = pad
       img_shape = src_img.shape
       print("------------<<<<<<<<<src_img.shape",img_shape)
@@ -477,9 +464,7 @@ class Aligner:
               for j in range(y):
                   yield i ,j
           yield -1,-1
-      #TODO: modify this and remove get_corr from the function signiture
-      if get_corr == None:
-          get_corr = coor(x_chunk_number, y_chunk_number)
+      get_corr = coor(x_chunk_number, y_chunk_number)
       image = torch.FloatTensor(1, 1, x_len, y_len).zero_()
       has_next = True
       #gpu_num = torch.cuda.device_count()
@@ -493,7 +478,6 @@ class Aligner:
           field = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
                               ys*chunk_size:ys*chunk_size+padded_len,:]
           field = field.to(device=self.device)
-          #print("field")
           #print(field)
           ##field = field * padded_len/2
           field = field.type(torch.float32)/4
@@ -814,10 +798,11 @@ class Aligner:
               p_list.append(p)
           load_finish = time()
           #print("----------------LOAD image time:", load_finish-load_image_start)
-          new_tgt_image, dst_field = self.new_compute_field_multi_GPU(model_path, src_image,
+          dst_field = self.new_compute_field_multi_GPU(model_path, src_image,
                                                                       tgt_image, chunk_size,
-                                                                      pad, mip,
-                                                                      warp=True)
+                                                                      pad, mip)
+          new_tgt_image = self.warp_slice(chunk_size, pad, src_image,
+                                          dst_field, mip)
           print("----------------COMPUTE FIELD and warp time", time()-load_finish)
 
           # the fowllowing code is for loading a part of the slice
@@ -1118,13 +1103,14 @@ class Aligner:
           #                           mip, pad, None)
           old_field = None
 
-          image, dst_field = self.new_vector_vote(model_path, src_image, image_list,
+          dst_field = self.new_vector_vote(model_path, src_image, image_list,
                                                   pre_field,
                                                   chunk_size, pad, vvote_way, mip,
                                                   inverse=False, serial=True,
                                                   head_crop=head_crop,
                                                   end_crop=end_crop,
                                                   o_field=old_field)
+          image = self.warp_slice(chunk_size, pad, src_image, dst_field, mip)
           vv_end =time()
           print("---------------------VV time :", vv_end-vv_start) 
 
@@ -1716,13 +1702,8 @@ class Aligner:
     #vv_end = time()
     #print("******* compute field and vv time is ", vv_end-start)
     print("finish compute  field and VV")
-    #warp the image
-    #has_next = True
-    #get_corr = coor(x_chunk_number, y_chunk_number)
- 
-    image = self.warp_slice(chunk_size, pad, src_img, dst_field, mip, None)
 
-    return image, dst_field
+    return dst_field
 
 
 
