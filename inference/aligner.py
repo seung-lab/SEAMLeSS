@@ -74,7 +74,7 @@ class Aligner:
     self.dry_run = dry_run
     self.eps = 1e-6
 
-    #self.gpu_lock = kwargs.get('gpu_lock', None)  # multiprocessing.Semaphore
+    self.gpu_lock = kwargs.get('gpu_lock', None)  # multiprocessing.Semaphore
 
   def convert_to_float(self, data):
       data = data.type(torch.float)
@@ -1374,12 +1374,14 @@ class Aligner:
     return image
 
   def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
-                             to_tensor=True, normalizer=None):
+                             to_tensor=True, normalizer=None, to_float=True):
     """Get image with mask applied
     """
     start = time()
     image = self.get_image(image_cv, z, bbox, image_mip,
-                           to_tensor=True, normalizer=normalizer)
+                           to_tensor=True,
+                           normalizer=normalizer,
+                           to_float=to_float)
     if mask_cv is not None:
       mask = self.get_mask(mask_cv, z, bbox, 
                            src_mip=mask_mip,
@@ -1904,13 +1906,17 @@ class Aligner:
         return image
       else:
         distance = self.profile_field(field)
+        #print("distance is ", distance)
         distance = (distance // (2 ** image_mip)) * 2 ** image_mip
+        #print("distance is ", distance)
+        #print("field")
+        #print(field)
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
-
         field -= distance.to(device = self.device)
+        #print("field after calc")
+        #print(field)
         field = self.abs_to_rel_residual(field, padded_bbox, image_mip)
         field = field.to(device = self.device)
-
         image = self.get_masked_image(image_cv, image_z, new_bbox, image_mip,
                                       mask_cv=mask_cv, mask_mip=mask_mip,
                                       mask_val=mask_val,
@@ -2248,6 +2254,10 @@ class Aligner:
         should be used.
        
     """
+    #print("compute_field function :", src_cv, tgt_cv, field_cv,
+    #      src_z, tgt_z, bbox, mip, pad, src_mask_cv, src_mask_mip,
+    #      src_mask_val, tgt_mask_cv, tgt_mask_mip, tgt_mask_val, prefix,
+    #      return_iterator, profile_field_cv, prev_field_z, prev_field_inverse)
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip, 

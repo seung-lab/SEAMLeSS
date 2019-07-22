@@ -46,7 +46,8 @@ class Model(nn.Module):
         """
         for m in self.mips:
             fms = 24
-            self.aligndict[m] = Aligner(fms=[2, fms, fms, fms, fms, 2], k=7).cuda()
+            #self.aligndict[m] = Aligner(fms=[2, fms, fms, fms, fms, 2], k=7).cuda()
+            self.aligndict[m] = Aligner(fms=[2, fms, fms, fms, fms, 2], k=7)
             with (path/'module{}.pth.tar'.format(m)).open('rb') as f:
                 self.aligndict[m].load_state_dict(torch.load(f))
             self.align.set_mip_processor(self.aligndict[m], m)

@@ -151,8 +151,8 @@ if __name__ == '__main__':
     block_range = tmp_block_range
     even_odd_range = tmp_even_odd_range
 
-  print('block_range {}'.format(block_range))
-  print('even_odd_range {}'.format(even_odd_range))
+  #print('block_range {}'.format(block_range))
+  #print('even_odd_range {}'.format(even_odd_range))
 
   overlap = args.tgt_radius
   full_range = range(args.block_size + overlap)
@@ -233,7 +233,7 @@ if __name__ == '__main__':
   overlap_chunks = 2 * (super_chunk_len -1)
   #chunk_grid = a.get_chunk_grid(cm, bbox, mip, overlap_chunks, rows, pad)
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, 0, rows, pad)
-  print("copy range ", copy_range)
+  #print("copy range ", copy_range)
   #print("---- len of chunks", len(chunk_grid), "orginal bbox", bbox.stringify(0))
   vvote_range_small = vvote_range
   #vvote_range_small = vvote_range[:super_chunk_len-overlap+1]

@@ -271,8 +271,10 @@ class CopyTask(RegisteredTask):
         image = aligner.get_masked_image(src_cv, src_z, patch_bbox, mip,
                                 mask_cv=mask_cv, mask_mip=mask_mip,
                                 mask_val=mask_val,
-                                to_tensor=False, normalizer=None)
-        aligner.save_image(image, dst_cv, dst_z, patch_bbox, mip)
+                                to_tensor=False, normalizer=None,
+                                to_float=False)
+        aligner.save_image(image, dst_cv, dst_z, patch_bbox, mip,
+                           to_uint8=False)
       with Storage(dst_cv.path) as stor:
           path = 'copy_done/{}/{}'.format(prefix, patch_bbox.stringify(dst_z))
           stor.put_file(path, '')
@@ -329,6 +331,7 @@ class ComputeFieldTask(RegisteredTask):
           "MIP{}\n".format(model_path, src_cv, tgt_cv, field_cv, src_mask_cv, src_mask_val,
                            src_mask_mip, tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
                            src_z, tgt_z, mip), flush=True)
+    print("other parameters", prev_field_cv,prev_field_z,prev_field_inverse)
     start = time()
     if not aligner.dry_run:
       field = aligner.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z, 

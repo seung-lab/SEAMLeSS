@@ -202,7 +202,11 @@ if __name__ == '__main__':
   vvote_range = [r for r in vvote_range if r >= args.restart]
   
   # Copy first section
-  
+  chunks = a.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+                                    cm.dst_voxel_offsets[mip], mip=mip, 
+                                    max_mip=cm.max_mip)
+  for c in chunks:
+      print("------------------------> bbox is", c.stringify(0), mip)
   def remote_upload(tasks):
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
           tq.insert_all(tasks)  

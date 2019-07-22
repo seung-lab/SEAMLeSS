@@ -165,7 +165,7 @@ if __name__ == '__main__':
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
-                     fill_missing=True, overwrite=False, parallel=True)
+                     fill_missing=True, overwrite=False, parallel=False)
   src_mask_cv = None
   tgt_mask_cv = None
   if args.src_mask_path:
@@ -184,7 +184,7 @@ if __name__ == '__main__':
   for i, block_type in enumerate(block_types):
     dst = cm.create(join(args.dst_path, 'image_blocks', block_type),
                     data_type='uint8', num_channels=1, compress=None,
-                    parallel=True,
+                    parallel=False,
                     fill_missing=True, overwrite=True)
     dsts[i] = dst
 
@@ -193,7 +193,7 @@ if __name__ == '__main__':
   for z_offset in serial_offsets.values():
     serial_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
                                   data_type='int16', num_channels=2,
-                                        parallel=True,
+                                        parallel=False,
                                   fill_missing=True, overwrite=True)
   pair_fields = {}
   for z_offset in vvote_offsets:
@@ -201,7 +201,7 @@ if __name__ == '__main__':
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True).path
   vvote_field = cm.create(join(args.dst_path, 'field', 'vvote_{}'.format(overlap)),
-                          data_type='int16', num_channels=2, parallel=True,
+                          data_type='int16', num_channels=2, parallel=False,
                           fill_missing=True, overwrite=True)
 
   ###########################
@@ -243,6 +243,7 @@ if __name__ == '__main__':
               block_start, block_size, chunk_size, args.model_lookup,
               src_mask_cv=src_mask_cv,
               src_mask_mip=src_mask_mip, src_mask_val=src_mask_val, rows=rows,
-              super_chunk_len=super_chunk_len, overlap_chunks=overlap_chunks)
+              super_chunk_len=super_chunk_len, overlap_chunks=overlap_chunks,
+              cm=cm)
 
 
