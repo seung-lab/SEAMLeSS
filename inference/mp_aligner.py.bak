@@ -379,8 +379,8 @@ class Aligner:
                     pad+y-start_y:pad+y-start_y+chunk_size,:]=torch.from_numpy(field)
       return dst_field #, simage
 
-  def new_compute_field_multi_GPU(self, model_path, src_img, tgt_img,
-                                  chunk_size, pad, mip, warp=False):
+  def new_compute_field_multi_GPU(self, model_path, src_img, tgt_img, chunk_size, pad,
+                        warp=False):
       #print("--------------- src and tgt shape", src_img.shape, tgt_img.shape)
       extra_off = pad
       img_shape = src_img.shape
@@ -443,7 +443,7 @@ class Aligner:
 
           field = self.new_compute_field_chunk(model_path, src_patch_new,
                                            tgt_patch_new, False)
-          field = field[:,pad:-pad,pad:-pad,:] * (padded_len /2) * (2**mip) *4 #mip=2
+          field = field[:,pad:-pad,pad:-pad,:] * (padded_len /2) * (2**2) *4 #mip=2
           field = field.type(torch.int16)
 
           field = field.to(device='cpu')
@@ -452,20 +452,40 @@ class Aligner:
               dst_field[:,
                     pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
                     pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = field[i:i+1,...]
+      #from cloudvolume import CloudVolume as CV
+      ##vol= CV('gs://microns-seunglab/zhen_test/origin_test/field/1', mip=2)
+      #vol= CV('gs://microns-seunglab/zhen_test/new_version15/field/1', mip=2)
+      #tmp = vol[57024:59072,53952:56000,10503,:]
+      #orign_field = torch.from_numpy(np.transpose(tmp, (2,0,1,3)))
+      #orign_field = orign_field/16
+      #dst_field[:,pad:-pad,pad:-pad,:] = orign_field
+      #print(">>>>>>>>>>>>>>>>>>origin field.shape", orign_field.shape)
+      ##print(orign_field)
 
       print(" dst_field.shape", dst_field.shape)
 
+      ##print(">>>>>>>>>>>>>>>>>>new field")
+      #for xr in range(orign_field.shape[1]):
+      #    for yr in range(orign_field.shape[2]):
+      #        #print("origin:", orign_field[0,xr,yr,:])
+      #        #print("dst_fi:", dst_field[0,pad+xr,pad+yr,:])
+      #        diff = orign_field[0,xr,yr,:] - dst_field[0,pad+xr,pad+yr,:]
+      #        print("=========field diff", diff)
+
+      #diff_tenor = dst_field[:,pad:-pad,pad:-pad,:] - orign_field.type(torch.float32)
+      #max_diff = torch.max(diff_tenor)
+      #print("=================field max diff", max_diff)
       print("-------------------compute field needs ",time() - start)
       if(warp):
           #get_corr = coor(x_chunk_number, y_chunk_number)
-          image = self.warp_slice(chunk_size, pad, src_img, dst_field, mip, None)
+          image = self.warp_slice(chunk_size, pad, src_img, dst_field, None)
           #image = self.warp_slice(chunk_size, pad, src_img, o_field, None)
           #image = self.warp_slice(chunk_size, pad, src_img, orign_field, None)
           return image, dst_field
       else:
           return dst_field
 
-  def warp_slice(self, chunk_size, pad, src_img, dst_field, mip, get_corr):
+  def warp_slice(self, chunk_size, pad, src_img, dst_field, get_corr):
       offset = pad
       img_shape = src_img.shape
       print("------------<<<<<<<<<src_img.shape",img_shape)
@@ -500,8 +520,8 @@ class Aligner:
           ##field = field * padded_len/2
           field = field.type(torch.float32)/4
           distance = self.profile_field(field)
-          distance = (distance // (2 ** mip)) #* 2 ** 2  ## mip=2, hard coded
-          field = field/(2**mip) # mip=2, hardcoded, modify later
+          distance = (distance // (2 ** 2)) #* 2 ** 2  ## mip=2, hard coded
+          field = field/(2**2) # mip=2, hardcoded, modify later
           #print("++++++ distance is ", distance.flip(0))
           dis = distance.flip(0).type(torch.int32)
           #print("++++++ distance is ", dis, "offset is ", offset)
@@ -523,6 +543,10 @@ class Aligner:
           image_patch = image_patch.to(device='cpu')
           image[...,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
                     pad+ys*chunk_size:pad+ys*chunk_size+chunk_size]=image_patch
+          #for i in range(len(coor_list)):
+          #    xs, ys = coor_list[i]
+          #    image[...,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
+          #          pad+ys*chunk_size:pad+ys*chunk_size+chunk_size]=image_patch[i:i+1,...]
       return image
 
 
@@ -816,12 +840,87 @@ class Aligner:
               p_list.append(p)
           load_finish = time()
           #print("----------------LOAD image time:", load_finish-load_image_start)
+          #origin_field = self.old_method(cm, model_path, src, src, z,
+          #                               block_start+serial_offsets[0], schunk,
+          #                               mip, pad, dst)
+
+          #print("sim shape", sim.shape)
+          #print("src_image shape", src_image.shape)
+          #diff_im = sim - src_image[...,pad:-pad,pad:-pad]
+          #print("=================================== diff img is",
+          #      torch.max(diff_im))
+          #print("sim", sim)
+          #print('------------------------------------------------')
+          #print("src_img", src_image[...,pad:-pad,pad:-pad])
+
+        #  fpath = 'gs://microns-seunglab/zhen_test/origin_new/field/1'
+
+        #  field_cv = cm.create(fpath, data_type='int16', num_channels=2,
+        #                       parallel=False, fill_missing=True,
+        #                       overwrite=False)
+
+        #  old_image = self.old_render(cm, src, field_cv, z, schunk, mip, pad)
           new_tgt_image, dst_field = self.new_compute_field_multi_GPU(model_path, src_image,
                                                                       tgt_image, chunk_size,
-                                                                      pad, mip,
+                                                                      pad,
                                                                       warp=True)
-          print("----------------COMPUTE FIELD and warp time", time()-load_finish)
+        #  from cloudvolume import CloudVolume as CV
+        #  vol=CV('gs://microns-seunglab/zhen_test/origin/field/1', mip=2)
+        #  tmp = vol[57024:59072,53952:56000,10503,:]
+        #  orign_field = torch.from_numpy(np.transpose(tmp, (2,0,1,3)))
+        #  orign_field = orign_field
+        #  diff_field = orign_field - dst_field[:,pad:-pad,pad:-pad,:]
+        #  #print("origin_field",orign_field)
+        #  print(">>>>>>>>>>>>>>>>>> in serial alignment, diff field with origin ",
+        #  #     diff_field,
+        #  torch.max(diff_field))
 
+
+        #  diff_img = old_image - new_tgt_image
+        #  print("======================== diff img is", torch.max(diff_img))
+
+        #  from cloudvolume import CloudVolume as CV
+        #  vol=CV('gs://microns-seunglab/zhen_test/origin_new/image_blocks/even', mip=2)
+        #  tmp = vol[57024:59072,53952:56000,10500+block_offset,:]
+        #  tmp = torch.from_numpy(np.transpose(tmp, (2,3,0,1)))
+        #  trans_im = new_tgt_image[...,pad:-pad,pad:-pad]
+        #  trans_im = trans_im.cpu().numpy()
+        #  trans_im = np.transpose(trans_im, (2,3,0,1))
+        #  trans_im =(np.multiply(trans_im, 255)).astype(np.uint8)
+        #  trans_im = torch.from_numpy(np.transpose(trans_im, (2,3,0,1)))
+        #  diff =(new_tgt_image[...,pad:-pad,pad:-pad]*255).type(torch.uint8).type(torch.float32)-tmp.type(torch.float32)
+        #  #diff = np.multiply(new_tgt_image[...,pad:-pad,pad:-pad].cpu().numpy()
+        #  #                    ,255).astype(np.uint8) -tmp.cpu().numpy()
+        #  #print("................. img", block_offset, " diff is ", torch.max(diff))
+        #  print("................. img", block_offset, " diff is ",
+        #        torch.max(diff),
+        #        torch.max(tmp.type(torch.float32)-trans_im.type(torch.float32)))
+        #
+        #  print("................>>>>>>>>>>>>> store img", z)
+        #  self.save_image(new_tgt_image[...,pad:-pad,pad:-pad].cpu().numpy(),
+        #                  dst_even, z, final_chunk, mip, to_uint8=True)
+        #  vol1=CV('gs://microns-seunglab/zhen_test/origin_new/image_blocks/even', mip=2)
+        #  tmp1 = vol[57024:59072,53952:56000,10500+block_offset,:]
+        #  tmp1 = torch.from_numpy(np.transpose(tmp1, (2,3,0,1)))
+        #  diff = tmp1 - tmp
+        #  print("save and then load............. img", block_offset, " diff is", torch.max(diff))
+
+         # for k1 in range(diff.shape[-1]):
+         #     for k2 in range(diff.shape[-2]):
+         #         if diff[...,k2,k1] != 0:
+         #             print(diff[...,k2,k1], k2, k1)
+         # diff_img = old_image [...,pad:-pad,pad:-pad]-tmp.type(torch.float32)/255
+         # print("................. img", block_offset, "old method and origin diff is ", torch.max(diff_img))
+
+
+          #diff_field = origin_field - dst_field
+          #print("=================================== diff is", torch.max(diff_field))
+
+          #new_tgt_image, dst_field = self.mp_compute_field_multi_GPU(model_path, src_image,
+          #                                                            tgt_image, chunk_size,
+          #                                                            pad, warp=True)
+
+          print("----------------COMPUTE FIELD and warp time", time()-load_finish)
           # the fowllowing code is for loading a part of the slice
           #if(not head_crop):
           #    pad_tensor = torch.FloatTensor(1, 1, pad, new_tgt_image.shape[-1]).zero_()
@@ -1104,12 +1203,24 @@ class Aligner:
               del dic["src"]
           if block_offset != vvote_range_small[-1]:
               p_list = []
+              #self.mp_load(dic,"src", src, z-1, chunk,
+              #          mip, mask_cv, mask_mip,
+              #          mask_val)
               p = Process(target=self.mp_load, args=(dic, "src", src, z+1, chunk,
                                                      mip, mask_cv, mask_mip,
                                                      mask_val))
               p.start()
               p_list.append(p)
-          load_image_start = time()
+          #load_image_start = time()
+          #src_image = self.load_part_image(src, z, chunk, mip, mask_cv=mask_cv,
+          #                            mask_mip=mask_mip,
+          #                            mask_val=mask_val)
+          #load_finish = time()
+          #print("----------------LOAD image in VV time:", load_finish-load_image_start)
+          #print("chunk shape for vvoting is", chunk.stringify(0, mip=mip))
+          #for i in range(len(image_list)):
+          #    print("************shape of image", image_list[i].shape,
+          #          image_list[i].dtype)
           print(">--------------------start vvote----------------------> image", z)
           vv_start = time()
 
@@ -1130,8 +1241,17 @@ class Aligner:
           vv_end =time()
           print("---------------------VV time :", vv_end-vv_start) 
 
-          #self.save_image(image[...,pad:-pad,pad:-pad].cpu().numpy(),
-          #                dst, z, final_chunk, mip, to_uint8=True)
+          #fpath = 'gs://microns-seunglab/zhen_test/origin/field/vvote_5'
+          #field_cv = cm.create(fpath, data_type='int16', num_channels=2,
+          #                     parallel=False, fill_missing=True,
+          #                     overwrite=False)
+          ##old_field = self.old_get_dis(cm, field_cv, z, tchunk, mip, pad)
+          #self.old_get_dis(cm, field_cv, z, tchunk, mip, pad, dst_field)
+
+          #diff_field = dst_field.type(torch.float32)/4 - old_field
+          #print("++++++++++++++++++++++diff field is ", torch.max(diff_field))
+          self.save_image(image[...,pad:-pad,pad:-pad].cpu().numpy(),
+                          dst, z, final_chunk, mip, to_uint8=True)
 
 
           #from cloudvolume import CloudVolume as CV
@@ -1594,7 +1714,7 @@ class Aligner:
     padded_len = chunk_size + 2*pad
     x_chunk_number = (x_len - 2*pad) // chunk_size
     y_chunk_number = (y_len - 2*pad) // chunk_size
-    tmp_field = torch.ShortTensor(x_chunk_number, y_chunk_number, 2).zero_()
+    tmp_field = torch.IntTensor(x_chunk_number, y_chunk_number, 2).zero_()
     #if(first_chunk):
     #    adjust = pad
     #else:
@@ -1602,7 +1722,7 @@ class Aligner:
     #image = torch.FloatTensor(1, 1, x_len-2*pad, y_len).zero_()
     #dst_field = torch.FloatTensor(1,x_len, y_len, 2).zero_()
     dst_field = torch.ShortTensor(1,x_len, y_len, 2).zero_()
-    #tmp_dst_field = torch.FloatTensor(1,x_len, y_len, 2).zero_()
+    tmp_dst_field = torch.FloatTensor(1,x_len, y_len, 2).zero_()
     #print("===============x_chunk_number is ", x_chunk_number)
     #elif head_crop == False and end_crop:
     #    offset = 0
@@ -1670,13 +1790,58 @@ class Aligner:
                 tgt_patch_new = self.convert_to_float(tgt_patch_new)
             field = self.new_compute_field_chunk(model_path, src_patch_new,
                                                    tgt_patch_new)
-            field = field[:,pad:-pad,pad:-pad,:].type(torch.float32)*padded_len/2 * (2**mip)
-            #field = field * 4
-            #field = field.type(torch.int16)
-            #field = field.type(torch.float32)/4
+            field = field[:,pad:-pad,pad:-pad,:]*padded_len/2 * (2**mip)
+            field = field * 4
+            field = field.type(torch.int16)
+            field = field.type(torch.float32)/4
             #print("shape of dis_patch_new is ", dis_patch_new.shape)
             for g in range(num_patch):
                 vv_fields[g,i,...]=field[g,...]+dis_patch_new[g].type(torch.float32)*(2**mip)
+          #  for g in range(num_patch):
+          #      xs, ys = coor_list[g]
+          #      tmp_dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
+          #                pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:]=vv_fields[g:g+1,i,...]
+          #  from cloudvolume import CloudVolume as CV
+          #  #vol= CV('gs://microns-seunglab/zhen_test/origin_test/field/1', mip=2)
+          #  vol=CV('gs://microns-seunglab/zhen_test/origin_new/field/'+str(-5+i), mip=2)
+          #  tmp = vol[57024:59072,53952:56000,10505,:]
+          #  orign_field = torch.from_numpy(np.transpose(tmp, (2,0,1,3)))
+          #  orign_field = orign_field.type(torch.float)/4
+          #  #diff_field = orign_field - o_field[:,pad:-pad,pad:-pad,:]
+          #  diff_field = orign_field - tmp_dst_field[:,pad:-pad,pad:-pad,:]
+          #  #diff_field = orign_field.type(torch.float32) - dst_field[:,pad:-pad,pad:-pad,:]
+          #  #print("origin_field",orign_field)
+          #  print(">>>>>>>>>>>>>>>>>> before vv, diff field with origin ",
+          #  #     diff_field,
+          #  torch.max(diff_field), " i is", i)
+
+            #if i==0:
+            #    #o_field =(o_field).type(torch.int16)
+            #    #diff_field = dst_field.type(torch.float) - o_field.type(torch.float)
+            #    diff_field = tmp_dst_field - o_field.type(torch.float)
+            #    print(">>>>>>>>>>>>>>>>>> before vv, diff field in vvote",
+            #    torch.max(diff_field), " i is", i)
+            #    #from cloudvolume import CloudVolume as CV
+            #    ##vol= CV('gs://microns-seunglab/zhen_test/origin_test/field/1', mip=2)
+            #    #vol=CV('gs://microns-seunglab/zhen_test/origin/field/'+str(-5+i), mip=2)
+            #    #tmp = vol[57024:59072,53952:56000,10505,:]
+            #    #orign_field = torch.from_numpy(np.transpose(tmp, (2,0,1,3)))
+            #    #orign_field = orign_field
+            #    ##diff_field = orign_field - o_field[:,pad:-pad,pad:-pad,:]
+            #    #diff_field = orign_field - dst_field[:,pad:-pad,pad:-pad,:]
+            #    ##diff_field = orign_field.type(torch.float32) - dst_field[:,pad:-pad,pad:-pad,:]
+            #    ##print("origin_field",orign_field)
+            #    #print(">>>>>>>>>>>>>>>>>> before vv, diff field with origin ",
+            #    ##     diff_field,
+            #    #torch.max(diff_field), " i is", i)
+
+            #diff_field = dst_field[:,pad:-pad,pad:-pad,:] - orign_field.type(torch.float32)
+            #print(">>>>>>>>>>>>>>>>>> before vv, diff field in vvote",
+            #      torch.max(diff_field), " i is", i)
+
+
+            #field = field[:,pad:-pad,pad:-pad,:]*padded_len/2 + dis_patch_new
+       #    print("XXXXXXXXXXXXXXXx -----> field shape ", field.shape)
             #if i==0:
             #    vv_fields = field.unsqueeze(0)
             #else:
@@ -1687,15 +1852,6 @@ class Aligner:
         new_field = self.new_vector_vote_chunk(new_vv, mip,
                                            softmin_temp=softmin_temp,
                                            blur_sigma=blur_sigma)
-        for i in range(num_patch):
-            xs, ys = coor_list[i]
-            nf = new_field[i:i+1,...]
-            #nf = nf.type(torch.float32)/4
-            distance = self.profile_field(nf)
-            distance = distance // (2**mip)
-            tmp_field[xs,ys,...] = distance.type(torch.int16).to(device='cpu')
-            #print(" displace is ", distance)
- 
         new_field = new_field * 4
         new_field = new_field.type(torch.int16)
         new_field = new_field.to(device='cpu')
@@ -1703,11 +1859,11 @@ class Aligner:
             xs, ys = coor_list[i]
             dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
                       pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = new_field[i:i+1,...]
-            #nf = new_field[i:i+1,...]
-            #nf = nf.type(torch.float32)/4
-            #distance = self.profile_field(nf)
-            #distance = distance // (2**mip)
-            #tmp_field[xs,ys,...] = distance.type(torch.int16).to(device='cpu')
+            nf = new_field[i:i+1,...]
+            nf = nf.type(torch.float32)/4
+            distance = self.profile_field(nf)
+            distance = distance // (2**mip)
+            tmp_field[xs,ys,...] = distance.type(torch.int16).to(device='cpu')
             #print(" displace is ", distance)
        
         #for i in range(num_patch):
