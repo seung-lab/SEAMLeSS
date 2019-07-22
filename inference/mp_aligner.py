@@ -459,8 +459,6 @@ class Aligner:
       if(warp):
           #get_corr = coor(x_chunk_number, y_chunk_number)
           image = self.warp_slice(chunk_size, pad, src_img, dst_field, mip, None)
-          #image = self.warp_slice(chunk_size, pad, src_img, o_field, None)
-          #image = self.warp_slice(chunk_size, pad, src_img, orign_field, None)
           return image, dst_field
       else:
           return dst_field
@@ -1133,15 +1131,6 @@ class Aligner:
           #self.save_image(image[...,pad:-pad,pad:-pad].cpu().numpy(),
           #                dst, z, final_chunk, mip, to_uint8=True)
 
-
-          #from cloudvolume import CloudVolume as CV
-          #vol=CV('gs://microns-seunglab/zhen_test/origin/image_blocks/even', mip=2)
-          #tmp = vol[57024:59072,53952:56000,10505,:]
-          #tmp = torch.from_numpy(np.transpose(tmp, (2,3,0,1)))
-          #diff = image[...,pad:-pad,pad:-pad]*255 - tmp.type(torch.float32)
-          #print("................. img diff is ", torch.max(diff))
-
-
           #if(head_crop==False):
           #    if(block_offset != vvote_range_small[-1]):
           #        pad_tensor = torch.FloatTensor(1, 1, pad, image.shape[-1]).zero_()
@@ -1163,14 +1152,6 @@ class Aligner:
           #print("************ image_list[0]", image_list[0].shape,
           #      "coresponding_bbx", final_chunk.stringify(0, mip=mip))
           image_chunk =image_list[0][...,pad:-pad,pad:-pad]
-
-
-        #  from cloudvolume import CloudVolume as CV
-        #  vol=CV('gs://microns-seunglab/zhen_test/origin/image_blocks/even', mip=2)
-        #  tmp = vol[57024:59072,53952:56000,10500,:]
-        #  tmp = torch.from_numpy(np.transpose(tmp, (2,3,0,1)))
-        #  diff = image_chunk*255 - tmp.type(torch.float32)
-        #  print("................. img diff is ", torch.max(diff))
 
           #image_chunk =self.crop_imageX(image_list[0][...,pad:-pad,pad:-pad], True, True,
           #                             pad)
@@ -1258,6 +1239,8 @@ class Aligner:
                 "coresponding_bbx", final_chunk.stringify(0, mip=mip))
           self.save_image(image_chunk.cpu().numpy(), dst, z-(vvote_way-i-1),
                        final_chunk, mip, to_uint8=True)
+      for i in upload_list:
+          i.join()
 
   def old_get_dis(self, cm, field_cv, z, patch_bbox, mip, pad, dst_field):
       bbox = deepcopy(patch_bbox)
@@ -1736,246 +1719,12 @@ class Aligner:
     #warp the image
     #has_next = True
     #get_corr = coor(x_chunk_number, y_chunk_number)
-
-    #from cloudvolume import CloudVolume as CV
-    #vol= CV('gs://microns-seunglab/zhen_test/origin_test/field/1', mip=2)
-    #vol= CV('gs://microns-seunglab/zhen_test/origin/field/vvote_5', mip=2)
-    #tmp = vol[57024:59072,53952:56000,10505,:]
-    #orign_field = torch.from_numpy(np.transpose(tmp, (2,0,1,3)))
-    #orign_field = orign_field/4
-    #diff_field = dst_field[:,pad:-pad,pad:-pad,:] - orign_field.type(torch.float32)
-    #print(">>>>>>>>>>>>>>>>>>diff field in vvote", diff_field)
-
  
-    image = self.warp_slice(chunk_size, pad, src_img, dst_field, None)
+    image = self.warp_slice(chunk_size, pad, src_img, dst_field, mip, None)
 
     return image, dst_field
 
 
-  #  #vector voting
-  #  #for ys in range(0, y_chunk_number-1, 2):
-  #  for ys in range(0, y_chunk_number, gpu_num):
-  #      vv_fields = []
-  #      src_patch = src_img[...,:padded_len, ys*chunk_size:ys*chunk_size+padded_len]
-  #      if ys + gpu_num < y_chunk_number:
-  #          for i in range(1, gpu_num):
-  #              idx = ys + i
-  #              tmp = src_img[...,:padded_len, idx*chunk_size:idx*chunk_size+padded_len]
-  #              src_patch = torch.cat((src_patch, tmp),0)
-  #      else:
-  #          for idx in range(ys+1, y_chunk_number):
-  #              tmp = src_img[...,:padded_len, idx*chunk_size:idx*chunk_size+padded_len]
-  #              src_patch = torch.cat((src_patch, tmp),0)
-  #      start_cf = time()
-  #      #src_patch = src_patch.to(device=self.device)
-  #      src_patch = src_patch.cuda()
-  #      src_patch = self.convert_to_float(src_patch)
-  #      for i in range(vvote_way):
-  #          if head_crop and end_crop:
-  #              offset = (image_list[i].shape[-2] - src_img.shape[-2])//2
-  #          elif head_crop and end_crop==False:
-  #              offset = (image_list[i].shape[-2] - src_img.shape[-2])
-  #          else:
-  #              offset = 0;
-  #          #print("---------- in vv tgt image shape", image_list[i].shape)
-  #          tgt_patch = image_list[i][..., offset:offset+padded_len,
-  #                                    ys*chunk_size:ys*chunk_size+padded_len]
-  #          if ys + gpu_num < y_chunk_number:
-  #              for i in range(1, gpu_num):
-  #                  idx = ys + i
-  #                  tmp = image_list[i][..., offset:offset+padded_len,
-  #                                    idx*chunk_size:idx*chunk_size+padded_len]
-  #                  tgt_patch = torch.cat((tgt_patch, tmp),0)
-  #          else:
-  #              for idx in range(ys+1, y_chunk_number):
-  #                  tmp = image_list[i][..., offset:offset+padded_len,
-  #                                    idx*chunk_size:idx*chunk_size+padded_len]
-  #                  tgt_patch = torch.cat((tgt_patch, tmp),0)
-  #          #print("--------------in vv tgt patch shape", tgt_patch.shape)
-  #          #torch.cuda.synchronize()
-  #          #copy_s = time()
-  #          #torch.cuda.synchronize()
-  #          #copy_e = time()
-  #          tgt_patch = tgt_patch.cuda()
-  #          if tgt_patch.dtype == torch.uint8:
-  #              tgt_patch = self.convert_to_float(tgt_patch)
-  #          #print(" in vvoting src_patch size ", src_patch.shape, " tgt_patch",
-  #          #     tgt_patch.shape)
-  #          #print("---------- in vv tgt image shape", tgt_patch.shape)
-  #          #torch.cuda.synchronize()
-  #          #f_t = time()
-  #          field = self.new_compute_field_chunk(model_path, src_patch,
-  #                                                 tgt_patch)
-  #          print("XXXXXXXXXXXXXXXx -----> field shape ", field.shape)
-  #          #delete this line: field = field[:,pad:-pad,pad:-pad,:]
-  #          #torch.cuda.synchronize()
-  #          #f_t_e = time()
-  #          #print(" each cf time", f_t_e - f_t)
-  #          if i==0:
-  #              vv_fields = field.unsqueeze(0)
-  #          else:
-  #              vv_fields = torch.cat((vv_fields, field.unsqueeze(0)),0)
-  #          #if i == 0:
-  #          #    for i in range(field.shape[0]):
-  #          #        tmp = []
-  #          #        tmp.append(field[i:i+1,...])
-  #          #        vv_fields.append(tmp)
-  #          #else:
-  #          #    for i in range(field.shape[0]):
-  #          #        vv_fields[i].append(field[i:i+1,...])
-
-  #      #torch.cuda.synchronize()
-  #      #vv_s = time()
-  #      print("XXXXXXXXXXXXXXXx -----> vv_fields  shape", vv_fields.shape)
-  #      vv_fields = vv_fields.permute(1,0,2,3,4)
-
-  #      #for i in range(len(vv_fields)):
-  #      #    vv_field = vv_fields[i]
-  #      #    #print(" field shape", len(vv_field), vv_field[0].shape, vv_field[0])
-  #      #    for j in range(len(vv_field)):
-  #      #        dev = "cuda:"+str(i)
-  #      #        #print("device is ", dev)
-  #      #        vv_field[j] = vv_field[j].to(device=dev)
-  #      #    print("start time", time(), "deivce is", vv_field[0].device)
-  #      #    new_field = self.new_vector_vote_chunk(vv_field, mip,
-  #      #                                   softmin_temp=softmin_temp,
-  #      #                                   blur_sigma=blur_sigma)
-
-  #      new_field = self.new_vector_vote_chunk(vv_fields, mip,
-  #                                         softmin_temp=softmin_temp,
-  #                                         blur_sigma=blur_sigma)
-  #      print("xxxxxxxxxxxxxxxxxx  vv done")
-  #      #torch.cuda.synchronize()
-  #      #end_cf = time()
-  #      #print("+++++++++++vv time", end_cf - vv_s)
-  #      #print("=================compute", vvote_way, " chunk fields time",
-  #      #      end_cf-start_cf)
-  #      new_field = new_field[:, 0:-pad, pad:-pad,:]
-  #      torch.cuda.synchronize()
-  #      copy_s = time()
-  #      new_field = new_field.to(device='cpu')
-  #      torch.cuda.synchronize()
-  #      copy_e = time()
-  #      print("---------------------- vector field from GPU to CPU",
-  #            copy_e-copy_s)
-  #      for i in range(new_field.shape[0]):
-  #          idx = ys+i
-  #          dst_field[:,0:chunk_size+pad,
-  #                pad+idx*chunk_size:pad+idx*chunk_size+chunk_size, :] = new_field[i:i+1,...]
-  #      #dst_field[:,0:chunk_size+pad,
-  #      #          pad+ys*chunk_size:pad+ys*chunk_size+chunk_size, :] = new_field
-
-  #  #end = time()
-  #  #print("================= first row in vv time is", end -start,
-  #  #      "y chunk_number is", y_chunk_number, " x_chunk_number",
-  #  #      x_chunk_number)
-  #  print("================ first row finish")
-  #  for xs in range(1, x_chunk_number-1, 3):
-  #      for ys in range(y_chunk_number):
-  #          vv_fields = []
-  #          src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
-  #                                  ys*chunk_size:ys*chunk_size+padded_len]
-  #          src_patch1 = src_img[...,newx1*chunk_size:newx1*chunk_size+padded_len,
-  #                                  ys*chunk_size:ys*chunk_size+padded_len]
-  #          src_patch2 = src_img[...,newx2*chunk_size:newx2*chunk_size+padded_len,
-  #                                  ys*chunk_size:ys*chunk_size+padded_len]
-  #          src_patch = torch.cat((src_patch, src_patch1, src_patch2),0)
-  #          src_patch = src_patch.to(device=self.device)
-  #          src_patch = self.convert_to_float(src_patch)
-  #          for i in range(vvote_way):
-  #              if head_crop and end_crop:
-  #                  offset = (image_list[i].shape[-2] - src_img.shape[-2])//2
-  #              elif head_crop and end_crop==False:
-  #                  offset = (image_list[i].shape[-2] - src_img.shape[-2])
-  #              else:
-  #                  offset = 0;
-  #              tgt_patch = image_list[i][...,
-  #                                        offset+xs*chunk_size:offset+xs*chunk_size+padded_len,
-  #                                        ys*chunk_size:ys*chunk_size+padded_len]
-  #              tgt_patch1 = image_list[i][...,
-  #                                        offset+newx1*chunk_size:offset+newx1*chunk_size+padded_len,
-  #                                        ys*chunk_size:ys*chunk_size+padded_len]
-  #              tgt_patch2 = image_list[i][...,
-  #                                        offset+newx2*chunk_size:offset+newx2*chunk_size+padded_len,
-  #                                        ys*chunk_size:ys*chunk_size+padded_len]
-  #              tgt_patch = torch.cat((tgt_patch, tgt_patch1, tgt_patch2), 0)
-  #              tgt_patch = tgt_patch.to(device=self.device)
-  #              if tgt_patch.dtype == torch.uint8:
-  #                  tgt_patch = self.convert_to_float(tgt_patch)
-  #              field = self.new_compute_field_chunk(model_path, src_patch,
-  #                                                     tgt_patch)
-  #              field = field[:,pad:-pad,pad:-pad,:]
-  #              vv_fields.append(field)
-  #  #        new_field = self.new_vector_vote_chunk(vv_fields, mip,
-  #  #                                           softmin_temp=softmin_temp,
-  #  #                                           blur_sigma=blur_sigma)
-  #  #        new_field = new_field.to(device='cpu')
-  #  #        dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
-  #  #                  pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = new_field
-  #  #new_end = time()
-  #  #print("================= middle row in vv time is", new_end - end)
-
-  #  for xs in [x_chunk_number-1]:
-  #      for ys in range(y_chunk_number):
-  #          vv_fields = []
-  #          src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
-  #                                  ys*chunk_size:ys*chunk_size+padded_len]
-  #          src_patch = src_patch.to(device=self.device)
-  #          src_patch = self.convert_to_float(src_patch)
-  #          for i in range(vvote_way):
-  #              if head_crop and end_crop:
-  #                  offset = (image_list[i].shape[-2] - src_img.shape[-2])//2
-  #              elif head_crop and end_crop==False:
-  #                  offset = (image_list[i].shape[-2] - src_img.shape[-2])
-  #              else:
-  #                  offset = 0;
-
-  #              tgt_patch = image_list[i][...,
-  #                                        offset+xs*chunk_size:offset+xs*chunk_size+padded_len,
-  #                                        ys*chunk_size:ys*chunk_size+padded_len]
-  #              tgt_patch = tgt_patch.to(device=self.device)
-  #              if tgt_patch.dtype == torch.uint8:
-  #                  tgt_patch = self.convert_to_float(tgt_patch)
-  #              field = self.new_compute_field_chunk(model_path, src_patch,
-  #                                                     tgt_patch)
-  #              #field = field[:,pad:-pad,pad:-pad,:]
-  #              vv_fields.append(field)
-  #          new_field = self.new_vector_vote_chunk(vv_fields, mip,
-  #                                             softmin_temp=softmin_temp,
-  #                                             blur_sigma=blur_sigma)
-  #          # to verify: wherther non-square size is good
-  #          new_field = new_field[:,pad:,pad:-pad,:]
-  #          new_field = new_field.to(device='cpu')
-  #          #print("--------field shape", field.shape )
-  #          dst_field[:,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size+pad,
-  #                    pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:] = new_field
-  #  torch.cuda.synchronize()
-  #  last_end = time()
-  #  print("================= whole vv time is", last_end - start)
-  #  #print("================= last row in vv time is", last_end - new_end)
-  # 
-  #   
-  #  #warp the image
-  #  for xs in range(x_chunk_number):
-  #      for ys in range(y_chunk_number):
-  #          src_patch = src_img[...,xs*chunk_size:xs*chunk_size+padded_len,
-  #                              ys*chunk_size:ys*chunk_size+padded_len]
-  #          field = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
-  #                            ys*chunk_size:ys*chunk_size+padded_len,:]
-  #          src_patch = src_patch.to(device=self.device)
-  #          src_patch = self.convert_to_float(src_patch)
-  #          field = field.to(device=self.device)
-  #          #field = self.invert_field(field)
-  #          image_patch = self.new_cloudsample_image(src_patch, field)
-  #          image_patch = image_patch[:,:,pad:-pad,pad:-pad]
-  #          #image_patch = self.convert_to_uint8(image_patch)
-  #          image_patch = image_patch.to(device='cpu')
-  #          image[..., xs*chunk_size:xs*chunk_size+chunk_size,
-  #                pad+ys*chunk_size:pad+ys*chunk_size+chunk_size] = image_patch
-  #  torch.cuda.synchronize()
-  #  warp_end = time()
-  #  print("====================== warp end time", warp_end - last_end)
-  #  return image, dst_field
 
   def new_vector_vote_chunk(self, fields, mip, softmin_temp=None, blur_sigma=None):
     if not softmin_temp:
