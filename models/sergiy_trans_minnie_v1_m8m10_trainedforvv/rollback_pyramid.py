@@ -18,8 +18,8 @@ class RollbackPyramid(nn.Module):
 
         self.best_val = math.inf
         self.rollback = rollback
-        self.mip_processors = {}
-        self.mip_downsamplers = {}
+        self.mip_processors = torch.nn.ModuleDict()
+        self.mip_downsamplers = torch.nn.ModuleDict()
         self.max_mip = max_mip
         self.upsampler = nn.UpsamplingBilinear2d(scale_factor=2)
 
@@ -27,28 +27,28 @@ class RollbackPyramid(nn.Module):
         self.range_adjuster = RangeAdjuster(divide=1.0)
 
         for i in range(self.max_mip):
-            self.mip_downsamplers[i] = self.default_downsampler()
+            self.mip_downsamplers[str(i)] = self.default_downsampler()
 
     def default_downsampler(self):
         return nn.AvgPool2d(2, count_include_pad=False)
 
     def set_mip_processor(self, module, mip):
-        self.mip_processors[mip] = module
+        self.mip_processors[str(mip)] = module
 
     def unset_mip_processor(self, mip):
-        del self.mip_processors[mip]
+        del self.mip_processors[str(mip)]
 
     def set_mip_downsampler(self, module, mip):
-        self.mip_downsamplers[mip] = module
+        self.mip_downsamplers[str(mip)] = module
 
     def unset_mip_downsampler(self, mip):
-        self.mip_downsamplers[mip] = self.default_downsampler()
+        self.mip_downsamplers[str(mip)] = self.default_downsampler()
 
     def compute_downsamples(self, img, curr_mip, max_mip):
         downsampled_src_tgt = {}
         downsampled_src_tgt[curr_mip] = img
         for mip in range(curr_mip + 1, max_mip + 1):
-            downsampled_src_tgt[mip] = self.mip_downsamplers[mip](
+            downsampled_src_tgt[mip] = self.mip_downsamplers[str(mip)](
                                                 downsampled_src_tgt[mip - 1])
         return downsampled_src_tgt
 
@@ -60,7 +60,7 @@ class RollbackPyramid(nn.Module):
 
     def get_processor_params(self, mip):
         params = []
-        params.extend(self.mip_processors[mip].parameters())
+        params.extend(self.mip_processors[str(mip)].parameters())
         return params
 
 
@@ -71,7 +71,7 @@ class RollbackPyramid(nn.Module):
         return params
 
     def get_downsampler_params(self, mip):
-        return [self.mip_downsamplers[mip].parameters()]
+        return [self.mip_downsamplers[str(mip)].parameters()]
 
     def get_all_params(self):
         params = []
@@ -92,15 +92,15 @@ class RollbackPyramid(nn.Module):
         return final
 
     def forward(self, raw_src_tgt, plastic_mask, mip_in):
-        raw_src_tgt_var = raw_src_tgt.cuda()
+        raw_src_tgt_var = raw_src_tgt#.cuda()
         plastic_mask_var = None
-        if plastic_mask:
-            plastic_mask_var = plastic_mask.cuda()
+        #if plastic_mask:
+        #    plastic_mask_var = plastic_mask.cuda()
         src_tgt_var = self.preprocess(raw_src_tgt_var, plastic_mask_var)
 
         # Find which mips are to be applied
         mips_to_process = iteritems(self.mip_processors)
-        filtered_mips   = [m for m in mips_to_process if m[0] >= mip_in]
+        filtered_mips   = [(int(m[0]), m[1]) for m in mips_to_process if int(m[0]) >= mip_in]
         ordered_mips    = list(reversed(sorted(filtered_mips)))
 
         high_mip = ordered_mips[0][0]
@@ -130,7 +130,7 @@ class RollbackPyramid(nn.Module):
                                        downsampled_src_tgt[mip_in][:, 0:1],
                                        tmp_aggregate_res)
                     for m in range(mip_in, mip):
-                        src = self.mip_downsamplers[m](src)
+                        src = self.mip_downsamplers[str(m)](src)
 
                 else:
                     src = res_warp_img(
@@ -142,7 +142,7 @@ class RollbackPyramid(nn.Module):
             # Compute residual at level $mip
             tgt = downsampled_src_tgt[mip][:, 1:2]
             sample = torch.cat((src, tgt), 1)
-            residuals[mip] = self.mip_processors[mip](sample)
+            residuals[mip] = self.mip_processors[str(mip)](sample)
 
             # initialize aggregate flow if None
             if aggregate_res is None:
@@ -159,8 +159,8 @@ class RollbackPyramid(nn.Module):
         return aggregate_res
 
     def run_pair(self, src_tgt, plastic_mask, mip_in):
-        src_tgt_var = Variable(src_tgt.cuda(), requires_grad=True)
-        plastic_mask_var= Variable(plastic_mask.cuda(), requires_grad=True)
+        src_tgt_var = Variable(src_tgt, requires_grad=True)
+        plastic_mask_var= Variable(plastic_mask, requires_grad=True)
 
         src_var = src_tgt_var[:, 0:1, :, :]
         tgt_var = src_tgt_var[:, 1:2, :, :]
