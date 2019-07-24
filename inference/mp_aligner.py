@@ -77,9 +77,9 @@ class Aligner:
     self.task_batch_size = task_batch_size
     self.dry_run = dry_run
     self.eps = 1e-6
-    self.manager = Manager()
-    self.dic = self.manager.dict()
-    self.p_list = []
+    self.manager = None # Manager()
+    self.dic =  None  #self.manager.dict()
+    self.p_list = None #[]
 
     self.gpu_lock = kwargs.get('gpu_lock', None)  # multiprocessing.Semaphore
 
@@ -138,7 +138,10 @@ class Aligner:
              for z in range(z_start, z_stop):
                #bbox_lookup[z] = bbox 
                model_lookup[z] = model_path
-
+      if self.manager == None:
+          self.manager = Manager()
+          self.dic = self.manager.dict()
+          self.p_list = []
       overlap = radius
       full_range = range(block_size + overlap)
       vvote_range = full_range[overlap:]

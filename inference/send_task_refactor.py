@@ -70,8 +70,8 @@ if __name__ == '__main__':
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--tgt_radius', type=int, default=3,
-    help='int for number of sections to include in vector voting')
+#  parser.add_argument('--tgt_radius', type=int, default=3,
+#    help='int for number of sections to include in vector voting')
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
@@ -112,9 +112,10 @@ if __name__ == '__main__':
          z_stop  = int(r[5])
          bbox_mip = int(r[6])
          model_path = join('..', 'models', r[7])
+         tgt_radius = int(r[8])
          bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
          for z in range(z_start, z_stop):
-           bbox_lookup[z] = bbox 
+           bbox_lookup[z] = bbox
            model_lookup[z] = model_path
 
   affine_lookup = None
@@ -153,7 +154,8 @@ if __name__ == '__main__':
   print('block_range {}'.format(block_range))
   print('even_odd_range {}'.format(even_odd_range))
 
-  overlap = args.tgt_radius
+  #overlap = args.tgt_radius
+  overlap = tgt_radius
   full_range = range(args.block_size + overlap)
 
   copy_range = full_range[overlap-1:overlap]
@@ -253,14 +255,15 @@ if __name__ == '__main__':
           self.brange = brange
           self.even_odd = even_odd
           print("*********self range is ", self.brange)
+          print("*********even_odd is ", self.brange)
       def __iter__(self):
           #for i in self.brange:
-          for i in zip(self.brange, self.even_odd):
+          for i, even_odd in zip(self.brange, self.even_odd):
               dst = dsts[even_odd]
               t = a.new_align_task(range(i,i+1), src.path, dst.path,
                                    serial_fields[1].path,
                                    vvote_field.path,
-                                   chunk_grid, mip, pad, args.tgt_radius,
+                                   chunk_grid, mip, pad, tgt_radius,
                                    block_size, chunk_size, args.model_lookup,
                                    src_mask_cv=src_mask_cv,
                                    src_mask_mip=src_mask_mip,
@@ -273,12 +276,14 @@ if __name__ == '__main__':
   ptask = []
   range_list = make_range(z_range, a.threads)
   even_odd_list = make_range(even_odd_range, a.threads)
-  #print("range_list is ", range_list)
-  for irange in range_list:
-      ptask.append(AlignT(irange))
+  print("range_list is ", range_list)
+  print("even_odd_list is ", even_odd_range)
+  for irange, ieven_odd in zip(range_list, even_odd_list):
+      ptask.append(AlignT(irange, ieven_odd))
   #print("ptask len is ", len(ptask))
   #ptask.append(batch)
   #remote_upload_it(ptask)
+
   with ProcessPoolExecutor(max_workers=a.threads) as executor:
       executor.map(remote_upload_it, ptask)
 

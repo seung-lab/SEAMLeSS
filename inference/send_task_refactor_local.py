@@ -104,6 +104,7 @@ if __name__ == '__main__':
          z_stop  = int(r[5])
          bbox_mip = int(r[6])
          model_path = join('..', 'models', r[7])
+         tgt_radius = int(r[8])
          bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
          for z in range(z_start, z_stop):
            bbox_lookup[z] = bbox 
@@ -145,7 +146,8 @@ if __name__ == '__main__':
   print('block_range {}'.format(block_range))
   print('even_odd_range {}'.format(even_odd_range))
 
-  overlap = args.tgt_radius
+  #overlap = args.tgt_radius
+  overlap = tgt_radius
   full_range = range(args.block_size + overlap)
 
   copy_range = full_range[overlap-1:overlap]
@@ -239,7 +241,7 @@ if __name__ == '__main__':
   #for i in vvote_subblock:
   #    print("*****>>> vvote subblock is ", i)
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, 0, rows, pad)
-  a.new_align(src, dst, serial_fields[1], vvote_field, chunk_grid, mip, pad, args.tgt_radius,
+  a.new_align(src, dst, serial_fields[1], vvote_field, chunk_grid, mip, pad, tgt_radius,
               block_start, block_size, chunk_size, args.model_lookup,
               src_mask_cv=src_mask_cv,
               src_mask_mip=src_mask_mip, src_mask_val=src_mask_val, rows=rows,
