@@ -348,8 +348,8 @@ def gridsample_residual(source, residual, padding_mode):
         before passing to `gridsample()` and `result.permute(0,2,3,1)` to
         restore the result.
     """
-    print('gridsample_residual() has been renamed and is deprecated in favor '
-          'of grid_sample()', file=sys.stderr)
+    #print('gridsample_residual() has been renamed and is deprecated in favor '
+    #      'of grid_sample()', file=sys.stderr)
     return grid_sample(source, residual, padding_mode)
 
 

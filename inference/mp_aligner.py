@@ -77,6 +77,9 @@ class Aligner:
     self.task_batch_size = task_batch_size
     self.dry_run = dry_run
     self.eps = 1e-6
+    self.manager = Manager()
+    self.dic = self.manager.dict()
+    self.p_list = []
 
     self.gpu_lock = kwargs.get('gpu_lock', None)  # multiprocessing.Semaphore
 
@@ -113,7 +116,6 @@ class Aligner:
                                           src_mask_val, rows, super_chunk_len,
                                           overlap_chunks))
       return batch
-
 
   def new_align(self, src, dst, s_field, vvote_field, chunk_grid, mip, pad, radius, block_start,
                 block_size, chunk_size, lookup_path, src_mask_cv=None, src_mask_mip=0,
@@ -223,6 +225,8 @@ class Aligner:
                                       head_crop, end_crop, final_chunk,
                                       mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                       mask_val=src_mask_val, cm=cm)
+          for i in self.p_list:
+              i.join()
 
   def mp_compute_field_singel(self, dic, coor_list, device_num, model_path,
                               chunk_size, pad, padded_len):
@@ -743,8 +747,9 @@ class Aligner:
                                         mask_val=mask_val)
 
       #load_image_start = time()
-      m = Manager()
-      dic = m.dict()
+      #m = Manager()
+      dic = self.dic
+      #dic = m.dict()
       tgt_image = torch.ByteTensor(1, 1,
                                    src_image0.shape[-2]-2*pad,
                                    src_image0.shape[-1]-2*pad).zero_()
@@ -843,17 +848,19 @@ class Aligner:
           for i in upload_list:
               i.join()
           upload_list = []
-          dic["field"] =dst_field
+          dic["sfield"] =dst_field
           # set x_range_len = None since align whole images. No head_crop and no
           # end_crop
           x_range_len = None
-          pf = Process(target=self.mp_store_field, args=(dic,"field", head_crop,
+          pf = Process(target=self.mp_store_field, args=(dic,"sfield", head_crop,
                                                         end_crop, x_range_len,
                                                         pad, dst, z,
                                                         final_chunk, mip,
                                                         chunk_size))
           pf.start()
           upload_list.append(pf)
+      for i in upload_list:
+          self.p_list.append(i)
       return image_list, chunk
 
   def mm_process_super_chunk_serial(self, src, block_start, serial_range,
@@ -871,8 +878,9 @@ class Aligner:
       print("---- chunk is ", chunk.stringify(0, mip=mip), " z is",
             block_start+serial_offsets[0])
       #load_image_start = time()
-      m = Manager()
-      dic = m.dict()
+      #m = Manager()
+      #dic = m.dict()
+      dic = self.dic
       mip = mips[0]
       tgt_image = self.load_part_image(src, block_start+serial_offsets[0],
                                   chunk, mip, mask_cv=mask_cv,
@@ -1058,7 +1066,8 @@ class Aligner:
       print("---- chunk is ", chunk.stringify(0, mip=mip), " z is",
             block_start+vvote_range_small[0]) 
       m = Manager()
-      dic = m.dict()
+      dic = self.dic
+      #dic = m.dict()
       p_list = []
       upload_list = []
       src_image0 = self.load_part_image(src, block_start+vvote_range_small[0], chunk,
@@ -1174,7 +1183,7 @@ class Aligner:
           if(block_offset == vvote_range_small[-1]):
               image = image[...,pad:-pad,pad:-pad]
               dic["img"] = image
-              print("store img shape", image.shape, "z is", z)
+              #print("store img shape", image.shape, "z is", z)
               pi = Process(target=self.mp_store_img, args=(dic, "img",
                                                           dst, z,
                                                           final_chunk,
@@ -1226,7 +1235,8 @@ class Aligner:
           self.save_image(image_chunk.cpu().numpy(), dst, z-(vvote_way-i-1),
                        final_chunk, mip, to_uint8=True)
       for i in upload_list:
-          i.join()
+          #i.join()
+          self.p_list.append(i)
 
   def old_get_dis(self, cm, field_cv, z, patch_bbox, mip, pad, dst_field):
       bbox = deepcopy(patch_bbox)
