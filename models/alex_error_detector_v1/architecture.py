@@ -92,13 +92,12 @@ class UpConv2x2(nn.Module):
     def __init__(self, channels):
 
         super(UpConv2x2, self).__init__()
-        self.upsample = nn.Upsample(scale_factor=(1,2,2), mode='trilinear')
         self.conv = nn.Conv3d(channels, channels//2, kernel_size=(1,1,1), stride=1, padding=0, bias=True)
 
 
     def forward(self, x):
 
-        x = self.upsample(x)
+        x = F.interpolate(x, scale_factor=(1,2,2), mode='trilinear')
         x = self.conv(x)
 
         return x
