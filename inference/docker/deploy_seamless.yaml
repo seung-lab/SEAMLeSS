@@ -1,0 +1,48 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    run: seamless
+  name: seamless
+spec:
+  replicas: 5 
+  selector:
+    matchLabels:
+      run: seamless
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: seamless
+    spec:
+      containers:
+      - image: seunglab/seamless:zhen_gpu
+        name: seamless
+        #imagePullPolicy: Always
+        command: ["/bin/sh"]
+        args: ["-c", "python inference/mp_worker.py --queue_name deepalign0 --lease_seconds 9000"]
+        resources: 
+          limits:
+            nvidia.com/gpu: 4
+        volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        - name: secrets
+          mountPath: /root/.cloudvolume/secrets
+          readOnly: true
+      dnsPolicy: Default
+      volumes:
+      - name: secrets
+        secret:
+          secretName: secrets
+      - name: dshm
+        emptyDir:
+          medium: Memory
+
+status: {}
