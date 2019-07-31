@@ -96,7 +96,8 @@ class ErrorDetectTask(RegisteredTask):
     start = time()
     image = aligner.errdet_chunk(self.model_path, src_seg_cv, seg_mip, src_img_cv, img_mip, chunk_bbox_in, mip, patch_size)
     image = np.transpose(np.reshape(image, image.shape[1:]),(0,2,3,1))
-    image = image[(slice(0,1),)+tuple([slice((patch_size[i]//2)*(chunk_range[i][0]>0),(patch_size[i]//2)*(chunk_range[i][0]>0)+chunk_size[i]) for i in [0,1,2]])]
+    min_bound = src_seg_cv[seg_mip].bounds.minpt
+    image = image[(slice(0,1),)+tuple([slice((patch_size[i]//2)*(chunk_range[i][0]>min_bound[i]),(patch_size[i]//2)*(chunk_range[i][0]>min_bound[i])+chunk_size[i]) for i in [0,1,2]])]
     aligner.save_volume(image, dst_cv, chunk_bbox_out, mip, to_uint8=True)
 
     end = time()
