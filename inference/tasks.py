@@ -70,6 +70,47 @@ class PredictImageTask(RegisteredTask):
     diff = end - start
     print(':{:.3f} s'.format(diff))
 
+class StitchComposeRenderTask(RegisteredTask):
+    def __init__(self,):
+        stitch_compose_render(self, z_range, broadcast_field, influencing_blocks, src,
+                              vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
+                              extra_off, chunk_size, final_chunk, dst)
+    def execute(self, aligner):
+        aligner.stitch_compose_render(z_range, b_field, influence_blocks, src, vv_field_cv,
+                                      decay_dist, src_mip, dst_mip, bbox, pad, extra_off, chunk_size, dst)
+
+
+class StitchGetField(RegisteredTask):
+    def __init__(self, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv, bfield_cv, mip,
+                 bbox, chunk_size, pad, softmin_temp, blur_sigma):
+        super().__init__(param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv, bfield_cv, mip,
+                 bbox, chunk_size, pad, softmin_temp, blur_sigma)
+    def execute(self, aligner):
+        src_cv = DCV(self.src_cv)
+        tgt_cv = DCV(self.tgt_cv)
+        prev_field_cv = DCV(self.prev_field_cv)
+        bfield_cv = DCV(self.bfield_cn)
+        param_lookup= self.param_lookup
+        mip = self.mip
+        bbox = deserialize_bbox(bbox)
+        chunk_size = self.chunk_size
+        softmin_temp = self.softmin_temp
+        blur_sigma = self.blur_sigma
+        print("\n Stitch get field task\n"
+              "src {}\n"
+              "MIP{}\n"
+              "start_z={} \n".format(self.src_cv, mip,
+                                     bs), flush=True)
+        start = time()
+
+        aligner.get_stitch_field_task(param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
+                            bfield_cv, mip, bbox, chunk_size, pad,
+                            softmin_temp, blur_sigma)
+        end = time()
+        diff = end - start
+        print('Stitch get field task time:{:.3f} s'.format(diff), flush=True)
+
+
 class NewAlignTask(RegisteredTask):
   def __init__(self, src, dst, s_field, vvote_field, chunk_grid, mip, pad, radius, block_start,
                block_size, chunk_size, model_lookup, mask_cv, mask_mip,
@@ -102,7 +143,7 @@ class NewAlignTask(RegisteredTask):
           "src {}\n"
           "MIP{}\n"
           "start_z={} \n".format(self.src, mip,
-                        block_start,), flush=True)
+                        block_start), flush=True)
     start = time()
     aligner.new_align(src_cv, dst_cv, s_field, v_field, chunk_grid, mip, pad, radius, block_start,
                 block_size, chunk_size, model_lookup, src_mask_cv=mask_cv,
