@@ -1,5 +1,5 @@
 import gevent.monkey
-gevent.monkey.patch_all()
+gevent.monkey.patch_all(thread=False)
 
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
