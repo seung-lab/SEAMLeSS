@@ -1,5 +1,6 @@
 torch>=0.4.1 # for out of date CUDA versions, go to https://pytorch.org/ to install torch
 torchvision
+torchfields
 numpy>=1.16.2
 scikit-image
 matplotlib
