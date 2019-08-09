@@ -36,7 +36,6 @@ def deserialize_miplessCV(s, cache={}, compress=None):
       cache[s] = mcv
       return mcv
 
-
 class MiplessCloudVolume():
   """Multi-mip access to CloudVolumes using the same path
   """

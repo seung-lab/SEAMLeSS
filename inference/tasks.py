@@ -71,14 +71,37 @@ class PredictImageTask(RegisteredTask):
     print(':{:.3f} s'.format(diff))
 
 class StitchComposeRenderTask(RegisteredTask):
-    def __init__(self,):
-        stitch_compose_render(self, z_range, broadcast_field, influencing_blocks, src,
-                              vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                              extra_off, chunk_size, final_chunk, dst)
+    def __init__(self, z_range, broadcast_field, influencing_blocks, src,
+                 vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
+                 extra_off, chunk_size, final_chunk, dst):
+        super().__init__(z_range, broadcast_field, influencing_blocks, src,
+                         vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
+                         extra_off, chunk_size, final_chunk, dst)
     def execute(self, aligner):
+        z_range = self.z_range
+        b_field = DCV(self.b_field)
+        influence_blocks = self.influence_blocks
+        src = DCV(src)
+        vv_field_cv = DCV(vv_field_cv)
+        decay_dist = self.decay_dist
+        src_mip = self.src_mip
+        bbox = deserialize_bbox(self.bbox)
+        dst_mip = self.dst_mip
+        pad = self.pad
+        extra_off = self.extra_off
+        chunk_size = self.chunk_szie
+        dst = DCV(self.dst)
+        print("\n Stitch compose and render task\n"
+              "src {}\n"
+              "MIP{}\n"
+              "start_z={} \n".format(self.src, src_mip,
+                                     z_range.start), flush=True) 
+        start = time()
         aligner.stitch_compose_render(z_range, b_field, influence_blocks, src, vv_field_cv,
                                       decay_dist, src_mip, dst_mip, bbox, pad, extra_off, chunk_size, dst)
-
+        end = time()
+        diff = end - start
+        print('Stitch compose and render task time:{:.3f} s'.format(diff), flush=True)
 
 class StitchGetField(RegisteredTask):
     def __init__(self, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv, bfield_cv, mip,

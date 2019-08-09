@@ -463,7 +463,7 @@ if __name__ == '__main__':
   class StitchAlignVectorVote(object):
     def __init__(self, z_range):
       self.z_range = z_range
-    
+ 
     def __iter__(self):
       for z in self.z_range:
         bbox = bbox_lookup[z]
@@ -542,8 +542,8 @@ if __name__ == '__main__':
 
   #print("z_range is ", z_range)
   ptask = []
-  bs_list = make_range(block_starts, a.threads)
-  be_list = make_range(block_starts, a.threads)
+  bs_list = make_range(block_starts[1:], a.threads)
+  be_list = make_range(block_stops[1:], a.threads)
   print("bs_list is ", bs_list)
   print("be_list is ", be_list)
   for bs, be in zip(bs_list, be_list):
