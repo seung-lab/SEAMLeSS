@@ -46,7 +46,6 @@ def ranges_overlap(a_pair, b_pair):
          (b_start >= a_start and b_stop <= a_stop) or
          (b_start <= a_stop  and b_stop >= a_stop))
 
-
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--param_lookup', type=str,
@@ -252,13 +251,13 @@ if __name__ == '__main__':
   block_range = range(bs, be+1)
 
   overlap_copy_range = set()
-  for z in block_range[1:]:
+  for z in block_range:
       if z not in skip_list:
           for tgt_offset in vvote_lookup[z]:
               tgt_z = z + tgt_offset
               if tgt_z <= bs:
                   overlap_copy_range.add(tgt_z)
-  overlap_copy_range = list(overlap_copy_range)
+  overlap_copy_range =sorted(list(overlap_copy_range))
   #for bs, be in zip(block_starts[1:], block_stops[1:]):
   max_offset = 0
   stitch_offset_to_z_range =[]
@@ -274,10 +273,20 @@ if __name__ == '__main__':
 
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, 0, 1000, pad)
 
+#  dst = block_dsts[0]
+#  serial_fields = block_pair_fields[0]
+#  block_start = block_starts[0]
+#  block_stop = block_stops[0]
+#  a.new_align(src, dst, serial_fields, block_vvote_field, chunk_grid, mip, pad,
+#              block_start, block_stop, chunk_size, args.param_lookup,
+#              src_mask_cv=src_mask_cv,
+#              src_mask_mip=src_mask_mip, src_mask_val=src_mask_val)
+#
+
   src_cv = block_dst_lookup[bs+1]
   tgt_cv = block_dst_lookup[bs]
   a.get_stitch_field(model_lookup, src_cv, tgt_cv, block_vvote_field,
-                     broadcasting_field, overlap_copy_range,
+                     broadcasting_field, src, overlap_copy_range,
                      stitch_offset_to_z_range, mip, chunk_grid[0],
                      chunk_size, pad,
                      softmin_temp=2**mip, blur_sigma=1)

@@ -71,25 +71,25 @@ class PredictImageTask(RegisteredTask):
     print(':{:.3f} s'.format(diff))
 
 class StitchComposeRenderTask(RegisteredTask):
-    def __init__(self, z_range, broadcast_field, influencing_blocks, src,
+    def __init__(self, z_start, z_stop, b_field, influence_blocks, src,
                  vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                 extra_off, chunk_size, final_chunk, dst):
-        super().__init__(z_range, broadcast_field, influencing_blocks, src,
+                 extra_off, chunk_size, dst):
+        super().__init__(z_start, z_stop, b_field, influence_blocks, src,
                          vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                         extra_off, chunk_size, final_chunk, dst)
+                         extra_off, chunk_size, dst)
     def execute(self, aligner):
-        z_range = self.z_range
+        z_range = range(self.z_start, self.z_stop)
         b_field = DCV(self.b_field)
         influence_blocks = self.influence_blocks
-        src = DCV(src)
-        vv_field_cv = DCV(vv_field_cv)
+        src = DCV(self.src)
+        vv_field_cv = DCV(self.vv_field_cv)
         decay_dist = self.decay_dist
         src_mip = self.src_mip
         bbox = deserialize_bbox(self.bbox)
         dst_mip = self.dst_mip
         pad = self.pad
         extra_off = self.extra_off
-        chunk_size = self.chunk_szie
+        chunk_size = self.chunk_size
         dst = DCV(self.dst)
         print("\n Stitch compose and render task\n"
               "src {}\n"
@@ -104,21 +104,28 @@ class StitchComposeRenderTask(RegisteredTask):
         print('Stitch compose and render task time:{:.3f} s'.format(diff), flush=True)
 
 class StitchGetField(RegisteredTask):
-    def __init__(self, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv, bfield_cv, mip,
-                 bbox, chunk_size, pad, softmin_temp, blur_sigma):
-        super().__init__(param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv, bfield_cv, mip,
-                 bbox, chunk_size, pad, softmin_temp, blur_sigma)
+    def __init__(self, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
+                 bfield_cv, raw_cv, mip, pad,
+                 bbox, chunk_size, softmin_temp, blur_sigma):
+        super().__init__(param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
+                         bfield_cv, raw_cv, mip, pad,
+                         bbox, chunk_size,softmin_temp, blur_sigma)
     def execute(self, aligner):
         src_cv = DCV(self.src_cv)
         tgt_cv = DCV(self.tgt_cv)
         prev_field_cv = DCV(self.prev_field_cv)
-        bfield_cv = DCV(self.bfield_cn)
+        bfield_cv = DCV(self.bfield_cv)
         param_lookup= self.param_lookup
         mip = self.mip
-        bbox = deserialize_bbox(bbox)
+        bbox = deserialize_bbox(self.bbox)
         chunk_size = self.chunk_size
         softmin_temp = self.softmin_temp
         blur_sigma = self.blur_sigma
+        raw_cv = DCV(self.raw_cv)
+        pad = self.pad
+        bs = self.bs
+        be = self.be
+
         print("\n Stitch get field task\n"
               "src {}\n"
               "MIP{}\n"
@@ -127,7 +134,7 @@ class StitchGetField(RegisteredTask):
         start = time()
 
         aligner.get_stitch_field_task(param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
-                            bfield_cv, mip, bbox, chunk_size, pad,
+                            bfield_cv, raw_cv, mip, bbox, chunk_size, pad,
                             softmin_temp, blur_sigma)
         end = time()
         diff = end - start
@@ -135,11 +142,11 @@ class StitchGetField(RegisteredTask):
 
 
 class NewAlignTask(RegisteredTask):
-  def __init__(self, src, dst, s_field, vvote_field, chunk_grid, mip, pad, radius, block_start,
-               block_size, chunk_size, model_lookup, mask_cv, mask_mip,
+  def __init__(self, src, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
+               block_stop, chunk_size, model_lookup, mask_cv, mask_mip,
                mask_val, rows, super_chunk_len, overlap_chunks):
-    super().__init__(src, dst, s_field, vvote_field, chunk_grid, mip, pad, radius, block_start,
-                     block_size, chunk_size, model_lookup, mask_cv, mask_mip,
+    super().__init__(src, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
+                     block_stop, chunk_size, model_lookup, mask_cv, mask_mip,
                      mask_val, rows, super_chunk_len, overlap_chunks)
 
   def execute(self, aligner):
@@ -152,9 +159,8 @@ class NewAlignTask(RegisteredTask):
         chunk_grid.append(deserialize_bbox(i))
     mip = self.mip
     pad = self.pad
-    radius = self.radius
     block_start = self.block_start
-    block_size = self.block_size
+    block_stop = self.block_stop
     chunk_size = self.chunk_size
     model_lookup = self.model_lookup
     mask_cv = None
@@ -168,8 +174,8 @@ class NewAlignTask(RegisteredTask):
           "start_z={} \n".format(self.src, mip,
                         block_start), flush=True)
     start = time()
-    aligner.new_align(src_cv, dst_cv, s_field, v_field, chunk_grid, mip, pad, radius, block_start,
-                block_size, chunk_size, model_lookup, src_mask_cv=mask_cv,
+    aligner.new_align(src_cv, dst_cv, s_field, v_field, chunk_grid, mip, pad, block_start,
+                block_stop, chunk_size, model_lookup, src_mask_cv=mask_cv,
                       src_mask_mip=mask_mip, src_mask_val=mask_val, rows=self.rows,
                       super_chunk_len=self.super_chunk_len,
                       overlap_chunks=self.overlap_chunks)
