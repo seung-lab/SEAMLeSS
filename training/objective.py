@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
+import torchfields  # noqa: unused
 from utilities import masklib
 from training.loss import smoothness_penalty
-from utilities.helpers import grid_sample
 
 
 class Objective(nn.Module):
@@ -90,6 +90,7 @@ class SelfSupervisedLoss(nn.Module):
         self.lambda1 = lambda1
 
     def forward(self, sample, prediction):
+        prediction.field_()
         masks = prepare_masks(sample)
         src_masks = masks['src_masks']
         tgt_masks = masks['tgt_masks']
@@ -99,15 +100,14 @@ class SelfSupervisedLoss(nn.Module):
         src = sample.src.image.to(prediction.device)
         tgt = sample.tgt.image.to(prediction.device)
 
-        src_warped = grid_sample(src, prediction, padding_mode='zeros')
+        src_warped = prediction.sample(src)
         image_loss_map = (src_warped - tgt)**2
         if src_masks or tgt_masks:
             image_weights = torch.ones_like(image_loss_map)
             if src_masks is not None:
                 for mask in src_masks:
                     try:
-                        mask = grid_sample(mask, prediction,
-                                                   padding_mode='border')
+                        mask = prediction.sample(mask)
                         image_loss_map = image_loss_map * mask
                         image_weights = image_weights * mask
                     except Exception as e:
@@ -126,14 +126,13 @@ class SelfSupervisedLoss(nn.Module):
             mse_loss = image_loss_map.mean()
         sample.image_loss_map = image_loss_map
 
-        field_loss_map = self.field_penalty([prediction])
+        field_loss_map = self.field_penalty([prediction.permute(0, 2, 3, 1)])
         if src_field_masks or tgt_field_masks:
             field_weights = torch.ones_like(field_loss_map)
             if src_field_masks is not None:
                 for mask in src_field_masks:
                     try:
-                        mask = grid_sample(mask, prediction,
-                                                   padding_mode='border')
+                        mask = prediction.sample(mask)
                         field_loss_map = field_loss_map * mask
                         field_weights = field_weights * mask
                     except Exception as e:

@@ -77,6 +77,7 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.utils.data
 import torchvision.transforms as transforms
+import torchfields  # noqa: unused
 from pathlib import Path
 
 import stack_dataset
@@ -375,33 +376,33 @@ def create_debug_outputs(archive, sample, prediction, id=0):
         # cp(debug_dir / 'tgt_{}.png'.format(id), stack_dir)
         src_aug, tgt_aug = sample.src.aug, sample.tgt.aug
         if src_aug is not None:
-            save_chunk(src_aug[0:1, ...], str(debug_dir / 'src_aug_{}'.format(id)))
+            save_chunk(src_aug[0:1, ...],
+                       str(debug_dir / 'src_aug_{}'.format(id)))
             cp(debug_dir / 'src_aug_{}.png'.format(id), stack_dir)
         else:
             cp(debug_dir / 'src_{}.png'.format(id), stack_dir)
         if tgt_aug is not None:
-            save_chunk(tgt_aug[0:1, ...], str(debug_dir / 'tgt_aug_{}'.format(id)))
+            save_chunk(tgt_aug[0:1, ...],
+                       str(debug_dir / 'tgt_aug_{}'.format(id)))
             cp(debug_dir / 'tgt_aug_{}.png'.format(id), stack_dir)
         else:
             cp(debug_dir / 'tgt_{}.png'.format(id), stack_dir)
-        warped_src = grid_sample(
-            src[0:1, ...],
-            prediction[0:1, ...].detach().to(src.device),
-            padding_mode='zeros')
+        warped_src = prediction[0:1, ...].detach().to(src.device).sample(
+            src[0:1, ...])
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
         cp(debug_dir / 'warped_src.png', stack_dir)
         archive.visualize_loss('Training Loss', 'Validation Loss')
-        cp(archive.paths['plot'], debug_dir)  # make a copy of the training curve
-        save_vectors(prediction[0:1, ...].detach(),
+        cp(archive.paths['plot'], debug_dir)  # make copy of the training curve
+        save_vectors(prediction[0:1, ...].detach().permute(0, 2, 3, 1),
                      str(debug_dir / 'prediction'), mag=30)
-        save_chunk((prediction[0:1, ...].detach()**2).sum(3).unsqueeze(0),
+        save_chunk(prediction[0:1, ...].detach().magnitude(keepdim=True),
                    str(debug_dir / 'prediction_img'), norm=False)
         if 'image_loss_map' in sample:
             save_chunk(sample.image_loss_map, str(debug_dir/'image_loss_map'))
         if 'field_loss_map' in sample:
             save_chunk(sample.field_loss_map, str(debug_dir/'field_loss_map'))
         if 'truth' in sample:
-            save_vectors(sample.truth[0:1, ...].detach(),
+            save_vectors(sample.truth[0:1, ...].detach().permute(0, 2, 3, 1),
                          str(debug_dir / 'ground_truth'), mag=30)
         masks = archive._objective.prepare_masks(sample)
         for k, v in masks.items():
