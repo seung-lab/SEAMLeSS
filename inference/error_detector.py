@@ -271,7 +271,7 @@ def sample_objects_chunked(vol_seg, volume_size, patch_size, visited_size, chunk
 																		for i in range(3)])]>=1)
 			chunk_size = np.prod([bbox_end_chunk[i]-bbox_start_chunk[i] for i in range(3)])
 			cover = np.round(n_covered/chunk_size,4)
-
+			print(cover)
 			# Neglect dust pieces
 			if np.sum(patch_obj_mask_crop) < 2000/(mip_factor**2):
 				continue
