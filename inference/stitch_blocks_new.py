@@ -78,6 +78,7 @@ if __name__ == '__main__':
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
+  parser.add_argument('--ds_mip', type=int, default=-1)
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
@@ -98,6 +99,9 @@ if __name__ == '__main__':
   src_mask_val = 1
   src_mask_mip = 8
   block_size = args.block_size
+  ds_mip = args.ds_mip
+  if ds_mip == -1:
+      ds_mip = mip
 
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
@@ -211,7 +215,8 @@ if __name__ == '__main__':
               t = a.stitch_compose_render_task(chunk_grid[0], src, final_dst, start_z, end_z,
                                                broadcasting_field, block_field, decay_dist,
                                                influence_block,
-                                               mip, mip, pad, pad, chunk_size)
+                                               mip, mip, pad, pad, chunk_size,
+                                               ds_mip)
               yield from t
 
   ptask = []

@@ -6,7 +6,7 @@ metadata:
     run: seamless
   name: seamless
 spec:
-  replicas: 5 
+  replicas: 1 
   selector:
     matchLabels:
       run: seamless
@@ -24,9 +24,9 @@ spec:
       containers:
       - image: seunglab/seamless:zhen_gpu
         name: seamless
-        #imagePullPolicy: Always
+        imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/mp_worker.py --queue_name deepalign0 --lease_seconds 9000"]
+        args: ["-c", "python inference/mp_worker.py --queue_name deepalign0 --lease_seconds 29000"]
         resources: 
           limits:
             nvidia.com/gpu: 4
@@ -36,6 +36,7 @@ spec:
         - name: secrets
           mountPath: /root/.cloudvolume/secrets
           readOnly: true
+      #restartPolicy: Never
       dnsPolicy: Default
       volumes:
       - name: secrets

@@ -187,96 +187,47 @@ if __name__ == '__main__':
 
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, 0, 1000, pad)
 
-#  bs = block_starts[0]
-#  be = block_stops[0]
-#  dst =block_dst_lookup[bs]
-#  batch = a.new_align_task(bs, be, src, dst,
-#                       block_pair_field,
-#                       block_vvote_field,
-#                       chunk_grid, mip, pad,
-#                       chunk_size, args.param_lookup,
-#                       src_mask_cv=src_mask_cv,
-#                       src_mask_mip=src_mask_mip,
-#                       src_mask_val=src_mask_val, rows=1000,
-#                       super_chunk_len=1000,
-#                       overlap_chunks=0)
-#
-#  remote_upload(args.queue_name, batch)
+  class AlignT(object):
+      def __init__(self, bs_list, be_list):
+          self.bs_list = bs_list
+          self.be_list = be_list
+          print("*********self bs_list is ", self.bs_list)
+          print("*********be_list is  ", self.be_list)
 
-#  class AlignT(object):
-#      def __init__(self, bs_list, be_list):
-#          self.bs_list = bs_list
-#          self.be_list = be_list
-#          print("*********self bs_list is ", self.bs_list)
-#          print("*********be_list is  ", self.be_list)
-#
-#      def __iter__(self):
-#          #for i in self.brange:
-#          for bs, be in zip(self.bs_list, self.be_list):
-#              even_odd = block_dst_lookup[bs]
-#              dst = block_dsts[even_odd]
-#              t = a.new_align_task(bs, be, src, dst,
-#                                   block_pair_field,
-#                                   block_vvote_field,
-#                                   chunk_grid, mip, pad,
-#                                   chunk_size, args.param_lookup,
-#                                   src_mask_cv=src_mask_cv,
-#                                   src_mask_mip=src_mask_mip,
-#                                   src_mask_val=src_mask_val, rows=1000,
-#                                   super_chunk_len=1000,
-#                                   overlap_chunks=0)
-#              yield from t
-#
-#  #print("z_range is ", z_range)
-#  ptask = []
-#  bs_list = make_range(block_starts, a.threads)
-#  be_list = make_range(block_stops, a.threads)
-#  for bs, be in zip(bs_list, be_list):
-#      ptask.append(AlignT(bs, be))
-#
-#  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-#      executor.map(remote_upload_it, ptask)
-#  start = time()
-#  #print("start until now time", start - begin_time)
-#  #a.wait_for_queue_empty(dst.path, 'load_image_done/{}'.format(mip), len(batch))
-#  a.wait_for_sqs_empty()
-#  end = time()
-#  diff = end - start 
-#  print("Executing Loading Tasks use time:", diff)
-#
+      def __iter__(self):
+          #for i in self.brange:
+          for bs, be in zip(self.bs_list, self.be_list):
+              even_odd = block_dst_lookup[bs]
+              dst = block_dsts[even_odd]
+              t = a.new_align_task(bs, be, src, dst,
+                                   block_pair_field,
+                                   block_vvote_field,
+                                   chunk_grid, mip, pad,
+                                   chunk_size, args.param_lookup,
+                                   src_mask_cv=src_mask_cv,
+                                   src_mask_mip=src_mask_mip,
+                                   src_mask_val=src_mask_val, rows=1000,
+                                   super_chunk_len=1000,
+                                   overlap_chunks=0)
+              yield from t
 
+  #print("z_range is ", z_range)
+  ptask = []
+  bs_list = make_range(block_starts, a.threads)
+  be_list = make_range(block_stops, a.threads)
+  for bs, be in zip(bs_list, be_list):
+      ptask.append(AlignT(bs, be))
 
-#  bs = block_starts[0]
-#  be = block_stops[0]
-#              src_cv = block_dst_lookup[bs+1]
-#              tgt_cv = block_dst_lookup[bs]
-#  dst =block_dst_lookup[bs]
-#  batch = a.new_align_task(bs, be, src, dst,
-#                       block_pair_field,
-#                       block_vvote_field,
-#                       chunk_grid, mip, pad,
-#                       chunk_size, args.param_lookup,
-#                       src_mask_cv=src_mask_cv,
-#                       src_mask_mip=src_mask_mip,
-#                       src_mask_val=src_mask_val, rows=1000,
-#                       super_chunk_len=1000,
-#                       overlap_chunks=0)
-#
-#  remote_upload(args.queue_name, batch)
+  with ProcessPoolExecutor(max_workers=a.threads) as executor:
+      executor.map(remote_upload_it, ptask)
+  start = time()
+  #print("start until now time", start - begin_time)
+  #a.wait_for_queue_empty(dst.path, 'load_image_done/{}'.format(mip), len(batch))
+  a.wait_for_sqs_empty()
+  end = time()
+  diff = end - start 
+  print("Executing Loading Tasks use time:", diff)
 
-   
-#  bs = block_starts[1]
-#  be = block_stops[1]
-#  even_odd = block_dst_lookup[bs]
-#  src_cv = block_dsts[even_odd]
-#  tgt_cv = block_dsts[(even_odd+1)%2]
-#  t = a.stitch_get_field_task_generator(args.param_lookup,[bs],
-#                                        [be], src_cv, tgt_cv,
-#                                        block_vvote_field,
-#                                        broadcasting_field,
-#                                        src, mip,
-#                                        chunk_grid[0],
-#                                        chunk_size, pad, 2**mip, 1)
 
   class StitchGetFieldT(object):
       def __init__(self, bs_list, be_list):

@@ -73,10 +73,10 @@ class PredictImageTask(RegisteredTask):
 class StitchComposeRenderTask(RegisteredTask):
     def __init__(self, z_start, z_stop, b_field, influence_blocks, src,
                  vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                 extra_off, chunk_size, dst):
+                 extra_off, chunk_size, dst, ds_mip):
         super().__init__(z_start, z_stop, b_field, influence_blocks, src,
                          vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                         extra_off, chunk_size, dst)
+                         extra_off, chunk_size, dst, ds_mip)
     def execute(self, aligner):
         z_range = range(self.z_start, self.z_stop)
         b_field = DCV(self.b_field)
@@ -91,14 +91,16 @@ class StitchComposeRenderTask(RegisteredTask):
         extra_off = self.extra_off
         chunk_size = self.chunk_size
         dst = DCV(self.dst)
+        ds_mip = self.ds_mip
         print("\n Stitch compose and render task\n"
               "src {}\n"
               "MIP{}\n"
               "start_z={} \n".format(self.src, src_mip,
-                                     z_range.start), flush=True) 
+                                     z_range.start), flush=True)
         start = time()
         aligner.stitch_compose_render(z_range, b_field, influence_blocks, src, vv_field_cv,
-                                      decay_dist, src_mip, dst_mip, bbox, pad, extra_off, chunk_size, dst)
+                                      decay_dist, src_mip, dst_mip, bbox, pad, extra_off,
+                                      chunk_size, dst, ds_mip)
         end = time()
         diff = end - start
         print('Stitch compose and render task time:{:.3f} s'.format(diff), flush=True)

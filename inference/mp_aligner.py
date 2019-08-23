@@ -7,10 +7,10 @@ import os
 from os.path import join
 from time import time, sleep
 from torch.autograd import Variable
-from multiprocessing import Process, Manager, Queue, Pool
+from multiprocessing import Process, Manager, Queue
 import multiprocessing
 
-from pathos.multiprocessing import ProcessPool, ThreadPool
+#from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
 
 import csv
@@ -66,6 +66,7 @@ class Aligner:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
     self.chunk_size = (1024, 1024)
     self.device = torch.device('cuda')
+    #self.device = torch.device('cpu')
 
     self.model_archives = {}
     self.vvmodel = vvmodel()
@@ -183,23 +184,7 @@ class Aligner:
 
       print("start_range", starter_range)
       print("block_range", block_range)
-      #serial_offsets = {serial_range[i]: i+1 for i in range(overlap-1)}
-      #vvote_offsets = [-i for i in range(1, overlap+1)]
 
-      #chunk_grid = self.get_chunk_grid(cm, bbox, mip, 0, rows, pad)
-      #print("copy range ", copy_range)
-      #print("---- len of chunks", len(chunk_grid), "orginal bbox", bbox.stringify(0))
-      #vvote_range_small = vvote_range
-      #vvote_range_small = vvote_range[:super_chunk_len-overlap+1]
-      #vvote_subblock = range(vvote_range_small[-1]+1, vvote_range[-1]+1,
-      #                          super_chunk_len)
-      #print("--------overlap is ", overlap, "vvote_range_small",
-      #      vvote_range_small)
-      #dst = dsts[0]
-      #for i in vvote_subblock:
-      #    print("*****>>> vvote subblock is ", i)
-      #for i in  chunk_grid:
-      #    print("--------grid size is ", i.stringify(0, mip=mip))
       for i in range(len(chunk_grid)):
           chunk = chunk_grid[i]
           if(len(chunk_grid) == 1):
@@ -244,9 +229,6 @@ class Aligner:
                                                       mask_mip=src_mask_mip,
                                                       mask_val=src_mask_val)
           print("--------------------after serial ")
-          #print(tchunk)
-          #print(chunk)
-          #print("----++  chunk is ", chunk.stringify(0, mip=mip))
           write_image = []
           for z in starter_range:
               write_image.append(z)
@@ -376,7 +358,7 @@ class Aligner:
       dic[bc] = dst_field
       croped_chunk = deepcopy(bbox)
       croped_chunk.crop(pad, mip=mip)
-      wp = Process(target=self.mp_store_field,args=(dic, bc, False, False, 0,
+      wp = Process(target=self.mp_store_field, args=(dic, bc, False, False, 0,
                                                     pad, bfield_cv,
                                                     overlap_copy[-1],
                                                     croped_chunk,
@@ -400,9 +382,8 @@ class Aligner:
       pre_field =  [None]* (len(overlap_copy)-1)
       dic = self.dic
       load_list = []
-      field_list = []
       load_prefix = "stitch_img"
-      field_prefix ="stitch_field"
+      field_prefix = "stitch_field"
       print("------------- overlap_copy is ", overlap_copy)
       ps = Process(target=self.mp_load, args=(dic,
                                               load_prefix+str(overlap_copy[-1]),
@@ -436,7 +417,6 @@ class Aligner:
       for i, z in enumerate(overlap_copy[:-1]):
           image_list[i] = dic[load_prefix+str(z)]
           pre_field[i] = dic[field_prefix+str(z)]
-      
       dst_fields = []
       src_image = dic[load_prefix+str(overlap_copy[-1])]
       vvote_way = len(overlap_copy) -1
@@ -489,7 +469,7 @@ class Aligner:
           dst_fields.append(dst_field)
       return dst_fields
 
-  def slice_vector_vote_singel(self, field_list, chunk_size, pad, mip,
+  def slice_vector_vote_single(self, field_list, chunk_size, pad, mip,
                         softmin_temp=None, blur_sigma=None):
     field_shape = field_list[0].shape
     x_len = field_shape[-3]
@@ -569,6 +549,7 @@ class Aligner:
                                            softmin_temp=softmin_temp,
                                            blur_sigma=blur_sigma)
         #new_field = vector_vote(new_vv, softmin_temp, blur_sigma)
+        #Convert to int16
         new_field = new_field * 4
         new_field = new_field.type(torch.int16)
         new_field = new_field.to(device='cpu')
@@ -610,7 +591,14 @@ class Aligner:
       f_factor, *factors = factors
       f = f_cv[:,
                extra_off+xs*chunk_size:extra_off+xs*chunk_size+padded_len,
-               extra_off+ys*chunk_size:extra_off+xs*chunk_size+padded_len,:]
+               extra_off+ys*chunk_size:extra_off+ys*chunk_size+padded_len,:]
+      #print(type(f), f)
+      f = f.to(device=self.device)
+      #print(self.device)
+      f = f.type(torch.float)
+      #print(type(f))
+      f = f/4.0
+      #print(type(f), f.shape)
       f = f * f_factor
       while is_identity(f):
         f_cv, *field_list = field_list
@@ -618,11 +606,12 @@ class Aligner:
         f_factor, *factors = factors
         f = f_cv[:,
                extra_off+xs*chunk_size:extra_off+xs*chunk_size+padded_len,
-               extra_off+ys*chunk_size:extra_off+xs*chunk_size+padded_len,:]
+               extra_off+ys*chunk_size:extra_off+ys*chunk_size+padded_len,:]
         f = f.to(device=self.device)
+        f = f.type(torch.float) / 4.0
         f = f * f_factor
         if len(field_list) == 0:
-            return f
+            return f[:,pad:-pad, pad:-pad,:]
       # compose with the remaining fields
       while len(field_list) > 0:
           g_cv, *field_list = field_list
@@ -630,131 +619,159 @@ class Aligner:
           g_factor, *factors = factors
 
           distance = self.profile_field(f)
-          distance = (distance // (2 ** g_mip)) * 2 ** g_mip
+          distance = (distance // (2 ** g_mip))
           adjust_dis = distance.flip(0)
+          adjust_dis = adjust_dis.type(torch.int)
           g = g_cv[:,
                adjust_dis[0]+extra_off+xs*chunk_size:adjust_dis[0]+extra_off+xs*chunk_size+padded_len,
-               adjust_dis[1]+extra_off+ys*chunk_size:adjust_dis[1]+extra_off+xs*chunk_size+padded_len,:]
-          g = g * g_factor
+               adjust_dis[1]+extra_off+ys*chunk_size:adjust_dis[1]+extra_off+ys*chunk_size+padded_len,:]
+          distance = distance * 2 ** g_mip
 
+          g = g.to(device=self.device)
+          g = g.type(torch.float)/4.0
+          g = g * g_factor
           f -= distance.to(device=self.device)
-          f = f/paded_len * 2
+          f = f/padded_len * 2
           f = f.to(device=self.device)
 
           if g_mip > dst_mip:
               g = upsample_field(g, g_mip, dst_mip)
-          g = g/paded_len * 2
+          g = g/padded_len * 2
           h = compose_fields(f, g)
-          h = h* paded_len / 2
+          h = h* padded_len / 2
           #h = self.rel_to_abs_residual(h, dst_mip)
           h += distance.to(device=self.device)
           f = h
-
       f = f[:, pad:-pad, pad:-pad, :]
       return f
+  def divide_field_into_chunks(self, x_chunk_number, y_chunk_number, chunk_size, pad,
+                         extra_off, field):
+      chunk_list=[]
+      window_len =chunk_size+2*(pad+extra_off)
+      useful_len = chunk_size+2*pad
+      for xs in range(x_chunk_number):
+          for ys in range(y_chunk_number):
+              f_list = []
+              for f in field:
+                  chunk = f[:, xs*useful_len:xs*useful_len+window_len,
+                            ys*useful_len:ys*useful_len+window_len,:]
+                  f_list.append(chunk)
+              chunk_list.append(f_list)
+      return chunk_list
 
-  def compose_slice_scheduler(self, field_list, chunk_size, pad, extra_off, mip_list,
+  def compose_slice(self, field_list, chunk_size, pad, extra_off, mip_list,
                               dst_mip, factor):
-      if self.manager == None:
-          self.manager = Manager()
-          self.dic = self.manager.dict()
-          self.p_list = []
-      dic = self.dic
-      self.field_key = "field"
-      dic[self.field_key] = field_list
       shape = field_list[0].shape
-      print("shape", shape)
-      self.dst_field ="dst_field"
-      dic[self.dst_field] = torch.FloatTensor(shape[0],
-                                              shape[1],
-                                              shape[2],
-                                              shape[3]).zero_()
-      print("dst_field shape", dic[self.dst_field].shape)
-      field_shape = field_list[0].shape
-
-      x_len = field_shape[-3]
-      y_len = field_shape[-2]
+      print("field shape", shape)
+      dst_field = torch.ShortTensor(shape[0],shape[1]-2*extra_off,
+                                   shape[2]-2*extra_off,shape[3]).zero_()
+      x_len = shape[-3]
+      y_len = shape[-2]
       x_chunk_number = (x_len - 2*pad -2*extra_off) // chunk_size
       y_chunk_number = (y_len - 2*pad -2*extra_off) // chunk_size
-
-      self.pool_scheduler(self.mp_compose_worker, x_chunk_number,
-                          y_chunk_number, chunk_size, pad, extra_off, mip_list,
-                         dst_mip, factor)
-      print("dst_field shape", dic[self.dst_field].shape)
-      dic[self.dst_field] =dic[self.dst_field][:,extra_off:-extra_off,extra_off:-extra_off,:]
-      #return dst_field
+      for xs in range(x_chunk_number):
+          for ys in range(y_chunk_number):
+              f = self.cloudsample_compose_chunk(field_list, chunk_size, pad,
+                                                 extra_off, xs, ys, mip_list,
+                                                 dst_mip, factor)
+              dst_field[:,
+                  pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
+                  pad+ys*chunk_size:pad+ys*chunk_size+chunk_size,:]=f
+      return dst_field
 
   def warp_slice_scheduler(self, chunk_size, pad, mip, extra_off, src_img,
                            dst_field):
       img_shape = src_img.shape
-      x_len = img_shape[-2] - 2*extra_off
-      y_len = img_shape[-1] - 2*extra_off
-      x_chunk_number = (x_len - 2*pad) // chunk_size
-      y_chunk_number = (y_len - 2*pad) // chunk_size
+      x_len = img_shape[-2] - 2*extra_off - 2*pad
+      y_len = img_shape[-1] - 2*extra_off - 2*pad
+      x_chunk_number = (x_len) // chunk_size
+      y_chunk_number = (y_len) // chunk_size
 
-      if self.manager == None:
-          self.manager = Manager()
-          self.dic = self.manager.dict()
-          self.p_list = []
-          self.dst_field ="dst_field"
-          self.img = "src_img"
-          self.dst_img = "dst_img"
-      dic = self.dic
-      dic[self.img] = src_img
-      dic[self.dst_field] = dst_field
+      #if self.manager == None:
+      #    self.manager = Manager()
+      #    self.dic = self.manager.dict()
+      #    self.p_list = []
+      #    self.dst_field ="dst_field"
+      #    self.img = "src_img"
+      #    self.dst_img = "dst_img"
+      #dic = self.dic
+      #dic[self.img] = src_img
+      #dic[self.dst_field] = dst_field
       image = torch.FloatTensor(1, 1, x_len, y_len).zero_()
-      dic[self.dst_img] = image
-      self.pool_scheduler(self.warp_slice, x_chunk_number, y_chunk_number,
-                          chunk_size, pad, mip)
-      return dic[self.dst_img][:,:,pad:-pad,pad:-pad]
+      #self.pool_scheduler(self.warp_slice, x_chunk_number, y_chunk_number,
+      #                    chunk_size, pad, mip)
+      for xs in range(x_chunk_number):
+          for ys in range(y_chunk_number):
+              im = self.warp_slice
+              image[..., xs*chunk_size:xs*chunk_size+chunk_size,
+                  ys*chunk_size:ys*chunk_size+chunk_size] = im
+
+      return im
 
   def pool_scheduler(self, f, x_chunk_number, y_chunk_number, *args):
       num_cores = multiprocessing.cpu_count()
-      assert(num_cores>4)
-      pool_size = num_cores -4
+      #assert(num_cores>4)
+      #pool_size = num_cores -4
+      pool_size = num_cores -2
+      assert(pool_size>0)
+      print("--------------------------- in pool_scheduler", num_cores)
       if pool_size<1:
           pool_size = 1
-      process_pool = Pool(pool_size)
+      #process_pool = Pool(pool_size)
       coor_list = []
       for i in range(x_chunk_number):
           for j in range(y_chunk_number):
               coor_list.append((i,j))
       list_len = len(coor_list)
+      p_list=[]
       for i in range(0, list_len, pool_size):
-          end = min(list_len ,i+pool_size)
-          process_pool.apply_async(f, args=(args, coor_list[i:end]))
-          process_pool.close()
-          process_pool.join()
+          end = min(list_len, i+pool_size)
+          print("f is ", f, " end is ", end)
+          print(args)
+          p = Process(target=f, args=(args, [coor_list[i]]))
+          p.start()
+          p_list.append(p)
+      for i in p:
+          p.join()
+          #process_pool.apply_async(f, args=(args, coor_list[i:end]))
+          #result = process_pool.apply_async(f, args=())
+      #process_pool.close()
+      #process_pool.join()
+      #result.get()
 
   def mp_compose_worker(self, chunk_size, pad, extra_off, mip_list, dst_mip,
-                       factors, corr_list, field_list=None, dst_field=None):
+                        factors, dic, corr_list,
+                        key=None, field_list=None, dst_field=None):
+      print("-------------in mp_compose_worker")
       if field_list == None:
-          field_list = self.dic[self.field_key]
-          dst_field = self.dic[self.dst_field]
+          field_list = dic[key]
       for xs, ys in corr_list:
-          f = cloudsample_compose_chunk(self, field_list, chunk_size, pad,
+          f = self.cloudsample_compose_chunk(field_list, chunk_size, pad,
                                    extra_off, xs, ys, mip_list, dst_mip,
                                    factors=factors)
-          dst_field[:,
-               extra_off+pad+xs*chunk_size:extra_off+pad+xs*chunk_size+chunk_size,
-               extra_off+pad+ys*chunk_size:extra_off+pad+xs*chunk_size+chunk_size,:]=f
+          #print("---- cloudsample_compose_chunk result  ", f)
+          self.dic[self.dst_field+str(xs)+str(ys)] = f
+          #dst_field[:,
+          #     extra_off+pad+xs*chunk_size:extra_off+pad+xs*chunk_size+chunk_size,
+          #     extra_off+pad+ys*chunk_size:extra_off+pad+xs*chunk_size+chunk_size,:]=f
 
   def stitch_compose_render_task(self, bbox, src, dst, z_start, z_stop, b_field,
                                  vv_field, decay_dist, influence_blocks,
                                  src_mip, dst_mip, pad, extra_off,
-                                 chunk_size):
+                                 chunk_size, ds_mip):
       batch = []
       task  = tasks.StitchComposeRenderTask(z_start, z_stop, b_field,
                                                  influence_blocks, src, vv_field,
                                                  decay_dist, src_mip, dst_mip,
                                                  bbox, pad, extra_off,
-                                                 chunk_size, dst)
+                                                 chunk_size, dst, ds_mip)
       batch.append(task)
       return batch
 
   def stitch_compose_render(self, z_range, broadcast_field, influence_blocks, src,
                             vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                            extra_off, chunk_size, dst):
+                            extra_off, chunk_size, dst, ds_mip):
+      print("in stitch compose_render function ")
       if self.manager == None:
           self.manager = Manager()
           self.dic = self.manager.dict()
@@ -772,46 +789,88 @@ class Aligner:
       load_f = []
       load_im = []
       b_field = []
-      vv_field = self.get_field(vv_field_cv, z_range[0], chunk, src_mip, relative=False,
-                                  to_tensor=False, as_int16=False)
+      vv_field_cv.create(src_mip)
+      #vv_field = self.get_field(vv_field_cv, z_range[0], chunk, src_mip, relative=False,
+      #                            to_tensor=True, as_int16=False)
+      #vv_field = torch.ShortTensor(1,6144, 7168,2).zero_()
+      broadcast_field.create(src_mip)
       for index in influence_blocks:
-          bf = self.get_field(broadcast_field, index, chunk, src_mip, relative=False,
-                                    to_tensor=False, as_int16=False)
-          b_field.append(bf)
+          p = Process(target=self.mp_load_field, args=(dic,
+                                                       field_prefix+"b"+str(index),
+                                                      broadcast_field, index,
+                                                       chunk, src_mip))
+          p.start()
+          load_f.append(p)
+          #bf = self.get_field(broadcast_field, index, chunk, src_mip, relative=False,
+          #                    to_tensor=True, as_int16=False)
+          #bf= torch.ShortTensor(1,6144, 7168,2).zero_()
+          #b_field.append(bf)
+      p = Process(target=self.mp_load_field, args=(dic, field_prefix, vv_field_cv,
+                                                   z_range[0], chunk, src_mip))
+      p.start()
+      load_f.append(p)
+      src.create(dst_mip)
+      dst.create(dst_mip)
       for i, z in enumerate(z_range):
+          for p in load_f:
+              p.join()
+          load_f = []
+          vv_field = dic[field_prefix]
+          if i== 0:
+              for index in influence_blocks:
+                  bf = dic[field_prefix+"b"+str(index)]
+                  b_field.append(bf)
+
           if z != z_range[-1]:
               p = Process(target=self.mp_load_field, args=(dic, field_prefix, vv_field_cv,
                                                            z_range[i+1], chunk,
                                                           src_mip))
               p.start()
               load_f.append(p)
-          if i!=0:
-              for p in load_f:
-                  p.join()
-              vv_field = dic[field_prefix]
           p = Process(target=self.mp_load, args=(dic, img_prefix, src, z,
                                                  chunk, dst_mip))
           p.start()
           load_im.append(p)
-
           factors = [self.interpolate(z, bs, decay_dist) for bs in influence_blocks]
           factors += [1.]
           field_list = b_field + [vv_field]
-          self.compose_slice_scheduler(field_list, chunk_size, pad,
+          dst_field = self.compose_slice(field_list, chunk_size, pad,
                                        extra_off, src_mip, dst_mip,
                                        factors)
           for lp in load_im:
               lp.join()
           load_im = []
           src_img = dic[img_prefix]
-          final_img = self.warp_slice_scheduler(chunk_size, pad, dst_mip, extra_off, src_img,
-                                    dic[self.dst_field])
+          final_img = self.warp_slice(chunk_size, pad, dst_mip, src_img, dst_field)
+          final_img = final_img[..., pad:-pad, pad:-pad]
           write_key = "write_img" + str(z)
           dic[write_key] = final_img
           up = Process(target=self.mp_store_img, args=(dic, write_key, dst, z,
-                                                       unpadded_chunk, dst_mip, True))
+                                                       unpadded_chunk, dst_mip,
+                                                       True))
           up.start()
           self.p_list.append(up)
+          print("++++++++final_img shape", final_img.shape)
+          for mip in range(dst_mip+1, ds_mip+1):
+              factor = 2
+              print("----------downsample to mip", mip)
+              img = nn.AvgPool2d(factor)(final_img)
+              self.save_image(img.cpu().numpy(), dst, z, unpadded_chunk, mip,
+                              True)
+              write_key = "write_img" + str(z) + str(mip)
+              dic[write_key] = img
+              #up = Process(target=self.mp_store_img, args=(dic, write_key, dst, z,
+              #                                             unpadded_chunk, mip,
+              #                                            True))
+              #up.start()
+              #self.p_list.append(up)
+              final_img = img
+
+          #up = Process(target=self.mp_downsampling_store, args=(dic, write_key, dst, z,
+          #                                             unpadded_chunk, dst_mip,
+          #                                                      ds_mip))
+          #up.start()
+          #self.p_list.append(up)
       for p in self.p_list:
           p.join()
       self.p_list =[]
@@ -1102,17 +1161,15 @@ class Aligner:
       return image
 
 
-  def warp_slice(self, chunk_size, pad, mip, src_img=None, dst_field=None,
-                 offset=None, coor_list=None, image=None):
+  def warp_slice(self, chunk_size, pad, mip, src_img, dst_field,
+                 coor_list=None, offset=None):
       if offset == None:
           offset = pad
       padded_len = chunk_size + 2*pad
-      return_image = False
       if coor_list == None:
           return_image = True
           coor_list = []
           img_shape = src_img.shape
-          print("------------ image shape", img_shape)
           x_len = img_shape[-2] - 2*offset
           y_len = img_shape[-1] - 2*offset
           x_chunk_number = (x_len - 2*pad) // chunk_size
@@ -1121,47 +1178,35 @@ class Aligner:
               for j in range(y_chunk_number):
                   coor_list.append((i, j))
           image = torch.FloatTensor(1, 1, x_len, y_len).zero_()
-          #gpu_num = torch.cuda.device_count()
-          #gpu_num = 1
 
-      if not isinstance(src_img, torch.Tensor):
-          src_img = self.dic[self.img]
-          dst_field = self.dic[self.dst_field]
-          image = self.dic[self.dst_img]
       for xs, ys in coor_list:
           #print("field index","x", xs*chunk_size+padded_len, "y", ys*chunk_size+padded_len)
-          field = dst_field[:,xs*chunk_size:xs*chunk_size+padded_len,
-                              ys*chunk_size:ys*chunk_size+padded_len,:]
+          field = dst_field[:, xs*chunk_size:xs*chunk_size+padded_len,
+                  ys*chunk_size:ys*chunk_size+padded_len, :]
           field = field.to(device=self.device)
-          #print(field)
-          ##field = field * padded_len/2
           field = field.type(torch.float32)/4
           distance = self.profile_field(field)
-          distance = (distance // (2 ** mip)) #* 2 ** 2  ## mip=2, hard coded
-          field = field/(2**mip) # mip=2, hardcoded, modify later
+          distance = (distance // (2 ** mip)) # distance at mip level
+          field = field/(2**mip) # distance at mip level
           #print("++++++ distance is ", distance.flip(0))
           dis = distance.flip(0).type(torch.int32)
           #print("++++++ distance is ", dis, "offset is ", offset)
           field -= distance.to(device=self.device).type(torch.float32)
           #print("field after calc")
           #print(field)
-          field = field/padded_len * 2
+          field = field/padded_len * 2 # converted to relative value
           #dis =[0,0]
           src_patch = src_img[...,
                             offset+dis[0]+xs*chunk_size:offset+dis[0]+xs*chunk_size+padded_len,
                             offset+dis[1]+ys*chunk_size:offset+dis[1]+ys*chunk_size+padded_len]
           src_patch = src_patch.to(device=self.device)
           src_patch = self.convert_to_float(src_patch)
-          #field = field.to(device=self.device)
-          #print("++++ field shape", field.shape)
-          #print("++++ src_patch shape", src_patch.shape)
           image_patch = self.new_cloudsample_image(src_patch, field)
           image_patch = image_patch[:,:,pad:-pad,pad:-pad]
           image_patch = image_patch.to(device='cpu')
           image[...,pad+xs*chunk_size:pad+xs*chunk_size+chunk_size,
-                    pad+ys*chunk_size:pad+ys*chunk_size+chunk_size]=image_patch
-      if return_image:
-          return image
+                pad+ys*chunk_size:pad+ys*chunk_size+chunk_size]=image_patch
+      return image
 
   def new_compute_field(self, model_path, src_img, tgt_img, chunk_size, pad,
                         warp=False):
@@ -1351,7 +1396,7 @@ class Aligner:
       #    img = self.convert_to_float(img)
       dic[key] = img
       print("+-+-+-+-+-+-end of the loading image z={}, pid: {}".format(z, ppid), flush=True)
-  
+
   def mp_profile_field(self, dic, key, field_cv, z, chunk, mip, chunk_size, pad):
       field = self.get_field(field_cv, z, chunk, mip, relative=False,
                              to_tensor=True, as_int16=False)
@@ -1387,15 +1432,25 @@ class Aligner:
       diff = end -start
       print("end of the load_field process {} using {}".format(ppid, diff), flush=True)
 
-  def mp_downsampling(self, dic, key, res_key, mip_diff):
-      factor =2**mip_diff
+  def mp_downsampling_store(self, dic, key, dst, z, chunk, src_mip, dst_mip):
+      start =time()
       ppid = os.getpid()
-      print("start a new process for downsample", ppid)
+      print("start a new process for downsample", ppid, "dst_mip is", dst_mip)
       src_img = dic[key]
-      img = nn.AvgPool2d(factor)(src_img)
-      dic[res_key] = img
+      self.save_image(src_img.cpu().numpy(), dst, z, chunk, src_mip,
+                      to_uint8=True)
+      mip_range = range(src_mip+1, dst_mip+1)
+      for mip in mip_range:
+          print("---downsample and save image ", z , "at mip", mip)
+          factor = 2
+          img = nn.AvgPool2d(factor)(src_img)
+          self.save_image(img.cpu().numpy(), dst, z, chunk, mip,
+                              to_uint8=True)
+          src_img = img
       del dic[key]
-      print("end of the downsample process {}".format(ppid), flush=True)
+      end = time()
+      diff = end - start
+      print("end of the downsample process {} using {}".format(ppid, diff), flush=True)
 
 # comment out all crop_chunk since loading the whole image
 
@@ -1525,9 +1580,9 @@ class Aligner:
                      chunk, mip, chunk_size):
       ppid = os.getpid()
       print("start a new save field process", ppid)
-      print("field key is ", key)
+      print("field key is", key)
       field = dic[key]
-      field_len = field.shape[1] - 2*pad
+      #field_len = field.shape[1] - 2*pad
       #if(head_crop and end_crop):
       #    crop_amount = (field_len - x_range_len)/2
       #    field = field[:,pad+crop_amount:-(pad+crop_amount),pad:-pad,:]
@@ -1566,25 +1621,18 @@ class Aligner:
 
       print("---- chunk is ", chunk.stringify(0, mip=mip), " vvote range is",
             block_range)
-      m = Manager()
       dic = self.dic
-      #dic = m.dict()
       p_list = []
-      upload_list = []
       src_image0 = self.load_part_image(src, block_range[0], chunk,
                                         mip, mask_cv=mask_cv, mask_mip=mask_mip,
                                         mask_val=mask_val)
-      #head_crop_len = chunk_size if head_crop else 0
-      #end_crop_len = chunk_size if end_crop else 0
-      #chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0, 0)
+
       pre_field =[None] * max_radius
-      #pre_field = torch.FloatTensor(vvote_way,x_chunk_number, y_chunk_number, 2).zero_()
       for j, z in enumerate(block_range):
           print("===========z is ", z)
           #whole_vv_start = time()
           dst = dsts
           model_path = model_lookup[z]
-          #vvote_way = args.tgt_radius
           if j == 0:
               src_image = src_image0
           else:
@@ -1607,11 +1655,6 @@ class Aligner:
           vv_start = time()
 
           tchunk = deepcopy(schunk)
-          print(tchunk)
-          #tchunk.crop(pad,mip)
-          #old_field = self.old_method(cm, model_path, src, dst, z, z-5, tchunk,
-          #                           mip, pad, None)
-          #old_field = None
 
           dst_field = self.new_vector_vote(model_path, src_image, image_list,
                                            pre_field, chunk_size, pad,
@@ -1623,14 +1666,11 @@ class Aligner:
           vv_end =time()
           print("---------------------VV time :", vv_end-vv_start)
 
-          image_len = image_list[0].shape[-2] - 2*pad;
+          #image_len = image_list[0].shape[-2] - 2*pad;
           x_range = final_chunk.x_range(mip=mip)
           x_range_len = x_range[1] - x_range[0]
           image_chunk =image_list[0][...,pad:-pad,pad:-pad]
 
-          #for i in upload_list:
-          #    i.join()
-          #upload_list = []
           if write_image[0] >=0:
               #print("write_image len is ", len(write_image), "save image")
               img_key = "store_img" + str(write_image[0])
@@ -1657,10 +1697,6 @@ class Aligner:
               #self.save_image(image.cpu().numpy(), dst, z,
               #         final_chunk, mip, to_uint8=True)
           else:
-              #if(head_crop):
-              #    image = image[..., chunk_size-pad:,:]
-              #if(end_crop):
-              #    image = image[...,0:-(chunk_size-pad),:]
               image_list.append(image)
               write_image.append(z)
           field_key ="field"+ str(z)
@@ -1679,8 +1715,17 @@ class Aligner:
       #    print("************shape of image", i.shape)
       for i in range(len(image_list)):
           image_chunk =image_list[i][...,pad:-pad,pad:-pad]
-          self.save_image(image_chunk.cpu().numpy(), dst, write_image[i],
-                       final_chunk, mip, to_uint8=True)
+          #self.save_image(image_chunk.cpu().numpy(), dst, write_image[i],
+          #             final_chunk, mip, to_uint8=True)
+          img_key = "store_img" + str(write_image[i])
+          dic[img_key] = image_chunk
+          p = Process(target=self.mp_store_img, args=(dic, img_key,
+                                                      dst,
+                                                      write_image[i],
+                                                      final_chunk,
+                                                      mip, True))
+          p.start()
+          self.p_list.append(p)
       for i in self.p_list:
           i.join()
       self.p_list=[]
