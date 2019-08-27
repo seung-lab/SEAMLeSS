@@ -24,18 +24,24 @@ spec:
       containers:
       - image: seunglab/seamless:zhen_gpu
         name: seamless
-        imagePullPolicy: Always
+        #imagePullPolicy: Always
         command: ["/bin/sh"]
         args: ["-c", "python inference/mp_worker.py --queue_name deepalign0 --lease_seconds 29000"]
         resources: 
           limits:
-            nvidia.com/gpu: 4
+            nvidia.com/gpu: 1
         volumeMounts:
+        - name: tmpdir
+          mountPath: /tmp
         - name: dshm
           mountPath: /dev/shm
         - name: secrets
           mountPath: /root/.cloudvolume/secrets
           readOnly: true
+          #        lifecycle:
+          #          preStop:
+          #            exec:
+          #              command: ["/bin/sh","-c","python inference/send_align_task.py --param_lookup inference/params/190501_basil_test_params_coarse.csv --src_path gs://neuroglancer/basil_v0/father_of_alignment/v3  --dst_path matrix://zhen-test/basil-100-slices0-test0 --mip 6 --max_mip 10 --pad 512  --block_size 10 --z_start 4 --z_stop  24 --queue_name deepalign_zhen"]
       #restartPolicy: Never
       dnsPolicy: Default
       volumes:
@@ -45,5 +51,7 @@ spec:
       - name: dshm
         emptyDir:
           medium: Memory
+      - name: tmpdir
+        emptyDir: {}
 
 status: {}

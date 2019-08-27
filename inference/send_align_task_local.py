@@ -87,7 +87,6 @@ if __name__ == '__main__':
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
                     size_chunk=chunk_size, batch_mip=mip)
-
   # Create src CloudVolumes
   print('Create src & align image CloudVolumes')
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
@@ -168,19 +167,7 @@ if __name__ == '__main__':
   block_stops = block_starts[1:]
   if block_starts[-1] != args.z_stop:
     block_stops.append(args.z_stop)
-  # print('initial_block_starts {}'.format(list(initial_block_starts)))
-  # print('block_starts {}'.format(block_starts))
-  # print('block_stops {}'.format(block_stops))
-  # Assign even/odd to each block start so results are stored in appropriate CloudVolume
-  # Create lookup dicts based on offset in the canonical block
-  # BLOCK ALIGNMENT
-  # Copy sections with block offsets of 0 
-  # Align without vector voting sections with block offsets < 0 (starter sections)
-  # Align with vector voting sections with block offsets > 0 (block sections)
-  # This lookup makes it easy for restarting based on block offset, though isn't 
-  #  strictly necessary for the copy & starter sections
-  # BLOCK STITCHING
-  # Stitch blocks using the aligned block sections that have tgt_z in the starter sections
+
   block_dst_lookup = {}
   block_start_lookup = {}
   starter_dst_lookup = {}
@@ -272,16 +259,15 @@ if __name__ == '__main__':
               break
 
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, 0, 1000, pad)
-
-#  dst = block_dsts[0]
-#  serial_fields = block_pair_fields[0]
-#  block_start = block_starts[0]
-#  block_stop = block_stops[0]
+  dst = block_dsts[0]
+  serial_fields = block_pair_fields[0]
+  block_start = block_starts[0]
+  block_stop = block_stops[0]
 #  a.new_align(src, dst, serial_fields, block_vvote_field, chunk_grid, mip, pad,
 #              block_start, block_stop, chunk_size, args.param_lookup,
 #              src_mask_cv=src_mask_cv,
 #              src_mask_mip=src_mask_mip, src_mask_val=src_mask_val)
-#
+
 
   src_cv = block_dst_lookup[bs+1]
   tgt_cv = block_dst_lookup[bs]
