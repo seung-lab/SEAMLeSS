@@ -1,0 +1,12 @@
+copy range  [4]
+--------overlap is  5 vvote_range is  vvote_range_small [5, 6, 7, 8, 9]
+get field ---------
+get_field from (91136, 418816), (103424, 340992), z=19715, MIP2 to gs://microns-seunglab/minnie_v4/alignment/fine/sergiy_multimodel_v1/vector_fixer30_faster_v01_surgery1/field/vvote_5
+Creating CloudVolume for gs://microns-seunglab/minnie_v4/alignment/fine/sergiy_multimodel_v1/vector_fixer30_faster_v01_surgery1/field/vvote_5 at MIP2
+get field use 1000.7365493774414
+save_field for [91136,103424,19715], [418816,340992,19716] at MIP2 to gs://microns-seunglab/zhen_test/refactor_mip2_test_field01/field/vvote
+Creating CloudVolume for gs://microns-seunglab/zhen_test/refactor_mip2_test_field01/field/vvote at MIP2
+save field use 1953.327011346817
+save_field for [91136,103424,19715], [418816,340992,19716] at MIP2 to gs://microns-seunglab/zhen_test/refactor_mip2_test_field01/field/vvote_uncompress
+Creating CloudVolume for gs://microns-seunglab/zhen_test/refactor_mip2_test_field01/field/vvote_uncompress at MIP2
+save uncompressed field use 202.84909200668335

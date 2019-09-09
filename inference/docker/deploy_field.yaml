@@ -1,0 +1,44 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    run: seamless
+  name: seamless
+spec:
+  replicas: 1 
+  selector:
+    matchLabels:
+      run: seamless
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: seamless
+    spec:
+      containers:
+      - image: seunglab/seamless:zhen_test
+        name: seamless
+        resources:
+          limits:
+            memory: "22Gi"
+          requests:
+            memory: "22Gi"
+        imagePullPolicy: Always
+        command: ["/bin/sh"]
+        args: ["-c", "python3 inference/copy_field.py --model_lookup inference/params/test_minnie.csv  --src_path gs://microns-seunglab/minnie_v4/alignment/fine/sergiy_multimodel_v1/vector_fixer30_faster_v01_surgery1/  --dst_path gs://microns-seunglab/zhen_test/refactor_mip2_test_field01  --mip 2 --max_mip 6  --tgt_radius 5 --pad 0  --block_size 5  --z_start 19715 --z_stop 19720"]
+        volumeMounts:
+        - name: secrets
+          mountPath: /root/.cloudvolume/secrets
+          readOnly: true
+      dnsPolicy: Default
+      volumes:
+      - name: secrets
+        secret:
+          secretName: secrets
+status: {}

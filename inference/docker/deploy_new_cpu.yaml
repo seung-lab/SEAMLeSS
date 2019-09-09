@@ -1,0 +1,47 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    run: seamless
+  name: seamless
+spec:
+  replicas: 120 
+  selector:
+    matchLabels:
+      run: seamless
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: seamless
+    spec:
+      containers:
+      - image: seunglab/seamless:zhen_test
+        name: seamless
+        resources:
+          limits:
+            memory: "190Gi"
+            cpu: "31"
+          requests:
+            memory: "190Gi"
+            cpu: "31"
+        #imagePullPolicy: Always
+        command: ["/bin/sh"]
+        #args: ["-c", "python3 inference/worker.py --queue_name deepalign0 --lease_seconds 1200"]
+        args: ["-c", "sh run_32.sh"]
+        volumeMounts:
+        - name: secrets
+          mountPath: /root/.cloudvolume/secrets
+          readOnly: true
+      dnsPolicy: Default
+      volumes:
+      - name: secrets
+        secret:
+          secretName: secrets
+status: {}

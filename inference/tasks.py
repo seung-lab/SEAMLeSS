@@ -8,10 +8,14 @@ from mipless_cloudvolume import deserialize_miplessCV as DCV
 from cloudvolume import Storage
 from cloudvolume.lib import scatter 
 from boundingbox import BoundingBox, deserialize_bbox
+import csv
+import os
 
 from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue, GreenTaskQueue
 from concurrent.futures import ProcessPoolExecutor
 # from taskqueue.taskqueue import _scatter as scatter
+
+tmp_dir= "/tmp/alignment/"
 
 def remote_upload(queue_name, ptasks):
   with TaskQueue(queue_name=queue_name) as tq:
@@ -28,6 +32,21 @@ def green_upload(ptask, aligner):
  
    # for task in ptask:
    #     tq.insert(task, args=[ a ])
+
+def init_checkpoint():
+    os.system("rm -rf " + tmp_dir)
+    os.system("mkdir -p " + tmp_dir)
+    os.system("mkdir -p " + tmp_dir +"img/")
+
+def print_obj(member_dict, classname):
+    member_dict["class"] = classname
+    with open(tmp_dir+"name","w") as f:
+        json.dump(member_dict,f)
+
+    #w = csv.writer(open(tmp_dir+"name", "w"))
+    #w.writerow(["class", classname])
+    #for key, val in member_dict.items():
+    #    w.writerow([key, val])
 
 
 def run(aligner, tasks): 
@@ -71,13 +90,18 @@ class PredictImageTask(RegisteredTask):
     print(':{:.3f} s'.format(diff))
 
 class StitchComposeRenderTask(RegisteredTask):
-    def __init__(self, z_start, z_stop, b_field, influence_blocks, src,
+    def __init__(self, qu, z_start, z_stop, b_field, influence_blocks, src,
                  vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                 extra_off, chunk_size, dst, ds_mip):
-        super().__init__(z_start, z_stop, b_field, influence_blocks, src,
+                 extra_off, chunk_size, dst, upsample_mip, upsample_bbox):
+        super().__init__(qu, z_start, z_stop, b_field, influence_blocks, src,
                          vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                         extra_off, chunk_size, dst, ds_mip)
+                         extra_off, chunk_size, dst, upsample_mip,
+                         upsample_bbox)
     def execute(self, aligner):
+        init_checkpoint()
+        print_obj(self._args, "StitchComposeRender")
+        tq = TaskQueue(self.qu)
+        tq.delete(self._id)
         z_range = range(self.z_start, self.z_stop)
         b_field = DCV(self.b_field)
         influence_blocks = self.influence_blocks
@@ -91,7 +115,8 @@ class StitchComposeRenderTask(RegisteredTask):
         extra_off = self.extra_off
         chunk_size = self.chunk_size
         dst = DCV(self.dst)
-        ds_mip = self.ds_mip
+        upsample_mip = self.upsample_mip
+        upsample_bbox = deserialize_bbox(self.upsample_bbox)
         print("\n Stitch compose and render task\n"
               "src {}\n"
               "MIP{}\n"
@@ -100,19 +125,24 @@ class StitchComposeRenderTask(RegisteredTask):
         start = time()
         aligner.stitch_compose_render(z_range, b_field, influence_blocks, src, vv_field_cv,
                                       decay_dist, src_mip, dst_mip, bbox, pad, extra_off,
-                                      chunk_size, dst, ds_mip)
+                                      chunk_size, dst, upsample_mip,
+                                      upsample_bbox)
         end = time()
         diff = end - start
         print('Stitch compose and render task time:{:.3f} s'.format(diff), flush=True)
 
 class StitchGetField(RegisteredTask):
-    def __init__(self, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
-                 bfield_cv, raw_cv, mip, pad,
-                 bbox, chunk_size, softmin_temp, blur_sigma):
-        super().__init__(param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
-                         bfield_cv, raw_cv, mip, pad,
-                         bbox, chunk_size,softmin_temp, blur_sigma)
+    def __init__(self, qu, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
+                 bfield_cv, raw_cv, mip, pad,bbox, start_z, finish_dir, chunk_size,
+                 softmin_temp, blur_sigma):
+        super().__init__(qu, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
+                         bfield_cv, raw_cv, mip, pad, bbox, start_z,
+                         finish_dir, chunk_size, softmin_temp, blur_sigma)
     def execute(self, aligner):
+        init_checkpoint()
+        print_obj(self._args, "StitchGetField")
+        tq = TaskQueue(self.qu)
+        tq.delete(self._id)
         src_cv = DCV(self.src_cv)
         tgt_cv = DCV(self.tgt_cv)
         prev_field_cv = DCV(self.prev_field_cv)
@@ -127,6 +157,7 @@ class StitchGetField(RegisteredTask):
         pad = self.pad
         bs = self.bs
         be = self.be
+        start_z = self.start_z
 
         print("\n Stitch get field task\n"
               "src {}\n"
@@ -137,32 +168,44 @@ class StitchGetField(RegisteredTask):
 
         aligner.get_stitch_field_task(param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
                             bfield_cv, raw_cv, mip, bbox, chunk_size, pad,
+                            start_z, self.finish_dir,
                             softmin_temp, blur_sigma)
+        with Storage(self.bfield_cv) as stor:
+            path = 'get_stitch_field_done/{}/{}'.format(str(mip), str(bs))
+            stor.put_file(path, '')
+            print('Marked finished at {}'.format(path))
+
         end = time()
         diff = end - start
         print('Stitch get field task time:{:.3f} s'.format(diff), flush=True)
 
 
 class NewAlignTask(RegisteredTask):
-  def __init__(self, src, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
-               block_stop, chunk_size, model_lookup, mask_cv, mask_mip,
-               mask_val, rows, super_chunk_len, overlap_chunks):
-    super().__init__(src, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
-                     block_stop, chunk_size, model_lookup, mask_cv, mask_mip,
-                     mask_val, rows, super_chunk_len, overlap_chunks)
+  def __init__(self, src, qu, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
+               block_stop, start_z, chunk_size, model_lookup, finish_dir, mask_cv, mask_mip,
+               mask_val):
+    super().__init__(src, qu, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
+                     block_stop, start_z, chunk_size, model_lookup, finish_dir, mask_cv, mask_mip,
+                     mask_val)
 
   def execute(self, aligner):
+    init_checkpoint()
+    print_obj(self._args, "NewAlignTask")
+    tq = TaskQueue(self.qu)
+    tq.delete(self._id)
     src_cv = DCV(self.src)
     dst_cv = DCV(self.dst)
     v_field = DCV(self.vvote_field)
     s_field = DCV(self.s_field)
     chunk_grid =[]
     for i in self.chunk_grid:
+        print(i)
         chunk_grid.append(deserialize_bbox(i))
     mip = self.mip
     pad = self.pad
     block_start = self.block_start
     block_stop = self.block_stop
+    start_z = self.start_z
     chunk_size = self.chunk_size
     model_lookup = self.model_lookup
     mask_cv = None
@@ -173,14 +216,18 @@ class NewAlignTask(RegisteredTask):
     print("\n Align task\n"
           "src {}\n"
           "MIP{}\n"
-          "start_z={} \n".format(self.src, mip,
+          "block_start={} \n".format(self.src, mip,
                         block_start), flush=True)
     start = time()
     aligner.new_align(src_cv, dst_cv, s_field, v_field, chunk_grid, mip, pad, block_start,
-                block_stop, chunk_size, model_lookup, src_mask_cv=mask_cv,
-                      src_mask_mip=mask_mip, src_mask_val=mask_val, rows=self.rows,
-                      super_chunk_len=self.super_chunk_len,
-                      overlap_chunks=self.overlap_chunks)
+                      block_stop, start_z, chunk_size, model_lookup,
+                      self.finish_dir,
+                      src_mask_cv=mask_cv,
+                      src_mask_mip=mask_mip, src_mask_val=mask_val)
+    with Storage(self.vvote_field) as stor:
+        path = 'block_alignment_done/{}/{}'.format(str(mip), str(block_start))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
     end = time()
     diff = end - start
     print('Align task time:{:.3f} s'.format(diff), flush=True)

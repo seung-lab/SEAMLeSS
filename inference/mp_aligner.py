@@ -8,9 +8,8 @@ from os.path import join
 from time import time, sleep
 from torch.autograd import Variable
 from multiprocessing import Process, Manager, Queue
-#import multiprocessing
-
-#from pathos.multiprocessing import ProcessPool, ThreadPool
+#import multiprocessing 
+#from pathos.multiprocessing import ProcessPool, ThreadPool 
 
 from threading import Lock
 
@@ -53,6 +52,16 @@ retry = tenacity.retry(
   wait=tenacity.wait_full_jitter(0.5, 60.0),
 )
 
+tmp_dir= "/tmp/alignment/"
+def print_list(alist, file_name):
+    w = csv.writer(open(tmp_dir+file_name, "w"))
+    for val in alist:
+        w.writerow(val)
+
+def write_list(alist, file_name):
+    with open(file_name,"w") as f:
+        json.dumps(alist, f)
+
 class Aligner:
   def __init__(self, threads=1, queue_name=None, task_batch_size=1, 
                      dry_run=False, **kwargs):
@@ -81,7 +90,7 @@ class Aligner:
     self.manager = None # Manager()
     self.dic =  None  #self.manager.dict()
     self.p_list = None #[]
-
+    self.pre_field_path = "pre_field/"
     self.gpu_lock = kwargs.get('gpu_lock', None)  # multiprocessing.Semaphore
 
   def convert_to_float(self, data):
@@ -104,7 +113,37 @@ class Aligner:
   def int16_to_float(self, data):
       return data.type(torch.float)/4.0
 
-  def write_json(self, path, file_name, dic, key):
+  def write_file(self, file_name, content):
+      f = open(file_name, "w")
+      f.writelines(content)
+      f.close()
+
+  def checkpoint_write(self, f_list, arg_list, z, cv_path):
+      for i in range(len(f_list)):
+          f = f_list[i]
+          args = arg_list[i]
+          f(args)
+      with Storage(cv_path) as stor:
+           stor.put_file(str(z), '')
+           print('Marked finished at {}/{}'.format(cv_path, str(z)))
+      with open(tmp_dir+"img/"+str(z), "w") as f:
+          f.write("")
+
+  def write_json(self, args):
+      start = time()
+      path = args[0]
+      file_name = args[1]
+      dic = args[2]
+      key = args[3]
+      data = dic[key]
+      with Storage(path) as stor:
+          data = data.numpy().tolist()
+          stor.put_json(file_name, data)
+      del dic[key]
+      end = time()
+      print("----------finish write json using", end-start, "key is", key)
+
+  def write_json_old(self, path, file_name, dic, key):
       start = time()
       data = dic[key]
       with Storage(path) as stor:
@@ -112,7 +151,8 @@ class Aligner:
           stor.put_json(file_name, data)
       del dic[key]
       end = time()
-      print("----------finish write json using", end-start)
+      print("----------finish write json using", end-start, "key is", key)
+
 
   def read_json(self, path, file_name, dic, key):
       start = time()
@@ -125,25 +165,22 @@ class Aligner:
       end = time()
       print("----------finish read json using", end-start)
 
-  def new_align_task(self, block_start, block_stop,
+  def new_align_task(self, block_start, block_stop, start_z,
                      src, dst, s_field, vvote_field, chunk_grid, mip,
-                     pad, chunk_size, model_lookup,
-                     src_mask_cv=None, src_mask_mip=0, src_mask_val=0, rows=1000,
-                     super_chunk_len=1000, overlap_chunks=0):
+                     pad, chunk_size, model_lookup, qu, finish_dir,
+                     src_mask_cv=None, src_mask_mip=0, src_mask_val=0):
       #print("---------------------------->> load image")
       batch = []
       #for i in z_range:
-      batch.append(tasks.NewAlignTask(src, dst, s_field, vvote_field, chunk_grid, mip, pad,
-                                      block_start, block_stop, chunk_size,
-                                      model_lookup, src_mask_cv, src_mask_mip,
-                                      src_mask_val, rows, super_chunk_len,
-                                      overlap_chunks))
+      batch.append(tasks.NewAlignTask(src, qu, dst, s_field, vvote_field, chunk_grid, mip, pad,
+                                      block_start, block_stop, start_z, chunk_size,
+                                      model_lookup, finish_dir, src_mask_cv, src_mask_mip,
+                                      src_mask_val))
       return batch
 
   def new_align(self, src, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
-                block_stop, chunk_size, lookup_path, src_mask_cv=None,
-                src_mask_mip=0, src_mask_val=0, rows=1000, super_chunk_len=1000,
-                overlap_chunks=0):
+                block_stop, start_z, chunk_size, lookup_path, finish_dir, src_mask_cv=None,
+                src_mask_mip=0, src_mask_val=0):
       model_lookup={}
       tgt_radius_lookup = {}
       vvote_lookup = {}
@@ -153,13 +190,13 @@ class Aligner:
         reader = csv.reader(f, delimiter=',')
         for k, r in enumerate(reader):
            if k != 0:
-             x_start = int(r[0])
-             y_start = int(r[1])
+            # x_start = int(r[0])
+            # y_start = int(r[1])
              z_start = int(r[2])
-             x_stop  = int(r[3])
-             y_stop  = int(r[4])
+            # x_stop  = int(r[3])
+            # y_stop  = int(r[4])
              z_stop  = int(r[5])
-             bbox_mip = int(r[6])
+            # bbox_mip = int(r[6])
              model_path = join('..', 'models', r[7])
              tgt_radius = int(r[8])
              skip = bool(int(r[9]))
@@ -172,6 +209,7 @@ class Aligner:
                      model_lookup[z] = model_path
                      tgt_radius_lookup[z] = tgt_radius
                      vvote_lookup[z] = [-i for i in range(1, tgt_radius+1)]
+      write_list(skip_list, tmp_dir+"skip")
       max_radius = max(tgt_radius_lookup.values())
       # Filter out skipped sections from vvote_offsets
       min_offset = 0
@@ -203,69 +241,97 @@ class Aligner:
 
       starter_range = list(starter_offset_to_z_range)
       block_range = list(block_offset_to_z_range)
+      starter_range.sort()
+      block_range.sort()
 
       print("start_range", starter_range)
       print("block_range", block_range)
 
       for i in range(len(chunk_grid)):
           chunk = chunk_grid[i]
-          if(len(chunk_grid) == 1):
-              head_crop = False
-              end_crop = False
-          else:
-              if i == 0:
-                  head_crop = False
-                  end_crop = True
-              elif i == (len(chunk_grid) -1):
-                  head_crop = True
-                  end_crop = False
-              else:
-                  head_crop = True
-                  end_crop = True
-          if head_crop == False and end_crop == True:
-              final_chunk = self.crop_chunk(chunk, mip, pad,
-                                         chunk_size*(super_chunk_len-1)+pad,
-                                         pad, pad)
-          elif head_crop and end_crop:
-              final_chunk = self.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
-                                         chunk_size*(super_chunk_len-1)+pad,
-                                         pad, pad)
-          elif head_crop and end_crop == False:
-              final_chunk = self.crop_chunk(chunk, mip, chunk_size*(super_chunk_len-1)+pad,
+          final_chunk = self.crop_chunk(chunk, mip, pad,
                                          pad, pad, pad)
-          else:
-              final_chunk = self.crop_chunk(chunk, mip, pad,
-                                         pad, pad, pad)
-          print("----------------------- head crop ", head_crop, " end_crop",
-                end_crop)
-
           print("<<<<<<init chunk size is ", chunk.stringify(0, mip=mip),
                 "final_chunk is ", final_chunk.stringify(0, mip=mip))
-          image_list = self.process_super_chunk_serial(src, block_start,
-                                                      starter_range,
-                                                      s_field, model_lookup,
-                                                      chunk, mip, pad, chunk_size,
-                                                      head_crop, end_crop,
-                                                      final_chunk, dst,
-                                                      mask_cv=src_mask_cv,
-                                                      mask_mip=src_mask_mip,
-                                                      mask_val=src_mask_val)
+          if -1 == start_z:
+              start_z = starter_range[0]
+          print("----------------- start z is", start_z )
+          if (start_z in starter_range) or (start_z == block_start):
+              image_list = self.process_super_chunk_serial(src, block_start,
+                                                          starter_range,
+                                                          start_z,
+                                                          dst, model_lookup,
+                                                          chunk, mip, pad, chunk_size,
+                                                          final_chunk, finish_dir,
+                                                          mask_cv=src_mask_cv,
+                                                          mask_mip=src_mask_mip,
+                                                          mask_val=src_mask_val)
+              start_index = 0
+          else:
+              image_list = []
+              pre_load_list = []
+              index_list = []
+              before_vv_num =0
+              dic = self.dic
+              for i, z in enumerate(block_range):
+                  if z == start_z:
+                      break;
+                  else:
+                      before_vv_num += 1
+              print("before vv num is ", before_vv_num)
+              if before_vv_num<max_radius:
+                  num_in_serial = max_radius - before_vv_num
+                  if num_in_serial > 1:
+                      for z in starter_range[-(num_in_serial-1):]:
+                          p = Process(target=self.mp_load, args=(dic, z, dst,
+                                                                 z, chunk,
+                                                                 mip))
+                          p.start()
+                          index_list.append(z)
+                          pre_load_list.append(p)
+                  p = Process(target=self.mp_load, args=(dic, block_start, src,
+                                                        block_start, chunk,
+                                                        mip, src_mask_cv, src_mask_mip,
+                                                        src_mask_val))
+                  p.start()
+                  index_list.append(block_start)
+                  pre_load_list.append(p)
+                  for i in range(before_vv_num):
+                      z = block_range[i]
+                      p = Process(target=self.mp_load, args=(dic, z, dst,
+                                                             z, chunk,
+                                                             mip))
+                      p.start()
+                      index_list.append(z)
+                      pre_load_list.append(p)
+              else:
+                  start_index = before_vv_num - max_radius
+                  for z in block_range[start_index:before_vv_num]:
+                      p = Process(target=self.mp_load, args=(dic, z, dst,
+                                                            z, chunk,
+                                                            mip))
+                      p.start()
+                      index_list.append(z)
+                      pre_load_list.append(p)
+
+              for p in pre_load_list:
+                  p.join()
+
+              for z in index_list:
+                  img = dic[z]
+                  image_list.append(img)
+                  del dic[z]
+
+              start_index = before_vv_num
           print("--------------------after serial ")
-          write_image = []
-          for z in starter_range:
-              write_image.append(z)
-          write_image.append(-1)
-          #for _ in image_list:
-          #    write_image.append(True)
           print("============================ start vector voting")
-          # align with vector voting
-          #vvote_way = radius
-          self.process_super_chunk_vvote(src, block_range, max_radius, dst,
+
+          self.process_super_chunk_vvote(src, block_range, max_radius, start_z, dst,
                                       model_lookup, tgt_radius_lookup, image_list,
-                                      write_image, chunk,
-                                      mip, pad, chunk_size, super_chunk_len,
+                                      chunk, start_index,
+                                      mip, pad, chunk_size,
                                       vvote_field,
-                                      head_crop, end_crop, final_chunk,
+                                      final_chunk, finish_dir,
                                       mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                       mask_val=src_mask_val)
           for i in self.p_list:
@@ -274,23 +340,24 @@ class Aligner:
       self.manager = None
       self.dic = None
 
-  def stitch_get_field_task_generator(self, param_lookup, bs_list, be_list,
+  def stitch_get_field_task_generator(self, qu, param_lookup, bs_list, be_list,
                                       src_cv, tgt_cv, prev_field_cv,
-                                      bfield_cv, raw_cv, mip,
-                                      bbox, chunk_size, pad,
+                                      bfield_cv, raw_cv, mip, start_z,
+                                      bbox, chunk_size, pad, finish_dir,
                                       softmin_temp, blur_sigma):
       batch = []
       for i in range(len(bs_list)):
           bs = bs_list[i]
           be = be_list[i]
-          batch.append(tasks.StitchGetField(param_lookup, bs, be, src_cv, tgt_cv,
+          batch.append(tasks.StitchGetField(qu, param_lookup, bs, be, src_cv, tgt_cv,
                                             prev_field_cv, bfield_cv, raw_cv, mip,
-                                            pad, bbox,
+                                            pad, bbox, start_z, finish_dir,
                                             chunk_size, softmin_temp, blur_sigma))
       return batch
 
   def get_stitch_field_task(self, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
                             bfield_cv, raw_cv, mip, bbox, chunk_size, pad,
+                            start_z, finish_dir,
                             softmin_temp, blur_sigma):
       block_range = range(bs, be+1)
       model_lookup = {}
@@ -318,7 +385,8 @@ class Aligner:
                               skip_list.append(z)
                           model_lookup[z] = model_path
                           tgt_radius_lookup[z] = tgt_radius
-                          vvote_lookup[z] = [-i for i in range(1, tgt_radius + 1)]
+                          vvote_lookup[z] = [-i for i in range(1, tgt_radius + 1)] 
+      write_list(skip_list, tmp_dir+"skip")
       min_offset = 0
       for z, tgt_radius in vvote_lookup.items():
           offset = 0
@@ -352,6 +420,7 @@ class Aligner:
       self.get_stitch_field(model_lookup, src_cv, tgt_cv, prev_field_cv,
                             bfield_cv, raw_cv,
                             overlap_copy_range, stitch_offset_to_z_range,
+                            start_z, finish_dir,
                             mip, bbox, chunk_size, pad, softmin_temp=softmin_temp,
                             blur_sigma=blur_sigma)
       for p in self.p_list:
@@ -363,19 +432,21 @@ class Aligner:
 
   def get_stitch_field(self, model_lookup, src_cv, tgt_cv, prev_field_cv,
                        bfield_cv, src, overlap_copy, compute_field_range,
-                       mip, bbox, chunk_size,
+                       start_z, finish_dir, mip, bbox, chunk_size,
                        pad, softmin_temp=None, blur_sigma=None):
       if self.manager == None:
           self.manager = Manager()
           self.dic = self.manager.dict()
           self.p_list = []
-
+      print("compute_field_range", compute_field_range)
+      print("overlap_copy", overlap_copy)
+      if -1 == start_z:
+          start_z = overlap_copy[-1]
       dst_fields = self.stitch_calc_field(model_lookup, src_cv, tgt_cv, prev_field_cv,
-                                          src, overlap_copy, compute_field_range, mip,
-                                          bbox, chunk_size, pad,
+                                          src, overlap_copy, compute_field_range,
+                                          start_z, finish_dir, mip, bbox, chunk_size, pad,
                                           softmin_temp=softmin_temp,
                                           blur_sigma=blur_sigma)
-      self.dic.clear()
       dst_field = self.slice_vector_vote(dst_fields, chunk_size, pad, mip,
                                          softmin_temp=softmin_temp,
                                          blur_sigma=blur_sigma)
@@ -385,24 +456,24 @@ class Aligner:
       dic[bc] = dst_field[:,pad:-pad,pad:-pad,:]
       croped_chunk = deepcopy(bbox)
       croped_chunk.crop(pad, mip=mip)
-      wp = Process(target=self.mp_store_field, args=(dic, bc, False, False, 0,
-                                                    pad, bfield_cv,
-                                                    overlap_copy[-1],
-                                                    croped_chunk,
-                                                    mip, chunk_size))
-      wp.start()
-      self.p_list.append(wp)
-      for p in self.p_list:
-          p.join()
-      self.p_list = []
+      self.mp_store_field([dic, bc, bfield_cv, overlap_copy[-1], croped_chunk, mip,
+                     chunk_size])
+      with Storage(finish_dir) as stor:
+           path = str(overlap_copy[-1])
+           stor.put_file(path, '')
+           print('Marked finished at {}'.format(path))
+      f = open(tmp_dir+"img/"+str(overlap_copy[-1]), "w")
+      f.close()
+
 
   def stitch_calc_field(self, model_lookup, src_cv, tgt_cv, prev_field_cv, src,
-                        overlap_copy, compute_field_range, mip, bbox, chunk_size,
+                        overlap_copy, compute_field_range, start_z, finish_dir,
+                        mip, bbox, chunk_size,
                         pad, softmin_temp=None, blur_sigma=None):
       chunk = deepcopy(bbox)
       nonpad_chunk = deepcopy(bbox)
       nonpad_chunk.crop(pad, mip=mip)
-      unpadded_chunk = deepcopy(bbox)
+      origin_chunk = deepcopy(bbox)
       extra_off = pad
       chunk.uncrop(extra_off, mip=mip)
       image_list =  [None]* (len(overlap_copy)-1)
@@ -413,70 +484,73 @@ class Aligner:
       field_prefix = "stitch_field"
       pre_field_prefix = "pre_field"
       print("------------- overlap_copy is ", overlap_copy)
+      vvote_way = len(overlap_copy) -1
+      load_field_list = []
+
+      if start_z == overlap_copy[-1]:
+          load_slice_range = overlap_copy[:-1]
+          compute_range = overlap_copy[-1:] + compute_field_range
+          field_range = []
+      else:
+          start_index = 0
+          for z in compute_field_range:
+              if z == start_z:
+                  break
+              else:
+                  start_index += 1
+          field_range = compute_field_range[:start_index]
+          load_slice_range= overlap_copy[-(vvote_way-start_index):]
+          for z in compute_field_range[:start_index]:
+              load_slice_range.append(z)
+
+          compute_range = compute_field_range[start_index:]
+
       ps = Process(target=self.mp_load, args=(dic,
-                                              load_prefix+str(overlap_copy[-1]),
-                                              src, overlap_copy[-1],
-                                              chunk, mip, None, 0, 0))
+                                          load_prefix+str(start_z),
+                                          src, start_z,
+                                          chunk, mip, None, 0, 0))
       ps.start()
       load_list.append(ps)
-      for i, z in enumerate(overlap_copy[:-1]):
+
+      for z in load_slice_range:
           pi = Process(target=self.mp_load, args=(dic, load_prefix+str(z),
                                                  tgt_cv, z, chunk, mip))
           pi.start()
           load_list.append(pi)
-          pre_field_key = pre_field_prefix + str(z)
+          pre_field_key = self.pre_field_path+str(mip)+"/"+str(z)
           pf = Process(target=self.read_json, args=(prev_field_cv.path,
                                                     pre_field_key,
                                                     dic,
                                                     pre_field_key))
           pf.start()
           load_list.append(pf)
+
+      for z in field_range:
+          field_key = "field" + str(z)
+          pf = Process(target=self.mp_load_field, args=(dic, field_key,
+                                                       prev_field_cv, z,
+                                                       origin_chunk, mip))
+          pf.start()
+          load_field_list.append(pf)
+
       for p in load_list:
           p.join()
       load_list = []
-
-      tgt_z = compute_field_range[0]
-      p = Process(target=self.mp_load, args=(dic,
-                                             load_prefix+str(tgt_z), src_cv,
-                                             tgt_z, chunk, mip, None, 0, 0))
-      p.start()
-      load_list.append(p)
-
-      for i, z in enumerate(overlap_copy[:-1]):
-          image_list[i] = dic[load_prefix+str(z)]
-          pre_field[i] = dic[pre_field_prefix+str(z)]
       dst_fields = []
-      src_image = dic[load_prefix+str(overlap_copy[-1])]
-      vvote_way = len(overlap_copy) -1
-      model_path = model_lookup[overlap_copy[-1]]
-      dst_field = self.new_vector_vote(model_path, src_image, image_list,
-                                      pre_field, chunk_size, pad,
-                                      vvote_way, mip,
-                                      inverse=False,
-                                      serial=True,
-                                      softmin_temp=softmin_temp,
-                                      blur_sigma=blur_sigma)
-      field_key = "field" + str(overlap_copy[-1])
-      dic[field_key] =dst_field[:,pad:-pad,pad:-pad,:]
-      pf = Process(target=self.mp_store_field, args=(dic, field_key, False,
-                                                     False, 0,
-                                                     pad, prev_field_cv,
-                                                     overlap_copy[-1],
-                                                     nonpad_chunk, mip,
-                                                     chunk_size))
-      pf.start()
-      self.p_list.append(pf)
-      image = self.warp_slice(chunk_size, pad, mip, src_image, dst_field)
-      del image_list[0]
-      image_list.append(image)
 
-      for i, z in enumerate(compute_field_range):
+      for i, z in enumerate(load_slice_range):
+          image_list[i] = dic[load_prefix+str(z)]
+          pre_field_key = self.pre_field_path+str(mip)+"/"+str(z)
+          pre_field[i] = dic[pre_field_key]
+
+      f_list = [self.mp_store_img, self.mp_store_field, self.write_json]
+      for i, z in enumerate(compute_range):
           for p in load_list:
               p.join()
           load_list =[]
-          src_image = dic[load_prefix+str(tgt_z)]
-          if z!=compute_field_range[-1]:
-              tgt_z = compute_field_range[i+1]
+          src_image = dic[load_prefix+str(z)]
+          if z!= compute_range[-1]:
+              tgt_z = compute_range[i+1]
               pr = Process(target=self.mp_load, args=(dic,
                                                       load_prefix+str(tgt_z),
                                                       src_cv, tgt_z, chunk, mip,
@@ -492,9 +566,44 @@ class Aligner:
                                            softmin_temp=softmin_temp,
                                            blur_sigma=blur_sigma)
           image = self.warp_slice(chunk_size, pad, mip, src_image, dst_field)
+
+          field_key = "field" + str(z)
+          dic[field_key] =dst_field[:,pad:-pad,pad:-pad,:]
+
+          img_key = "image" + str(z)
+          dic[img_key] = image[...,pad:-pad,pad:-pad]
+
+          pre_field_key = self.pre_field_path+str(mip)+"/"+str(z)
+          dic[pre_field_key] = pre_field[-1]
+
+          args_list = [[dic, img_key, tgt_cv, z, nonpad_chunk, mip, True],
+                       [dic, field_key, prev_field_cv, z, nonpad_chunk, mip,
+                        chunk_size],[prev_field_cv.path, pre_field_key, dic,
+                        pre_field_key]]
+
+          p = Process(target=self.checkpoint_write, args=(f_list, args_list, z,
+                                                     finish_dir))
+          p.start()
+          self.p_list.append(p)
+
           del image_list[0]
           image_list.append(image)
+          print("-----------dst_field shape ", dst_field.shape)
+          if len(dst_fields) == vvote_way:
+              del dst_fields[0]
           dst_fields.append(dst_field)
+
+      if len(field_range) != 0:
+          for p  in load_field_list:
+              p.join()
+          field_range.reverse()
+          for z in field_range:
+              field_key = "field" + str(z)
+              tmp = dic[field_key]
+              print("-------tmp shape", tmp.shape)
+              dst_fields.insert(0,tmp)
+              del dic[field_key]
+
       return dst_fields
 
   def slice_vector_vote_single(self, field_list, chunk_size, pad, mip,
@@ -715,16 +824,6 @@ class Aligner:
       x_chunk_number = (x_len) // chunk_size
       y_chunk_number = (y_len) // chunk_size
 
-      #if self.manager == None:
-      #    self.manager = Manager()
-      #    self.dic = self.manager.dict()
-      #    self.p_list = []
-      #    self.dst_field ="dst_field"
-      #    self.img = "src_img"
-      #    self.dst_img = "dst_img"
-      #dic = self.dic
-      #dic[self.img] = src_img
-      #dic[self.dst_field] = dst_field
       image = torch.FloatTensor(1, 1, x_len, y_len).zero_()
       #self.pool_scheduler(self.warp_slice, x_chunk_number, y_chunk_number,
       #                    chunk_size, pad, mip)
@@ -783,23 +882,26 @@ class Aligner:
           #     extra_off+pad+xs*chunk_size:extra_off+pad+xs*chunk_size+chunk_size,
           #     extra_off+pad+ys*chunk_size:extra_off+pad+xs*chunk_size+chunk_size,:]=f
 
-  def stitch_compose_render_task(self, bbox, src, dst, z_start, z_stop, b_field,
+  def stitch_compose_render_task(self, qu, bbox, src, dst, z_start, z_stop, b_field,
                                  vv_field, decay_dist, influence_blocks,
                                  src_mip, dst_mip, pad, extra_off,
-                                 chunk_size, ds_mip):
+                                 chunk_size, upsample_mip, upsample_bbox):
       batch = []
-      task  = tasks.StitchComposeRenderTask(z_start, z_stop, b_field,
-                                                 influence_blocks, src, vv_field,
-                                                 decay_dist, src_mip, dst_mip,
-                                                 bbox, pad, extra_off,
-                                                 chunk_size, dst, ds_mip)
+      task  = tasks.StitchComposeRenderTask(qu, z_start, z_stop, b_field,
+                                            influence_blocks, src, vv_field,
+                                            decay_dist, src_mip, dst_mip,
+                                            bbox, pad, extra_off,
+                                            chunk_size, dst, upsample_mip,
+                                            upsample_bbox)
       batch.append(task)
       return batch
 
   def stitch_compose_render(self, z_range, broadcast_field, influence_blocks, src,
                             vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                            extra_off, chunk_size, dst, ds_mip):
+                            extra_off, chunk_size, dst, upsample_mip,
+                            upsample_bbox):
       print("in stitch compose_render function ")
+      write_list([], tmp_dir+"skip")
       if self.manager == None:
           self.manager = Manager()
           self.dic = self.manager.dict()
@@ -818,27 +920,21 @@ class Aligner:
       load_im = []
       b_field = []
       vv_field_cv.create(src_mip)
-      #vv_field = self.get_field(vv_field_cv, z_range[0], chunk, src_mip, relative=False,
-      #                            to_tensor=True, as_int16=False)
-      #vv_field = torch.ShortTensor(1,6144, 7168,2).zero_()
       broadcast_field.create(src_mip)
       for index in influence_blocks:
           p = Process(target=self.mp_load_field, args=(dic,
                                                        field_prefix+"b"+str(index),
-                                                      broadcast_field, index,
+                                                       broadcast_field, index,
                                                        chunk, src_mip))
           p.start()
           load_f.append(p)
-          #bf = self.get_field(broadcast_field, index, chunk, src_mip, relative=False,
-          #                    to_tensor=True, as_int16=False)
-          #bf= torch.ShortTensor(1,6144, 7168,2).zero_()
-          #b_field.append(bf)
       p = Process(target=self.mp_load_field, args=(dic, field_prefix, vv_field_cv,
                                                    z_range[0], chunk, src_mip))
       p.start()
       load_f.append(p)
       src.create(dst_mip)
       dst.create(dst_mip)
+      f_list = [self.mp_store_img]
       for i, z in enumerate(z_range):
           for p in load_f:
               p.join()
@@ -869,36 +965,44 @@ class Aligner:
               lp.join()
           load_im = []
           src_img = dic[img_prefix]
+          print("////////// src_img shape", src_img.shape)
           final_img = self.warp_slice(chunk_size, pad, dst_mip, src_img, dst_field)
           final_img = final_img[..., pad:-pad, pad:-pad]
           write_key = "write_img" + str(z)
           dic[write_key] = final_img
-          up = Process(target=self.mp_store_img, args=(dic, write_key, dst, z,
-                                                       unpadded_chunk, dst_mip,
-                                                       True))
+          args=[[dic, write_key, dst, z, unpadded_chunk, dst_mip, True]]
+          up = Process(target=self.checkpoint_write, args=(f_list, args, z,
+                                                           "final_done/"+str(dst_mip)))
           up.start()
           self.p_list.append(up)
-          print("++++++++final_img shape", final_img.shape)
-          for mip in range(dst_mip+1, ds_mip+1):
-              factor = 2
-              print("----------downsample to mip", mip)
-              img = nn.AvgPool2d(factor)(final_img)
-              self.save_image(img.cpu().numpy(), dst, z, unpadded_chunk, mip,
-                              True)
-              write_key = "write_img" + str(z) + str(mip)
-              dic[write_key] = img
-              #up = Process(target=self.mp_store_img, args=(dic, write_key, dst, z,
-              #                                             unpadded_chunk, mip,
-              #                                            True))
-              #up.start()
-              #self.p_list.append(up)
-              final_img = img
+          if dst_mip!=upsample_mip:
+              factor = 2**(dst_mip-upsample_mip)
+              #print(" //// factor is ", factor, final_img.shape)
+              upsample_img = nn.Upsample(scale_factor= factor,
+                                         mode='bilinear')(final_img)
+              print("write upsample image //// ", upsample_img.shape)
+              up_x_range = upsample_bbox.x_range(mip=upsample_mip)
+              up_y_range = upsample_bbox.y_range(mip=upsample_mip)
+              current_x_range = unpadded_chunk.x_range(mip=upsample_mip)
+              current_y_range = unpadded_chunk.y_range(mip=upsample_mip)
+              #print("up_x_range", up_x_range)
+              #print("up_y_range", up_y_range)
+              #print("current_x_range", current_x_range)
+              #print("current_y_range", current_y_range)
+              delta_x0 = up_x_range[0] - current_x_range[0]
+              delta_x1 = up_x_range[1] - current_x_range[1]
+              delta_y0 = up_y_range[0] - current_y_range[0]
+              delta_y1 = up_y_range[1] - current_y_range[1]
+              upsample_img = upsample_img[..., delta_x0:delta_x1,
+                                          delta_y0:delta_y1]
+              write_key = "write_upsample" + str(z)
+              dic[write_key] = upsample_img
 
-          #up = Process(target=self.mp_downsampling_store, args=(dic, write_key, dst, z,
-          #                                             unpadded_chunk, dst_mip,
-          #                                                      ds_mip))
-          #up.start()
-          #self.p_list.append(up)
+              args=[dic, write_key, dst, z, upsample_bbox, upsample_mip, True]
+              up = Process(target=self.checkpoint_write, args=(f_list, args, z,
+                                                               "final_done/"+str(upsample_mip)))
+              up.start()
+              self.p_list.append(up)
       for p in self.p_list:
           p.join()
       self.p_list =[]
@@ -1190,7 +1294,7 @@ class Aligner:
 
 
   def warp_slice(self, chunk_size, pad, mip, src_img, dst_field,
-                 coor_list=None, offset=None):
+                 coor_list=None, offset=None, affine=None, bbox=None):
       if offset == None:
           offset = pad
       padded_len = chunk_size + 2*pad
@@ -1206,13 +1310,36 @@ class Aligner:
               for j in range(y_chunk_number):
                   coor_list.append((i, j))
           image = torch.FloatTensor(1, 1, x_len, y_len).zero_()
-
+      if affine is not None:
+          x_range = bbox.x_range(mip=mip)
+          y_range = bbox.y_range(mip=mip)
       for xs, ys in coor_list:
           #print("field index","x", xs*chunk_size+padded_len, "y", ys*chunk_size+padded_len)
           field = dst_field[:, xs*chunk_size:xs*chunk_size+padded_len,
                   ys*chunk_size:ys*chunk_size+padded_len, :]
           field = field.to(device=self.device)
           field = field.type(torch.float32)/4
+          if affine is not None:
+              affine = torch.Tensor(affine).to(field.device)
+              affine = affine.flip(0)[:, [1, 0, 2]]  # flip x and y
+              padded_bbox = BoundingBox(x_range[0]+xs*chunk_size,
+                                        x_range[0]+xs*chunk_size+padded_len,
+                                        y_range[0]+ys*chunk_size,
+                                        y_range[0]+ys*chunk_size+padded_len,
+                                        mip=mip)
+              offset_y, offset_x = padded_bbox.get_offset(mip=0)
+              ident = self.rel_to_abs_residual(identity_grid(field.shape,
+                                                             device=self.device),
+                                               mip)
+              field += ident
+              field[..., 0] += offset_x
+              field[..., 1] += offset_y
+              field = torch.tensordot(
+                  affine[:, 0:2], field, dims=([1], [3])).permute(1, 2, 3, 0)
+              field[..., 0] -= offset_x
+              field[..., 1] -= offset_y
+              field -= ident
+
           distance = self.profile_field(field)
           distance = (distance // (2 ** mip)) # distance at mip level
           field = field/(2**mip) # distance at mip level
@@ -1481,12 +1608,13 @@ class Aligner:
       diff = end - start
       print("end of the downsample process {} using {}".format(ppid, diff), flush=True)
 
+
 # comment out all crop_chunk since loading the whole image
 
   def process_super_chunk_serial(self, src, block_start, serial_range,
-                                 dsts, model_lookup,
+                                 start_z, dst, model_lookup,
                                  schunk, mip, pad, chunk_size,
-                                 head_crop, end_crop, final_chunk, dst_even,
+                                 final_chunk, finish_dir,
                                  mask_cv=None, mask_mip=0,
                                  mask_val=0, affine=None):
       image_list = []
@@ -1500,99 +1628,124 @@ class Aligner:
       #      block_start+serial_offsets[0])
       #print("---- chunk is ", chunk.stringify(0, mip=mip), " z is",
       #      block_start+serial_offsets[0])
-      src_image0 = self.load_part_image(src, serial_range[0], chunk, mip,
-                                        mask_cv=mask_cv, mask_mip=mask_mip,
-                                        mask_val=mask_val)
-
-      #load_image_start = time()
-      #m = Manager()
       dic = self.dic
-      #dic = m.dict()
+      if start_z != block_start:
+          p = Process(target=self.mp_load, args=(dic, start_z, src,
+                                                 start_z, chunk,
+                                                 mip, mask_cv, mask_mip,
+                                                 mask_val))
+          p.start()
+          p_list.append(p)
+
+      x_range = chunk.x_range(mip=mip)
+      y_range = chunk.y_range(mip=mip)
+      x_len = x_range[1] - x_range[0]
+      y_len = y_range[1] - y_range[0]
       tgt_image = torch.ByteTensor(1, 1,
-                                   src_image0.shape[-2]-2*pad,
-                                   src_image0.shape[-1]-2*pad).zero_()
-      #print("tgt_image shape", tgt_image.shape)
-      #print("src_image shape", src_image0.shape)
-      tchunk.crop(pad,mip)
+                                   x_len-2*pad,
+                                   y_len-2*pad).zero_()
+      tchunk.crop(pad, mip)
       tgt_image[...,pad:-pad,pad:-pad] = self.load_part_image(src,
                                                               block_start,
                                                               tchunk, mip,
                                                               mask_cv=mask_cv,
                                                               mask_mip=mask_mip,
                                                               mask_val=mask_val)
-      #load_finish = time()
-      #print("----------------LOAD image time:", load_finish-load_image_start)
-      #tgt_image = self.convert_to_float(tgt_image)
-
-      #crop_len = chunk_size*serial_offsets[0]
-      #add_image =self.crop_imageX(tgt_image, head_crop, end_crop, crop_len)
-      #image_list.append(add_image)
-      #image_list.append(tgt_image)
-      #head_crop_len = chunk_size if head_crop else 0
-      #end_crop_len = chunk_size if end_crop else 0
-      #chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0, 0)
+      model_path = model_lookup[block_start]
+      serial_range_start = len(serial_range)
+      pre_load_list =[]
       for j, z in enumerate(serial_range):
-          #z_offset = serial_offsets[block_offset]
-          #serial_field = serial_fields[z_offset]
-          #dst = dsts[even_odd]
-          dst = dsts
-          print("---------------- z ", z)
-          model_path = model_lookup[block_start]
-          #load_image_start = time()
-          #src_image = self.load_part_image(src, z, chunk, mip, mask_cv=mask_cv,
-          #                            mask_mip=mask_mip,
-          #                            mask_val=mask_val)
-          if j==0:
-              src_image= src_image0
+          if start_z == z:
+              serial_range_start = j
+              break
           else:
-              for i in p_list:
-                  i.join()
-              #print(p_list)
-              print("load image {} from dic".format(z))
-              src_image = dic[z]
-              del dic[z]
+              p = Process(target=self.mp_load, args=(dic, z, dst,
+                                                     z, chunk,
+                                                     mip, mask_cv, mask_mip,
+                                                     mask_val))
+              p.start()
+              pre_load_list.append(p)
+
+      for j, z in enumerate(serial_range[serial_range_start:]):
+          print("---------------- z ", z)
+          for i in p_list:
+               i.join()
+          p_list = []
+          print("load image {} from dic".format(z))
+          src_image = dic[z]
+          del dic[z]
           if z != serial_range[-1]:
-              p_list = []
-              img_index = serial_range[j+1]
+              img_index = serial_range[serial_range_start+j+1]
+              print("img_index is ", img_index)
               p = Process(target=self.mp_load, args=(dic, img_index, src,
                                                      img_index, chunk,
                                                      mip, mask_cv, mask_mip,
                                                      mask_val))
               p.start()
               p_list.append(p)
-          #load_finish = time()
-          #print("----------------LOAD image time:", load_finish-load_image_start)
           dst_field = self.new_compute_field_multi_GPU(model_path, src_image,
                                                        tgt_image, chunk_size,
                                                        pad, mip)
           new_tgt_image = self.warp_slice(chunk_size, pad, mip, src_image,
                                           dst_field)
           image_list.append(new_tgt_image)
-
-          for i in upload_list:
-              i.join()
-          upload_list = []
-          dic["sfield"] =dst_field[:,pad:-pad,pad:-pad,:]
-          # set x_range_len = None since align whole images. No head_crop and no
-          # end_crop
-          x_range_len = None
-          pf = Process(target=self.mp_store_field, args=(dic,"sfield", head_crop,
-                                                        end_crop, x_range_len,
-                                                        pad, dst, z,
-                                                        final_chunk, mip,
-                                                        chunk_size))
-          pf.start()
-          upload_list.append(pf)
-      for i in upload_list:
-          self.p_list.append(i)
-
+          img_key = "store_img" + str(z)
+          dic[img_key] = new_tgt_image[...,pad:-pad,pad:-pad]
+          f_list = [self.mp_store_img]
+          args_list =[[dic, img_key, dst, z, final_chunk, mip, True]]
+          pi = Process(target=self.checkpoint_write, args=(f_list, args_list,
+                                                           z, finish_dir))
+          pi.start()
+          self.p_list.append(pi)
+      for p in pre_load_list:
+          p.join()
+      for z in reversed(serial_range[:serial_range_start]):
+          img = dic[z]
+          image_list.insert(0, img)
+          del dic[z]
       image_list.append(tgt_image)
-      return image_list #, chunk
+      with Storage(finish_dir) as stor:
+           path = str(block_start)
+           stor.put_file(path, '')
+           print('Marked finished at {}'.format(path))
+      f = open(tmp_dir+"img/"+str(block_start), "w")
+      f.close()
+      return image_list
 
-  def mp_store_img(self, dic, key, dst, z, chunk, mip, to_uint8):
+  def mp_store_img(self, args):
+      dic = args[0]
+      key = args[1]
+      dst = args[2]
+      z = args[3]
+      chunk = args[4]
+      mip = args[5]
+      to_uint8 =args[6]
       ppid = os.getpid()
       start = time()
-      print("start a new save image process", ppid)
+      print("--------------------start a new save image process", ppid, z)
+      image = dic[key]
+      print(image.shape)
+      #print(image)
+      if image.dtype == torch.uint8:
+          self.save_image(image.cpu().numpy(), dst, z, chunk, mip,
+                          to_uint8=False)
+      else:
+          self.save_image(image.cpu().numpy(), dst, z, chunk, mip,
+                          to_uint8=True)
+      #print("-------------------- 0 delete key", key)
+      del dic[key]
+      f = open(tmp_dir+"img/"+str(z), "w")
+      f.close()
+      end = time()
+      diff = end - start
+      print("end of the save image process {} using {} z {}".format(ppid, diff,
+                                                                   z), flush=True)
+
+
+  def mp_store_img_old(self, dic, key, dst, z, chunk, mip, to_uint8):
+      ppid = os.getpid()
+      start = time()
+      #print("--------------------start a new save image process", ppid, dic.keys(), z)
       image = dic[key]
       #print(chunk.stringify(z, mip=mip))
       if image.dtype == torch.uint8:
@@ -1601,34 +1754,29 @@ class Aligner:
       else:
           self.save_image(image.cpu().numpy(), dst, z, chunk, mip,
                           to_uint8=True)
+      #print("-------------------- 0 delete key", key)
       del dic[key]
       end = time()
       diff = end - start
-      print("end of the save image process {} using {}".format(ppid, diff), flush=True)
+      print("end of the save image process {} using {} z {}".format(ppid, diff,
+                                                                   z), flush=True)
 
-  def mp_store_field(self, dic, key, head_crop, end_crop, x_range_len, pad, dst, z,
-                     chunk, mip, chunk_size):
+  def mp_store_field(self, args):
+      dic = args[0]
+      key = args[1]
+      dst = args[2]
+      z = args[3]
+      chunk = args[4]
+      mip = args[5]
+      chunk_size = args[6]
       ppid = os.getpid()
       print("start a new save field process", ppid)
       print("field key is", key)
       field = dic[key]
-      #field_len = field.shape[1] - 2*pad
-      #if(head_crop and end_crop):
-      #    crop_amount = (field_len - x_range_len)/2
-      #    field = field[:,pad+crop_amount:-(pad+crop_amount),pad:-pad,:]
-      #elif head_crop:
-      #    crop_amount = (field_len - x_range_len)
-      #    field = field[:,pad+crop_amount:-pad,pad:-pad,:]
-      #elif end_crop:
-      #    crop_amount = (field_len - x_range_len)
-      #    field = field[:,pad:-(pad+crop_amount),pad:-pad,:]
-      #else:
-      #    field = field[:,pad:-pad,pad:-pad,:]
-      #field = field[:,pad:-pad,pad:-pad,:]
       print("***********dst_field shape", field.shape)
       #field_from_GPU = time()
       #field = field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
-      field = field.cpu().numpy() 
+      field = field.cpu().numpy()
       field_on_CPU = time()
       #print("-----------------move field from GPU to CPU time",
       #      field_on_CPU-field_from_GPU)
@@ -1639,28 +1787,74 @@ class Aligner:
       print("end of the save field process {}".format(ppid), flush=True)
 
 
-  def process_super_chunk_vvote(self, src, block_range, max_radius,
+  def mp_store_field_old(self, dic, key, head_crop, end_crop, x_range_len, pad, dst, z,
+                     chunk, mip, chunk_size):
+      ppid = os.getpid()
+      print("start a new save field process", ppid)
+      print("field key is", key)
+      field = dic[key]
+      print("***********dst_field shape", field.shape)
+      #field_from_GPU = time()
+      #field = field.cpu().numpy() * ((chunk_size+2*pad)/ 2) * (2**mip)
+      field = field.cpu().numpy()
+      field_on_CPU = time()
+      #print("-----------------move field from GPU to CPU time",
+      #      field_on_CPU-field_from_GPU)
+      self.save_field(field, dst, z, chunk, mip, relative=False,
+                   as_int16=False)
+      print("-------------------Saving field time:", time()-field_on_CPU)
+      f = open(tmp_dir+"field/"+str(z), "w")
+      f.close()
+      del dic[key]
+      print("end of the save field process {}".format(ppid), flush=True)
+
+  def process_super_chunk_vvote(self, src, block_range, max_radius, start_z,
                                 dsts, model_lookup, tgt_radius_lookup, image_list,
-                                write_image,
-                                schunk, mip, pad, chunk_size, super_chunk_len,
-                                vvote_field,
-                                head_crop, end_crop, final_chunk, mask_cv=None,
-                                mask_mip=0, mask_val=0):
+                                schunk, start_index, mip, pad, chunk_size,
+                                vvote_field, final_chunk, finish_dir,
+                                mask_cv=None, mask_mip=0, mask_val=0):
       chunk = deepcopy(schunk)
-      chunk.uncrop(pad,mip)
-      print("---- chunk is ", chunk.stringify(0, mip=mip), " vvote range is",
-            block_range)
-      print("---- chunk max mip is ", chunk.max_mip)
+      chunk.uncrop(pad, mip)
       dic = self.dic
       p_list = []
-      src_image0 = self.load_part_image(src, block_range[0], chunk,
+      src_image0 = self.load_part_image(src, block_range[start_index], chunk,
                                         mip, mask_cv=mask_cv, mask_mip=mask_mip,
                                         mask_val=mask_val)
 
       pre_field =[None] * max_radius
+      pre_field_p_list = []
       pre_field_chunk = deepcopy(final_chunk)
       pre_field_chunk.crop(pad, mip)
-      for j, z in enumerate(block_range):
+      pre_field_z_list = []
+      if start_index >= max_radius:
+          pre_field_range = block_range[start_index-max_radius:start_index]
+      else:
+          pre_field_range = block_range[:start_index]
+      for z in pre_field_range:
+          pre_field_key = self.pre_field_path+str(mip)+"/"+str(z)
+          p = Process(target=self.read_json, args=(vvote_field.path,
+                                                   pre_field_key,
+                                                   dic, pre_field_key))
+          p.start()
+          pre_field_p_list.append(p)
+          pre_field_z_list.append(z)
+
+      for p in pre_field_p_list:
+          p.join()
+
+      for z in pre_field_z_list:
+          pre_field_key = self.pre_field_path+str(mip)+"/"+str(z)
+          data = dic[pre_field_key]
+          pre_field.append(data)
+          del pre_field[0]
+
+      del pre_field_p_list
+      del pre_field_z_list
+
+      print("pre_field len", len(pre_field))
+      #print(pre_field)
+      f_list = [self.mp_store_img, self.mp_store_field, self.write_json]
+      for j, z in enumerate(block_range[start_index:]):
           print("===========z is ", z)
           #whole_vv_start = time()
           dst = dsts
@@ -1677,8 +1871,8 @@ class Aligner:
           if z != block_range[-1]:
               p_list = []
               p = Process(target=self.mp_load, args=(dic, "src", src,
-                                                     block_range[j+1], chunk,
-                                                     mip, mask_cv, mask_mip,
+                                                     block_range[start_index+j+1],
+                                                     chunk, mip, mask_cv, mask_mip,
                                                      mask_val))
               p.start()
               p_list.append(p)
@@ -1687,13 +1881,10 @@ class Aligner:
           vv_start = time()
 
           tchunk = deepcopy(schunk)
-
           dst_field = self.new_vector_vote(model_path, src_image, image_list,
                                            pre_field, chunk_size, pad,
                                            tgt_radius_lookup[z], mip,
-                                           inverse=False, serial=True,
-                                           head_crop=head_crop,
-                                           end_crop=end_crop)
+                                           inverse=False, serial=True)
           image = self.warp_slice(chunk_size, pad, mip, src_image, dst_field)
           vv_end =time()
           print("---------------------VV time :", vv_end-vv_start)
@@ -1701,80 +1892,32 @@ class Aligner:
           #image_len = image_list[0].shape[-2] - 2*pad;
           x_range = final_chunk.x_range(mip=mip)
           x_range_len = x_range[1] - x_range[0]
-          image_chunk =image_list[0][...,pad:-pad,pad:-pad]
+          #image_chunk =image_list[0][...,pad:-pad,pad:-pad]
+          img_key = "store_img" + str(z)
+          dic[img_key] = image[...,pad:-pad,pad:-pad]
 
-          if write_image[0] >=0:
-              #print("write_image len is ", len(write_image), "save image")
-              img_key = "store_img" + str(write_image[0])
-              dic[img_key] = image_chunk
-              p = Process(target=self.mp_store_img, args=(dic, img_key,
-                                                          dst,
-                                                          write_image[0], final_chunk,
-                                                          mip, True))
-              p.start()
-              self.p_list.append(p)
-          del image_list[0]
-          del write_image[0]
-          if(z == block_range[-1]):
-              image = image[...,pad:-pad,pad:-pad]
-              img_key ="img"+str(z)
-              dic[img_key] = image
-              #print("store img shape", image.shape, "z is", z)
-              pi = Process(target=self.mp_store_img, args=(dic, img_key,
-                                                          dst, z,
-                                                          final_chunk,
-                                                          mip, True))
-              pi.start()
-              self.p_list.append(pi)
-
-              pre_field_key = "pre_field" + str(z)
-              dic[pre_field_key] = pre_field[-1]
-              pf = Process(target=self.write_json, args=(vvote_field.path,
-                                                         pre_field_key,
-                                                         dic,
-                                                         pre_field_key))
-              pf.start()
-              self.p_list.append(pf)
-          else:
-              image_list.append(image)
-              write_image.append(z)
-          field_key ="field"+ str(z)
+          field_key ="field"+str(z)
           dic[field_key] = dst_field[:,pad:-pad,pad:-pad,:]
-          pf = Process(target=self.mp_store_field, args=(dic, field_key, head_crop,
-                                                         end_crop, x_range_len,
-                                                         pad, vvote_field, z,
-                                                         final_chunk, mip,
-                                                         chunk_size))
-          pf.start()
-          self.p_list.append(pf)
-          #chunk= self.crop_chunk(chunk, mip, head_crop_len, end_crop_len, 0,
-          #                       0)
-      print("save image after vvoting --------------->>>>>>>")
-      #for i in image_list:
-      #    print("************shape of image", i.shape)
-      for i in range(len(image_list)):
-          image_chunk = image_list[i][...,pad:-pad,pad:-pad]
-          #self.save_image(image_chunk.cpu().numpy(), dst, write_image[i],
-          #             final_chunk, mip, to_uint8=True)
-          img_key = "store_img" + str(write_image[i])
-          dic[img_key] = image_chunk
-          p = Process(target=self.mp_store_img, args=(dic, img_key,
-                                                      dst,
-                                                      write_image[i],
-                                                      final_chunk,
-                                                      mip, True))
-          p.start()
-          self.p_list.append(p)
-          pre_field_key = "pre_field" + str(write_image[i])
-          dic[pre_field_key] = pre_field[i-1]
-          pf = Process(target=self.write_json, args=(vvote_field.path,
-                                                     pre_field_key,
-                                                     dic,
-                                                     pre_field_key))
-          pf.start()
-          self.p_list.append(pf)
 
+          pre_field_key = self.pre_field_path+str(mip)+"/"+str(z)
+          dic[pre_field_key] = pre_field[-1]
+
+          args_list=[[dic, img_key, dst, z, final_chunk, mip, True],
+                     [dic, field_key, vvote_field, z, final_chunk, mip, chunk_size],
+                     [vvote_field.path, pre_field_key, dic, pre_field_key]]
+          p = Process(target=self.checkpoint_write, args=(f_list, args_list, z,
+                                                          finish_dir))
+          p.start()
+          #print(p)
+          p.join()
+          self.p_list.append(p)
+
+          del image_list[0]
+          image_list.append(image)
+      print("finish -----------vv")
+      print("in p_list:", self.p_list)
       for i in self.p_list:
+          print("int loop", i)
           i.join()
       self.p_list=[]
 
@@ -1918,8 +2061,8 @@ class Aligner:
           start= chunk_size;
       x_range = chunk.x_range(mip=mip)
       y_range = chunk.y_range(mip=mip)
-      new_chunk = BoundingBox(x_range[0]+start,x_range[1]-chunk_size,
-                              y_range[0],y_range[1], mip=mip)
+      new_chunk = BoundingBox(x_range[0]+start, x_range[1]-chunk_size,
+                              y_range[0], y_range[1], mip=mip)
       return new_chunk
 
   def crop_chunk(self, chunk, mip, x_start, x_end, y_start, y_end):
@@ -2106,7 +2249,6 @@ class Aligner:
   def new_vector_vote(self, model_path, src_img, image_list, pre_field,
                       chunk_size, pad,
                       vvote_way, mip, inverse=False, serial=True,
-                      head_crop=False, end_crop=False,
                       softmin_temp=None, blur_sigma=None):
     extra_off = pad
     img_shape = src_img.shape
@@ -2116,17 +2258,7 @@ class Aligner:
     x_chunk_number = (x_len - 2*pad) // chunk_size
     y_chunk_number = (y_len - 2*pad) // chunk_size
     tmp_field = torch.ShortTensor(x_chunk_number, y_chunk_number, 2).zero_()
-    #if(first_chunk):
-    #    adjust = pad
-    #else:
-    #    adjust = 0
-    #image = torch.FloatTensor(1, 1, x_len-2*pad, y_len).zero_()
-    #dst_field = torch.FloatTensor(1,x_len, y_len, 2).zero_()
     dst_field = torch.ShortTensor(1,x_len, y_len, 2).zero_()
-    #tmp_dst_field = torch.FloatTensor(1,x_len, y_len, 2).zero_()
-    #print("===============x_chunk_number is ", x_chunk_number)
-    #elif head_crop == False and end_crop:
-    #    offset = 0
     def coor(x,y):
         for i in range(x):
             for j in range(y):
@@ -2157,13 +2289,6 @@ class Aligner:
                 coor_list.append([xs, ys])
         num_patch = len(coor_list)
         for i in range(vvote_way):
-            #if head_crop and end_crop:
-            #    offset = (image_list[i].shape[-2] - src_img.shape[-2])//2
-            #elif head_crop and end_crop==False:
-            #    offset = (image_list[i].shape[-2] - src_img.shape[-2])
-            #else:
-            #    offset = 0
-            offset = 0
             for j in range(num_patch):
                 xs, ys = coor_list[j]
                 if  not isinstance(pre_field[vv_off+i], torch.Tensor):
@@ -2177,7 +2302,7 @@ class Aligner:
                     extra_off+off[0]+xs*chunk_size:extra_off+off[0]+xs*chunk_size+padded_len,
                     extra_off+off[1]+ys*chunk_size:extra_off+off[1]+ys*chunk_size+padded_len]
                 tgt_patch[j,0,...] = image_list[vv_off+i][0,0,
-                    offset+xs*chunk_size:offset+xs*chunk_size+padded_len,
+                    xs*chunk_size:xs*chunk_size+padded_len,
                     ys*chunk_size:ys*chunk_size+padded_len]
             src_patch_new = src_patch[:num_patch,...].cuda()
             src_patch_new = self.convert_to_float(src_patch_new)
@@ -4118,7 +4243,7 @@ class Aligner:
       #print("++++closed shape",closed.shape)
       return closed, tmp_image
 
-  def wait_for_queue_empty(self, path, prefix, chunks_len):
+  def wait_for_queue_empty(self, path, prefix, chunks_len, time_slot=5):
     if self.distributed:
       print("\nWait\n"
             "path {}\n"
@@ -4128,8 +4253,7 @@ class Aligner:
       n = 0
       while not empty:
         if n > 0:
-          # sleep(1.75)
-          sleep(5)
+          sleep(time_slot)
         with Storage(path) as stor:
             lst = stor.list_files(prefix=prefix)
         i = sum(1 for _ in lst)
@@ -4143,6 +4267,15 @@ class Aligner:
               lst = stor.list_files(prefix=prefix+str(z))
               i += sum(1 for _ in lst)
       return i == chunks_len
+
+  def get_file_list(self, path):
+      with Storage(path) as stor:
+          lst = stor.list_files()
+      alist = []
+      for i in lst:
+          alist.append(i)
+      return alist
+
   @retry
   def sqs_is_empty(self):
     # hashtag hackerlife

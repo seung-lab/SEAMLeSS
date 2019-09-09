@@ -74,7 +74,7 @@ if __name__ == '__main__':
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--ds_mip', type=int, default=-1)
+  parser.add_argument('--upsample_mip', type=int, default=-1)
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
@@ -95,9 +95,9 @@ if __name__ == '__main__':
   src_mask_val = 1
   src_mask_mip = 8
   block_size = args.block_size
-  ds_mip = args.ds_mip
-  if ds_mip == -1:
-      ds_mip = mip
+  upsample_mip = args.upsample_mip
+  if upsample_mip == -1:
+      upsample_mip = mip
 
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
@@ -183,8 +183,9 @@ if __name__ == '__main__':
   end_z = be
 
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, 0, 1000, pad)
-  
+  upsample_bbox = a.get_chunk_grid(cm, bbox, upsample_mip, 0, 1000, 0)[0]
+
   a.stitch_compose_render(range(start_z, end_z), broadcasting_field,
                           influence_block, src, block_field, decay_dist,
                           mip, mip, chunk_grid[0], pad, pad, chunk_size,
-                          final_dst, ds_mip)
+                          final_dst, upsample_mip, upsample_bbox)

@@ -5,11 +5,13 @@ import sys
 from multiprocessing import Event, Process, Semaphore
 from time import sleep, time
 
-from taskqueue import TaskQueue
+from taskqueue import TaskQueue, LocalTaskQueue
 
 from as_args import get_aligner, get_argparser, parse_args
+from resend_task import get_task
 
 processes = {}
+tmp_dir= "/tmp/alignment/"
 
 
 def run_aligner(args, stop_fn=None):
@@ -25,6 +27,12 @@ def run_aligner(args, stop_fn=None):
     return False
 
   aligner = get_aligner(args)
+
+  if os.path.exists(tmp_dir):
+      task = get_task(aligner)
+      ltq = LocalTaskQueue(parallel=1)
+      ltq.insert_all(task, args= [aligner])
+
   with TaskQueue(queue_name=aligner.queue_name, queue_server='sqs', n_threads=0) as tq:
     tq.poll(execute_args=[aligner], stop_fn=stop_fn_with_parent_health_check, 
             lease_seconds=args.lease_seconds)

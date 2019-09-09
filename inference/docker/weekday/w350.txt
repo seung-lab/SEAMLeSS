@@ -1,0 +1,400 @@
+
+Random_write_time: 64.3263828754425
+Random_write_time: 61.085625886917114
+Random_write_time: 70.28840923309326
+
+Random_write_time: 69.81065392494202
+Random_write_time: 69.89335131645203
+
+Random_write_time: 69.84818530082703
+Random_write_time: 66.34808230400085
+
+
+Random_write_time: 74.85583639144897
+Random_write_time: 67.30489873886108
+Random_write_time: 66.50958299636841
+Random_write_time: 66.92302012443542
+Random_write_time: 65.42566251754761
+
+Random_write_time: 68.4383635520935
+Random_write_time: 69.83212494850159
+Random_write_time: 65.91787314414978
+Random_write_time: 70.31835222244263
+Random_write_time: 66.88343811035156
+
+Random_write_time: 64.46813607215881
+Random_write_time: 67.65127825737
+Random_write_time: 67.50132393836975
+Random_write_time: 65.72071313858032
+Random_write_time: 67.53608584403992
+Random_write_time: 62.350810289382935
+Random_write_time: 67.9665379524231
+Random_write_time: 60.21435070037842
+Random_write_time: 66.12836575508118
+Random_write_time: 64.86315155029297
+Random_write_time: 69.38162660598755
+Random_write_time: 64.1836268901825
+Random_write_time: 65.79696488380432
+Random_write_time: 68.66505360603333
+Random_write_time: 64.75841784477234
+Random_write_time: 66.72455739974976
+Random_write_time: 65.39005541801453
+Random_write_time: 71.71958804130554
+Random_write_time: 67.06074643135071
+Random_write_time: 67.32280421257019
+Random_write_time: 66.8794629573822
+Random_write_time: 66.69080328941345
+Random_write_time: 66.83599472045898
+Random_write_time: 65.7168436050415
+Random_write_time: 68.21090364456177
+Random_write_time: 65.52644562721252
+Random_write_time: 66.92498302459717
+Random_write_time: 66.88484477996826
+
+Random_write_time: 66.27520275115967
+Random_write_time: 66.5707266330719
+Random_write_time: 66.96049952507019
+Random_write_time: 68.41763496398926
+Random_write_time: 65.46769690513611
+Random_write_time: 65.77062964439392
+Random_write_time: 66.18066740036011
+Random_write_time: 65.88624572753906
+Random_write_time: 68.0910496711731
+Random_write_time: 67.49310541152954
+Random_write_time: 69.87124752998352
+Random_write_time: 66.79273104667664
+Random_write_time: 67.52597713470459
+Random_write_time: 72.70025587081909
+Random_write_time: 67.83236646652222
+Random_write_time: 66.82468938827515
+Random_write_time: 62.30168104171753
+Random_write_time: 66.84734058380127
+Random_write_time: 72.46027898788452
+Random_write_time: 67.20616364479065
+Random_write_time: 67.12428379058838
+Random_write_time: 64.75066208839417
+Random_write_time: 67.37961888313293
+Random_write_time: 65.40209174156189
+Random_write_time: 65.51748538017273
+Random_write_time: 65.56934547424316
+
+Random_write_time: 67.56588745117188
+Random_write_time: 61.124741554260254
+Random_write_time: 66.47685289382935
+Random_write_time: 65.84434032440186
+Random_write_time: 66.06979608535767
+Random_write_time: 66.02487993240356
+
+Random_write_time: 66.58748149871826
+Random_write_time: 69.29468178749084
+Random_write_time: 61.8493595123291
+Random_write_time: 66.60366463661194
+Random_write_time: 62.32370591163635
+Random_write_time: 72.21188545227051
+Random_write_time: 65.32922840118408
+Random_write_time: 66.63161182403564
+Random_write_time: 67.2997043132782
+
+Random_write_time: 66.46712279319763
+Random_write_time: 66.12840461730957
+Random_write_time: 66.75696587562561
+Random_write_time: 66.1562385559082
+Random_write_time: 59.780314445495605
+Random_write_time: 69.18867802619934
+
+Random_write_time: 68.18733859062195
+Random_write_time: 66.71897649765015
+Random_write_time: 64.03234767913818
+Random_write_time: 66.14169430732727
+Random_write_time: 65.93260359764099
+Random_write_time: 67.7488362789154
+Random_write_time: 61.28950238227844
+
+Random_write_time: 67.29803252220154
+Random_write_time: 63.92223143577576
+Random_write_time: 69.60098171234131
+Random_write_time: 69.42938756942749
+Random_write_time: 65.87110733985901
+Random_write_time: 66.80026078224182
+Random_write_time: 66.54499650001526
+Random_write_time: 71.38716292381287
+Random_write_time: 70.44288611412048
+Random_write_time: 65.86006546020508
+Random_write_time: 65.73248958587646
+Random_write_time: 68.8749258518219
+Random_write_time: 65.5838520526886
+Random_write_time: 67.29594540596008
+Random_write_time: 66.71353125572205
+Random_write_time: 64.08035159111023
+
+Random_write_time: 66.48541116714478
+Random_write_time: 67.35506677627563
+Random_write_time: 70.40170073509216
+Random_write_time: 62.135748863220215
+Random_write_time: 67.66301035881042
+Random_write_time: 65.06801676750183
+Random_write_time: 63.002808570861816
+Random_write_time: 68.0379753112793
+Random_write_time: 79.42165637016296
+Random_write_time: 66.93453025817871
+Random_write_time: 69.68614888191223
+Random_write_time: 66.75730800628662
+Random_write_time: 67.84461212158203
+Random_write_time: 70.75695371627808
+
+Random_write_time: 64.23228764533997
+Random_write_time: 70.28885555267334
+Random_write_time: 62.089930057525635
+
+Random_write_time: 62.7638680934906
+Random_write_time: 67.5841908454895
+Random_write_time: 68.45997142791748
+
+Random_write_time: 71.09765720367432
+Random_write_time: 70.1978509426117
+Random_write_time: 68.14551877975464
+Random_write_time: 70.59256768226624
+Random_write_time: 66.84043169021606
+Random_write_time: 66.1537778377533
+Random_write_time: 64.73753213882446
+Random_write_time: 72.44061779975891
+Random_write_time: 65.95729565620422
+Random_write_time: 66.9271297454834
+Random_write_time: 66.21516585350037
+
+
+Random_write_time: 66.55718994140625
+Random_write_time: 67.43230056762695
+Random_write_time: 67.64356398582458
+Random_write_time: 63.38679885864258
+Random_write_time: 59.91939353942871
+Random_write_time: 67.5806028842926
+Random_write_time: 66.33926200866699
+Random_write_time: 70.05157947540283
+Random_write_time: 65.15632581710815
+
+Random_write_time: 68.08137273788452
+Random_write_time: 64.71525740623474
+Random_write_time: 71.64303469657898
+
+Random_write_time: 64.58538436889648
+Random_write_time: 71.945059299469
+Random_write_time: 64.47845983505249
+Random_write_time: 67.60923719406128
+Random_write_time: 67.15820026397705
+Random_write_time: 66.65159177780151
+
+Random_write_time: 70.71235013008118
+Random_write_time: 67.89373993873596
+Random_write_time: 66.35278701782227
+Random_write_time: 62.75236511230469
+Random_write_time: 66.2563624382019
+Random_write_time: 67.99665188789368
+Random_write_time: 66.51700139045715
+Random_write_time: 65.82636713981628
+Random_write_time: 64.54853820800781
+Random_write_time: 63.65496206283569
+Random_write_time: 66.09941744804382
+
+Random_write_time: 67.48929810523987
+
+Random_write_time: 69.9254207611084
+Random_write_time: 64.88217949867249
+Random_write_time: 67.20852184295654
+
+Random_write_time: 64.7292411327362
+Random_write_time: 64.96128392219543
+
+Random_write_time: 67.47545456886292
+Random_write_time: 61.833266496658325
+Random_write_time: 70.247629404068
+Random_write_time: 66.17469644546509
+Random_write_time: 69.80193424224854
+Random_write_time: 71.32989645004272
+Random_write_time: 62.338706493377686
+
+Random_write_time: 66.91829633712769
+Random_write_time: 71.63581109046936
+
+Random_write_time: 67.28939247131348
+Random_write_time: 69.525883436203
+Random_write_time: 72.06468343734741
+Random_write_time: 66.91255807876587
+Random_write_time: 68.40100455284119
+Random_write_time: 67.10525274276733
+Random_write_time: 67.18360686302185
+Random_write_time: 63.68673491477966
+Random_write_time: 64.87858462333679
+Random_write_time: 66.37694478034973
+Random_write_time: 69.43573713302612
+Random_write_time: 66.28724193572998
+Random_write_time: 70.74383974075317
+Random_write_time: 66.53950262069702
+Random_write_time: 63.26928091049194
+Random_write_time: 65.20691776275635
+Random_write_time: 64.6019983291626
+Random_write_time: 65.72339415550232
+Random_write_time: 66.26928949356079
+Random_write_time: 66.0365343093872
+Random_write_time: 66.81499075889587
+Random_write_time: 65.78256845474243
+Random_write_time: 66.96415829658508
+Random_write_time: 71.06381011009216
+Random_write_time: 60.54926085472107
+Random_write_time: 66.51933002471924
+Random_write_time: 66.8986234664917
+Random_write_time: 68.40128898620605
+Random_write_time: 67.10388350486755
+
+Random_write_time: 67.94984316825867
+Random_write_time: 65.90383696556091
+Random_write_time: 70.5173487663269
+Random_write_time: 65.99595427513123
+Random_write_time: 66.59870409965515
+
+Random_write_time: 67.64366388320923
+Random_write_time: 70.16680479049683
+
+Random_write_time: 70.44929122924805
+Random_write_time: 66.76889252662659
+Random_write_time: 65.00944781303406
+Random_write_time: 72.18162178993225
+Random_write_time: 67.04731583595276
+Random_write_time: 70.19896411895752
+
+
+Random_write_time: 60.5246946811676
+Random_write_time: 67.05824041366577
+Random_write_time: 66.53551745414734
+Random_write_time: 66.98077654838562
+Random_write_time: 65.72633934020996
+Random_write_time: 69.49577236175537
+Random_write_time: 70.31774663925171
+Random_write_time: 66.4232451915741
+Random_write_time: 68.08354759216309
+Random_write_time: 70.09823155403137
+Random_write_time: 69.86029529571533
+Random_write_time: 66.85421872138977
+Random_write_time: 65.75312972068787
+Random_write_time: 67.7073233127594
+
+Random_write_time: 68.60699582099915
+Random_write_time: 67.37053942680359
+Random_write_time: 68.00002241134644
+Random_write_time: 67.96831822395325
+Random_write_time: 65.07047033309937
+Random_write_time: 67.057532787323
+
+Random_write_time: 63.5226035118103
+Random_write_time: 67.04923224449158
+Random_write_time: 67.68705224990845
+
+Random_write_time: 66.18046641349792
+
+Random_write_time: 66.81702518463135
+Random_write_time: 66.23615574836731
+Random_write_time: 70.12292098999023
+Random_write_time: 66.90103816986084
+Random_write_time: 64.68794369697571
+Random_write_time: 66.81897068023682
+
+Random_write_time: 65.20581579208374
+Random_write_time: 67.58374071121216
+Random_write_time: 62.61334848403931
+Random_write_time: 64.0104730129242
+Random_write_time: 65.41068935394287
+Random_write_time: 63.9890570640564
+Random_write_time: 70.41086673736572
+Random_write_time: 67.6671998500824
+Random_write_time: 68.79324507713318
+Random_write_time: 66.13835620880127
+Random_write_time: 66.80931639671326
+Random_write_time: 67.12813138961792
+Random_write_time: 71.16733169555664
+Random_write_time: 66.78287482261658
+Random_write_time: 70.02156019210815
+Random_write_time: 66.25183749198914
+Random_write_time: 70.34974956512451
+
+Random_write_time: 67.17607498168945
+Random_write_time: 71.88282036781311
+Random_write_time: 66.0413908958435
+Random_write_time: 66.52625870704651
+Random_write_time: 69.64801073074341
+Random_write_time: 65.82443904876709
+Random_write_time: 65.49352645874023
+Random_write_time: 65.99791598320007
+Random_write_time: 63.75899529457092
+
+
+Random_write_time: 66.18196773529053
+
+Random_write_time: 67.40370392799377
+Random_write_time: 69.93594264984131
+Random_write_time: 66.71545672416687
+Random_write_time: 66.56142950057983
+Random_write_time: 66.21588635444641
+
+Random_write_time: 65.04245615005493
+Random_write_time: 69.15649223327637
+Random_write_time: 66.0807740688324
+Random_write_time: 66.51010704040527
+Random_write_time: 65.49999785423279
+Random_write_time: 72.18111634254456
+Random_write_time: 69.78144860267639
+Random_write_time: 67.41687059402466
+Random_write_time: 70.49506068229675
+Random_write_time: 70.82990312576294
+
+Random_write_time: 66.3449194431305
+Random_write_time: 63.91385340690613
+Random_write_time: 62.549575090408325
+Random_write_time: 66.37285375595093
+
+Random_write_time: 66.87629890441895
+Random_write_time: 66.90493631362915
+Random_write_time: 64.2587661743164
+Random_write_time: 65.4262261390686
+Random_write_time: 70.94165301322937
+Random_write_time: 70.13276696205139
+Random_write_time: 65.20032930374146
+Random_write_time: 68.03487300872803
+Random_write_time: 64.57816076278687
+Random_write_time: 70.3809187412262
+Random_write_time: 71.4045639038086
+Random_write_time: 67.46192121505737
+Random_write_time: 70.47010707855225
+Random_write_time: 61.56940412521362
+Random_write_time: 66.26287174224854
+Random_write_time: 66.30558180809021
+Random_write_time: 64.99169635772705
+Random_write_time: 71.0897765159607
+Random_write_time: 71.25821018218994
+Random_write_time: 66.29038858413696
+Random_write_time: 66.85745620727539
+Random_write_time: 65.10061407089233
+Random_write_time: 68.20375370979309
+Random_write_time: 70.73580598831177
+
+Random_write_time: 66.06743383407593
+Random_write_time: 66.11693215370178
+Random_write_time: 66.55017709732056
+Random_write_time: 66.56417608261108
+Random_write_time: 69.98020076751709
+
+Random_write_time: 66.55182933807373
+Random_write_time: 71.91132593154907
+Random_write_time: 66.9299328327179
+Random_write_time: 68.47875618934631
+Random_write_time: 66.41982078552246
+
+Random_write_time: 72.13834381103516
+
+
+Random_write_time: 72.41248440742493
+Random_write_time: 70.36342906951904
+Random_write_time: 69.19984531402588
+Random_write_time: 66.23048877716064
+Random_write_time: 67.19465398788452
+Random_write_time: 67.05289506912231
+Random_write_time: 65.37546014785767

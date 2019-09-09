@@ -263,8 +263,10 @@ if __name__ == '__main__':
   serial_fields = block_pair_fields[0]
   block_start = block_starts[0]
   block_stop = block_stops[0]
+  start_z = -1
 #  a.new_align(src, dst, serial_fields, block_vvote_field, chunk_grid, mip, pad,
-#              block_start, block_stop, chunk_size, args.param_lookup,
+#              block_start, block_stop, start_z,
+#              chunk_size, args.param_lookup,
 #              src_mask_cv=src_mask_cv,
 #              src_mask_mip=src_mask_mip, src_mask_val=src_mask_val)
 
@@ -273,7 +275,7 @@ if __name__ == '__main__':
   tgt_cv = block_dst_lookup[bs]
   a.get_stitch_field(model_lookup, src_cv, tgt_cv, block_vvote_field,
                      broadcasting_field, src, overlap_copy_range,
-                     stitch_offset_to_z_range, mip, chunk_grid[0],
-                     chunk_size, pad,
+                     stitch_offset_to_z_range, start_z, mip,
+                     chunk_grid[0], chunk_size, pad,
                      softmin_temp=2**mip, blur_sigma=1)
 

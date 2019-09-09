@@ -8,7 +8,6 @@ from time import sleep, time
 from taskqueue import TaskQueue
 
 from args import get_aligner, get_argparser, parse_args
-
 processes = {}
 
 

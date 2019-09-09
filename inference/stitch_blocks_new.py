@@ -78,7 +78,7 @@ if __name__ == '__main__':
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--ds_mip', type=int, default=-1)
+  parser.add_argument('--upsample_mip', type=int, default=-1)
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
@@ -99,9 +99,9 @@ if __name__ == '__main__':
   src_mask_val = 1
   src_mask_mip = 8
   block_size = args.block_size
-  ds_mip = args.ds_mip
-  if ds_mip == -1:
-      ds_mip = mip
+  upsample_mip = args.upsample_mip
+  if upsample_mip == -1:
+      upsample_mip = mip
 
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
@@ -183,19 +183,20 @@ if __name__ == '__main__':
   global_z_start = args.z_start
   global_z_end = args.z_stop
 
+  qu = args.queue_name 
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, 0, 1000, pad)
-
+  upsample_bbox = a.get_chunk_grid(cm, bbox, upsample_mip, 0, 1000, 0)[0]
 #  start_z = block_starts[0]+1
 #  be = block_stops[0]
 #  end_z = be+1 if be<global_z_end else be
 #  influence_block = influencing_blocks_lookup[start_z]
-#  t = a.stitch_compose_render_task(chunk_grid[0], src, final_dst, start_z,
-#                                   end_z,
-#                                             broadcasting_field, block_field, decay_dist,
-#                                             influence_block,
-#                                             mip, mip, pad, pad, chunk_size)
+#  t = a.stitch_compose_render_task(qu, chunk_grid[0], src, final_dst, start_z,
+#                                   end_z, broadcasting_field, block_field,
+#                                   decay_dist, influence_block,
+#                                   mip, mip, pad, pad, chunk_size,
+#                                   upsample_mip)
 #
-
+#
 #  remote_upload(args.queue_name, t)
 
    # Task Scheduling Iterators
@@ -203,8 +204,6 @@ if __name__ == '__main__':
       def __init__(self, bs_list, be_list):
           self.bs_list = bs_list
           self.be_list = be_list
-          print("bs list is ", self.bs_list)
-          print("be list is ", self.be_list)
 
       def __iter__(self):
           for bs, be in zip(self.bs_list, self.be_list):
@@ -212,11 +211,11 @@ if __name__ == '__main__':
               influence_block = influencing_blocks_lookup[start_z]
               end_z = be+1 if be<global_z_end else be
               print("influence_block is", influence_block)
-              t = a.stitch_compose_render_task(chunk_grid[0], src, final_dst, start_z, end_z,
+              t = a.stitch_compose_render_task(qu, chunk_grid[0], src, final_dst, start_z, end_z,
                                                broadcasting_field, block_field, decay_dist,
                                                influence_block,
                                                mip, mip, pad, pad, chunk_size,
-                                               ds_mip)
+                                               upsample_mip, upsample_bbox)
               yield from t
 
   ptask = []
