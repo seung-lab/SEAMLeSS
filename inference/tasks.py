@@ -90,12 +90,15 @@ class PredictImageTask(RegisteredTask):
     print(':{:.3f} s'.format(diff))
 
 class StitchComposeRenderTask(RegisteredTask):
-    def __init__(self, qu, z_start, z_stop, b_field, influence_blocks, src,
+    def __init__(self, qu, influence_index, z_start, z_stop, b_field,
+                 influence_blocks, src,
                  vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                 extra_off, chunk_size, dst, upsample_mip, upsample_bbox):
-        super().__init__(qu, z_start, z_stop, b_field, influence_blocks, src,
+                 extra_off, finish_dir, chunk_size, dst, upsample_mip,
+                 upsample_bbox):
+        super().__init__(qu, influence_index, z_start, z_stop, b_field,
+                         influence_blocks, src,
                          vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                         extra_off, chunk_size, dst, upsample_mip,
+                         extra_off, finish_dir, chunk_size, dst, upsample_mip,
                          upsample_bbox)
     def execute(self, aligner):
         init_checkpoint()
@@ -125,8 +128,13 @@ class StitchComposeRenderTask(RegisteredTask):
         start = time()
         aligner.stitch_compose_render(z_range, b_field, influence_blocks, src, vv_field_cv,
                                       decay_dist, src_mip, dst_mip, bbox, pad, extra_off,
-                                      chunk_size, dst, upsample_mip,
-                                      upsample_bbox)
+                                      chunk_size, dst, self.finish_dir,
+                                      upsample_mip, upsample_bbox)
+        with Storage(self.dst) as stor:
+            path = 'stitch_rander_done/{}/{}'.format(str(dst_mip),
+                                                        str(self.influence_index))
+            stor.put_file(path, '')
+            print('Marked finished at {}'.format(path))
         end = time()
         diff = end - start
         print('Stitch compose and render task time:{:.3f} s'.format(diff), flush=True)

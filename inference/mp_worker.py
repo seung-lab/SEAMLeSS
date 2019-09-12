@@ -30,6 +30,8 @@ def run_aligner(args, stop_fn=None):
 
   if os.path.exists(tmp_dir):
       task = get_task(aligner)
+      for i in task:
+          print("task ", i)
       ltq = LocalTaskQueue(parallel=1)
       ltq.insert_all(task, args= [aligner])
 

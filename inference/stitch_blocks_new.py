@@ -28,6 +28,8 @@ from tasks import run
 from boundingbox import BoundingBox
 from tasks import remote_upload
 
+from resend_task import calc_start_z
+
 def print_run(diff, n_tasks):
   if n_tasks > 0:
     print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
@@ -149,12 +151,15 @@ if __name__ == '__main__':
   # Compile ranges
   decay_dist = args.decay_dist
   compose_range = range(args.z_start, args.z_stop)
-  influencing_blocks_lookup = {z: [] for z in compose_range}
+  #influencing_blocks_lookup = {z: [] for z in compose_range}
+  influencing_blocks_lookup = {}
   for b_start in block_starts:
-    #for z in range(b_start+1, b_start+decay_dist+1):
-      z = b_start+1
+    for z in range(b_start+1, b_start+decay_dist+1, block_size):
       if z < args.z_stop:
-          influencing_blocks_lookup[z].append(b_start)
+          if z in influencing_blocks_lookup:
+              influencing_blocks_lookup[z].append(b_start)
+          else:
+              influencing_blocks_lookup[z] = [b_start]
 
   # Create CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
@@ -162,7 +167,7 @@ if __name__ == '__main__':
   src_mask_cv = None
   tgt_mask_cv = None
 
-  broadcasting_field = cm.create(join(args.dst_path, 'field', 
+  broadcasting_field = cm.create(join(args.dst_path, 'field',
                                       'stitch', 'broadcasting'),
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=False).path
@@ -183,9 +188,12 @@ if __name__ == '__main__':
   global_z_start = args.z_start
   global_z_end = args.z_stop
 
-  qu = args.queue_name 
+  qu = args.queue_name
   chunk_grid = a.get_chunk_grid(cm, bbox, mip, 0, 1000, pad)
   upsample_bbox = a.get_chunk_grid(cm, bbox, upsample_mip, 0, 1000, 0)[0]
+
+  task_finish=final_dst+'/stitch_rander_done/{}/'.format(str(mip))
+  slice_finish=final_dst+'/finish_slice/'+str(mip)+'/'
 #  start_z = block_starts[0]+1
 #  be = block_stops[0]
 #  end_z = be+1 if be<global_z_end else be
@@ -201,32 +209,46 @@ if __name__ == '__main__':
 
    # Task Scheduling Iterators
   class StitchComposeRenderT(object):
-      def __init__(self, bs_list, be_list):
+      def __init__(self, bs_list, be_list, start_list):
           self.bs_list = bs_list
           self.be_list = be_list
+          self.start_list =start_list
 
       def __iter__(self):
-          for bs, be in zip(self.bs_list, self.be_list):
-              start_z = bs+1
-              influence_block = influencing_blocks_lookup[start_z]
+          for i in range(len(self.be_list)):
+              bs = self.bs_list[i]
+              be = self.be_list[i]
+              start_z = bs+1 if self.start_list[i]==-1 else self.start_list[i]
+              influence_block_index = bs+1
+              influence_block = influencing_blocks_lookup[influence_block_index]
               end_z = be+1 if be<global_z_end else be
-              print("influence_block is", influence_block)
-              t = a.stitch_compose_render_task(qu, chunk_grid[0], src, final_dst, start_z, end_z,
-                                               broadcasting_field, block_field, decay_dist,
-                                               influence_block,
+              finish_dir = slice_finish+str(bs)+"/"
+              t = a.stitch_compose_render_task(qu, chunk_grid[0], src,
+                                               final_dst, bs, start_z,
+                                               end_z, broadcasting_field,
+                                               block_field, decay_dist,
+                                               influence_block, finish_dir,
                                                mip, mip, pad, pad, chunk_size,
                                                upsample_mip, upsample_bbox)
               yield from t
-
+#  print(influencing_blocks_lookup)
   ptask = []
-  bs_list = make_range(block_starts, a.threads)
-  be_list = make_range(block_stops, a.threads)
+  bstart_list, bend_list, start_z_list = calc_start_z(block_starts, block_stops,
+                                  task_finish, slice_finish,
+                                  skip_list)
+  bs_list = make_range(bstart_list, a.threads)
+  be_list = make_range(bend_list, a.threads)
+  start_list = make_range(start_z_list, a.threads)
   print("bs_list is ", bs_list)
   print("be_list is ", be_list)
+  print("influencing_blocks_lookup", influencing_blocks_lookup)
   #ptask.append(StitchComposeRenderT(block_starts, block_stops))
   #remote_upload_it(StitchComposeRenderT(block_starts, block_stops))
-  for bs, be in zip(bs_list, be_list):
-      ptask.append(StitchComposeRenderT(bs, be))
+  for i in range(len(bs_list)):
+      bs = bs_list[i]
+      be = be_list[i]
+      start = start_list[i]
+      ptask.append(StitchComposeRenderT(bs, be, start))
   #for i in ptask[0]:
   #    print(i)
   with ProcessPoolExecutor(max_workers=a.threads) as executor:
@@ -235,7 +257,8 @@ if __name__ == '__main__':
   start = time()
   #print("start until now time", start - begin_time)
   #a.wait_for_queue_empty(dst.path, 'load_image_done/{}'.format(mip), len(batch))
-  a.wait_for_sqs_empty()
+  a.wait_for_queue_empty(task_finish, '', len(bstart_list), 30)
+  #a.wait_for_sqs_empty()
   end = time()
   diff = end - start
   print("Executing Loading Tasks use time:", diff)

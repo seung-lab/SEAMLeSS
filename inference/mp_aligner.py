@@ -340,16 +340,13 @@ class Aligner:
       self.manager = None
       self.dic = None
 
-  def stitch_get_field_task_generator(self, qu, param_lookup, bs_list, be_list,
+  def stitch_get_field_task_generator(self, qu, param_lookup, bs, be,
                                       src_cv, tgt_cv, prev_field_cv,
                                       bfield_cv, raw_cv, mip, start_z,
                                       bbox, chunk_size, pad, finish_dir,
                                       softmin_temp, blur_sigma):
       batch = []
-      for i in range(len(bs_list)):
-          bs = bs_list[i]
-          be = be_list[i]
-          batch.append(tasks.StitchGetField(qu, param_lookup, bs, be, src_cv, tgt_cv,
+      batch.append(tasks.StitchGetField(qu, param_lookup, bs, be, src_cv, tgt_cv,
                                             prev_field_cv, bfield_cv, raw_cv, mip,
                                             pad, bbox, start_z, finish_dir,
                                             chunk_size, softmin_temp, blur_sigma))
@@ -385,7 +382,7 @@ class Aligner:
                               skip_list.append(z)
                           model_lookup[z] = model_path
                           tgt_radius_lookup[z] = tgt_radius
-                          vvote_lookup[z] = [-i for i in range(1, tgt_radius + 1)] 
+                          vvote_lookup[z] = [-i for i in range(1, tgt_radius + 1)]
       write_list(skip_list, tmp_dir+"skip")
       min_offset = 0
       for z, tgt_radius in vvote_lookup.items():
@@ -737,18 +734,21 @@ class Aligner:
       f = f/4.0
       #print(type(f), f.shape)
       f = f * f_factor
+      #print("----------------len of filed_list", len(field_list))
       while is_identity(f):
+        print(" ------------ f is identity")
         f_cv, *field_list = field_list
         f_mip, *mip_list = mip_list
         f_factor, *factors = factors
         f = f_cv[:,
                extra_off+xs*chunk_size:extra_off+xs*chunk_size+padded_len,
                extra_off+ys*chunk_size:extra_off+ys*chunk_size+padded_len,:]
+        if len(field_list) == 0:
+            print(" return since field_list is empty")
+            return f[:,pad:-pad, pad:-pad,:]
         f = f.to(device=self.device)
         f = f.type(torch.float) / 4.0
         f = f * f_factor
-        if len(field_list) == 0:
-            return f[:,pad:-pad, pad:-pad,:]
       # compose with the remaining fields
       while len(field_list) > 0:
           g_cv, *field_list = field_list
@@ -756,13 +756,14 @@ class Aligner:
           g_factor, *factors = factors
 
           distance = self.profile_field(f)
-          distance = (distance // (2 ** g_mip))
+          distance = (distance // (2 ** g_mip)) #distance at mip level
+          print("------------------- distance is", distance)
           adjust_dis = distance.flip(0)
           adjust_dis = adjust_dis.type(torch.int)
           g = g_cv[:,
                adjust_dis[0]+extra_off+xs*chunk_size:adjust_dis[0]+extra_off+xs*chunk_size+padded_len,
                adjust_dis[1]+extra_off+ys*chunk_size:adjust_dis[1]+extra_off+ys*chunk_size+padded_len,:]
-          distance = distance * 2 ** g_mip
+          distance = distance * (2 ** g_mip)
 
           g = g.to(device=self.device)
           g = g.type(torch.float)/4.0
@@ -780,6 +781,9 @@ class Aligner:
           h += distance.to(device=self.device)
           f = h
       f = f[:, pad:-pad, pad:-pad, :]
+      f = f*4
+      f = f.type(torch.int16)
+      f = f.to(device='cpu')
       return f
   def divide_field_into_chunks(self, x_chunk_number, y_chunk_number, chunk_size, pad,
                          extra_off, field):
@@ -882,15 +886,18 @@ class Aligner:
           #     extra_off+pad+xs*chunk_size:extra_off+pad+xs*chunk_size+chunk_size,
           #     extra_off+pad+ys*chunk_size:extra_off+pad+xs*chunk_size+chunk_size,:]=f
 
-  def stitch_compose_render_task(self, qu, bbox, src, dst, z_start, z_stop, b_field,
+  def stitch_compose_render_task(self, qu, bbox, src, dst, influence_index,
+                                 z_start, z_stop, b_field,
                                  vv_field, decay_dist, influence_blocks,
+                                 finish_dir,
                                  src_mip, dst_mip, pad, extra_off,
                                  chunk_size, upsample_mip, upsample_bbox):
       batch = []
-      task  = tasks.StitchComposeRenderTask(qu, z_start, z_stop, b_field,
+      task  = tasks.StitchComposeRenderTask(qu, influence_index, z_start,
+                                            z_stop, b_field,
                                             influence_blocks, src, vv_field,
                                             decay_dist, src_mip, dst_mip,
-                                            bbox, pad, extra_off,
+                                            bbox, pad, extra_off, finish_dir,
                                             chunk_size, dst, upsample_mip,
                                             upsample_bbox)
       batch.append(task)
@@ -898,10 +905,11 @@ class Aligner:
 
   def stitch_compose_render(self, z_range, broadcast_field, influence_blocks, src,
                             vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                            extra_off, chunk_size, dst, upsample_mip,
+                            extra_off, chunk_size, dst, finish_dir, upsample_mip,
                             upsample_bbox):
       print("in stitch compose_render function ")
       write_list([], tmp_dir+"skip")
+      self.device = torch.device('cpu')
       if self.manager == None:
           self.manager = Manager()
           self.dic = self.manager.dict()
@@ -921,6 +929,7 @@ class Aligner:
       b_field = []
       vv_field_cv.create(src_mip)
       broadcast_field.create(src_mip)
+      print("influence_blocks is", influence_blocks)
       for index in influence_blocks:
           p = Process(target=self.mp_load_field, args=(dic,
                                                        field_prefix+"b"+str(index),
@@ -928,27 +937,35 @@ class Aligner:
                                                        chunk, src_mip))
           p.start()
           load_f.append(p)
-      p = Process(target=self.mp_load_field, args=(dic, field_prefix, vv_field_cv,
+      p = Process(target=self.mp_load_field, args=(dic,
+                                                   field_prefix+str(z_range[0]),
+                                                   vv_field_cv,
                                                    z_range[0], chunk, src_mip))
       p.start()
       load_f.append(p)
       src.create(dst_mip)
       dst.create(dst_mip)
       f_list = [self.mp_store_img]
+      if dst_mip != upsample_mip:
+          f_list.append(self.mp_store_img)
       for i, z in enumerate(z_range):
           for p in load_f:
               p.join()
           load_f = []
-          vv_field = dic[field_prefix]
+          acc_key = field_prefix+str(z)
+          vv_field = dic[acc_key]
+          del dic[acc_key]
           if i== 0:
               for index in influence_blocks:
                   bf = dic[field_prefix+"b"+str(index)]
                   b_field.append(bf)
 
           if z != z_range[-1]:
-              p = Process(target=self.mp_load_field, args=(dic, field_prefix, vv_field_cv,
+              p = Process(target=self.mp_load_field, args=(dic,
+                                                           field_prefix+str(z_range[i+1]),
+                                                           vv_field_cv,
                                                            z_range[i+1], chunk,
-                                                          src_mip))
+                                                           src_mip))
               p.start()
               load_f.append(p)
           p = Process(target=self.mp_load, args=(dic, img_prefix, src, z,
@@ -958,23 +975,23 @@ class Aligner:
           factors = [self.interpolate(z, bs, decay_dist) for bs in influence_blocks]
           factors += [1.]
           field_list = b_field + [vv_field]
+          print(b_field[0])
+          #print("z is", z ,"factors is", factors)
           dst_field = self.compose_slice(field_list, chunk_size, pad,
                                        extra_off, src_mip, dst_mip,
                                        factors)
+          print("dst_field", dst_field)
           for lp in load_im:
               lp.join()
           load_im = []
           src_img = dic[img_prefix]
-          print("////////// src_img shape", src_img.shape)
+          #print("////////// src_img shape", src_img.shape)
           final_img = self.warp_slice(chunk_size, pad, dst_mip, src_img, dst_field)
           final_img = final_img[..., pad:-pad, pad:-pad]
           write_key = "write_img" + str(z)
           dic[write_key] = final_img
           args=[[dic, write_key, dst, z, unpadded_chunk, dst_mip, True]]
-          up = Process(target=self.checkpoint_write, args=(f_list, args, z,
-                                                           "final_done/"+str(dst_mip)))
-          up.start()
-          self.p_list.append(up)
+
           if dst_mip!=upsample_mip:
               factor = 2**(dst_mip-upsample_mip)
               #print(" //// factor is ", factor, final_img.shape)
@@ -997,12 +1014,14 @@ class Aligner:
                                           delta_y0:delta_y1]
               write_key = "write_upsample" + str(z)
               dic[write_key] = upsample_img
+              args.append([dic, write_key, dst, z, upsample_bbox, upsample_mip,
+                           True])
 
-              args=[dic, write_key, dst, z, upsample_bbox, upsample_mip, True]
-              up = Process(target=self.checkpoint_write, args=(f_list, args, z,
-                                                               "final_done/"+str(upsample_mip)))
-              up.start()
-              self.p_list.append(up)
+          up = Process(target=self.checkpoint_write, args=(f_list, args, z,
+                                                           finish_dir))
+          up.start()
+          self.p_list.append(up)
+
       for p in self.p_list:
           p.join()
       self.p_list =[]
@@ -1579,14 +1598,14 @@ class Aligner:
   def mp_load_field(self, dic, key, field_cv, z, chunk, mip):
       start = time()
       ppid = os.getpid()
-      print("start a new process to load field {} ppid {}".format(z,ppid), flush=True)
+      print("start a new process to load field {} ppid {}".format(z, ppid), flush=True)
       field = self.get_field(field_cv, z, chunk, mip, relative=False,
                              to_tensor=False, as_int16=False)
       field = torch.from_numpy(field)
       dic[key] = field
       end = time()
       diff = end -start
-      print("end of the load_field process {} using {}".format(ppid, diff), flush=True)
+      print("end load_field process {} using {} z {}".format(ppid, diff, z), flush=True)
 
   def mp_downsampling_store(self, dic, key, dst, z, chunk, src_mip, dst_mip):
       start =time()
@@ -1666,6 +1685,7 @@ class Aligner:
               p.start()
               pre_load_list.append(p)
 
+      f_list = [self.mp_store_img]
       for j, z in enumerate(serial_range[serial_range_start:]):
           print("---------------- z ", z)
           for i in p_list:
@@ -1691,7 +1711,6 @@ class Aligner:
           image_list.append(new_tgt_image)
           img_key = "store_img" + str(z)
           dic[img_key] = new_tgt_image[...,pad:-pad,pad:-pad]
-          f_list = [self.mp_store_img]
           args_list =[[dic, img_key, dst, z, final_chunk, mip, True]]
           pi = Process(target=self.checkpoint_write, args=(f_list, args_list,
                                                            z, finish_dir))
@@ -1909,7 +1928,7 @@ class Aligner:
                                                           finish_dir))
           p.start()
           #print(p)
-          p.join()
+          #p.join()
           self.p_list.append(p)
 
           del image_list[0]

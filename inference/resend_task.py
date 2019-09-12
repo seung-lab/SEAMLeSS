@@ -83,7 +83,6 @@ def find_non_consecutive(file_name, skip_list):
     number_list = list(map(int, number_list))
     number_list.sort()
     for i, z in enumerate(number_list[:-1]):
-        print(i, z)
         if (z+1 != number_list[i+1]) and (z+1 not in skip_list):
             return z+1
     restart = number_list[-1]+1
@@ -107,15 +106,15 @@ def get_task(a):
         bs = int(arg_dic["block_start"])
         be = int(arg_dic["block_stop"])
         if restart_z ==-1:
-            start_z = arg_dic["start_z"]
+            start_z = int(arg_dic["start_z"])
         else:
-            start_z = restart_z
+            start_z = int(restart_z)
         src = arg_dic["src"]
         dst = arg_dic["dst"]
         block_pair_field = arg_dic["s_field"]
         block_vvote_field = arg_dic["vvote_field"]
         chunk_grid =[deserialize_bbox(arg_dic["chunk_grid"][0])]
-        print(chunk_grid, type(chunk_grid))
+        #print(chunk_grid, type(chunk_grid))
         mip = int(arg_dic["mip"])
         pad = int(arg_dic["pad"])
         chunk_size = int(arg_dic["chunk_size"])
@@ -140,8 +139,9 @@ def get_task(a):
             start_z = arg_dic["z_start"]
         else:
             start_z = restart_z
+        print("start_z is ", start_z)
         end_z = arg_dic["z_stop"]
-        bbox =deserialize_bbox(arg_dic["bbox"])
+        bbox = deserialize_bbox(arg_dic["bbox"])
         src = arg_dic["src"]
         dst = arg_dic["dst"]
         broadcasting_field = arg_dic["b_field"]
@@ -154,11 +154,16 @@ def get_task(a):
         extra_off = arg_dic["extra_off"]
         chunk_size = arg_dic["chunk_size"]
         upsample_mip = arg_dic["upsample_mip"]
+        finish_dir = arg_dic["finish_dir"]
+        influence_index = arg_dic["influence_index"]
         upsample_bbox = deserialize_bbox(arg_dic["upsample_bbox"])
-        t = a.stitch_compose_render_task(qu, bbox, src, dst, start_z, end_z,
-                                     broadcasting_field, block_field, decay_dist,
-                                     influence_block, src_mip, dst_mip, pad, pad, chunk_size,
-                                     upsample_mip, upsample_bbox)
+        t = a.stitch_compose_render_task(qu, bbox, src, dst, influence_index,
+                                         start_z, end_z, broadcasting_field,
+                                         block_field, decay_dist,
+                                         influence_block, finish_dir,
+                                         src_mip, dst_mip, pad, pad,
+                                         chunk_size,
+                                         upsample_mip, upsample_bbox)
     elif arg_dic["class"] == "StitchGetField":
         qu = arg_dic["qu"]
         src_cv = arg_dic["src_cv"]
@@ -167,22 +172,24 @@ def get_task(a):
         block_vvote_field = arg_dic["prev_field_cv"]
         broadcasting_field = arg_dic["bfield_cv"]
         src = arg_dic["raw_cv"]
-        mip = arg_dic["mip"]
-        bs = arg_dic["bs"]
-        be = arg_dic["be"]
+        mip = int(arg_dic["mip"])
+        bs = int(arg_dic["bs"])
+        be = int(arg_dic["be"])
+        finish_dir = arg_dic["finish_dir"]
         if restart_z ==-1:
-            start_z = arg_dic["start_z"]
+            start_z = int(arg_dic["start_z"])
         else:
-            start_z = restart_z
-        bbox = arg_dic["bbox"]
-        chunk_size = arg_dic["chunk_size"]
-        pad = arg_dic["pad"]
+            start_z = int(restart_z)
+        bbox = deserialize_bbox(arg_dic["bbox"])
+        chunk_size = int(arg_dic["chunk_size"])
+        pad = int(arg_dic["pad"])
         softmin_temp = arg_dic["softmin_temp"]
         blur_sigma = arg_dic["blur_sigma"]
         t = a.stitch_get_field_task_generator(qu, param_lookup,[bs], [be], src_cv, tgt_cv,
                                               block_vvote_field, broadcasting_field,
                                               src, mip, start_z, bbox, chunk_size,
-                                              pad, softmin_temp, blur_sigma)
+                                              pad, finish_dir,
+                                              softmin_temp, blur_sigma)
     return t
 
 
