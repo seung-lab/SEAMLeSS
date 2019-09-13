@@ -141,11 +141,12 @@ class StitchComposeRenderTask(RegisteredTask):
 
 class StitchGetField(RegisteredTask):
     def __init__(self, qu, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
-                 bfield_cv, raw_cv, mip, pad,bbox, start_z, finish_dir, chunk_size,
-                 softmin_temp, blur_sigma):
+                 bfield_cv, tmp_img_cv, tmp_vvote_field_cv, mip, pad, bbox,
+                 start_z, finish_dir, chunk_size, softmin_temp, blur_sigma):
         super().__init__(qu, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
-                         bfield_cv, raw_cv, mip, pad, bbox, start_z,
-                         finish_dir, chunk_size, softmin_temp, blur_sigma)
+                         bfield_cv, tmp_img_cv, tmp_vvote_field_cv, mip, pad,
+                         bbox, start_z, finish_dir, chunk_size,
+                         softmin_temp, blur_sigma)
     def execute(self, aligner):
         init_checkpoint()
         print_obj(self._args, "StitchGetField")
@@ -161,12 +162,12 @@ class StitchGetField(RegisteredTask):
         chunk_size = self.chunk_size
         softmin_temp = self.softmin_temp
         blur_sigma = self.blur_sigma
-        raw_cv = DCV(self.raw_cv)
         pad = self.pad
         bs = self.bs
         be = self.be
         start_z = self.start_z
-
+        tmp_img_cv = DCV(self.tmp_img_cv)
+        tmp_vvote_field_cv = DCV(self.tmp_vvote_field_cv)
         print("\n Stitch get field task\n"
               "src {}\n"
               "MIP{}\n"
@@ -175,9 +176,8 @@ class StitchGetField(RegisteredTask):
         start = time()
 
         aligner.get_stitch_field_task(param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
-                            bfield_cv, raw_cv, mip, bbox, chunk_size, pad,
-                            start_z, self.finish_dir,
-                            softmin_temp, blur_sigma)
+                            bfield_cv, tmp_img_cv, tmp_vvote_field_cv, mip, bbox, chunk_size,
+                                      pad, start_z, self.finish_dir, softmin_temp, blur_sigma)
         with Storage(self.bfield_cv) as stor:
             path = 'get_stitch_field_done/{}/{}'.format(str(mip), str(bs))
             stor.put_file(path, '')

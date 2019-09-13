@@ -342,19 +342,21 @@ class Aligner:
 
   def stitch_get_field_task_generator(self, qu, param_lookup, bs, be,
                                       src_cv, tgt_cv, prev_field_cv,
-                                      bfield_cv, raw_cv, mip, start_z,
+                                      bfield_cv, tmp_img_cv,
+                                      tmp_vvote_field_cv, mip, start_z,
                                       bbox, chunk_size, pad, finish_dir,
                                       softmin_temp, blur_sigma):
       batch = []
       batch.append(tasks.StitchGetField(qu, param_lookup, bs, be, src_cv, tgt_cv,
-                                            prev_field_cv, bfield_cv, raw_cv, mip,
-                                            pad, bbox, start_z, finish_dir,
-                                            chunk_size, softmin_temp, blur_sigma))
+                                        prev_field_cv, bfield_cv,
+                                        tmp_img_cv, tmp_vvote_field_cv, mip,
+                                        pad, bbox, start_z, finish_dir,
+                                        chunk_size, softmin_temp, blur_sigma))
       return batch
 
   def get_stitch_field_task(self, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
-                            bfield_cv, raw_cv, mip, bbox, chunk_size, pad,
-                            start_z, finish_dir,
+                            bfield_cv, tmp_img_cv, tmp_vvote_field_cv, mip, bbox,
+                            chunk_size, pad, start_z, finish_dir,
                             softmin_temp, blur_sigma):
       block_range = range(bs, be+1)
       model_lookup = {}
@@ -382,9 +384,11 @@ class Aligner:
                               skip_list.append(z)
                           model_lookup[z] = model_path
                           tgt_radius_lookup[z] = tgt_radius
-                          vvote_lookup[z] = [-i for i in range(1, tgt_radius + 1)]
+                          #vvote_lookup[z] = [-i for i in range(1, tgt_radius + 1)]
+                          vvote_lookup[z] = [-i for i in range(1, tgt_radius)]
       write_list(skip_list, tmp_dir+"skip")
       min_offset = 0
+      print("-------------------------tmp_img_cv", tmp_img_cv)
       for z, tgt_radius in vvote_lookup.items():
           offset = 0
           for i, r in enumerate(tgt_radius):
@@ -415,7 +419,7 @@ class Aligner:
                   break
 
       self.get_stitch_field(model_lookup, src_cv, tgt_cv, prev_field_cv,
-                            bfield_cv, raw_cv,
+                            bfield_cv, tmp_img_cv, tmp_vvote_field_cv,
                             overlap_copy_range, stitch_offset_to_z_range,
                             start_z, finish_dir,
                             mip, bbox, chunk_size, pad, softmin_temp=softmin_temp,
@@ -428,7 +432,8 @@ class Aligner:
 
 
   def get_stitch_field(self, model_lookup, src_cv, tgt_cv, prev_field_cv,
-                       bfield_cv, src, overlap_copy, compute_field_range,
+                       bfield_cv, tmp_img_cv, tmp_vvote_field_cv,
+                       overlap_copy, compute_field_range,
                        start_z, finish_dir, mip, bbox, chunk_size,
                        pad, softmin_temp=None, blur_sigma=None):
       if self.manager == None:
@@ -438,9 +443,11 @@ class Aligner:
       print("compute_field_range", compute_field_range)
       print("overlap_copy", overlap_copy)
       if -1 == start_z:
-          start_z = overlap_copy[-1]
+          #start_z = overlap_copy[-1]
+          start_z = compute_field_range[0]
       dst_fields = self.stitch_calc_field(model_lookup, src_cv, tgt_cv, prev_field_cv,
-                                          src, overlap_copy, compute_field_range,
+                                          tmp_img_cv, tmp_vvote_field_cv,
+                                          overlap_copy, compute_field_range,
                                           start_z, finish_dir, mip, bbox, chunk_size, pad,
                                           softmin_temp=softmin_temp,
                                           blur_sigma=blur_sigma)
@@ -463,7 +470,8 @@ class Aligner:
       f.close()
 
 
-  def stitch_calc_field(self, model_lookup, src_cv, tgt_cv, prev_field_cv, src,
+  def stitch_calc_field(self, model_lookup, src_cv, tgt_cv, prev_field_cv,
+                        tmp_img_cv, tmp_vvote_field_cv,
                         overlap_copy, compute_field_range, start_z, finish_dir,
                         mip, bbox, chunk_size,
                         pad, softmin_temp=None, blur_sigma=None):
@@ -473,20 +481,27 @@ class Aligner:
       origin_chunk = deepcopy(bbox)
       extra_off = pad
       chunk.uncrop(extra_off, mip=mip)
-      image_list =  [None]* (len(overlap_copy)-1)
-      pre_field =  [None]* (len(overlap_copy)-1)
+      #image_list =  [None]* (len(overlap_copy)-1)
+      #pre_field =  [None]* (len(overlap_copy)-1)
+      image_list =  [None]* (len(overlap_copy))
+      pre_field =  [None]* (len(overlap_copy))
       dic = self.dic
       load_list = []
       load_prefix = "stitch_img"
       field_prefix = "stitch_field"
       pre_field_prefix = "pre_field"
       print("------------- overlap_copy is ", overlap_copy)
-      vvote_way = len(overlap_copy) -1
+      #vvote_way = len(overlap_copy) -1
+      vvote_way = len(overlap_copy)
       load_field_list = []
 
-      if start_z == overlap_copy[-1]:
-          load_slice_range = overlap_copy[:-1]
-          compute_range = overlap_copy[-1:] + compute_field_range
+      #if start_z == overlap_copy[-1]:
+      #    load_slice_range = overlap_copy[:-1]
+      #    compute_range = overlap_copy[-1:] + compute_field_range
+      #    field_range = []
+      if start_z == compute_field_range[0]:
+          load_slice_range = overlap_copy
+          compute_range = compute_field_range
           field_range = []
       else:
           start_index = 0
@@ -499,17 +514,18 @@ class Aligner:
           load_slice_range= overlap_copy[-(vvote_way-start_index):]
           for z in compute_field_range[:start_index]:
               load_slice_range.append(z)
-
           compute_range = compute_field_range[start_index:]
 
+      print("load src img from ", src_cv.path, " start_z is ", start_z )
       ps = Process(target=self.mp_load, args=(dic,
                                           load_prefix+str(start_z),
-                                          src, start_z,
+                                          src_cv, start_z,
                                           chunk, mip, None, 0, 0))
       ps.start()
       load_list.append(ps)
 
       for z in load_slice_range:
+          print("-----------------load img ", z, " from ", tgt_cv.path)
           pi = Process(target=self.mp_load, args=(dic, load_prefix+str(z),
                                                  tgt_cv, z, chunk, mip))
           pi.start()
@@ -539,6 +555,15 @@ class Aligner:
           image_list[i] = dic[load_prefix+str(z)]
           pre_field_key = self.pre_field_path+str(mip)+"/"+str(z)
           pre_field[i] = dic[pre_field_key]
+          #print("pre_field ", z , pre_field[i], type(pre_field[i]))
+
+      print("len of image_list", len(image_list))
+      for i, z in enumerate(load_slice_range):
+          img = image_list[i][...,pad:-pad,pad:-pad]
+          img_key = "image" + str(z)
+          dic[img_key] = img
+          args_list =[dic, img_key, tmp_img_cv, z, origin_chunk, mip, True]
+          self.mp_store_img(args_list)
 
       f_list = [self.mp_store_img, self.mp_store_field, self.write_json]
       for i, z in enumerate(compute_range):
@@ -546,6 +571,7 @@ class Aligner:
               p.join()
           load_list =[]
           src_image = dic[load_prefix+str(z)]
+          print("compute_range at z----------------", z)
           if z!= compute_range[-1]:
               tgt_z = compute_range[i+1]
               pr = Process(target=self.mp_load, args=(dic,
@@ -573,9 +599,9 @@ class Aligner:
           pre_field_key = self.pre_field_path+str(mip)+"/"+str(z)
           dic[pre_field_key] = pre_field[-1]
 
-          args_list = [[dic, img_key, tgt_cv, z, nonpad_chunk, mip, True],
-                       [dic, field_key, prev_field_cv, z, nonpad_chunk, mip,
-                        chunk_size],[prev_field_cv.path, pre_field_key, dic,
+          args_list = [[dic, img_key, tmp_img_cv, z, nonpad_chunk, mip, True],
+                       [dic, field_key, tmp_vvote_field_cv, z, nonpad_chunk, mip,
+                        chunk_size],[tmp_vvote_field_cv.path, pre_field_key, dic,
                         pre_field_key]]
 
           p = Process(target=self.checkpoint_write, args=(f_list, args_list, z,
@@ -1743,7 +1769,6 @@ class Aligner:
       start = time()
       print("--------------------start a new save image process", ppid, z)
       image = dic[key]
-      print(image.shape)
       #print(image)
       if image.dtype == torch.uint8:
           self.save_image(image.cpu().numpy(), dst, z, chunk, mip,
@@ -2293,6 +2318,7 @@ class Aligner:
     dis_patch = torch.ShortTensor(gpu_num, 2).zero_()
     vv_fields = torch.FloatTensor(gpu_num, vvote_way, chunk_size, chunk_size, 2).zero_()
     vv_off = len(image_list) - vvote_way
+    print("--------------------vv_off is", vv_off)
     while(has_next):
         coor_list = []
         xs, ys = next(get_corr)
@@ -2310,11 +2336,12 @@ class Aligner:
         for i in range(vvote_way):
             for j in range(num_patch):
                 xs, ys = coor_list[j]
-                if  not isinstance(pre_field[vv_off+i], torch.Tensor):
-                    dis =torch.IntTensor([0, 0])
-                else:
-                    dis = pre_field[vv_off+i][xs, ys,:]
+                #if  not isinstance(pre_field[vv_off+i], torch.Tensor):
+                #    dis =torch.IntTensor([0, 0])
+                #else:
+                #    dis = pre_field[vv_off+i][xs, ys,:]
                 #dis = dis.flip(0)
+                dis = torch.ShortTensor([0, 0])
                 dis_patch[j] = dis
                 off = dis.flip(0)
                 src_patch[j,0,...] = src_img[0,0,
@@ -2331,6 +2358,7 @@ class Aligner:
                 tgt_patch_new = self.convert_to_float(tgt_patch_new)
             field = self.new_compute_field_chunk(model_path, src_patch_new,
                                                    tgt_patch_new)
+            # relative to abs at mip0
             field = field[:,pad:-pad,pad:-pad,:].type(torch.float32)*padded_len/2 * (2**mip)
             #field = field * 4
             #field = field.type(torch.int16)

@@ -116,7 +116,7 @@ if __name__ == '__main__':
     block_dst = cm.create(join(args.dst_path, 'image_blocks', block_type), 
                     data_type='uint8', num_channels=1, fill_missing=True, 
                     overwrite=True)
-    block_dsts[i] = block_dst.path 
+    block_dsts[i] = block_dst.path
   
   # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
   bbox_lookup = {}
@@ -176,10 +176,17 @@ if __name__ == '__main__':
   block_vvote_field = cm.create(join(args.dst_path, 'field', 'vvote'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True).path
-  broadcasting_field = cm.create(join(args.dst_path, 'field', 
+  broadcasting_field = cm.create(join(args.dst_path, 'field',
                                       'stitch', 'broadcasting'),
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=True).path
+  tmp_vvote_field_cv = cm.create(join(args.dst_path, 'field', 'vvote_tmp'),
+                          data_type='int16', num_channels=2,
+                          fill_missing=True, overwrite=True).path
+
+  tmp_img_cv = cm.create(join(args.dst_path, 'image_blocks', 'tmp'),
+                  data_type='uint8', num_channels=1, fill_missing=True,
+                  overwrite=True).path
 
   # Task scheduling functions
   def remote_upload_it(tasks):
@@ -214,7 +221,7 @@ if __name__ == '__main__':
               even_odd = block_dst_lookup[bs]
               dst = block_dsts[even_odd]
               finish_dir = block_align_finish_dir+str(bs)+"/"
-              t = a.new_align_task(bs, be, start, src, dst,
+              t = a.new_align_task(bs, be+1, start, src, dst,
                                    block_pair_field,
                                    block_vvote_field,
                                    chunk_grid, mip, pad,
@@ -279,7 +286,9 @@ if __name__ == '__main__':
                                                     be, src_cv, tgt_cv,
                                                     block_vvote_field,
                                                     broadcasting_field,
-                                                    src, mip, start_z,
+                                                    tmp_img_cv,
+                                                    tmp_vvote_field_cv,
+                                                    mip, start_z,
                                                     chunk_grid[0],
                                                     chunk_size, pad,
                                                     finish_dir,
@@ -303,7 +312,7 @@ if __name__ == '__main__':
       bs = bs_list[i]
       be = be_list[i]
       start = start_list[i]
-      ptask.append(StitchGetFieldT(bs,be, start))
+      ptask.append(StitchGetFieldT(bs, be, start))
   
   for i in ptask[0]:
       print(" in ptask", i)

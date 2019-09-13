@@ -171,7 +171,8 @@ def get_task(a):
         param_lookup = arg_dic["param_lookup"]
         block_vvote_field = arg_dic["prev_field_cv"]
         broadcasting_field = arg_dic["bfield_cv"]
-        src = arg_dic["raw_cv"]
+        tmp_img_cv = arg_dic["tmp_img_cv"]
+        tmp_vvote_field_cv = arg_dic["tmp_vvote_field_cv"]
         mip = int(arg_dic["mip"])
         bs = int(arg_dic["bs"])
         be = int(arg_dic["be"])
@@ -185,9 +186,10 @@ def get_task(a):
         pad = int(arg_dic["pad"])
         softmin_temp = arg_dic["softmin_temp"]
         blur_sigma = arg_dic["blur_sigma"]
-        t = a.stitch_get_field_task_generator(qu, param_lookup,[bs], [be], src_cv, tgt_cv,
+        t = a.stitch_get_field_task_generator(qu, param_lookup,bs, be, src_cv, tgt_cv,
                                               block_vvote_field, broadcasting_field,
-                                              src, mip, start_z, bbox, chunk_size,
+                                              tmp_img_cv,tmp_vvote_field_cv,
+                                              mip, start_z, bbox, chunk_size,
                                               pad, finish_dir,
                                               softmin_temp, blur_sigma)
     return t
