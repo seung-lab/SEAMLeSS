@@ -20,10 +20,13 @@ class CloudManager():
      provenance: dict to be saved as json file with each new directory created
   """
   def __init__(self, cv_path, max_mip, max_displacement, provenance,
-               batch_size=-1, size_chunk=-1, batch_mip=-1):
-    self.info = self.create_info(CloudVolume(cv_path), max_mip,
+               batch_size=-1, size_chunk=-1, batch_mip=-1, create_info=True):
+    if create_info:
+      self.info = self.create_info(CloudVolume(cv_path), max_mip,
                                  max_displacement, batch_size, size_chunk,
                                  batch_mip)
+    else:
+      self.info = CloudVolume(cv_path).info
     self.provenance = provenance
     self.num_scales = len(self.info['scales'])
     self.max_mip = max_mip

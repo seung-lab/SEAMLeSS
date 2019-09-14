@@ -85,11 +85,16 @@ if __name__ == '__main__':
            z_range.extend(list(range(z_start, z_stop)))
 
   # Create CloudVolume Manager
-  template_path = args.src_path
   if args.info_path:
     template_path = args.info_path
-  cm = CloudManager(template_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=chunk_size, batch_mip=src_mip)
+    cm = CloudManager(template_path, max_mip, pad, provenance, batch_size=1,
+                      size_chunk=chunk_size, batch_mip=src_mip, 
+                      create_info=False)
+  else:
+    template_path = args.src_path
+    cm = CloudManager(template_path, max_mip, pad, provenance, batch_size=1,
+                      size_chunk=chunk_size, batch_mip=src_mip, 
+                      create_info=True)
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
