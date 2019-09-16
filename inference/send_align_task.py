@@ -232,36 +232,37 @@ if __name__ == '__main__':
                                    src_mask_val=src_mask_val)
               yield from t
 
-#  #print("z_range is ", z_range)
-#  ptask = []
-#  bs_list = make_range(bstart_list, a.threads)
-#  be_list = make_range(bend_list, a.threads)
-#  start_list = make_range(start_z_list, a.threads)
-#  #bs_list = make_range(block_starts, a.threads)
-#  #be_list = make_range(block_stops, a.threads)
-#  #start_list = make_range(start_zs, a.threads)
-#
-#  print("bs-list", bs_list)
-#  print("be-list", be_list)
-#  print("start-list", start_list)
-#  for i in range(len(bs_list)):
-#      bs = bs_list[i]
-#      be = be_list[i]
-#      start = start_list[i]
-#      ptask.append(AlignT(bs, be, start))
-#
-#  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-#      executor.map(remote_upload_it, ptask)
-#  start = time()
-#  #print("start until now time", start - begin_time)
-#  #a.wait_for_queue_empty(dst.path, 'load_image_done/{}'.format(mip), len(batch))
-#  a.wait_for_queue_empty(block_align_task_finish_dir, '',
-#                         len(bstart_list), 30)
-#  #a.wait_for_sqs_empty()
-#
-#  end = time()
-#  diff = end - start
-#  print("Executing Loading Tasks use time:", diff)
+  #print("z_range is ", z_range)
+  ptask = []
+  bs_list = make_range(bstart_list, a.threads)
+  be_list = make_range(bend_list, a.threads)
+  start_list = make_range(start_z_list, a.threads)
+  #bs_list = make_range(block_starts, a.threads)
+  #be_list = make_range(block_stops, a.threads)
+  #start_list = make_range(start_zs, a.threads)
+
+  print("bs-list", bs_list)
+  print("be-list", be_list)
+  print("start-list", start_list)
+  for i in range(len(bs_list)):
+      bs = bs_list[i]
+      be = be_list[i]
+      start = start_list[i]
+      ptask.append(AlignT(bs, be, start))
+
+  if len(bstart_list) !=0:
+      with ProcessPoolExecutor(max_workers=a.threads) as executor:
+          executor.map(remote_upload_it, ptask)
+      start = time()
+      #print("start until now time", start - begin_time)
+      #a.wait_for_queue_empty(dst.path, 'load_image_done/{}'.format(mip), len(batch))
+      a.wait_for_queue_empty(block_align_task_finish_dir, '',
+                             len(bstart_list), 30)
+      #a.wait_for_sqs_empty()
+
+      end = time()
+      diff = end - start
+      print("Executing Loading Tasks use time:", diff)
 
   stitch_get_field_task_finish=broadcasting_field+'/get_stitch_field_done/{}/'.format(str(mip))
   stitch_get_field_slice_finish=broadcasting_field+'/finish_slice/'+str(mip)+'/'

@@ -34,9 +34,12 @@ def green_upload(ptask, aligner):
    #     tq.insert(task, args=[ a ])
 
 def init_checkpoint():
+    if not os.path.exists(tmp_dir):
+        os.system("mkdir -p " + tmp_dir)
+        os.system("mkdir -p " + tmp_dir +"img/")
+
+def del_tmp():
     os.system("rm -rf " + tmp_dir)
-    os.system("mkdir -p " + tmp_dir)
-    os.system("mkdir -p " + tmp_dir +"img/")
 
 def print_obj(member_dict, classname):
     member_dict["class"] = classname
@@ -137,6 +140,7 @@ class StitchComposeRenderTask(RegisteredTask):
             print('Marked finished at {}'.format(path))
         end = time()
         diff = end - start
+        del_tmp()
         print('Stitch compose and render task time:{:.3f} s'.format(diff), flush=True)
 
 class StitchGetField(RegisteredTask):
@@ -185,6 +189,7 @@ class StitchGetField(RegisteredTask):
 
         end = time()
         diff = end - start
+        del_tmp()
         print('Stitch get field task time:{:.3f} s'.format(diff), flush=True)
 
 
@@ -238,6 +243,7 @@ class NewAlignTask(RegisteredTask):
         print('Marked finished at {}'.format(path))
     end = time()
     diff = end - start
+    del_tmp()
     print('Align task time:{:.3f} s'.format(diff), flush=True)
 
 class LoadImageTask(RegisteredTask):
