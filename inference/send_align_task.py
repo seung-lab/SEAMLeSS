@@ -69,8 +69,9 @@ if __name__ == '__main__':
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--pad', 
-    help='the size of the largest displacement expected; should be 2^high_mip', 
+  parser.add_argument('--extra_off', type=int, default=None)
+  parser.add_argument('--pad',
+    help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   parser.add_argument('--restart', type=int, default=0)
@@ -88,7 +89,10 @@ if __name__ == '__main__':
   src_mask_val = args.src_mask_val
   src_mask_mip = args.src_mask_mip
   block_size = args.block_size
-
+  timeout = args.IO_timeout
+  extra_off = args.extra_off
+  if extra_off is None:
+      extra_off = pad
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
                     size_chunk=chunk_size, batch_mip=mip)
@@ -226,7 +230,7 @@ if __name__ == '__main__':
                                    block_vvote_field,
                                    chunk_grid, mip, pad,
                                    chunk_size, args.param_lookup, qu,
-                                   finish_dir,
+                                   finish_dir, timeout, extra_off,
                                    src_mask_cv=src_mask_cv,
                                    src_mask_mip=src_mask_mip,
                                    src_mask_val=src_mask_val)
@@ -249,7 +253,8 @@ if __name__ == '__main__':
       be = be_list[i]
       start = start_list[i]
       ptask.append(AlignT(bs, be, start))
-
+  #for i  in ptask[0]:
+  #    print(i)
   if len(bstart_list) !=0:
       with ProcessPoolExecutor(max_workers=a.threads) as executor:
           executor.map(remote_upload_it, ptask)
@@ -292,7 +297,8 @@ if __name__ == '__main__':
                                                     mip, start_z,
                                                     chunk_grid[0],
                                                     chunk_size, pad,
-                                                    finish_dir,
+                                                    finish_dir, timeout,
+                                                    extra_off,
                                                     2**mip, 1)
               yield from t
 

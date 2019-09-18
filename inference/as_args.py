@@ -24,6 +24,9 @@ def get_argparser():
   parser.add_argument('--dry_run', 
      help='prevent task executes, but allow task print outs',
      action='store_true')
+  parser.add_argument('--IO_timeout', type=positive_int, default=None,
+                      help='timeout for I/O operations')
+
   return parser
 
 def parse_args(parser, arg_string=''):

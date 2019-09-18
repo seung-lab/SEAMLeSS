@@ -98,9 +98,6 @@ def get_task(a):
         restart_z = -1
     with open(tmp_dir+"name") as load_file:
         arg_dic = json.load(load_file)
-       # file_reader = csv.reader(csv_file, delimiter=',')
-       # for row in file_reader:
-       #     arg_dic[row[0]] = row[1]
     #print("arg_dic is ", arg_dic)
     if arg_dic["class"] == "NewAlignTask":
         bs = int(arg_dic["block_start"])
@@ -124,12 +121,15 @@ def get_task(a):
         mask_mip = arg_dic["mask_mip"]
         mask_val = arg_dic["mask_val"]
         finish_dir = arg_dic["finish_dir"]
+        timeout = arg_dic["timeout"]
+        extra_off = arg_dic["extra_off"]
         t = a.new_align_task(bs, be, start_z, src, dst,
                              block_pair_field,
                              block_vvote_field,
                              chunk_grid, mip, pad,
                              chunk_size, param_lookup,
-                             qu, finish_dir,
+                             qu, finish_dir, timeout,
+                             extra_off,
                              src_mask_cv=mask_cv,
                              src_mask_mip=mask_mip,
                              src_mask_val=mask_val)
@@ -157,10 +157,13 @@ def get_task(a):
         finish_dir = arg_dic["finish_dir"]
         influence_index = arg_dic["influence_index"]
         upsample_bbox = deserialize_bbox(arg_dic["upsample_bbox"])
+        timeout = arg_dic["timeout"]
+        compose_field =arg_dic["compose_field"]
         t = a.stitch_compose_render_task(qu, bbox, src, dst, influence_index,
                                          start_z, end_z, broadcasting_field,
                                          block_field, decay_dist,
                                          influence_block, finish_dir,
+                                         timeout, compose_field,
                                          src_mip, dst_mip, pad, pad,
                                          chunk_size,
                                          upsample_mip, upsample_bbox)
@@ -183,14 +186,17 @@ def get_task(a):
             start_z = int(restart_z)
         bbox = deserialize_bbox(arg_dic["bbox"])
         chunk_size = int(arg_dic["chunk_size"])
-        pad = int(arg_dic["pad"])
+        pad = arg_dic["pad"]
         softmin_temp = arg_dic["softmin_temp"]
         blur_sigma = arg_dic["blur_sigma"]
+        timeout = arg_dic["timeout"]
+        extra_off = arg_dic["extra_off"]
         t = a.stitch_get_field_task_generator(qu, param_lookup,bs, be, src_cv, tgt_cv,
                                               block_vvote_field, broadcasting_field,
                                               tmp_img_cv,tmp_vvote_field_cv,
                                               mip, start_z, bbox, chunk_size,
-                                              pad, finish_dir,
+                                              pad, finish_dir, timeout,
+                                              extra_off,
                                               softmin_temp, blur_sigma)
     return t
 
@@ -202,73 +208,7 @@ if __name__ == '__main__':
     provenance = get_provenance(args)
     t = get_task(a)
     remote_upload(args.queue_name, t)
+    sys.exit(1)
     a.wait_for_sqs_empty()
 
-#  # Task scheduling functions
-#  def remote_upload_it(tasks):
-#      with GreenTaskQueue(queue_name=args.queue_name) as tq:
-#          tq.insert_all(tasks)
-#
-#  qu = args.queue_name
-#  start_z = -1
-#
-#  #print("z_range is ", z_range)
-#  ptask = []
-#  bs_list = make_range(block_starts, a.threads)
-#  be_list = make_range(block_stops, a.threads)
-#  for bs, be in zip(bs_list, be_list):
-#      ptask.append(AlignT(bs, be))
-#
-#  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-#      executor.map(remote_upload_it, ptask)
-#  start = time()
-#  #print("start until now time", start - begin_time)
-#  #a.wait_for_queue_empty(dst.path, 'load_image_done/{}'.format(mip), len(batch))
-#  a.wait_for_sqs_empty()
-#  end = time()
-#  diff = end - start 
-#  print("Executing Loading Tasks use time:", diff)
-#
-#
-#  class StitchGetFieldT(object):
-#      def __init__(self, bs_list, be_list):
-#          self.bs_list = bs_list
-#          self.be_list = be_list
-#          print("*********self bs_list is ", self.bs_list)
-#          print("*********be_list is  ", self.be_list)
-#      def __iter__(self):
-#          for bs, be in zip(self.bs_list, self.be_list):
-#              even_odd = block_dst_lookup[bs]
-#              src_cv = block_dsts[even_odd]
-#              tgt_cv = block_dsts[(even_odd+1)%2]
-#              t = a.stitch_get_field_task_generator(args.param_lookup,[bs],
-#                                                    [be], src_cv, tgt_cv,
-#                                                    block_vvote_field,
-#                                                    broadcasting_field,
-#                                                    src, mip,
-#                                                    chunk_grid[0],
-#                                                    chunk_size, pad, 2**mip, 1)
-#              yield from t
-#
-#  #print("z_range is ", z_range)
-#  ptask = []
-#  bs_list = make_range(block_starts[1:], a.threads)
-#  be_list = make_range(block_stops[1:], a.threads)
-#  print("bs_list is ", bs_list)
-#  print("be_list is ", be_list)
-#  for bs, be in zip(bs_list, be_list):
-#      ptask.append(StitchGetFieldT(bs,be))
-#  #print("ptask len is ", len(ptask))
-#  #ptask.append(batch)
-#  #remote_upload_it(ptask)
-#  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-#      executor.map(remote_upload_it, ptask)
-#
-#  start = time()
-#  #print("start until now time", start - begin_time)
-#  #a.wait_for_queue_empty(dst.path, 'load_image_done/{}'.format(mip), len(batch))
-#  a.wait_for_sqs_empty()
-#  end = time()
-#  diff = end - start 
-#  print("Executing Loading Tasks use time:", diff)
-#
+

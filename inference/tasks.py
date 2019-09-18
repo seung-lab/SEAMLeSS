@@ -96,12 +96,14 @@ class StitchComposeRenderTask(RegisteredTask):
     def __init__(self, qu, influence_index, z_start, z_stop, b_field,
                  influence_blocks, src,
                  vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                 extra_off, finish_dir, chunk_size, dst, upsample_mip,
+                 extra_off, finish_dir, timeout, compose_field,
+                 chunk_size, dst, upsample_mip,
                  upsample_bbox):
         super().__init__(qu, influence_index, z_start, z_stop, b_field,
                          influence_blocks, src,
                          vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                         extra_off, finish_dir, chunk_size, dst, upsample_mip,
+                         extra_off, finish_dir, timeout, compose_field,
+                         chunk_size, dst, upsample_mip,
                          upsample_bbox)
     def execute(self, aligner):
         init_checkpoint()
@@ -123,6 +125,9 @@ class StitchComposeRenderTask(RegisteredTask):
         dst = DCV(self.dst)
         upsample_mip = self.upsample_mip
         upsample_bbox = deserialize_bbox(self.upsample_bbox)
+        finish_dir = self.finish_dir
+        timeout = self.timeout
+        compose_field = DCV(self.compose_field)
         print("\n Stitch compose and render task\n"
               "src {}\n"
               "MIP{}\n"
@@ -131,7 +136,8 @@ class StitchComposeRenderTask(RegisteredTask):
         start = time()
         aligner.stitch_compose_render(z_range, b_field, influence_blocks, src, vv_field_cv,
                                       decay_dist, src_mip, dst_mip, bbox, pad, extra_off,
-                                      chunk_size, dst, self.finish_dir,
+                                      chunk_size, dst, finish_dir, timeout,
+                                      compose_field,
                                       upsample_mip, upsample_bbox)
         with Storage(self.dst) as stor:
             path = 'stitch_rander_done/{}/{}'.format(str(dst_mip),
@@ -146,10 +152,11 @@ class StitchComposeRenderTask(RegisteredTask):
 class StitchGetField(RegisteredTask):
     def __init__(self, qu, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
                  bfield_cv, tmp_img_cv, tmp_vvote_field_cv, mip, pad, bbox,
-                 start_z, finish_dir, chunk_size, softmin_temp, blur_sigma):
+                 start_z, finish_dir, timeout, extra_off, chunk_size,
+                 softmin_temp, blur_sigma):
         super().__init__(qu, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
                          bfield_cv, tmp_img_cv, tmp_vvote_field_cv, mip, pad,
-                         bbox, start_z, finish_dir, chunk_size,
+                         bbox, start_z, finish_dir, timeout, extra_off, chunk_size,
                          softmin_temp, blur_sigma)
     def execute(self, aligner):
         init_checkpoint()
@@ -172,6 +179,10 @@ class StitchGetField(RegisteredTask):
         start_z = self.start_z
         tmp_img_cv = DCV(self.tmp_img_cv)
         tmp_vvote_field_cv = DCV(self.tmp_vvote_field_cv)
+        finish_dir = self.finish_dir
+        timeout = self.timeout
+        extra_off = self.extra_off
+
         print("\n Stitch get field task\n"
               "src {}\n"
               "MIP{}\n"
@@ -179,9 +190,11 @@ class StitchGetField(RegisteredTask):
                                      bs), flush=True)
         start = time()
 
-        aligner.get_stitch_field_task(param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
-                            bfield_cv, tmp_img_cv, tmp_vvote_field_cv, mip, bbox, chunk_size,
-                                      pad, start_z, self.finish_dir, softmin_temp, blur_sigma)
+        aligner.get_stitch_field_task(param_lookup, bs, be, src_cv, tgt_cv,
+                                      prev_field_cv, bfield_cv, tmp_img_cv,
+                                      tmp_vvote_field_cv, mip, bbox, chunk_size,
+                                      pad, start_z, finish_dir, timeout,
+                                      extra_off, softmin_temp, blur_sigma)
         with Storage(self.bfield_cv) as stor:
             path = 'get_stitch_field_done/{}/{}'.format(str(mip), str(bs))
             stor.put_file(path, '')
@@ -195,10 +208,12 @@ class StitchGetField(RegisteredTask):
 
 class NewAlignTask(RegisteredTask):
   def __init__(self, src, qu, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
-               block_stop, start_z, chunk_size, model_lookup, finish_dir, mask_cv, mask_mip,
+               block_stop, start_z, chunk_size, model_lookup, finish_dir,
+               timeout, extra_off, mask_cv, mask_mip,
                mask_val):
     super().__init__(src, qu, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
-                     block_stop, start_z, chunk_size, model_lookup, finish_dir, mask_cv, mask_mip,
+                     block_stop, start_z, chunk_size, model_lookup, finish_dir,
+                     timeout, extra_off, mask_cv, mask_mip,
                      mask_val)
 
   def execute(self, aligner):
@@ -234,7 +249,7 @@ class NewAlignTask(RegisteredTask):
     start = time()
     aligner.new_align(src_cv, dst_cv, s_field, v_field, chunk_grid, mip, pad, block_start,
                       block_stop, start_z, chunk_size, model_lookup,
-                      self.finish_dir,
+                      self.finish_dir, self.timeout, self.extra_off,
                       src_mask_cv=mask_cv,
                       src_mask_mip=mask_mip, src_mask_val=mask_val)
     with Storage(self.vvote_field) as stor:

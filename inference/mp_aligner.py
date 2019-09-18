@@ -11,6 +11,7 @@ from torch.autograd import Variable
 from torch.multiprocessing import Process, Manager
 #import multiprocessing 
 #from pathos.multiprocessing import ProcessPool, ThreadPool 
+import signal
 
 from threading import Lock
 
@@ -93,6 +94,7 @@ class Aligner:
     self.p_list = None #[]
     self.pre_field_path = "pre_field/"
     self.gpu_lock = kwargs.get('gpu_lock', None)  # multiprocessing.Semaphore
+    self.IO_timeout = None
 
   def convert_to_float(self, data):
       data = data.type(torch.float)
@@ -154,6 +156,16 @@ class Aligner:
       end = time()
       print("----------finish write json using", end-start, "key is", key)
 
+  def join_with_timeout(self, plist, t):
+      for p in plist:
+          if t is None:
+              p.join()
+          else:
+              p.join(t)
+              if p.exitcode !=0:
+                  print("-------------kill all processes since a long time pending I/O-------")
+                  os.killpg(os.getpgid(os.getpid()), signal.SIGKILL)
+      plist = []
 
   def read_json(self, path, file_name, dic, key):
       start = time()
@@ -168,25 +180,28 @@ class Aligner:
 
   def new_align_task(self, block_start, block_stop, start_z,
                      src, dst, s_field, vvote_field, chunk_grid, mip,
-                     pad, chunk_size, model_lookup, qu, finish_dir,
-                     src_mask_cv=None, src_mask_mip=0, src_mask_val=0):
+                     pad, chunk_size, model_lookup, qu, finish_dir, timeout,
+                     extra_off, src_mask_cv=None, src_mask_mip=0, src_mask_val=0):
       #print("---------------------------->> load image")
       batch = []
       #for i in z_range:
       batch.append(tasks.NewAlignTask(src, qu, dst, s_field, vvote_field, chunk_grid, mip, pad,
                                       block_start, block_stop, start_z, chunk_size,
-                                      model_lookup, finish_dir, src_mask_cv, src_mask_mip,
+                                      model_lookup, finish_dir, timeout,
+                                      extra_off, src_mask_cv, src_mask_mip,
                                       src_mask_val))
       return batch
 
   def new_align(self, src, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
-                block_stop, start_z, chunk_size, lookup_path, finish_dir, src_mask_cv=None,
+                block_stop, start_z, chunk_size, lookup_path, finish_dir,
+                timeout, extra_off, src_mask_cv=None,
                 src_mask_mip=0, src_mask_val=0):
       model_lookup={}
       tgt_radius_lookup = {}
       vvote_lookup = {}
       skip_list = []
       brange = range(block_start, block_stop)
+      self.IO_timeout = timeout
       with open(lookup_path) as f:
         reader = csv.reader(f, delimiter=',')
         for k, r in enumerate(reader):
@@ -238,7 +253,9 @@ class Aligner:
           self.dic = self.manager.dict()
           self.p_list = []
 
-      #overlap = radius
+      dst.create(mip)
+      src.create(mip)
+      vvote_field.create(mip)
 
       starter_range = list(starter_offset_to_z_range)
       block_range = list(block_offset_to_z_range)
@@ -264,6 +281,7 @@ class Aligner:
                                                           dst, model_lookup,
                                                           chunk, mip, pad, chunk_size,
                                                           final_chunk, finish_dir,
+                                                          extra_off,
                                                           mask_cv=src_mask_cv,
                                                           mask_mip=src_mask_mip,
                                                           mask_val=src_mask_val)
@@ -315,8 +333,9 @@ class Aligner:
                       index_list.append(z)
                       pre_load_list.append(p)
 
-              for p in pre_load_list:
-                  p.join()
+              self.join_with_timeout(pre_load_list, self.IO_timeout)
+              #for p in pre_load_list:
+              #    p.join()
 
               for z in index_list:
                   img = dic[z]
@@ -330,14 +349,15 @@ class Aligner:
           self.process_super_chunk_vvote(src, block_range, max_radius, start_z, dst,
                                       model_lookup, tgt_radius_lookup, image_list,
                                       chunk, start_index,
-                                      mip, pad, chunk_size,
+                                      mip, pad, extra_off, chunk_size,
                                       vvote_field,
                                       final_chunk, finish_dir,
                                       mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                       mask_val=src_mask_val)
-          for i in self.p_list:
-              i.join()
-      self.p_list = []
+          self.join_with_timeout(self.p_list, self.IO_timeout)
+          #for i in self.p_list:
+          #    i.join()
+          #self.p_list = []
       self.manager = None
       self.dic = None
 
@@ -346,19 +366,21 @@ class Aligner:
                                       bfield_cv, tmp_img_cv,
                                       tmp_vvote_field_cv, mip, start_z,
                                       bbox, chunk_size, pad, finish_dir,
+                                      timeout, extra_off,
                                       softmin_temp, blur_sigma):
       batch = []
       batch.append(tasks.StitchGetField(qu, param_lookup, bs, be, src_cv, tgt_cv,
                                         prev_field_cv, bfield_cv,
                                         tmp_img_cv, tmp_vvote_field_cv, mip,
                                         pad, bbox, start_z, finish_dir,
-                                        chunk_size, softmin_temp, blur_sigma))
+                                        timeout, extra_off, chunk_size,
+                                        softmin_temp, blur_sigma))
       return batch
 
   def get_stitch_field_task(self, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
                             bfield_cv, tmp_img_cv, tmp_vvote_field_cv, mip, bbox,
-                            chunk_size, pad, start_z, finish_dir,
-                            softmin_temp, blur_sigma):
+                            chunk_size, pad, start_z, finish_dir, timeout,
+                            extra_off, softmin_temp, blur_sigma):
       block_range = range(bs, be+1)
       model_lookup = {}
       tgt_radius_lookup = {}
@@ -418,11 +440,12 @@ class Aligner:
                   block_start_to_stitch_offsets.append(bs - z)
               else:
                   break
+      self.IO_timeout = timeout
 
       self.get_stitch_field(model_lookup, src_cv, tgt_cv, prev_field_cv,
                             bfield_cv, tmp_img_cv, tmp_vvote_field_cv,
                             overlap_copy_range, stitch_offset_to_z_range,
-                            start_z, finish_dir,
+                            start_z, finish_dir, extra_off,
                             mip, bbox, chunk_size, pad, softmin_temp=softmin_temp,
                             blur_sigma=blur_sigma)
       for p in self.p_list:
@@ -434,8 +457,8 @@ class Aligner:
 
   def get_stitch_field(self, model_lookup, src_cv, tgt_cv, prev_field_cv,
                        bfield_cv, tmp_img_cv, tmp_vvote_field_cv,
-                       overlap_copy, compute_field_range,
-                       start_z, finish_dir, mip, bbox, chunk_size,
+                       overlap_copy, compute_field_range, start_z,
+                       finish_dir, extra_off, mip, bbox, chunk_size,
                        pad, softmin_temp=None, blur_sigma=None):
       if self.manager == None:
           self.manager = Manager()
@@ -443,13 +466,20 @@ class Aligner:
           self.p_list = []
       print("compute_field_range", compute_field_range)
       print("overlap_copy", overlap_copy)
+      src_cv.create(mip)
+      tgt_cv.create(mip)
+      prev_field_cv.create(mip)
+      bfield_cv.create(mip)
+      tmp_img_cv.create(mip)
+      tmp_vvote_field_cv.create(mip)
       if -1 == start_z:
           #start_z = overlap_copy[-1]
           start_z = compute_field_range[0]
       dst_fields = self.stitch_calc_field(model_lookup, src_cv, tgt_cv, prev_field_cv,
                                           tmp_img_cv, tmp_vvote_field_cv,
                                           overlap_copy, compute_field_range,
-                                          start_z, finish_dir, mip, bbox, chunk_size, pad,
+                                          start_z, finish_dir, extra_off, mip,
+                                          bbox, chunk_size, pad,
                                           softmin_temp=softmin_temp,
                                           blur_sigma=blur_sigma)
       dst_field = self.slice_vector_vote(dst_fields, chunk_size, pad, mip,
@@ -472,15 +502,15 @@ class Aligner:
 
 
   def stitch_calc_field(self, model_lookup, src_cv, tgt_cv, prev_field_cv,
-                        tmp_img_cv, tmp_vvote_field_cv,
-                        overlap_copy, compute_field_range, start_z, finish_dir,
-                        mip, bbox, chunk_size,
+                        tmp_img_cv, tmp_vvote_field_cv, overlap_copy,
+                        compute_field_range, start_z, finish_dir,
+                        extra_off, mip, bbox, chunk_size,
                         pad, softmin_temp=None, blur_sigma=None):
       chunk = deepcopy(bbox)
       nonpad_chunk = deepcopy(bbox)
       nonpad_chunk.crop(pad, mip=mip)
       origin_chunk = deepcopy(bbox)
-      extra_off = pad
+      #extra_off = pad
       chunk.uncrop(extra_off, mip=mip)
       image_list =  [None]* (len(overlap_copy))
       pre_field =  [None]* (len(overlap_copy))
@@ -510,7 +540,7 @@ class Aligner:
               else:
                   start_index += 1
           field_range = compute_field_range[:start_index]
-          load_slice_range= overlap_copy[-(vvote_way-start_index):]
+          load_slice_range = overlap_copy[-(vvote_way-start_index):]
           for z in compute_field_range[:start_index]:
               load_slice_range.append(z)
           compute_range = compute_field_range[start_index:]
@@ -552,9 +582,10 @@ class Aligner:
           pf.start()
           load_field_list.append(pf)
 
-      for p in load_list:
-          p.join()
-      load_list = []
+      self.join_with_timeout(load_list, self.IO_timeout)
+      #for p in load_list:
+      #    p.join()
+      #load_list = []
       dst_fields = []
 
       for i, z in enumerate(load_slice_range):
@@ -565,9 +596,10 @@ class Aligner:
 
       f_list = [self.mp_store_img, self.mp_store_field, self.write_json]
       for i, z in enumerate(compute_range):
-          for p in load_list:
-              p.join()
-          load_list =[]
+          self.join_with_timeout(load_list, self.IO_timeout)
+          #for p in load_list:
+          #    p.join()
+          #load_list =[]
           src_image = dic[load_prefix+str(z)]
           print("compute_range at z----------------", z)
           if z!= compute_range[-1]:
@@ -581,12 +613,12 @@ class Aligner:
           model_path = model_lookup[z]
           dst_field = self.new_vector_vote(model_path, src_image, image_list,
                                            pre_field, chunk_size, pad,
-                                           vvote_way, mip,
-                                           inverse=False,
-                                           serial=True,
+                                           extra_off, vvote_way, mip,
+                                           inverse=False, serial=True,
                                            softmin_temp=softmin_temp,
                                            blur_sigma=blur_sigma)
-          image = self.warp_slice(chunk_size, pad, mip, src_image, dst_field)
+          image = self.warp_slice(chunk_size, pad, mip, src_image, dst_field,
+                                  offset=extra_off)
 
           field_key = "field" + str(z)
           dic[field_key] = dst_field[:,pad:-pad,pad:-pad,:]
@@ -604,8 +636,10 @@ class Aligner:
 
           p = Process(target=self.checkpoint_write, args=(f_list, args_list, z,
                                                      finish_dir))
+          # write those data only for fault tolerance purpose so do not need
+          # to wait for all process finish at the end
           p.start()
-          self.p_list.append(p)
+          #self.p_list.append(p)
 
           del image_list[0]
           image_list.append(image)
@@ -615,8 +649,9 @@ class Aligner:
           dst_fields.append(dst_field)
 
       if len(field_range) != 0:
-          for p  in load_field_list:
-              p.join()
+          self.join_with_timeout(load_field_list, self.IO_timeout)
+          #for p  in load_field_list:
+          #    p.join()
           field_range.reverse()
           for z in field_range:
               field_key = "field" + str(z)
@@ -913,7 +948,7 @@ class Aligner:
   def stitch_compose_render_task(self, qu, bbox, src, dst, influence_index,
                                  z_start, z_stop, b_field,
                                  vv_field, decay_dist, influence_blocks,
-                                 finish_dir,
+                                 finish_dir, timeout, compose_field_cv,
                                  src_mip, dst_mip, pad, extra_off,
                                  chunk_size, upsample_mip, upsample_bbox):
       batch = []
@@ -922,6 +957,7 @@ class Aligner:
                                             influence_blocks, src, vv_field,
                                             decay_dist, src_mip, dst_mip,
                                             bbox, pad, extra_off, finish_dir,
+                                            timeout, compose_field_cv,
                                             chunk_size, dst, upsample_mip,
                                             upsample_bbox)
       batch.append(task)
@@ -929,7 +965,8 @@ class Aligner:
 
   def stitch_compose_render(self, z_range, broadcast_field, influence_blocks, src,
                             vv_field_cv, decay_dist, src_mip, dst_mip, bbox, pad,
-                            extra_off, chunk_size, dst, finish_dir, upsample_mip,
+                            extra_off, chunk_size, dst, finish_dir, timeout,
+                            compose_field_cv, upsample_mip,
                             upsample_bbox):
       print("in stitch compose_render function ")
       write_list([], tmp_dir+"skip")
@@ -954,6 +991,8 @@ class Aligner:
       vv_field_cv.create(src_mip)
       broadcast_field.create(src_mip)
       #print("influence_blocks is", influence_blocks)
+      self.IO_timeout = timeout
+
       for index in influence_blocks:
           p = Process(target=self.mp_load_field, args=(dic,
                                                        field_prefix+"b"+str(index),
@@ -969,12 +1008,14 @@ class Aligner:
       load_f.append(p)
       src.create(dst_mip)
       dst.create(dst_mip)
-      f_list = [self.mp_store_img]
+      compose_field_cv.create(dst_mip)
+
+      f_list = [self.mp_store_img, self.mp_store_field]
       if dst_mip != upsample_mip:
           f_list.append(self.mp_store_img)
+          dst.create(upsample_mip)
       for i, z in enumerate(z_range):
-          for p in load_f:
-              p.join()
+          self.join_with_timeout(load_f, self.IO_timeout)
           load_f = []
           acc_key = field_prefix+str(z)
           vv_field = dic[acc_key]
@@ -1002,25 +1043,32 @@ class Aligner:
           #print(b_field[0])
           #print("z is", z ,"factors is", factors)
           dst_field = self.compose_slice(field_list, chunk_size, pad,
-                                       extra_off, src_mip, dst_mip,
-                                       factors)
+                                         extra_off, src_mip, dst_mip,
+                                         factors)
           #print("dst_field", dst_field)
-          for lp in load_im:
-              lp.join()
-          load_im = []
+          self.join_with_timeout(load_im, self.IO_timeout)
+          #for lp in load_im:
+          #    lp.join()
+          #load_im = []
           src_img = dic[img_prefix]
           #print("////////// src_img shape", src_img.shape)
-          final_img = self.warp_slice(chunk_size, pad, dst_mip, src_img, dst_field)
+          final_img = self.warp_slice(chunk_size, pad, dst_mip, src_img,
+                                      dst_field, offset=extra_off)
           final_img = final_img[..., pad:-pad, pad:-pad]
           write_key = "write_img" + str(z)
           dic[write_key] = final_img
-          args=[[dic, write_key, dst, z, unpadded_chunk, dst_mip, True]]
+          field_key = "compose_field" + str(z)
+          dic[field_key] = dst_field[:,pad:-pad,pad:-pad,:]
+          args=[[dic, write_key, dst, z, unpadded_chunk, dst_mip, True],
+               [dic, field_key, compose_field_cv, z, unpadded_chunk, dst_mip,
+                chunk_size]]
 
           if dst_mip!=upsample_mip:
               factor = 2**(dst_mip-upsample_mip)
               #print(" //// factor is ", factor, final_img.shape)
+              upsample_img = self.convert_to_float(final_img)
               upsample_img = nn.Upsample(scale_factor= factor,
-                                         mode='bilinear')(final_img)
+                                         mode='bilinear')(upsample_img)
               print("write upsample image //// ", upsample_img.shape)
               up_x_range = upsample_bbox.x_range(mip=upsample_mip)
               up_y_range = upsample_bbox.y_range(mip=upsample_mip)
@@ -1037,6 +1085,7 @@ class Aligner:
               upsample_img = upsample_img[..., delta_x0:delta_x1,
                                           delta_y0:delta_y1]
               write_key = "write_upsample" + str(z)
+              upsample_img  =self.convert_to_uint8(upsample_img)
               dic[write_key] = upsample_img
               args.append([dic, write_key, dst, z, upsample_bbox, upsample_mip,
                            True])
@@ -1208,9 +1257,9 @@ class Aligner:
       return dst_field #, simage
 
   def new_compute_field_multi_GPU(self, model_path, src_img, tgt_img,
-                                  chunk_size, pad, mip):
+                                  chunk_size, pad, extra_off, mip):
       #print("--------------- src and tgt shape", src_img.shape, tgt_img.shape)
-      extra_off = pad
+      #extra_off = pad
       img_shape = src_img.shape
       x_len = img_shape[-2] - 2*extra_off
       y_len = img_shape[-1] - 2*extra_off
@@ -1658,7 +1707,7 @@ class Aligner:
   def process_super_chunk_serial(self, src, block_start, serial_range,
                                  start_z, dst, model_lookup,
                                  schunk, mip, pad, chunk_size,
-                                 final_chunk, finish_dir,
+                                 final_chunk, finish_dir, extra_off,
                                  mask_cv=None, mask_mip=0,
                                  mask_val=0, affine=None):
       image_list = []
@@ -1667,11 +1716,7 @@ class Aligner:
       #load from copy range
       chunk = deepcopy(schunk)
       tchunk = deepcopy(schunk)
-      chunk.uncrop(pad, mip=mip)
-      #print("---- schunk is ", schunk.stringify(0, mip=mip), " z is",
-      #      block_start+serial_offsets[0])
-      #print("---- chunk is ", chunk.stringify(0, mip=mip), " z is",
-      #      block_start+serial_offsets[0])
+      chunk.uncrop(extra_off, mip=mip)
       dic = self.dic
       if start_z != block_start:
           p = Process(target=self.mp_load, args=(dic, start_z, src,
@@ -1686,8 +1731,8 @@ class Aligner:
       x_len = x_range[1] - x_range[0]
       y_len = y_range[1] - y_range[0]
       tgt_image = torch.ByteTensor(1, 1,
-                                   x_len-2*pad,
-                                   y_len-2*pad).zero_()
+                                   x_len-2*extra_off,
+                                   y_len-2*extra_off).zero_()
       tchunk.crop(pad, mip)
       tgt_image[...,pad:-pad,pad:-pad] = self.load_part_image(src,
                                                               block_start,
@@ -1713,9 +1758,10 @@ class Aligner:
       f_list = [self.mp_store_img]
       for j, z in enumerate(serial_range[serial_range_start:]):
           print("---------------- z ", z)
-          for i in p_list:
-               i.join()
-          p_list = []
+          #for i in p_list:
+          #     i.join()
+          #p_list = []
+          self.join_with_timeout(p_list, self.IO_timeout)
           print("load image {} from dic".format(z))
           src_image = dic[z]
           del dic[z]
@@ -1731,9 +1777,9 @@ class Aligner:
 
           dst_field = self.new_compute_field_multi_GPU(model_path, src_image,
                                                        tgt_image, chunk_size,
-                                                       pad, mip)
+                                                       pad, extra_off, mip)
           new_tgt_image = self.warp_slice(chunk_size, pad, mip, src_image,
-                                          dst_field)
+                                          dst_field, offset=extra_off)
           image_list.append(new_tgt_image)
           img_key = "store_img" + str(z)
           dic[img_key] = new_tgt_image[...,pad:-pad,pad:-pad]
@@ -1742,8 +1788,9 @@ class Aligner:
                                                            z, finish_dir))
           pi.start()
           self.p_list.append(pi)
-      for p in pre_load_list:
-          p.join()
+      self.join_with_timeout(pre_load_list, self.IO_timeout)
+      #for p in pre_load_list:
+      #    p.join()
       for z in reversed(serial_range[:serial_range_start]):
           img = dic[z]
           image_list.insert(0, img)
@@ -1778,8 +1825,6 @@ class Aligner:
                           to_uint8=True)
       #print("-------------------- 0 delete key", key)
       del dic[key]
-      f = open(tmp_dir+"img/"+str(z), "w")
-      f.close()
       end = time()
       diff = end - start
       print("end of the save image process {} using {} z {}".format(ppid, diff,
@@ -1854,11 +1899,11 @@ class Aligner:
 
   def process_super_chunk_vvote(self, src, block_range, max_radius, start_z,
                                 dsts, model_lookup, tgt_radius_lookup, image_list,
-                                schunk, start_index, mip, pad, chunk_size,
+                                schunk, start_index, mip, pad, extra_off, chunk_size,
                                 vvote_field, final_chunk, finish_dir,
                                 mask_cv=None, mask_mip=0, mask_val=0):
       chunk = deepcopy(schunk)
-      chunk.uncrop(pad, mip)
+      chunk.uncrop(extra_off, mip)
       dic = self.dic
       p_list = []
       src_image0 = self.load_part_image(src, block_range[start_index], chunk,
@@ -1883,8 +1928,9 @@ class Aligner:
           pre_field_p_list.append(p)
           pre_field_z_list.append(z)
 
-      for p in pre_field_p_list:
-          p.join()
+      self.join_with_timeout(pre_field_p_list, self.IO_timeout)
+      #for p in pre_field_p_list:
+      #    p.join()
 
       for z in pre_field_z_list:
           pre_field_key = self.pre_field_path+str(mip)+"/"+str(z)
@@ -1900,7 +1946,6 @@ class Aligner:
       f_list = [self.mp_store_img, self.mp_store_field, self.write_json]
       for j, z in enumerate(block_range[start_index:]):
           print("===========z is ", z)
-          #whole_vv_start = time()
           dst = dsts
           model_path = model_lookup[z]
           if j == 0:
@@ -1927,9 +1972,11 @@ class Aligner:
           tchunk = deepcopy(schunk)
           dst_field = self.new_vector_vote(model_path, src_image, image_list,
                                            pre_field, chunk_size, pad,
+                                           extra_off,
                                            tgt_radius_lookup[z], mip,
                                            inverse=False, serial=True)
-          image = self.warp_slice(chunk_size, pad, mip, src_image, dst_field)
+          image = self.warp_slice(chunk_size, pad, mip, src_image, dst_field,
+                                  offset=extra_off)
           vv_end =time()
           print("---------------------VV time :", vv_end-vv_start)
 
@@ -1952,18 +1999,17 @@ class Aligner:
           p = Process(target=self.checkpoint_write, args=(f_list, args_list, z,
                                                           finish_dir))
           p.start()
-          #print(p)
-          #p.join()
           self.p_list.append(p)
 
           del image_list[0]
           image_list.append(image)
       print("finish -----------vv")
       print("in p_list:", self.p_list)
-      for i in self.p_list:
-          print("int loop", i)
-          i.join()
-      self.p_list=[]
+      #for i in self.p_list:
+      #    print("int loop", i)
+      #    i.join()
+      #self.p_list=[]
+      self.join_with_timeout(self.p_list, self.IO_timeout)
 
   def old_get_dis(self, cm, field_cv, z, patch_bbox, mip, pad, dst_field):
       bbox = deepcopy(patch_bbox)
@@ -2291,10 +2337,9 @@ class Aligner:
         return image
 
   def new_vector_vote(self, model_path, src_img, image_list, pre_field,
-                      chunk_size, pad,
+                      chunk_size, pad, extra_off,
                       vvote_way, mip, inverse=False, serial=True,
                       softmin_temp=None, blur_sigma=None):
-    extra_off = pad
     img_shape = src_img.shape
     x_len = img_shape[-2] - 2*extra_off
     y_len = img_shape[-1] - 2*extra_off

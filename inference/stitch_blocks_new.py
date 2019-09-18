@@ -86,6 +86,7 @@ if __name__ == '__main__':
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   parser.add_argument('--decay_dist', type=int, default=10)
+  parser.add_argument('--extra_off', type=int, default=None)
   parser.add_argument('--suffix', type=str, default='',
     help='string to append to directory names')
   args = parse_args(parser)
@@ -102,9 +103,13 @@ if __name__ == '__main__':
   src_mask_mip = 8
   block_size = args.block_size
   upsample_mip = args.upsample_mip
+  timeout = args.IO_timeout
   if upsample_mip == -1:
       upsample_mip = mip
 
+  extra_off = args.extra_off
+  if extra_off is None:
+      extra_off = pad
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
                     size_chunk=chunk_size, batch_mip=mip)
@@ -180,6 +185,11 @@ if __name__ == '__main__':
                         data_type='uint8', num_channels=1, fill_missing=True,
                         overwrite=True).path
 
+  compose_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format(args.suffix),
+                                 'compose'),
+                          data_type='int16', num_channels=2,
+                          fill_missing=True, overwrite=True).path
+
   # Task scheduling functions
   def remote_upload_it(tasks):
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
@@ -228,7 +238,9 @@ if __name__ == '__main__':
                                                end_z, broadcasting_field,
                                                block_field, decay_dist,
                                                influence_block, finish_dir,
-                                               mip, mip, pad, pad, chunk_size,
+                                               timeout, compose_field,
+                                               mip, mip, pad, extra_off,
+                                               chunk_size,
                                                upsample_mip, upsample_bbox)
               yield from t
 #  print(influencing_blocks_lookup)
