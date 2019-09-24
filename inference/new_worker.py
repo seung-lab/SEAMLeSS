@@ -5,12 +5,17 @@ import sys
 from multiprocessing import Event, Process, Semaphore
 from time import sleep, time
 
-from taskqueue import TaskQueue
+from taskqueue import TaskQueue, LocalTaskQueue
 
-from as_args import get_aligner, get_argparser, parse_args
+from new_args import get_aligner, get_argparser, parse_args
+from resend_task import get_task
 
 processes = {}
+tmp_dir= "/tmp/alignment/"
 
+def term(*args):
+    print("kill all -------------")
+    os.killpg(os.getpgid(os.getpid()), signal.SIGKILL)
 
 def run_aligner(args, stop_fn=None):
   ppid = os.getppid() # Save parent process ID
@@ -23,10 +28,18 @@ def run_aligner(args, stop_fn=None):
       print("Parent process is gone. {} shutting down...".format(os.getpid()))
       return True
     return False
-
+  signal.signal(signal.SIGTERM, term)
   aligner = get_aligner(args)
+
+  if os.path.exists(tmp_dir):
+      task = get_task(aligner)
+      for i in task:
+          print("task ", i)
+      ltq = LocalTaskQueue(parallel=1)
+      ltq.insert_all(task, args= [aligner])
+
   with TaskQueue(queue_name=aligner.queue_name, queue_server='sqs', n_threads=0) as tq:
-    tq.poll(execute_args=[aligner], stop_fn=stop_fn_with_parent_health_check, 
+    tq.poll(execute_args=[aligner], stop_fn=stop_fn_with_parent_health_check,
             lease_seconds=args.lease_seconds)
 
 def create_process(process_id, args):

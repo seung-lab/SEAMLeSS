@@ -195,7 +195,8 @@ class Aligner:
   def new_align(self, src, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
                 block_stop, start_z, chunk_size, lookup_path, finish_dir,
                 timeout, extra_off, src_mask_cv=None,
-                src_mask_mip=0, src_mask_val=0):
+                src_mask_mip=0, src_mask_val=0,
+                super_chunk_len=1000, overlap_chunks=0):
       model_lookup={}
       tgt_radius_lookup = {}
       vvote_lookup = {}
@@ -1912,8 +1913,6 @@ class Aligner:
 
       pre_field =[None] * max_radius
       pre_field_p_list = []
-      pre_field_chunk = deepcopy(final_chunk)
-      pre_field_chunk.crop(pad, mip)
       pre_field_z_list = []
       if start_index >= max_radius:
           pre_field_range = block_range[start_index-max_radius:start_index]
@@ -1965,11 +1964,9 @@ class Aligner:
                                                      mask_val))
               p.start()
               p_list.append(p)
-          load_image_start = time()
           print(">--------------------start vvote----------------------> image", z)
           vv_start = time()
 
-          tchunk = deepcopy(schunk)
           dst_field = self.new_vector_vote(model_path, src_image, image_list,
                                            pre_field, chunk_size, pad,
                                            extra_off,

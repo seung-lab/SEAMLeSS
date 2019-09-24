@@ -34,7 +34,7 @@ class CloudManager():
     self.compile_scales()
     self.cvs = {}
     self.kwargs = {'bounded': False, 'progress': False, 
-                   'autocrop': False, 'non_aligned_writes': False, 
+                   'autocrop': False, 
                    'cdn_cache': False}
   
   def __getitem__(self, k):
@@ -135,6 +135,7 @@ class CloudManager():
       self.vec_total_sizes.append(scales[i]["size"])
 
   def create(self, path, data_type, num_channels, fill_missing,
+             non_aligned_writes=False,
              overwrite=False, compress=None, parallel=False):
     """Create a MiplessCloudVolume based on params & details of class
 
@@ -160,6 +161,8 @@ class CloudManager():
       provenance = None
     self.cvs[path] = CV(path, mkdir=overwrite, info=info,
                         provenance=provenance, parallel=parallel,
-                       fill_missing=fill_missing, compress=compress, **self.kwargs)
+                        fill_missing=fill_missing, compress=compress,
+                        non_aligned_writes=non_aligned_writes,
+                        **self.kwargs)
     return self.cvs[path]
 

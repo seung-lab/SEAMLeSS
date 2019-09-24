@@ -24,9 +24,10 @@ def deserialize_miplessCV_old2(s, cache={}):
       cache[s] = mcv
       return mcv
 
-def deserialize_miplessCV(s, cache={}, compress=None):
+def deserialize_miplessCV(s, cache={}, compress=None, non_aligned_writes=False):
     cv_kwargs = {'bounded': False, 'progress': False,
-                 'autocrop': False, 'non_aligned_writes': False,
+                 'autocrop': False,
+                 'non_aligned_writes': non_aligned_writes,
                  'cdn_cache': False, 'compress':compress}
     if s in cache:
       return cache[s]

@@ -208,7 +208,6 @@ if __name__ == '__main__':
     provenance = get_provenance(args)
     t = get_task(a)
     remote_upload(args.queue_name, t)
-    sys.exit(1)
     a.wait_for_sqs_empty()
 
 

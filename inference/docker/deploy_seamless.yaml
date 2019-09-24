@@ -38,10 +38,10 @@ spec:
         - name: secrets
           mountPath: /root/.cloudvolume/secrets
           readOnly: true
-          #        lifecycle:
-          #          preStop:
-          #            exec:
-          #              command: ["/bin/sh","-c","python inference/send_align_task.py --param_lookup inference/params/190501_basil_test_params_coarse.csv --src_path gs://neuroglancer/basil_v0/father_of_alignment/v3  --dst_path matrix://zhen-test/basil-100-slices0-test0 --mip 6 --max_mip 10 --pad 512  --block_size 10 --z_start 4 --z_stop  24 --queue_name deepalign_zhen"]
+                  lifecycle:
+                    preStop:
+                      exec:
+                        command: ["/bin/sh","-c","python inference/resend_task.py --queue_name deepalign0"]
       #restartPolicy: Never
       dnsPolicy: Default
       volumes:
