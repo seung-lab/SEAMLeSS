@@ -149,6 +149,78 @@ class StitchComposeRenderTask(RegisteredTask):
         del_tmp()
         print('Stitch compose and render task time:{:.3f} s'.format(diff), flush=True)
 
+class StitchGetFieldP(RegisteredTask):
+    def __init__(self, qu, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
+                 bfield_cv, tmp_img_cv, tmp_vvote_field_cv,
+                 pre_field_profile_cv, tmp_profile_cv,
+                 mip, pad, bbox,
+                 start_z, finish_dir, timeout, extra_off,
+                 chunk_size, super_chunk_len,
+                 softmin_temp, blur_sigma):
+        super().__init__(qu, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
+                         bfield_cv, tmp_img_cv, tmp_vvote_field_cv,
+                         pre_field_profile_cv, tmp_profile_cv,
+                         mip, pad,
+                         bbox, start_z, finish_dir, timeout, extra_off,
+                         chunk_size, super_chunk_len,
+                         softmin_temp, blur_sigma)
+    def execute(self, aligner):
+        init_checkpoint()
+        print_obj(self._args, "StitchGetFieldP")
+        tq = TaskQueue(self.qu)
+        tq.delete(self._id)
+        src_cv = DCV(self.src_cv)
+        tgt_cv = DCV(self.tgt_cv)
+        prev_field_cv = DCV(self.prev_field_cv)
+        bfield_cv = DCV(self.bfield_cv)
+        param_lookup= self.param_lookup
+        mip = self.mip
+        bbox =[]
+        for i in self.bbox:
+            bbox.append(deserialize_bbox(i))
+        #bbox = deserialize_bbox(self.bbox)
+        chunk_size = self.chunk_size
+        softmin_temp = self.softmin_temp
+        blur_sigma = self.blur_sigma
+        pad = self.pad
+        bs = self.bs
+        be = self.be
+        start_z = self.start_z
+        tmp_img_cv = DCV(self.tmp_img_cv)
+        tmp_vvote_field_cv = DCV(self.tmp_vvote_field_cv)
+        pre_field_profile_cv = DCV(self.pre_field_profile_cv, non_aligned_writes=True)
+        tmp_profile_cv = DCV(self.tmp_profile_cv, non_aligned_writes=True)
+        finish_dir = self.finish_dir
+        timeout = self.timeout
+        extra_off = self.extra_off
+        super_chunk_len = self.super_chunk_len
+
+        print("\n Stitch get field task\n"
+              "src {}\n"
+              "MIP{}\n"
+              "start_z={} \n".format(self.src_cv, mip,
+                                     bs), flush=True)
+        start = time()
+
+        aligner.get_stitch_field_task(param_lookup, bs, be, src_cv, tgt_cv,
+                                      prev_field_cv, bfield_cv, tmp_img_cv,
+                                      tmp_vvote_field_cv,
+                                      pre_field_profile_cv, tmp_profile_cv,
+                                      mip, bbox, chunk_size,
+                                      pad, start_z, finish_dir, timeout,
+                                      extra_off, super_chunk_len,
+                                      softmin_temp, blur_sigma)
+        with Storage(self.bfield_cv) as stor:
+            path = 'get_stitch_field_done/{}/{}'.format(str(mip), str(bs))
+            stor.put_file(path, '')
+            print('Marked finished at {}'.format(path))
+
+        end = time()
+        diff = end - start
+        del_tmp()
+        print('Stitch get field task time:{:.3f} s'.format(diff), flush=True)
+
+
 class StitchGetField(RegisteredTask):
     def __init__(self, qu, param_lookup, bs, be, src_cv, tgt_cv, prev_field_cv,
                  bfield_cv, tmp_img_cv, tmp_vvote_field_cv, mip, pad, bbox,
@@ -205,16 +277,74 @@ class StitchGetField(RegisteredTask):
         del_tmp()
         print('Stitch get field task time:{:.3f} s'.format(diff), flush=True)
 
+class NewAlignTaskP(RegisteredTask):
+  def __init__(self, src, qu, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
+               block_stop, start_z, chunk_size, model_lookup, finish_dir,
+               timeout, extra_off, pre_field_cv, mask_cv, mask_mip,
+               mask_val, super_chunk_len, overlap_chunks):
+    super().__init__(src, qu, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
+                     block_stop, start_z, chunk_size, model_lookup, finish_dir,
+                     timeout, extra_off, pre_field_cv, mask_cv, mask_mip,
+                     mask_val, super_chunk_len, overlap_chunks)
+
+  def execute(self, aligner):
+    print("NewAlignTaskP ----------------")
+    init_checkpoint()
+    print_obj(self._args, "NewAlignTaskP")
+    tq = TaskQueue(self.qu)
+    tq.delete(self._id)
+    src_cv = DCV(self.src)
+    dst_cv = DCV(self.dst)
+    v_field = DCV(self.vvote_field)
+    s_field = DCV(self.s_field)
+    chunk_grid =[]
+    for i in self.chunk_grid:
+        chunk_grid.append(deserialize_bbox(i))
+    mip = self.mip
+    pad = self.pad
+    block_start = self.block_start
+    block_stop = self.block_stop
+    start_z = self.start_z
+    chunk_size = self.chunk_size
+    model_lookup = self.model_lookup
+    mask_cv = None
+    if self.mask_cv:
+      mask_cv = DCV(self.mask_cv)
+    pre_field_cv = DCV(self.pre_field_cv, non_aligned_writes=True)
+    mask_mip = self.mask_mip
+    mask_val = self.mask_val
+    print("\n Align task\n"
+          "src {}\n"
+          "MIP{}\n"
+          "block_start={} \n".format(self.src, mip,
+                        block_start), flush=True)
+    start = time()
+    aligner.new_align(src_cv, dst_cv, s_field, v_field, chunk_grid, mip, pad, block_start,
+                      block_stop, start_z, chunk_size, model_lookup,
+                      self.finish_dir, self.timeout, self.extra_off,
+                      pre_field_cv, src_mask_cv=mask_cv,
+                      src_mask_mip=mask_mip, src_mask_val=mask_val,
+                      super_chunk_len=self.super_chunk_len,
+                      overlap_chunks=self.overlap_chunks)
+    with Storage(self.vvote_field) as stor:
+        path = 'block_alignment_done/{}/{}'.format(str(mip), str(block_start))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
+    end = time()
+    diff = end - start
+    del_tmp()
+    print('Align task time:{:.3f} s'.format(diff), flush=True)
+
 
 class NewAlignTask(RegisteredTask):
   def __init__(self, src, qu, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
                block_stop, start_z, chunk_size, model_lookup, finish_dir,
                timeout, extra_off, mask_cv, mask_mip,
-               mask_val):
+               mask_val, super_chunk_len, overlap_chunks):
     super().__init__(src, qu, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
                      block_stop, start_z, chunk_size, model_lookup, finish_dir,
                      timeout, extra_off, mask_cv, mask_mip,
-                     mask_val)
+                     mask_val, super_chunk_len, overlap_chunks)
 
   def execute(self, aligner):
     init_checkpoint()
@@ -251,7 +381,9 @@ class NewAlignTask(RegisteredTask):
                       block_stop, start_z, chunk_size, model_lookup,
                       self.finish_dir, self.timeout, self.extra_off,
                       src_mask_cv=mask_cv,
-                      src_mask_mip=mask_mip, src_mask_val=mask_val)
+                      src_mask_mip=mask_mip, src_mask_val=mask_val,
+                      super_chunk_len=self.super_chunk_len,
+                      overlap_chunks=self.overlap_chunks)
     with Storage(self.vvote_field) as stor:
         path = 'block_alignment_done/{}/{}'.format(str(mip), str(block_start))
         stor.put_file(path, '')
