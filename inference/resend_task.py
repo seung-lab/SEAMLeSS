@@ -1,4 +1,3 @@
-
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
 from taskqueue import TaskQueue, GreenTaskQueue, LocalTaskQueue, MockTaskQueue
@@ -133,6 +132,48 @@ def get_task(a):
                              src_mask_cv=mask_cv,
                              src_mask_mip=mask_mip,
                              src_mask_val=mask_val)
+    elif arg_dic["class"] == "NewAlignTaskP":
+        bs = int(arg_dic["block_start"])
+        be = int(arg_dic["block_stop"])
+        if restart_z ==-1:
+            start_z = int(arg_dic["start_z"])
+        else:
+            start_z = int(restart_z)
+        src = arg_dic["src"]
+        dst = arg_dic["dst"]
+        block_pair_field = arg_dic["s_field"]
+        block_vvote_field = arg_dic["vvote_field"]
+        chunk_grid =[]
+        for i in arg_dic["chunk_grid"]:
+            chunk_grid.append(deserialize_bbox(i))
+        #print(chunk_grid, type(chunk_grid))
+        mip = int(arg_dic["mip"])
+        pad = int(arg_dic["pad"])
+        chunk_size = int(arg_dic["chunk_size"])
+        param_lookup = arg_dic["model_lookup"]
+        qu = arg_dic["qu"]
+        mask_cv = arg_dic["mask_cv"]
+        mask_mip = arg_dic["mask_mip"]
+        mask_val = arg_dic["mask_val"]
+        finish_dir = arg_dic["finish_dir"]
+        timeout = arg_dic["timeout"]
+        extra_off = arg_dic["extra_off"]
+        pre_field_cv = arg_dic["pre_field_cv"]
+        super_chunk_len = arg_dic["super_chunk_len"]
+        overlap_chunks = arg_dic["overlap_chunks"]
+        t = a.new_align_task(bs, be, start_z, src, dst,
+                             block_pair_field,
+                             block_vvote_field,
+                             chunk_grid, mip, pad,
+                             chunk_size, param_lookup,
+                             qu, finish_dir, timeout,
+                             extra_off, pre_field_cv,
+                             src_mask_cv=mask_cv,
+                             src_mask_mip=mask_mip,
+                             src_mask_val=mask_val,
+                             super_chunk_len=super_chunk_len,
+                             overlap_chunks=overlap_chunks)
+
     elif arg_dic["class"] == "StitchComposeRender":
         qu =arg_dic["qu"]
         if restart_z ==-1:
@@ -198,6 +239,43 @@ def get_task(a):
                                               pad, finish_dir, timeout,
                                               extra_off,
                                               softmin_temp, blur_sigma)
+    elif arg_dic["class"] == "StitchGetFieldP":
+        qu = arg_dic["qu"]
+        src_cv = arg_dic["src_cv"]
+        tgt_cv = arg_dic["tgt_cv"]
+        param_lookup = arg_dic["param_lookup"]
+        block_vvote_field = arg_dic["prev_field_cv"]
+        broadcasting_field = arg_dic["bfield_cv"]
+        tmp_img_cv = arg_dic["tmp_img_cv"]
+        tmp_vvote_field_cv = arg_dic["tmp_vvote_field_cv"]
+        mip = int(arg_dic["mip"])
+        bs = int(arg_dic["bs"])
+        be = int(arg_dic["be"])
+        finish_dir = arg_dic["finish_dir"]
+        if restart_z ==-1:
+            start_z = int(arg_dic["start_z"])
+        else:
+            start_z = int(restart_z)
+        bbox = deserialize_bbox(arg_dic["bbox"])
+        chunk_size = int(arg_dic["chunk_size"])
+        pad = arg_dic["pad"]
+        softmin_temp = arg_dic["softmin_temp"]
+        blur_sigma = arg_dic["blur_sigma"]
+        timeout = arg_dic["timeout"]
+        extra_off = arg_dic["extra_off"]
+        pre_field_profile_cv = arg_dic["pre_field_profile_cv"]
+        tmp_profile_cv = arg_dic["tmp_profile_cv"]
+        super_chunk_len =arg_dic["super_chunk_len"]
+        t = a.stitch_get_field_task_generator(qu, param_lookup, bs, be, src_cv, tgt_cv,
+                                              block_vvote_field, broadcasting_field,
+                                              tmp_img_cv,tmp_vvote_field_cv,
+                                              pre_field_profile_cv,
+                                              tmp_profile_cv,
+                                              mip, start_z, bbox, chunk_size,
+                                              pad, finish_dir, timeout,
+                                              extra_off, super_chunk_len,
+                                              softmin_temp, blur_sigma)
+
     return t
 
 
