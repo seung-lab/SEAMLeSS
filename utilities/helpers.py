@@ -19,7 +19,7 @@ from torch.nn.functional import softmax
 from itertools import combinations
 from skimage.transform import rescale
 from skimage.morphology import disk as skdisk
-from skimage.filters.rank import maximum as skmaximum 
+from skimage.filters.rank import maximum as skmaximum
 from functools import reduce
 from copy import deepcopy
 import matplotlib
@@ -703,14 +703,14 @@ def dilate_mask(mask, radius=5):
   return skmaximum(np.squeeze(mask).astype(np.uint8), skdisk(radius)).reshape(mask.shape).astype(np.bool)
 
 
-def is_blank(image):    
+def is_blank(image):
   """Check if image is blank (assumes ndarray or torch tensor only)
-  """ 
+  """
   if isinstance(image, np.ndarray):
     return np.min(image) == 0 and np.max(image) == 0
   else:
     return torch.min(image) == 0 and torch.max(image) == 0
-    
+
 
 def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   """Compute the inverse vector field of residual field U by optimization
@@ -727,9 +727,9 @@ def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   Returns
      V: 4D tensor for absolute residual vector field such that V(U) = I.
   """
-  V = -deepcopy(U) 
+  V = -deepcopy(U)
   if tensor_approx_eq(U,V):
-    return V 
+    return V
   V.requires_grad = True
   n = U.shape[1] * U.shape[2]
   opt = torch.optim.SGD([V], lr=lr)
@@ -738,7 +738,7 @@ def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   print('Optimizing inverse field')
   for t in range(max_iter):
     currt = t
-    f = compose_fields(U, V) 
+    f = compose_fields(U, V)
     g = compose_fields(V, U)
     L = 0.5*torch.mean(f**2) + 0.5*torch.mean(g**2)
     costs.append(L)
@@ -767,7 +767,7 @@ def center_image(X, scale_factor, device=torch.device('cpu')):
   X_bar_down = avg_pool(X)
   # X_bar = interpolate(X_bar_down, scale_factor=scale_factor, mode='nearest')
   X_bar = interpolate(X_bar_down, size=X.shape[2:], mode='nearest')
-  return X - X_bar    
+  return X - X_bar
 
 def cpc(S, T, scale_factor, norm=True, device=torch.device('cpu')):
   chunk_dim = get_chunk_dim(scale_factor)
@@ -809,6 +809,8 @@ def vector_vote(fields, softmin_temp, blur_sigma=None):
   Returns:
     single vector field
   """
+  if len(fields) == 1:
+      return fields[0]
   print('softmin_temp {}'.format(softmin_temp))
   fields_blurred = fields
   if blur_sigma:

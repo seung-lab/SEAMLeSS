@@ -75,7 +75,7 @@ if __name__ == '__main__':
   args.serial_operation = True
   a = get_aligner(args)
   provenance = get_provenance(args)
-  chunk_size = 512
+  chunk_size = 1024
 
   # Simplify var names
   mip = args.mip

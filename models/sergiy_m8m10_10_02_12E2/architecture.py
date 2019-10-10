@@ -20,7 +20,7 @@ class Model(nn.Module):
         super().__init__()
         self.height = height
         self.mips = mips
-        self.range_adjust = True
+        self.range_adjust = False
 
         a = artificery.Artificery()
         path = os.path.dirname(os.path.abspath(__file__))
