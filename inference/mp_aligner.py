@@ -181,7 +181,8 @@ class Aligner:
   def new_align_task(self, block_start, block_stop, start_z,
                      src, dst, s_field, vvote_field, chunk_grid, mip,
                      pad, chunk_size, model_lookup, qu, finish_dir, timeout,
-                     extra_off, src_mask_cv=None, src_mask_mip=0, src_mask_val=0):
+                     extra_off, src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
+                     super_chunk_len=1000, overlap_chunks=0):
       #print("---------------------------->> load image")
       batch = []
       #for i in z_range:
@@ -189,7 +190,7 @@ class Aligner:
                                       block_start, block_stop, start_z, chunk_size,
                                       model_lookup, finish_dir, timeout,
                                       extra_off, src_mask_cv, src_mask_mip,
-                                      src_mask_val))
+                                      src_mask_val, super_chunk_len, overlap_chunks))
       return batch
 
   def new_align(self, src, dst, s_field, vvote_field, chunk_grid, mip, pad, block_start,
