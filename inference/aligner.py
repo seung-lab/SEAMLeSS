@@ -474,7 +474,8 @@ class Aligner:
                           src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
                           tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
                           tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
-                          prev_field_inverse=False):
+                          prev_field_inverse=False, field_primer_cv=None,
+                          field_primer_mip=None):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
     Args:
@@ -500,22 +501,56 @@ class Aligner:
     print('compute_field for {0} to {1}'.format(bbox.stringify(src_z),
                                                 bbox.stringify(tgt_z)))
     print('pad: {}'.format(pad))
-    padded_bbox = deepcopy(bbox)
-    padded_bbox.max_mip = mip
-    padded_bbox.uncrop(pad, mip=mip)
+
+    if field_primer_mip is None:
+      field_primer_mip = bbox.mip
+
+    # Displace src bbox by coarse vector field to adjust for large translations
+    tgt_padded_bbox = deepcopy(bbox)
+    tgt_padded_bbox.max_mip = field_primer_mip
+    tgt_padded_bbox.uncrop(pad, mip=mip)
+
+    coarse_field = None
+    coarse_distance = torch.Tensor([0, 0])
+    drift_distance = torch.Tensor([0, 0])
+
+    if field_primer_cv is not None:
+      # Fetch coarse alignment
+      coarse_field = self.get_field(
+        field_primer_cv, src_z, tgt_padded_bbox, field_primer_mip,
+        relative=False, to_tensor=True
+      ).to(device = self.device)
+      coarse_distance = self.profile_field(coarse_field)
 
     if prev_field_cv is not None:
-        field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
-                           relative=False, to_tensor=True)
-        if prev_field_inverse:
-          field = -field
-        distance = self.profile_field(field)
-        print('Displacement adjustment: {} px'.format(distance))
-        distance = (distance // (2 ** mip)) * 2 ** mip
-        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
-    else:
-        distance = torch.Tensor([0, 0])
-        new_bbox = padded_bbox
+      # Fetch fine alignment of previous section
+      prev_field = self.get_field(
+        prev_field_cv, prev_field_z, tgt_padded_bbox, mip,
+        relative=False, to_tensor=True
+      ).to(device = self.device)
+      drift_distance = self.profile_field(prev_field)
+
+      if field_primer_cv is not None and is_identity(prev_field) is False:
+        # Fetch coarse alignment of previous section. Required to separate
+        # previous section's fine alignment drift
+        # TODO: Better way for checking if prev_field exists
+        prev_coarse_field = self.get_field(
+          field_primer_cv, prev_field_z, tgt_padded_bbox, field_primer_mip,
+          relative=False, to_tensor=True
+        ).to(device = self.device)
+        prev_coarse_distance = self.profile_field(prev_coarse_field)
+        drift_distance -= prev_coarse_distance
+
+    combined_distance = coarse_distance + drift_distance
+    combined_distance = (combined_distance // (2 ** mip)) * 2 ** mip
+    print('Displacement adjustment: {} + {} --> {} px'.format(coarse_distance, drift_distance, combined_distance))
+    src_padded_bbox = self.adjust_bbox(tgt_padded_bbox, combined_distance.flip(0))
+
+    if coarse_field is not None:
+      coarse_pad = pad // 2**(field_primer_mip - mip)
+      coarse_field -= combined_distance.to(device = self.device)
+      coarse_field = self.abs_to_rel_residual(coarse_field, src_padded_bbox, mip)
+      coarse_field = coarse_field[:, coarse_pad:-coarse_pad, coarse_pad:-coarse_pad, :]
 
     tgt_z = [tgt_z]
     if tgt_alt_z is not None:
@@ -525,11 +560,11 @@ class Aligner:
         tgt_z.append(tgt_alt_z)
       print('alternative target slices:', tgt_alt_z)
 
-    src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
+    src_patch = self.get_masked_image(src_cv, src_z, src_padded_bbox, mip,
                                 mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                 mask_val=src_mask_val,
                                 to_tensor=True, normalizer=normalizer)
-    tgt_patch = self.get_composite_image(tgt_cv, tgt_z, padded_bbox, mip,
+    tgt_patch = self.get_composite_image(tgt_cv, tgt_z, tgt_padded_bbox, mip,
                                 mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
                                 mask_val=tgt_mask_val,
                                 to_tensor=True, normalizer=normalizer)
@@ -546,11 +581,11 @@ class Aligner:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
 
       # model produces field in relative coordinates
-      field = model(src_patch, tgt_patch)
+      field = model(src_patch, tgt_patch, src_field=coarse_field)
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       field = self.rel_to_abs_residual(field, mip)
       field = field[:,pad:-pad,pad:-pad,:]
-      field += distance.to(device=self.device)
+      field += combined_distance.to(device=self.device)
       field = field.data.cpu().numpy()
       # clear unused, cached memory so that other processes can allocate it
       torch.cuda.empty_cache()
@@ -1061,7 +1096,8 @@ class Aligner:
                     src_mask_mip=0, src_mask_val=0, tgt_mask_cv=None,
                     tgt_mask_mip=0, tgt_mask_val=0,
                     return_iterator=False, prev_field_cv=None, prev_field_z=None,
-                    prev_field_inverse=False):
+                    prev_field_inverse=False, field_primer_cv=None,
+                    field_primer_mip=0):
     """Compute field to warp src section to tgt section 
   
     Args:
@@ -1107,7 +1143,8 @@ class Aligner:
                                           src_z, tgt_z, chunk, mip, pad,
                                           src_mask_cv, src_mask_val, src_mask_mip, 
                                           tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
-                                          prev_field_cv, prev_field_z, prev_field_inverse)
+                                          prev_field_cv, prev_field_z, prev_field_inverse,
+                                          field_primer_cv, field_primer_mip)
     if return_iterator:
         return ComputeFieldTaskIterator(chunks,0, len(chunks))
     else:
@@ -1117,7 +1154,8 @@ class Aligner:
                                               src_z, tgt_z, chunk, mip, pad,
                                               src_mask_cv, src_mask_val, src_mask_mip, 
                                               tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
-                                              prev_field_cv, prev_field_z, prev_field_inverse))
+                                              prev_field_cv, prev_field_z, prev_field_inverse,
+                                              field_primer_cv, field_primer_mip))
         return batch
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 

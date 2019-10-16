@@ -126,11 +126,13 @@ class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
-                     prev_field_cv, prev_field_z, prev_field_inverse):
+                     prev_field_cv, prev_field_z, prev_field_inverse,
+                     field_primer_cv, field_primer_mip):
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
-                     prev_field_cv, prev_field_z, prev_field_inverse)
+                     prev_field_cv, prev_field_z, prev_field_inverse,
+                     field_primer_cv, field_primer_mip)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -158,16 +160,21 @@ class ComputeFieldTask(RegisteredTask):
       tgt_mask_cv = DCV(self.tgt_mask_cv)
     tgt_mask_mip = self.tgt_mask_mip
     tgt_mask_val = self.tgt_mask_val
+    if self.field_primer_cv:
+      field_primer_cv = DCV(self.field_primer_cv)
+    field_primer_mip = self.field_primer_mip
 
     print("\nCompute field\n"
           "model {}\n"
           "src {}\n"
           "tgt {}\n"
           "field {}\n"
+          "field primer {}, MIP{}\n"
           "src_mask {}, val {}, MIP{}\n"
           "tgt_mask {}, val {}, MIP{}\n"
           "z={} to z={}\n"
-          "MIP{}\n".format(model_path, src_cv, tgt_cv, field_cv, src_mask_cv, src_mask_val,
+          "MIP{}\n".format(model_path, src_cv, tgt_cv, field_cv, field_primer_cv,
+                           field_primer_mip, src_mask_cv, src_mask_val,
                            src_mask_mip, tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
                            src_z, tgt_z, mip), flush=True)
     start = time()
@@ -177,7 +184,8 @@ class ComputeFieldTask(RegisteredTask):
                                           src_mask_cv, src_mask_mip, src_mask_val,
                                           tgt_mask_cv, tgt_mask_mip, tgt_mask_val,
                                           None, prev_field_cv, prev_field_z, 
-                                          prev_field_inverse)
+                                          prev_field_inverse, field_primer_cv,
+                                          field_primer_mip)
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       end = time()
       diff = end - start

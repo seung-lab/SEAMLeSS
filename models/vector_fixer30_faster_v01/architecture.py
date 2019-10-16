@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from utilities.helpers import (grid_sample, upsample, downsample,
                                load_model_from_dict, compose_fields,
-                               upsample_field, time_function)
+                               downsample_field, upsample_field)
 import numpy as np
 
 
@@ -20,7 +20,7 @@ class Model(nn.Module):
         self.pyramid = EPyramid(height, skip, topskips, k)
 
     def forward(self, src, tgt, skip=0, in_field=None, **kwargs):
-        return self.pyramid(src, tgt, skip)
+        return self.pyramid(src, tgt, skip, **kwargs)
 
     def load(self, path):
         """
@@ -151,7 +151,7 @@ class EPyramid(nn.Module):
         self.src_encodings = {}
         self.tgt_encodings = {}
 
-    def forward(self, src, tgt, target_level):
+    def forward(self, src, tgt, target_level, *, src_field=None):
         factor = self.train_size / src.shape[-2]
 
         for i, module in enumerate(self.enclist):
@@ -160,19 +160,17 @@ class EPyramid(nn.Module):
             self.tgt_encodings[i] = tgt
             src, tgt = self.down(src), self.down(tgt)
 
-        field_so_far = 0
-        first_iter = True
+        field_so_far = src_field
         for i in range(self.nlevels, target_level - 1, -1):
             if i >= self.skip and i != 0:  # don't run the lowest aligner
                 enc_src, enc_tgt = self.src_encodings[i], self.tgt_encodings[i]
-                if not first_iter:
+                if field_so_far is not None:
                     enc_src = grid_sample(
                         enc_src,
                         field_so_far, padding_mode='zeros')
                 rfield = self.mlist[i](enc_src, enc_tgt) * factor
-                if first_iter:
+                if field_so_far is None:
                     field_so_far = rfield
-                    first_iter = False
                 else:
                     field_so_far = compose_fields(rfield, field_so_far)
             if i != target_level:

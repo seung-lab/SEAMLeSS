@@ -505,6 +505,12 @@ def upsample_field(field, src_mip, dst_mip):
     upsampled_field = upsample(src_mip-dst_mip)(field)
     return upsampled_field.permute(0, 2, 3, 1)
 
+def downsample_field(field, src_mip, dst_mip):
+    """Downsample vector field from src_mip to dst_mip
+    """
+    field = field.permute(0, 3, 1, 2)
+    downsampled_field = downsample(dst_mip - src_mip, type='average')(field)
+    return downsampled_field.permute(0, 2, 3, 1)
 
 def is_identity(field, eps=0.):
     """Check if field is the identity, up to some error `eps` (0 by default)
