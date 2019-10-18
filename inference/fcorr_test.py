@@ -38,6 +38,7 @@ if __name__ == '__main__':
   args = parse_args(parser)
   # Only compute matches to previous sections
   args.serial_operation = True
+  args.device = torch.device('cpu')
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
@@ -70,7 +71,8 @@ if __name__ == '__main__':
   prefix = str(mip)
   for z in full_range:
       print("Fcorr for z={} and z={}".format(z, z+1))
-      t = a.calculate_fcorr(cm, bbox, mip, z, z+1, src, dst, dst1)
+      t = a.calculate_fcorr(cm, bbox, mip, z, z+2, src, dst,
+                            dst1)
       batch.extend(t)
   start = time()
   run(a, batch)

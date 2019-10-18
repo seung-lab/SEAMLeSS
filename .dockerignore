@@ -132,3 +132,8 @@ debug_outputs/
 
 # secrets
 inference/docker/secret.yaml
+.git/
+
+# isolate single modle
+# models/
+# !models/vector_fixer30_faster_v01/**

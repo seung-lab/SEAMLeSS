@@ -3,7 +3,7 @@ gevent.monkey.patch_all()
 
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
-from taskqueue import TaskQueue, GreenTaskQueue
+from taskqueue import TaskQueue, GreenTaskQueue, LocalTaskQueue, MockTaskQueue
 
 import sys
 import torch
@@ -85,11 +85,16 @@ if __name__ == '__main__':
            z_range.extend(list(range(z_start, z_stop)))
 
   # Create CloudVolume Manager
-  template_path = args.src_path
   if args.info_path:
     template_path = args.info_path
-  cm = CloudManager(template_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=chunk_size, batch_mip=src_mip)
+    cm = CloudManager(template_path, max_mip, pad, provenance, batch_size=1,
+                      size_chunk=chunk_size, batch_mip=src_mip, 
+                      create_info=False)
+  else:
+    template_path = args.src_path
+    cm = CloudManager(template_path, max_mip, pad, provenance, batch_size=1,
+                      size_chunk=chunk_size, batch_mip=src_mip, 
+                      create_info=True)
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
@@ -125,8 +130,6 @@ if __name__ == '__main__':
               overwrite=False)
         source_lookup[z] = src_path_to_cv[src_path]
 
-  prefix = ''
-
   def remote_upload(tasks):
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
           tq.insert_all(tasks)
@@ -152,7 +155,7 @@ if __name__ == '__main__':
             src_path = src.path
           
           t = a.render(cm, src_path, field.path, dst.path, z, z, z, bbox,
-                           src_mip, field_mip, affine=affine, prefix=prefix) 
+                           src_mip, field_mip, affine=affine) 
           yield from t
 
   ptask = []
@@ -161,8 +164,13 @@ if __name__ == '__main__':
   for irange in range_list:
       ptask.append(RenderTaskIterator(irange))
 
-  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-      executor.map(remote_upload, ptask)
+  if a.distributed:
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+  else:
+    for t in ptask:
+     tq = LocalTaskQueue(parallel=1)
+     tq.insert_all(t, args=[a])
 
   end = time()
   diff = end - start
@@ -170,7 +178,7 @@ if __name__ == '__main__':
   print('Running Render Tasks')
   # wait 
   start = time()
-  a.wait_for_sqs_empty()
+  # a.wait_for_sqs_empty()
   end = time()
   diff = end - start
   print("Executing Render Tasks use time:", diff)

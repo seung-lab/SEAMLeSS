@@ -8,14 +8,15 @@ from taskqueue import TaskQueue, GreenTaskQueue, LocalTaskQueue
 import sys
 import torch
 import json
-from time import time, sleep
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
 from cloudmanager import CloudManager
+from time import time
 from tasks import run 
 
 def print_run(diff, n_tasks):
-  print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
+  if n_tasks > 0:
+    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
 
 def make_range(block_range, part_num):
     rangelen = len(block_range)
@@ -34,73 +35,76 @@ def make_range(block_range, part_num):
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--src_path', type=str)
-  parser.add_argument('--src_info_path', type=str, default='',
-    help='str to existing CloudVolume path to use as template for new CloudVolumes')
+  parser.add_argument('--dst_path', type=str)
+  parser.add_argument('--z_offset', type=int,
+    help='distance between src_z and tgt_z')
+  parser.add_argument('--src_mip', type=int)
+  parser.add_argument('--dst_mip', type=int)
+  parser.add_argument('--fill_value', type=int, default=0)
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
   parser.add_argument('--bbox_stop', nargs=3, type=int,
     help='bbox origin+shape, 3-element int list')
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
-  parser.add_argument('--src_mip', type=int,
-    help='int for input MIP')
-  parser.add_argument('--dst_mip', type=int,
-    help='int for output MIP, which will dictate the size of the block used')
-  parser.add_argument('--max_mip', type=int, default=9)
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
-  parser.add_argument('--z_offset', type=int, default=-1,
-    help='int for offset of section to be compared against')
-  parser.add_argument('--unnormalized', action='store_true', 
-    help='do not normalize the CPC output, save as float')
+  # parser.add_argument('--save_intermediary', action='store_true')
   args = parse_args(parser)
-  if args.src_info_path == '':
-    args.src_info_path = args.src_path
-  # Only compute matches to previous sections
+  args.max_mip = args.dst_mip
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
   
   # Simplify var names
+  src_mip = args.src_mip
+  dst_mip = args.dst_mip
+  fcorr_chunk_size = 2**(dst_mip-src_mip)
+  chunk_size = 128 
+  a.chunk_size = (chunk_size, chunk_size)
   max_mip = args.max_mip
   pad = args.pad
+  z_offset = args.z_offset
+  fill_value = args.fill_value
+  print('src_mip {}'.format(src_mip))
+  print('dst_mip {}'.format(dst_mip))
+  print('fcorr_chunk_size {}'.format(fcorr_chunk_size))
+  # print('chunk_size {}'.format(chunk_size))
+  print('z_offset {}'.format(z_offset))
 
   # Compile ranges
-  z_range = range(args.bbox_start[2], args.bbox_stop[2])
+  full_range = range(args.bbox_start[2], args.bbox_stop[2])
   # Create CloudVolume Manager
-  cm = CloudManager(args.src_info_path, max_mip, pad, provenance)
+  cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
+                    size_chunk=chunk_size, batch_mip=dst_mip)
+
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
-                     fill_missing=True, overwrite=False).path
-  data_type = 'uint8'
-  if args.unnormalized:
-    data_type = 'float32'
-  
-  # Create dst CloudVolumes for each block, since blocks will overlap by 3 sections
-  dst_path = join(args.src_path, 'cpc', '{}_{}'.format(args.src_mip, args.dst_mip),
-                  '{}'.format(args.z_offset)) 
-  if args.unnormalized:
-    dst_path = join(args.src_path, 'cpc', 'unnormalized', 
-                    '{}_{}'.format(args.src_mip, args.dst_mip),
-                    '{}'.format(args.z_offset)) 
-  dst = cm.create(dst_path, data_type=data_type, num_channels=1, fill_missing=True, 
-                  overwrite=True).path
+                     fill_missing=True, overwrite=False)
 
-  ##############
-  # CPC script #
-  ##############
+  fcorr_dir = 'fcorr/{}_{}/{}'.format(src_mip, dst_mip, z_offset)
+  # Create dst CloudVolumes
+  dst_post = cm.create(join(args.dst_path, fcorr_dir, 'post'),
+                  data_type='float32', num_channels=1, fill_missing=True,
+                  overwrite=True)
+  dst_pre = cm.create(join(args.dst_path, fcorr_dir, 'pre'),
+                  data_type='float32', num_channels=1, fill_missing=True,
+                  overwrite=True)
+
+  prefix = str(src_mip)
   class TaskIterator():
       def __init__(self, brange):
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
             #print("Fcorr for z={} and z={}".format(z, z+1))
-            t = a.cpc(cm, src, src, dst, z, z+args.z_offset, bbox, 
-                      args.src_mip, args.dst_mip, norm=not args.unnormalized)
+            t = a.compute_fcorr(cm, src.path, dst_pre.path, dst_post.path, bbox, 
+                                src_mip, dst_mip, z, z+args.z_offset, z, 
+                                fcorr_chunk_size, fill_value=fill_value, prefix=prefix)
             yield from t
 
-  range_list = make_range(z_range, a.threads)
+  range_list = make_range(full_range, a.threads)
 
   def remote_upload(tasks):
     with GreenTaskQueue(queue_name=args.queue_name) as tq:
@@ -124,3 +128,4 @@ if __name__ == '__main__':
   diff = end - start
   print("Sending Tasks use time:", diff)
   print('Running Tasks')
+  # wait

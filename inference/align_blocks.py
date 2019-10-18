@@ -3,13 +3,14 @@ gevent.monkey.patch_all()
 
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
-from taskqueue import TaskQueue, GreenTaskQueue 
+from taskqueue import TaskQueue, GreenTaskQueue, LocalTaskQueue, MockTaskQueue
 
 import sys
 import torch
 import json
 import math
 import csv
+from copy import deepcopy
 from time import time, sleep
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
@@ -46,10 +47,10 @@ def ranges_overlap(a_pair, b_pair):
 
 if __name__ == '__main__':
   parser = get_argparser()
-  parser.add_argument('--model_lookup', type=str,
-    help='relative path to CSV file identifying model to use per z range')
-  parser.add_argument('--z_range_path', type=str, 
-    help='path to csv file with list of z indices to use')
+  parser.add_argument('--param_lookup', type=str,
+    help='relative path to CSV file identifying params to use per z range')
+  # parser.add_argument('--z_range_path', type=str, 
+  #   help='path to csv file with list of z indices to use')
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--src_mask_path', type=str, default='',
     help='CloudVolume path of mask to use with src images; default None')
@@ -62,15 +63,11 @@ if __name__ == '__main__':
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--tgt_radius', type=int, default=3,
-    help='int for number of sections to include in vector voting')
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   parser.add_argument('--restart', type=int, default=0)
-  parser.add_argument('--use_sqs_wait', action='store_true',
-    help='wait for SQS to return that its queue is empty; incurs fixed 30s for initial wait')
   args = parse_args(parser)
   # Only compute matches to previous sections
   args.serial_operation = True
@@ -84,15 +81,44 @@ if __name__ == '__main__':
   pad = args.pad
   src_mask_val = args.src_mask_val
   src_mask_mip = args.src_mask_mip
+  block_size = args.block_size
 
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
                     size_chunk=chunk_size, batch_mip=mip)
+
+  # Create src CloudVolumes
+  print('Create src & align image CloudVolumes')
+  src = cm.create(args.src_path, data_type='uint8', num_channels=1,
+                     fill_missing=True, overwrite=False).path
+  src_mask_cv = None
+  tgt_mask_cv = None
+  if args.src_mask_path:
+    src_mask_cv = cm.create(args.src_mask_path, data_type='uint8', num_channels=1,
+                               fill_missing=True, overwrite=False).path
+    tgt_mask_cv = src_mask_cv
+
+  if src_mask_cv != None:
+      src_mask_cv = src_mask_cv.path
+  if tgt_mask_cv != None:
+      tgt_mask_cv = tgt_mask_cv.path
+
+  # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius 
+  block_dsts = {}
+  block_types = ['even', 'odd']
+  for i, block_type in enumerate(block_types):
+    block_dst = cm.create(join(args.dst_path, 'image_blocks', block_type), 
+                    data_type='uint8', num_channels=1, fill_missing=True, 
+                    overwrite=True)
+    block_dsts[i] = block_dst.path 
   
-  # compile bbox & model lookup per z index
+  # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
   bbox_lookup = {}
   model_lookup = {}
-  with open(args.model_lookup) as f:
+  tgt_radius_lookup = {}
+  vvote_lookup = {}
+  skip_list = [] 
+  with open(args.param_lookup) as f:
     reader = csv.reader(f, delimiter=',')
     for k, r in enumerate(reader):
        if k != 0:
@@ -104,333 +130,413 @@ if __name__ == '__main__':
          z_stop  = int(r[5])
          bbox_mip = int(r[6])
          model_path = join('..', 'models', r[7])
+         tgt_radius = int(r[8])
+         skip = bool(int(r[9]))
          bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
+         # print('{},{}'.format(z_start, z_stop))
          for z in range(z_start, z_stop):
+           if skip:
+             skip_list.append(z)
            bbox_lookup[z] = bbox 
            model_lookup[z] = model_path
+           tgt_radius_lookup[z] = tgt_radius
+           vvote_lookup[z] = [-i for i in range(1, tgt_radius+1)]
 
-  # Compile ranges
-  block_range = range(args.z_start, args.z_stop, args.block_size)
-  even_odd_range = [i % 2 for i in range(len(block_range))]
-  if args.z_range_path:
-    print('Compiling z_range from {}'.format(args.z_range_path))
-    block_endpoints = range(args.z_start, args.z_stop+args.block_size, args.block_size)
-    block_pairs = list(zip(block_endpoints[:-1], block_endpoints[1:]))
-    tmp_block_range = []
-    tmp_even_odd_range = []
-    with open(args.z_range_path) as f:
-      reader = csv.reader(f, delimiter=',')
-      for k, r in enumerate(reader):
-         if k != 0:
-           z_pair = int(r[0]), int(r[1])
-           print('Filtering block_range by {}'.format(z_pair))
-           block_filter = [ranges_overlap(z_pair, b_pair) for b_pair in block_pairs]
-           affected_blocks = list(compress(block_range, block_filter))
-           affected_even_odd = list(compress(even_odd_range, block_filter))
-           print('Affected block_starts {}'.format(affected_blocks))
-           tmp_block_range.extend(affected_blocks)
-           tmp_even_odd_range.extend(affected_even_odd)
-    block_range = tmp_block_range
-    even_odd_range = tmp_even_odd_range
+  # Filter out skipped sections from vvote_offsets
+  min_offset = 0
+  for z, tgt_radius in vvote_lookup.items():
+    offset = 0
+    for i, r in enumerate(tgt_radius):
+      while r + offset + z in skip_list:
+        offset -= 1
+      tgt_radius[i] = r + offset
+    min_offset = min(min_offset, r + offset)
+    offset = 0 
+    vvote_lookup[z] = tgt_radius
 
-  print('block_range {}'.format(block_range))
-  print('even_odd_range {}'.format(even_odd_range))
+  # Adjust block starts so they don't start on a skipped section
+  initial_block_starts = list(range(args.z_start, args.z_stop, block_size))
+  if initial_block_starts[-1] != args.z_stop:
+    initial_block_starts.append(args.z_stop)
+  block_starts = []
+  for bs, be in zip(initial_block_starts[:-1], initial_block_starts[1:]):
+    while bs in skip_list:
+      bs += 1
+      assert(bs < be)
+    block_starts.append(bs)
+  block_stops = block_starts[1:]
+  if block_starts[-1] != args.z_stop:
+    block_stops.append(args.z_stop)
+  # print('initial_block_starts {}'.format(list(initial_block_starts)))
+  # print('block_starts {}'.format(block_starts))
+  # print('block_stops {}'.format(block_stops))
+  # Assign even/odd to each block start so results are stored in appropriate CloudVolume
+  # Create lookup dicts based on offset in the canonical block
+  # BLOCK ALIGNMENT
+  # Copy sections with block offsets of 0 
+  # Align without vector voting sections with block offsets < 0 (starter sections)
+  # Align with vector voting sections with block offsets > 0 (block sections)
+  # This lookup makes it easy for restarting based on block offset, though isn't 
+  #  strictly necessary for the copy & starter sections
+  # BLOCK STITCHING
+  # Stitch blocks using the aligned block sections that have tgt_z in the starter sections
+  block_dst_lookup = {}
+  block_start_lookup = {}
+  starter_dst_lookup = {}
+  copy_offset_to_z_range = {0: deepcopy(block_starts)}
+  overlap_copy_range = set()
+  starter_offset_to_z_range = {i: set() for i in range(min_offset, 0)}
+  block_offset_to_z_range = {i: set() for i in range(1, block_size+10)} #TODO: Set the padding based on max(be-bs)
+  # Reverse lookup to easily identify tgt_z for each starter z
+  starter_z_to_offset = {} 
+  for k, (bs, be) in enumerate(zip(block_starts, block_stops)):
+    even_odd = k % 2
+    for i, z in enumerate(range(bs, be+1)):
+      if i > 0:
+        block_start_lookup[z] = bs
+        block_dst_lookup[z] = block_dsts[even_odd]
+        if z not in skip_list:
+          block_offset_to_z_range[i].add(z)
+          for tgt_offset in vvote_lookup[z]:
+            tgt_z = z + tgt_offset
+            if tgt_z <= bs:
+              starter_dst_lookup[tgt_z] = block_dsts[even_odd]
+              # ignore first block for stitching operations
+              if k > 0:
+                overlap_copy_range.add(tgt_z)
+            if tgt_z < bs:
+              starter_z_to_offset[tgt_z] = bs - tgt_z
+              starter_offset_to_z_range[tgt_z - bs].add(tgt_z)
+  offset_range = [i for i in range(min_offset, abs(min_offset)+1)]
+  # check for restart
+  print('Align starting from OFFSET {}'.format(args.restart))
+  starter_restart = -100 
+  if args.restart <= 0:
+    starter_restart = args.restart 
+  copy_offset_to_z_range = {k:v for k,v in copy_offset_to_z_range.items() 
+                                              if k == args.restart}
+  starter_offset_to_z_range = {k:v for k,v in starter_offset_to_z_range.items() 
+                                              if k <= starter_restart}
+  block_offset_to_z_range = {k:v for k,v in block_offset_to_z_range.items() 
+                                              if k >= args.restart}
+  # print('copy_offset_to_z_range {}'.format(copy_offset_to_z_range))
+  # print('starter_offset_to_z_range {}'.format(starter_offset_to_z_range))
+  # print('block_offset_to_z_range {}'.format(block_offset_to_z_range))
+  # print('offset_range {}'.format(offset_range))
+  copy_range = [z for z_range in copy_offset_to_z_range.values() for z in z_range]
+  starter_range = [z for z_range in starter_offset_to_z_range.values() for z in z_range]
+  overlap_copy_range = list(overlap_copy_range)
+  # print('overlap_copy_range {}'.format(overlap_copy_range))
 
-  overlap = args.tgt_radius
-  full_range = range(args.block_size + overlap)
-
-  copy_range = full_range[overlap-1:overlap]
-  serial_range = full_range[:overlap-1][::-1]
-  vvote_range = full_range[overlap:]
-  copy_field_range = range(overlap, args.block_size+overlap)
-  broadcast_field_range = range(overlap-1, args.block_size+overlap)
-
-  serial_offsets = {serial_range[i]: i+1 for i in range(overlap-1)}
-  vvote_offsets = [-i for i in range(1, overlap+1)]
-
-  print('copy_range {}'.format(copy_range))
-  print('serial_range {}'.format(serial_range))
-  print('vvote_range {}'.format(vvote_range))
-  print('serial_offsets {}'.format(serial_offsets))
-  print('vvote_offsets {}'.format(vvote_offsets))
-
-  # Create src CloudVolumes
-  src = cm.create(args.src_path, data_type='uint8', num_channels=1,
-                     fill_missing=True, overwrite=False)
-  src_mask_cv = None
-  tgt_mask_cv = None
-  if args.src_mask_path:
-    src_mask_cv = cm.create(args.src_mask_path, data_type='uint8', num_channels=1,
-                               fill_missing=True, overwrite=False)
-    tgt_mask_cv = src_mask_cv
-
-  if src_mask_cv != None:
-      src_mask_cv = src_mask_cv.path
-  if tgt_mask_cv != None:
-      tgt_mask_cv = tgt_mask_cv.path
-
-  # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius 
-  dsts = {}
-  block_types = ['even', 'odd']
-  for i, block_type in enumerate(block_types):
-    dst = cm.create(join(args.dst_path, 'image_blocks', block_type), 
-                    data_type='uint8', num_channels=1, fill_missing=True, 
-                    overwrite=True)
-    dsts[i] = dst.path 
+  # Determine the number of sections needed to stitch (no stitching for block 0)
+  stitch_offset_to_z_range = {i: [] for i in range(1, block_size+1)}
+  block_start_to_stitch_offsets = {i: [] for i in block_starts[1:]}
+  for bs, be in zip(block_starts[1:], block_stops[1:]):
+    max_offset = 0
+    for i, z in enumerate(range(bs, be+1)):
+      if i > 0 and z not in skip_list:
+        max_offset = max(max_offset, tgt_radius_lookup[z])
+        if len(block_start_to_stitch_offsets[bs]) < max_offset:
+          stitch_offset_to_z_range[i].append(z)
+          block_start_to_stitch_offsets[bs].append(bs - z)
+        else:
+          break 
+  stitch_range = [z for z_range in stitch_offset_to_z_range.values() for z in z_range]
+  for b,v in block_start_to_stitch_offsets.items():
+    print(b)
+    assert(len(v) % 2 == 1)
 
   # Create field CloudVolumes
-  serial_fields = {}
-  for z_offset in serial_offsets.values():
-    serial_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
-                                  data_type='int16', num_channels=2,
-                                  fill_missing=True, overwrite=True).path
-  pair_fields = {}
-  for z_offset in vvote_offsets:
-    pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', str(z_offset)), 
+  print('Creating field & overlap CloudVolumes')
+  block_pair_fields = {}
+  for z_offset in offset_range:
+    block_pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', 'block', 
+                                                 str(z_offset)), 
                                       data_type='int16', num_channels=2,
                                       fill_missing=True, overwrite=True).path
-  vvote_field = cm.create(join(args.dst_path, 'field', 'vvote_{}'.format(overlap)), 
+  block_vvote_field = cm.create(join(args.dst_path, 'field', 'vvote'),
                           data_type='int16', num_channels=2,
-                          fill_missing=True, overwrite=True)
+                          fill_missing=True, overwrite=True).path
+  stitch_pair_fields = {}
+  for z_offset in offset_range:
+    stitch_pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
+                                                  'stitch', str(z_offset)), 
+                                      data_type='int16', num_channels=2,
+                                      fill_missing=True, overwrite=True).path
+  overlap_vvote_field = cm.create(join(args.dst_path, 'field', 'stitch',
+                                    'vvote', 'field'), 
+                                 data_type='int16', num_channels=2,
+                                 fill_missing=True, overwrite=True).path
+  overlap_image = cm.create(join(args.dst_path, 'field', 'stitch',
+                                    'vvote', 'image'), 
+                    data_type='uint8', num_channels=1, fill_missing=True, 
+                    overwrite=True).path
+  stitch_fields = {}
+  for z_offset in offset_range:
+    stitch_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
+                                             'stitch', 'vvote', str(z_offset)), 
+                                      data_type='int16', num_channels=2,
+                                      fill_missing=True, overwrite=True).path
+  broadcasting_field = cm.create(join(args.dst_path, 'field', 
+                                      'stitch', 'broadcasting'),
+                                 data_type='int16', num_channels=2,
+                                 fill_missing=True, overwrite=True).path
 
-  ###########################
-  # Serial alignment script #
-  ###########################
-  # check for restart
-  copy_range = [r for r in copy_range if r >= args.restart]
-  serial_range = [r for r in serial_range if r >= args.restart]
-  vvote_range = [r for r in vvote_range if r >= args.restart]
-  
-  # Copy first section
-  
+  # Task scheduling functions
   def remote_upload(tasks):
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
           tq.insert_all(tasks)  
- 
-  class CopyTaskIterator():
-      def __init__(self, brange, even_odd):
-          self.brange = brange
-          self.even_odd = even_odd
-      def __iter__(self):
-          print(self.brange)
-          for block_offset in copy_range:
-            prefix = block_offset
-            for block_start, even_odd in zip(self.brange, self.even_odd):
-              dst = dsts[even_odd]
-              z = block_start + block_offset
-              bbox = bbox_lookup[z]
-              t =  a.copy(cm, src.path, dst, z, z, bbox, mip, is_field=False,
-                         mask_cv=src_mask_cv, mask_mip=src_mask_mip, mask_val=src_mask_val,
-                         prefix=prefix)
-              yield from t 
 
-  ptask = []
-  range_list = make_range(block_range, a.threads)
-  even_odd_list = make_range(even_odd_range, a.threads)
-  print('range_list {}'.format(range_list))
-  print('even_odd_list {}'.format(even_odd_list))
-  
-  start = time()
-  for irange, ieven_odd in zip(range_list, even_odd_list):
-      ptask.append(CopyTaskIterator(irange, ieven_odd))
+  def execute(task_iterator, z_range):
+    if len(z_range) > 0:
+      ptask = []
+      range_list = make_range(z_range, a.threads)
+      start = time()
 
-  with ProcessPoolExecutor(max_workers=a.threads) as executor:
-      executor.map(remote_upload, ptask)
+      for irange in range_list:
+          ptask.append(task_iterator(irange))
+      if args.dry_run:
+        for t in ptask:
+         tq = MockTaskQueue(parallel=1)
+         tq.insert_all(t, args=[a])
+      else:
+        if a.distributed:
+          with ProcessPoolExecutor(max_workers=a.threads) as executor:
+              executor.map(remote_upload, ptask)
+        else:
+          for t in ptask:
+           tq = LocalTaskQueue(parallel=1)
+           tq.insert_all(t, args=[a])
  
-  end = time()
-  diff = end - start
-  print("Sending Copy Tasks use time:", diff)
-  print('Run CopyTasks')
-  # wait
-  start = time()
-  #if args.use_sqs_wait:
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing Copy Tasks use time:", diff)
- 
- 
-  # Align without vector voting
-  for block_offset in serial_range:
-    print('BLOCK OFFSET {}'.format(block_offset))
-    z_offset = serial_offsets[block_offset] 
-    serial_field = serial_fields[z_offset]
-    prefix = block_offset
-    class ComputeFieldTaskIterator(object):
-        def __init__(self, brange, even_odd):
-            self.brange = brange
-            self.even_odd = even_odd
-        def __iter__(self):
-            for block_start, even_odd in zip(self.brange, self.even_odd):
-                dst = dsts[even_odd]
-                z = block_start + block_offset 
-                model_path = model_lookup[z]
-                bbox = bbox_lookup[z]
-                t = a.compute_field(cm, model_path, src.path, dst, serial_field, 
-                                    z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
-                                    src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                                    tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                                    tgt_mask_val=src_mask_val, prefix=prefix,
-                                    prev_field_cv=None, prev_field_z=None)
-                yield from t
-    ptask = []
-    start = time()
-    print("block_range", block_range)
-    for irange, ieven_odd in zip(range_list, even_odd_list):
-        ptask.append(ComputeFieldTaskIterator(irange, ieven_odd))
-    print("-----ptask len is", len(ptask), a.threads) 
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-   
-    end = time()
-    diff = end - start
-    print("Sending Compute Field Tasks use time:", diff)
-    print('Run Compute field')
- 
-    start = time()
-    # wait 
-    a.wait_for_sqs_empty()
-    end = time()
-    diff = end - start
-    print("Executing Compute Tasks use time:", diff)
- 
-    class RenderTaskIterator(object):
-        def __init__(self, brange, even_odd):
-            self.brange = brange
-            self.even_odd = even_odd
-        def __iter__(self):
-            for block_start, even_odd in zip(self.brange, self.even_odd):
-                dst = dsts[even_odd]
-                z = block_start + block_offset
-                bbox = bbox_lookup[z]
-                t = a.render(cm, src.path, serial_field, dst, src_z=z, field_z=z, dst_z=z,
-                             bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
-                             mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
-                yield from t
-    ptask = []
-    start = time()
-    for irange, ieven_odd in zip(range_list, even_odd_list):
-        ptask.append(RenderTaskIterator(irange, ieven_odd))
+      end = time()
+      diff = end - start
+      print('Sending {} use time: {}'.format(task_iterator, diff))
+      if a.distributed:
+        print('Run {}'.format(task_iterator))
+        # wait
+        start = time()
+        a.wait_for_sqs_empty()
+        end = time()
+        diff = end - start
+        print('Executing {} use time: {}\n'.format(task_iterator, diff))
+
+  # Task Scheduling Iterators
+  print('Creating task scheduling iterators')
+  class StarterCopy():
+    def __init__(self, z_range):
+      print(z_range)
+      self.z_range = z_range
+
+    def __iter__(self):
+      for z in self.z_range:
+        block_dst = starter_dst_lookup[z]
+        bbox = bbox_lookup[z]
+        t =  a.copy(cm, src, block_dst, z, z, bbox, mip, is_field=False,
+                    mask_cv=src_mask_cv, mask_mip=src_mask_mip, mask_val=src_mask_val)
+        yield from t 
+
+  class StarterComputeField(object):
+    def __init__(self, z_range):
+      self.z_range = z_range
+
+    def __iter__(self):
+      for z in self.z_range:
+        dst = starter_dst_lookup[z]
+        model_path = model_lookup[z]
+        bbox = bbox_lookup[z]
+        z_offset = starter_z_to_offset[z]
+        field = block_pair_fields[z_offset]
+        tgt_z = z + z_offset
+        t = a.compute_field(cm, model_path, src, dst, field, 
+                            z, tgt_z, bbox, mip, pad, src_mask_cv=src_mask_cv,
+                            src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                            tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+                            tgt_mask_val=src_mask_val, prev_field_cv=None, 
+                            prev_field_z=None)
+        yield from t
+
+  class StarterRender(object):
+    def __init__(self, z_range):
+      self.z_range = z_range
+
+    def __iter__(self):
+      for z in self.z_range:
+        dst = starter_dst_lookup[z]
+        z_offset = starter_z_to_offset[z]
+        field = block_pair_fields[z_offset]
+        bbox = bbox_lookup[z]
+        t = a.render(cm, src, field, dst, src_z=z, field_z=z, dst_z=z,
+                     bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
+                     mask_val=src_mask_val, mask_mip=src_mask_mip)
+        yield from t
+
+  class BlockAlignComputeField(object):
+    def __init__(self, z_range):
+      self.z_range = z_range
+
+    def __iter__(self):
+      for src_z in self.z_range:
+        dst = block_dst_lookup[src_z]
+        bbox = bbox_lookup[src_z]
+        model_path = model_lookup[src_z]
+        tgt_offsets = vvote_lookup[src_z]
+        for tgt_offset in tgt_offsets:
+          tgt_z = src_z + tgt_offset
+          field = block_pair_fields[tgt_offset]
+          t = a.compute_field(cm, model_path, src, dst, field, 
+                              src_z, tgt_z, bbox, mip, pad, src_mask_cv=src_mask_cv,
+                              src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                              tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+                              tgt_mask_val=src_mask_val, prev_field_cv=block_vvote_field, 
+                              prev_field_z=tgt_z)
+          yield from t
+
+  class BlockAlignVectorVote(object):
+    def __init__(self, z_range):
+      self.z_range = z_range
+
+    def __iter__(self):
+      for z in self.z_range:
+        bbox = bbox_lookup[z]
+        tgt_offsets = vvote_lookup[z]
+        fields = {i: block_pair_fields[i] for i in tgt_offsets}
+        t = a.vector_vote(cm, fields, block_vvote_field, z, bbox, mip, 
+                          inverse=False, serial=True, softmin_temp=2**mip, blur_sigma=1)
+        yield from t
+
+  class BlockAlignRender(object):
+    def __init__(self, z_range):
+      self.z_range = z_range
+
+    def __iter__(self):
+      for z in self.z_range:
+        dst = block_dst_lookup[z]
+        bbox = bbox_lookup[z]
+        t = a.render(cm, src, block_vvote_field, dst, src_z=z, field_z=z, dst_z=z,
+                     bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
+                     mask_val=src_mask_val, mask_mip=src_mask_mip)
+        yield from t
+
+  class StitchOverlapCopy():
+    def __init__(self, z_range):
+      self.z_range = z_range
+
+    def __iter__(self):
+      for z in self.z_range:
+        dst = block_dst_lookup[z] 
+        bbox = bbox_lookup[z]
+        ti = a.copy(cm, dst, overlap_image, z, z, bbox, mip, 
+                    is_field=False)
+        tf = a.copy(cm, block_vvote_field, overlap_vvote_field, z, z, bbox, mip, 
+                    is_field=True)
+        t = ti + tf
+        yield from t
+
+  class StitchAlignComputeField(object):
+    def __init__(self, z_range):
+      self.z_range = z_range
+
+    def __iter__(self):
+      for z in self.z_range:
+        block_dst = block_dst_lookup[z] 
+        bbox = bbox_lookup[z]
+        model_path = model_lookup[z]
+        tgt_offsets = vvote_lookup[z]
+        for tgt_offset in tgt_offsets:
+          tgt_z = z + tgt_offset
+          field = stitch_pair_fields[tgt_offset]
+          t = a.compute_field(cm, model_path, block_dst, overlap_image, field, 
+                              z, tgt_z, bbox, mip, pad, src_mask_cv=src_mask_cv,
+                              src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                              tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+                              tgt_mask_val=src_mask_val, 
+                              prev_field_cv=overlap_vvote_field, prev_field_z=tgt_z)
+          yield from t
+
+  class StitchAlignVectorVote(object):
+    def __init__(self, z_range):
+      self.z_range = z_range
     
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-   
-    end = time()
-    diff = end - start
-    print("Sending Render Tasks use time:", diff)
-    print('Run rendering')
- 
-    start = time()
-    # wait 
-    a.wait_for_sqs_empty()
-    end = time()
-    diff = end - start
-    print("Executing Rendering use time:", diff)
+    def __iter__(self):
+      for z in self.z_range:
+        bbox = bbox_lookup[z]
+        tgt_offsets = vvote_lookup[z]
+        fields = {i: stitch_pair_fields[i] for i in tgt_offsets}
+        t = a.vector_vote(cm, fields, overlap_vvote_field, z, bbox, mip, 
+                          inverse=False, serial=True, softmin_temp=2**mip, blur_sigma=1)
+        yield from t
 
-  # Align with vector voting
-  for block_offset in vvote_range:
-    print('BLOCK OFFSET {}'.format(block_offset))
-    prefix = block_offset
-    class ComputeFieldTaskIteratorII(object):
-        def __init__(self, brange, even_odd):
-            self.brange = brange
-            self.even_odd = even_odd
-        def __iter__(self):
-            for block_start, even_odd in zip(self.brange, self.even_odd):
-                dst = dsts[even_odd]
-                z = block_start + block_offset 
-                bbox = bbox_lookup[z]
-                model_path = model_lookup[z]
-                for z_offset in vvote_offsets:
-                    field = pair_fields[z_offset]
-                    t = a.compute_field(cm, model_path, src.path, dst, field, 
-                                        z, z+z_offset, bbox, mip, pad, src_mask_cv=src_mask_cv,
-                                        src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                                        tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                                        tgt_mask_val=src_mask_val, prefix=prefix, 
-                                        prev_field_cv=vvote_field.path, prev_field_z=z+z_offset)
-                    yield from t
-    ptask = []
-    start = time()
-    for irange, ieven_odd in zip(range_list, even_odd_list):
-        ptask.append(ComputeFieldTaskIteratorII(irange, ieven_odd))
-    
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-   
-    end = time()
-    diff = end - start
-    print("Sending Compute Field Tasks for vvote use time:", diff)
-    print('Run Compute field for vvote')
-    # wait 
-    print('block offset {}'.format(block_offset))
-    start = time()
-    a.wait_for_sqs_empty()
-    end = time()
-    diff = end - start
-    print("Executing Compute Tasks for vvtote use time:", diff)
+  class StitchAlignRender(object):
+    def __init__(self, z_range):
+      self.z_range = z_range
 
-    class VvoteTaskIterator(object):
-        def __init__(self, brange):
-            self.brange = brange
-        def __iter__(self):
-            for block_start in self.brange:
-                z = block_start + block_offset
-                bbox = bbox_lookup[z]
-                t = a.vector_vote(cm, pair_fields, vvote_field.path, z, bbox,
-                                  mip, inverse=False, serial=True, prefix=prefix)
-                yield from t
-    ptask = []
-    start = time()
-    for irange in range_list:
-        ptask.append(VvoteTaskIterator(irange))
-    
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-   
-    end = time()
-    diff = end - start
-    print("Sending Vvote Tasks for vvote use time:", diff)
-    print('Run vvoting')
-    # wait 
-    print('block offset {}'.format(block_offset))
-    start = time()
-    a.wait_for_sqs_empty()
-    end = time()
-    diff = end - start
-    print("Executing vvtote use time:", diff)
+    def __iter__(self):
+      for z in self.z_range:
+        block_dst = block_dst_lookup[z] 
+        bbox = bbox_lookup[z]
+        t = a.render(cm, block_dst, overlap_vvote_field, overlap_image, 
+                     src_z=z, field_z=z, dst_z=z, bbox=bbox, src_mip=mip, field_mip=mip, 
+                     mask_cv=src_mask_cv, mask_val=src_mask_val, mask_mip=src_mask_mip)
+        yield from t
 
-    class RenderTaskIteratorII(object):
-        def __init__(self, brange, even_odd):
-            self.brange = brange
-            self.even_odd = even_odd
-        def __iter__(self):
-            for block_start, even_odd in zip(self.brange, self.even_odd):
-                dst = dsts[even_odd]
-                z = block_start + block_offset
-                bbox = bbox_lookup[z]
-                t = a.render(cm, src.path, vvote_field.path, dst, src_z=z, field_z=z, dst_z=z,
-                             bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
-                             mask_val=src_mask_val, mask_mip=src_mask_mip, prefix=prefix)
-                yield from t
-    ptask = []
-    start = time()
-    for irange, ieven_odd in zip(range_list, even_odd_list):
-        ptask.append(RenderTaskIteratorII(irange, ieven_odd))
-    
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-   
-    end = time()
-    diff = end - start
-    print("Sending Render Tasks use time:", diff)
-    print('Run rendering')
+  class StitchBroadcastCopy():
+    def __init__(self, z_range):
+      self.z_range = z_range
 
-    start = time()
-    # wait 
-    a.wait_for_sqs_empty()
-    end = time()
-    diff = end - start
-    print("Executing Rendering use time:", diff)
+    def __iter__(self):
+      for z in self.z_range:
+        bs = block_start_lookup[z]
+        z_offset = bs - z
+        stitch_field = stitch_fields[z_offset]
+        bbox = bbox_lookup[z]
+        t = a.copy(cm, overlap_vvote_field, stitch_field, z, bs, bbox, mip, 
+                   is_field=True)
+        yield from t
 
+  class StitchBroadcastVectorVote(object):
+    def __init__(self, z_range):
+        self.z_range = z_range
+
+    def __iter__(self):
+      for z in self.z_range:
+        bbox = bbox_lookup[z]
+        offsets = block_start_to_stitch_offsets[z]
+        fields = {i: stitch_fields[i] for i in offsets}
+        t = a.vector_vote(cm, fields, broadcasting_field, z, bbox, mip, 
+                          inverse=False, serial=True, softmin_temp=2**mip, blur_sigma=1)
+        yield from t
+
+  # Serial alignment with block stitching 
+  print('START BLOCK ALIGNMENT')
+  print('COPY STARTING SECTION OF ALL BLOCKS')
+  execute(StarterCopy, copy_range)
+  print('ALIGN STARTER SECTIONS FOR EACH BLOCK')
+  execute(StarterComputeField, starter_range)
+  execute(StarterRender, starter_range)
+  for z_offset in sorted(block_offset_to_z_range.keys()):
+    z_range = list(block_offset_to_z_range[z_offset])
+    print('ALIGN BLOCK OFFSET {}'.format(z_offset))
+    execute(BlockAlignComputeField, z_range)
+    print('VECTOR VOTE BLOCK OFFSET {}'.format(z_offset))
+    execute(BlockAlignVectorVote, z_range)
+    print('RENDER BLOCK OFFSET {}'.format(z_offset))
+    execute(BlockAlignRender, z_range)
+
+  print('END BLOCK ALIGNMENT')
+  print('START BLOCK STITCHING')
+  print('COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS')
+  execute(StitchOverlapCopy, overlap_copy_range)
+  for z_offset in sorted(stitch_offset_to_z_range.keys()):
+    z_range = list(stitch_offset_to_z_range[z_offset])
+    print('ALIGN OVERLAPPING OFFSET {}'.format(z_offset))
+    execute(StitchAlignComputeField, z_range)
+    print('VECTOR VOTE OVERLAPPING OFFSET {}'.format(z_offset))
+    execute(StitchAlignVectorVote, z_range)
+    print('RENDER OVERLAPPING OFFSET {}'.format(z_offset))
+    execute(StitchAlignRender, z_range)
+
+  print('COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING')
+  execute(StitchBroadcastCopy, stitch_range)
+  print('VECTOR VOTE STITCHING FIELDS')
+  execute(StitchBroadcastVectorVote, block_starts[1:])
 

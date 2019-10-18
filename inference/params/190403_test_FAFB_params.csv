@@ -1,0 +1,8 @@
+x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
+64332,62851,2401,64902,63455,6201,0,vector_fixer30_faster_v01,5,0,original
+64332,62851,2566,64902,63455,2567,0,vector_fixer30_faster_v01,5,0,history has two partial sections
+64332,62851,2635,64902,63455,2636,0,vector_fixer30_faster_v01,5,0,history has two damaged sections
+64332,62851,3595,64902,63455,3596,0,vector_fixer30_faster_v01,5,1,missing
+64332,62851,3596,64902,63455,3597,0,vector_fixer30_faster_v01,5,1,missing
+64332,62851,3597,64902,63455,3598,0,vector_fixer30_faster_v01,5,1,missing
+64332,62851,3604,64902,63455,3605,0,vector_fixer30_faster_v01,9,0,test tgt radius

@@ -11,6 +11,8 @@ def positive_int(val):
 def get_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument('--queue_name', type=str, default=None)
+  parser.add_argument('--device', type=str, default='cuda',
+     help='device arg to pass for PyTorch objects; either cpu or cuda')
   parser.add_argument('--processes', type=positive_int, default=1,
      help='no. of processes to spawn on a single worker')
   parser.add_argument('--gpu_processes', type=positive_int, default=None,

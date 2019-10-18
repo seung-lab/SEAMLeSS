@@ -1,0 +1,122 @@
+{
+  "layers": [
+    {
+      "tool": "annotateBoundingBox",
+      "selectedAnnotation": {
+        "id": "23e4110d918c8079c375a206c3cbb31f2da07654"
+      },
+      "type": "annotation",
+      "annotations": [
+        {
+          "pointA": [
+            43876.8515625,
+            77906.7109375,
+            5394
+          ],
+          "pointB": [
+            48151.48046875,
+            74016.5703125,
+            5395
+          ],
+          "type": "axis_aligned_bounding_box",
+          "id": "23e4110d918c8079c375a206c3cbb31f2da07654"
+        }
+      ],
+      "annotationTags": [],
+      "voxelSize": [
+        4,
+        4,
+        1
+      ],
+      "name": "bboxes"
+    },
+    {
+      "tab": "transform",
+      "transform": [
+        [
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0.02500000037252903,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1
+        ]
+      ],
+      "source": "precomputed://gs://neuroglancer/drosophila_v0/image_v14_single_slices",
+      "type": "image",
+      "name": "v14",
+      "visible": false
+    },
+    {
+      "tab": "transform",
+      "transform": [
+        [
+          4,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0.009999999776482582,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1
+        ]
+      ],
+      "source": "precomputed://gs://fafb_v15_montages/FAFB_montage/v15_montage_20190901_rigid_split/1024x1024",
+      "type": "image",
+      "name": "v15"
+    }
+  ],
+  "navigation": {
+    "pose": {
+      "position": {
+        "voxelSize": [
+          4,
+          4,
+          1
+        ],
+        "voxelCoordinates": [
+          48134.8046875,
+          77266.75,
+          5395
+        ]
+      }
+    },
+    "zoomFactor": 20.761548928952966
+  },
+  "jsonStateServer": "https://www.dynamicannotationframework.com/nglstate/post",
+  "selectedLayer": {
+    "layer": "bboxes",
+    "visible": true
+  },
+  "layout": "xy"
+}
