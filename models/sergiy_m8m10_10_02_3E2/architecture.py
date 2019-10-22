@@ -5,7 +5,8 @@ import os
 
 import artificery
 from utilities.helpers import gridsample_residual
-from .residuals import res_warp_img, combine_residuals
+from .residuals import res_warp_img, combine_residuals, upsample, downsample, shift_by_int
+import torchfields
 
 class Model(nn.Module):
     """
@@ -63,18 +64,26 @@ class Model(nn.Module):
             #print ("Bounds -- X min: {}, X max: {}, X mid: {}".format(x_min, x_max, x_mid))
             #print ("Bounds -- Y min: {}, Y max: {}, Y mid: {}".format(y_min, y_max, y_mid))
             adj_res = torch.ones_like(pred_res_adj)
-            adj_res[..., 0] = adj_res[..., 0] * x_mid
-            adj_res[..., 1] = adj_res[..., 1] * y_mid
-            adj_src = res_warp_img(src, adj_res, is_pix_res=True)
-            stack = torch.cat((adj_src, tgt), 1)
+            x_mid_int = int(x_mid)
+            y_mid_int = int(y_mid)
+
+            if x_mid_int == 0 and y_mid_int == 0:
+                adj_res = None
+            else:
+                adj_res[..., 0] = adj_res[..., 0] * x_mid_int
+                adj_res[..., 1] = adj_res[..., 1] * y_mid_int
+                #adj_src = res_warp_img(src, adj_res, is_pix_res=True, rollback=2)
+                adj_src = shift_by_int(src, -y_mid_int, -x_mid_int)
+                stack = torch.cat((adj_src, tgt), 1)
+
         pred_res = self.align(x=stack, **model_run_params)
         if pred_res.shape[1] == 2:
             pred_res = pred_res.permute(0, 2, 3, 1)
         #pred_tgt = res_warp_img(src, pred_res, is_pix_res=True)
-        #import pdb; pdb.set_trace()
 
         if adj_res is not None:
-            final_res = combine_residuals(pred_res, adj_res, is_pix_res=True)
+            final_res = combine_residuals(pred_res, adj_res, is_pix_res=True, rollback=2)
+            #final_res = pred_res
         else:
             final_res = pred_res
 

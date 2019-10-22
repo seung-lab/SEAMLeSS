@@ -56,6 +56,9 @@ class Aligner:
                device='cuda', dry_run=False, **kwargs):
     print('Creating Aligner object')
 
+    os.environ["CUDA_VISIBLE_DEVICES"]="0"
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+
     self.distributed = (queue_name != None)
     self.queue_name = queue_name
     self.task_queue = None

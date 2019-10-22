@@ -21,7 +21,7 @@ class Model(nn.Module):
         super().__init__()
         self.height = height
         self.mips = mips
-        self.range_adjust = True
+        self.range_adjust = False
 
         a = artificery.Artificery()
         path = os.path.dirname(os.path.abspath(__file__))
@@ -82,7 +82,7 @@ class Model(nn.Module):
         #pred_tgt = res_warp_img(src, pred_res, is_pix_res=True)
 
         if adj_res is not None:
-            final_res = combine_residuals(pred_res, adj_res, is_pix_res=True, rollback=2)
+            final_res = combine_residuals(pred_res, adj_res, is_pix_res=True, rollback=0)
             #final_res = pred_res
         else:
             final_res = pred_res
