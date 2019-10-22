@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from utilities.helpers import grid_sample, upsample, downsample, load_model_from_dict
+import torchfields  # noqa: unused
+from utilities.helpers import downsample, load_model_from_dict
 
 
 class Model(nn.Module):
@@ -214,15 +215,15 @@ class Aligner(nn.Module):
                              .format(self.channels, src.shape))
         if src.shape[1] == self.channels:
             stack = torch.cat((src, tgt), dim=1)
-            field = self.seq(stack).permute(0, 2, 3, 1)
-            return field
+            field = self.seq(stack)
+            return field.field_().from_pixels()
         else:  # stack of encodings
             fields = []
             for pair in zip(src.split(self.channels, dim=1),
                             tgt.split(self.channels, dim=1)):
                 stack = torch.cat(pair, dim=1)
-                fields.append(self.seq(stack).permute(0, 2, 3, 1))
-            return sum(fields) / len(fields)
+                fields.append(self.seq(stack))
+            return (sum(fields) / len(fields)).field_().from_pixels()
 
 
 class AligningPyramid(nn.Module):
@@ -257,24 +258,15 @@ class AligningPyramid(nn.Module):
             else:
                 src, tgt = downsample(i)(src_input), downsample(i)(tgt_input)
             if prev_level is not None:
-                accum_field = (upsample(prev_level - i)
-                               (accum_field.permute(0, 3, 1, 2))
-                               .permute(0, 2, 3, 1))
-                src = grid_sample(src, accum_field,
-                                          padding_mode='border')
-            factor = 2 / src.shape[-1]  # scale to [-1,1]
-            res_field = aligner(src, tgt, **kwargs) * factor
+                accum_field = accum_field.up(mips=(prev_level - i))
+                src = accum_field.sample(src)
+            res_field = aligner(src, tgt, **kwargs)
             if accum_field is not None:
-                resampled = grid_sample(
-                    accum_field.permute(0, 3, 1, 2), res_field,
-                    padding_mode='border').permute(0, 2, 3, 1)
-                accum_field = res_field + resampled
+                accum_field = res_field.compose_with(accum_field)
             else:
                 accum_field = res_field
             prev_level = i
-        accum_field = (upsample(prev_level)
-                       (accum_field.permute(0, 3, 1, 2))
-                       .permute(0, 2, 3, 1))
+        accum_field = accum_field.up(prev_level)
         return accum_field
 
 
