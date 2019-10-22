@@ -1,0 +1,2 @@
+x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
+46000,68000,5020,54192,76192,5050,0,vector_fixer30_faster_v01,5,0,original
