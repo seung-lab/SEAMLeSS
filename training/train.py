@@ -306,14 +306,16 @@ def select_submodule(model):
     """
     if state_vars.levels is None:
         state_vars.levels = select_levels()
-    submodule = model.module[state_vars.levels]
+    submodule = model[state_vars.levels]
     if state_vars.plan == 'top_down':
         last = 'lowest'
     elif state_vars.plan == 'bottom_up':
         last = 'highest'
     else:
         last = 'all'
-    return torch.nn.DataParallel(submodule.train_level(last))
+    if torch.cuda.device_count() > 1:
+        return DataParallelAccessAttributes(submodule.train_level(last))
+    return submodule.train_level(last)
 
 
 def select_levels():
@@ -352,9 +354,9 @@ def init_submodule(submodule):
     if (index < state_vars.height
             and not state_vars.initialized_list[index]):
         if state_vars.plan == 'top_down':
-            submodule.module.init_level('lowest')
+            submodule.init_level('lowest')
         elif state_vars.plan == 'bottom_up':
-            submodule.module.init_level('highest')
+            submodule.init_level('highest')
         state_vars.initialized_list[index] = True
     return submodule
 

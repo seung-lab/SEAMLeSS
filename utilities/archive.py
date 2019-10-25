@@ -12,6 +12,7 @@ import importlib
 import pandas as pd
 
 from utilities.helpers import cp, dotdict
+from utilities.parallel import DataParallelAccessAttributes
 
 import matplotlib
 matplotlib.use('Agg')
@@ -391,8 +392,8 @@ class ModelArchive(object):
             for p in self._model.parameters():
                 p.requires_grad = True
             self._model.train().cuda()
-            self._model = torch.nn.DataParallel(self._model)
-
+            if torch.cuda.device_count() > 1:
+                self._model = DataParallelAccessAttributes(self._model)
         return self._model
 
     def _load_objective(self, *args, **kwargs):
@@ -405,11 +406,12 @@ class ModelArchive(object):
                                          self._name))
         else:
             return None
-        self._loss = self._objective.Objective(*args, **kwargs)
-        self._val_loss = self._objective.ValidationObjective(*args, **kwargs)
-        if not self.readonly:
-            self._loss = torch.nn.DataParallel(self._loss.cuda())
-            self._val_loss = torch.nn.DataParallel(self._val_loss.cuda())
+        self._loss = self._objective.Objective(*args, **kwargs).cuda()
+        self._val_loss = self._objective.ValidationObjective(*args,
+                                                             **kwargs).cuda()
+        if (not self.readonly) and (torch.cuda.device_count() > 1):
+            self._loss = torch.nn.DataParallel(self._loss)
+            self._val_loss = torch.nn.DataParallel(self._val_loss)
         return self._objective
 
     def _load_preprocessor(self, *args, **kwargs):
@@ -476,7 +478,7 @@ class ModelArchive(object):
         if self.readonly:
             raise ReadOnlyError(self._name)
         if self._model:
-            self._model.module.save(self.paths['weights'])
+            self._model.save(self.paths['weights'])
         if self._optimizer:
             with self.paths['optimizer'].open('wb') as f:
                 torch.save(self._optimizer.state_dict(), f)
