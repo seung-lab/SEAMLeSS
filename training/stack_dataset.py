@@ -41,8 +41,8 @@ class StackDataset(Dataset):
         X = self.stack[id % self.N].copy()  # prevent modifying the dataset
         if id % 2*self.N >= self.N:  # flip source and target
             # match i -> i+1 if id < N, else match i+1 -> i
-            s, t, sc, tc, sf, tf = X.copy()
-            X[0:6] = t, s, tc, sc, tf, sf
+            s, t = X.copy()
+            X[0:6] = t, s
         if self.transform:
             X = self.transform(X)
         return X, id
