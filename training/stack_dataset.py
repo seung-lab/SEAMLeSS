@@ -166,16 +166,15 @@ class RandomField(object):
         self.num_downsamples = num_downsamples
 
     def __call__(self, X):
-        zero = torch.zeros_like(X.src.image)
-        zero = torch.cat([zero, zero.clone()], 1)
+        zero = torch.zeros_like(X.src.image).unsqueeze(0)
         smaller = downsample(self.num_downsamples)(zero)
         std = self.max_displacement / zero.shape[-2] / math.sqrt(2)
-        field = torch.nn.init.normal_(smaller, mean=0, std=std)
-        field = upsample(self.num_downsamples)(field)
-        X.truth = field.permute(0, 2, 3, 1)
+        smaller = torch.cat([smaller, smaller.clone()], 1)
+        field = torch.nn.init.normal_(smaller, mean=0, std=std).field_()
+        field = field.up(self.num_downsamples)
+        X.truth = field.squeeze()
         for k in X.tgt:
-            X.tgt[k] = grid_sample(
-                X.src[k], X.truth, padding_mode='zeros')
+            X.tgt[k] = field.sample(X.src[k])
         return X
 
 
