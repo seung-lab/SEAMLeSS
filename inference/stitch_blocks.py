@@ -73,6 +73,7 @@ if __name__ == '__main__':
   #   help='path to csv file with list of z indices to use')
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--dst_path', type=str)
+  parser.add_argument('--img_data_type', type=str, default='uint8')
   parser.add_argument('--mip', type=int)
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
@@ -88,7 +89,7 @@ if __name__ == '__main__':
   # Only compute matches to previous sections
   a = get_aligner(args)
   provenance = get_provenance(args)
-  chunk_size = 1024
+  chunk_size = 1024*2
 
   # Simplify var names
   mip = args.mip
@@ -97,6 +98,7 @@ if __name__ == '__main__':
   src_mask_val = 1
   src_mask_mip = 8
   block_size = args.block_size
+  img_data_type = args.img_data_type
 
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
@@ -151,7 +153,7 @@ if __name__ == '__main__':
         influencing_blocks_lookup[z].append(b_start)
 
   # Create CloudVolumes
-  src = cm.create(args.src_path, data_type='uint8', num_channels=1,
+  src = cm.create(args.src_path, data_type=img_data_type, num_channels=1,
                   fill_missing=True, overwrite=False).path
   src_mask_cv = None
   tgt_mask_cv = None
@@ -169,7 +171,7 @@ if __name__ == '__main__':
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=True).path
   final_dst = cm.create(join(args.dst_path, 'image_stitch{}'.format(args.suffix)), 
-                        data_type='uint8', num_channels=1, fill_missing=True, 
+                        data_type=img_data_type, num_channels=1, fill_missing=True, 
                         overwrite=True).path
 
   # Task scheduling functions
@@ -240,5 +242,5 @@ if __name__ == '__main__':
                      bbox=bbox, src_mip=mip, field_mip=mip)
         yield from t
 
-  execute(StitchCompose, compose_range)
+  # execute(StitchCompose, compose_range)
   execute(StitchRender, compose_range)
