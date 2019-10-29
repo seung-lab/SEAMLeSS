@@ -134,6 +134,7 @@ debug_outputs/
 inference/docker/secret.yaml
 .git/
 
-# isolate single modle
+# isolate single models
 models/
 !models/sergiy_blockmatch_test/**
+!models/sergiy_m8m10_rigid_net/**
