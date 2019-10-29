@@ -151,7 +151,7 @@ class EPyramid(nn.Module):
         self.src_encodings = {}
         self.tgt_encodings = {}
 
-    def forward(self, src, tgt, target_level, *, src_field=None):
+    def forward(self, src, tgt, target_level, *, coarse_field=None):
         factor = self.train_size / src.shape[-2]
 
         for i, module in enumerate(self.enclist):
@@ -160,19 +160,26 @@ class EPyramid(nn.Module):
             self.tgt_encodings[i] = tgt
             src, tgt = self.down(src), self.down(tgt)
 
-        field_so_far = src_field
+        fine_field_so_far = None
         for i in range(self.nlevels, target_level - 1, -1):
             if i >= self.skip and i != 0:  # don't run the lowest aligner
                 enc_src, enc_tgt = self.src_encodings[i], self.tgt_encodings[i]
-                if field_so_far is not None:
+                if coarse_field is not None or fine_field_so_far is not None:
+                    if coarse_field is not None and fine_field_so_far is not None:
+                        combined_field_so_far = compose_fields(fine_field_so_far, coarse_field)
+                    else if coarse_field is not None:
+                        combined_field_so_far = coarse_field
+                    else if fine_field_so_far is not None:
+                        combined_field_so_far = fine_field_so_far
                     enc_src = grid_sample(
                         enc_src,
-                        field_so_far, padding_mode='zeros')
+                        combined_field_so_far, padding_mode='zeros')
+
                 rfield = self.mlist[i](enc_src, enc_tgt) * factor
-                if field_so_far is None:
-                    field_so_far = rfield
+                if fine_field_so_far is None:
+                    fine_field_so_far = rfield
                 else:
-                    field_so_far = compose_fields(rfield, field_so_far)
+                    fine_field_so_far = compose_fields(rfield, fine_field_so_far)
             if i != target_level:
-                field_so_far = upsample_field(field_so_far, i, i-1)
-        return field_so_far
+                fine_field_so_far = upsample_field(fine_field_so_far, i, i-1)
+        return fine_field_so_far
