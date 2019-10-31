@@ -12,7 +12,7 @@ from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenanc
 from os.path import join
 from cloudmanager import CloudManager
 from time import time
-from tasks import run 
+from tasks import run
 
 def print_run(diff, n_tasks):
   if n_tasks > 0:
@@ -53,8 +53,8 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--max_displacement', 
-    help='the size of the largest displacement expected; should be 2^high_mip', 
+  parser.add_argument('--max_displacement',
+    help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   args = parse_args(parser)
@@ -63,12 +63,12 @@ if __name__ == '__main__':
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
-  
+
   # Simplify var names
   mip = args.mip
   max_mip = args.max_mip
   pad = args.max_displacement
-  chunk_size = (256, 256)
+  chunk_size = (256*4, 256*4)
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
