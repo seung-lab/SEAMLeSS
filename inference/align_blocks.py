@@ -54,10 +54,17 @@ if __name__ == '__main__':
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--src_mask_path', type=str, default='',
     help='CloudVolume path of mask to use with src images; default None')
+
+  parser.add_argument('--src_folds_path', type=str, default='',
+    help='CloudVolume path of to the fold mask to use with src images; default None')
+  parser.add_argument('--src_folds_mip', type=int, default=8,
+    help='MIP of source mask')
+
   parser.add_argument('--src_mask_mip', type=int, default=8,
     help='MIP of source mask')
   parser.add_argument('--src_mask_val', type=int, default=1,
     help='Value of of mask that indicates DO NOT mask')
+
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--img_data_type', type=str, default='uint8')
   parser.add_argument('--mip', type=int)
@@ -100,12 +107,15 @@ if __name__ == '__main__':
     src_mask_cv = cm.create(args.src_mask_path, data_type=img_data_type, num_channels=1,
                                fill_missing=True, overwrite=False).path
     tgt_mask_cv = src_mask_cv
-
   if src_mask_cv != None:
       src_mask_cv = src_mask_cv.path
   if tgt_mask_cv != None:
       tgt_mask_cv = tgt_mask_cv.path
 
+  src_folds = None
+  if args.src_folds_path:
+    src_folds = cm.create(args.src_folds_path, data_type='uint8', num_channels=1,
+                               fill_missing=True, overwrite=False).path
   # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius
   block_dsts = {}
   block_types = ['even', 'odd']
@@ -284,7 +294,6 @@ if __name__ == '__main__':
                                       'stitch', 'broadcasting'),
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=True).path
-
   # Task scheduling functions
   def remote_upload(tasks):
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
@@ -355,7 +364,7 @@ if __name__ == '__main__':
                             src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                             tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip,
                             tgt_mask_val=src_mask_val, prev_field_cv=None,
-                            prev_field_z=None)
+                            prev_field_z=None, src_folds_cv=src_folds)
         yield from t
 
   class StarterRender(object):
@@ -391,7 +400,7 @@ if __name__ == '__main__':
                               src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                               tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip,
                               tgt_mask_val=src_mask_val, prev_field_cv=block_vvote_field,
-                              prev_field_z=tgt_z)
+                              prev_field_z=tgt_z, src_folds_cv=src_folds)
           yield from t
 
   class BlockAlignVectorVote(object):
@@ -453,7 +462,8 @@ if __name__ == '__main__':
                               src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                               tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip,
                               tgt_mask_val=src_mask_val,
-                              prev_field_cv=overlap_vvote_field, prev_field_z=tgt_z)
+                              prev_field_cv=overlap_vvote_field, prev_field_z=tgt_z,
+                              src_folds_cv=src_folds)
           yield from t
 
   class StitchAlignVectorVote(object):

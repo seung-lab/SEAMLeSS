@@ -481,7 +481,7 @@ class Aligner:
                           src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
                           tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
                           tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
-                          prev_field_inverse=False):
+                          prev_field_inverse=False, src_folds_cv=None):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
     Args:
@@ -531,7 +531,6 @@ class Aligner:
       except TypeError:
         tgt_z.append(tgt_alt_z)
       print('alternative target slices:', tgt_alt_z)
-
     src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
                                 mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                 mask_val=src_mask_val,
@@ -545,6 +544,8 @@ class Aligner:
 
     # Running the model is the only part that will increase memory consumption
     # significantly - only incrementing the GPU lock here should be sufficient.
+
+
     if self.gpu_lock is not None:
       self.gpu_lock.acquire()
       print("Process {} acquired GPU lock".format(os.getpid()))
@@ -553,7 +554,13 @@ class Aligner:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
 
       # model produces field in relative coordinates
-      field = model(src_patch, tgt_patch)
+      additional_data = {}
+      if src_folds_cv:
+          src_folds_patch = self.get_masked_image(src_folds_cv, src_z, new_bbox, mip,
+                                    mask_cv=None, mask_mip=None, mask_val=None, to_tensor=True)
+          additional_data['src_folds'] = src_folds_patch
+
+      field = model(src_patch, tgt_patch, additional_data=additional_data)
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       field = self.rel_to_abs_residual(field, mip)
       field = field[:,pad:-pad,pad:-pad,:]
@@ -1068,7 +1075,7 @@ class Aligner:
                     src_mask_mip=0, src_mask_val=0, tgt_mask_cv=None,
                     tgt_mask_mip=0, tgt_mask_val=0,
                     return_iterator=False, prev_field_cv=None, prev_field_z=None,
-                    prev_field_inverse=False):
+                    prev_field_inverse=False, src_folds_cv=None):
     """Compute field to warp src section to tgt section
 
     Args:
@@ -1114,7 +1121,8 @@ class Aligner:
                                           src_z, tgt_z, chunk, mip, pad,
                                           src_mask_cv, src_mask_val, src_mask_mip,
                                           tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
-                                          prev_field_cv, prev_field_z, prev_field_inverse)
+                                          prev_field_cv, prev_field_z, prev_field_inverse,
+                                          src_folds_cv)
     if return_iterator:
         return ComputeFieldTaskIterator(chunks,0, len(chunks))
     else:
@@ -1124,7 +1132,8 @@ class Aligner:
                                               src_z, tgt_z, chunk, mip, pad,
                                               src_mask_cv, src_mask_val, src_mask_mip,
                                               tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
-                                              prev_field_cv, prev_field_z, prev_field_inverse))
+                                              prev_field_cv, prev_field_z, prev_field_inverse,
+                                              src_folds_cv))
         return batch
 
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z,

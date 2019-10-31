@@ -126,11 +126,11 @@ class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip,
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
-                     prev_field_cv, prev_field_z, prev_field_inverse):
+                     prev_field_cv, prev_field_z, prev_field_inverse, src_folds_cv):
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip,
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
-                     prev_field_cv, prev_field_z, prev_field_inverse)
+                     prev_field_cv, prev_field_z, prev_field_inverse, src_folds_cv)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -141,8 +141,14 @@ class ComputeFieldTask(RegisteredTask):
         prev_field_cv = DCV(self.prev_field_cv)
     else:
         prev_field_cv = None
+
+    src_folds_cv = None
+    if self.src_folds_cv is not None:
+        src_folds_cv = DCV(self.src_folds_cv)
+
     src_z = self.src_z
     tgt_z = self.tgt_z
+
     prev_field_z = self.prev_field_z
     prev_field_inverse = self.prev_field_inverse
     patch_bbox = deserialize_bbox(self.patch_bbox)
@@ -177,7 +183,7 @@ class ComputeFieldTask(RegisteredTask):
                                           src_mask_cv, src_mask_mip, src_mask_val,
                                           tgt_mask_cv, tgt_mask_mip, tgt_mask_val,
                                           None, prev_field_cv, prev_field_z,
-                                          prev_field_inverse)
+                                          prev_field_inverse, src_folds_cv)
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       end = time()
       diff = end - start
