@@ -1,0 +1,55 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  creationTimestamp: "2019-10-25T20:52:26Z"
+  labels:
+    run: seamless-fold-detect
+  name: seamless-fold-detect
+  namespace: default
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 400 
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      run: seamless-fold-detect
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: seamless-fold-detect
+    spec:
+      containers:
+      - args:
+        - -c
+        - python inference/worker.py --processes 6 --gpu_processes 1 --queue_name
+          deepalign-fold-detect-1 --lease_seconds 50
+        command:
+        - /bin/sh
+        image: seunglab/seamless:nkem-old-postproc
+        imagePullPolicy: Always
+        name: seamless-fold-detect
+        resources:
+          limits:
+            nvidia.com/gpu: "1"
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /root/.cloudvolume/secrets
+          name: secrets
+          readOnly: true
+      dnsPolicy: Default
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: secrets
+        secret:
+          defaultMode: 420
+          secretName: secrets

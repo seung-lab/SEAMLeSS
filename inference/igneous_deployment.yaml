@@ -1,0 +1,47 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: igneous
+spec:
+  replicas: 16
+  template:
+    metadata:
+      labels:
+        app: igneous
+    spec:
+      dnsPolicy: Default
+      containers:
+        - name: igneous
+          image: seunglab/igneous:master
+          volumeMounts:
+          - name: secrets
+            mountPath: "/secrets"
+            readOnly: true
+          - name: tmp
+            mountPath: "/tmp"
+            readOnly: false
+          - mountPath: /dev/shm
+            name: dshm
+            readOnly: false
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: 2.5Gi
+            limits:
+              memory: 7.0Gi
+          env:
+            - name: Standard 
+              value: aws
+            - name: SQS_URL
+              value: 'https://sqs.us-east-1.amazonaws.com/098703261575/deepalign-igneous-1
+            - name: LEASE_SECONDS
+              value: "800"
+      volumes:
+      - name: secrets
+        secret:
+          secretName: secrets
+      - name: tmp
+        emptyDir: { medium: "Memory" }
+      - name: dshm
+        emptyDir:
+          medium: Memory
