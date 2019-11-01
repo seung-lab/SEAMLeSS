@@ -650,12 +650,17 @@ class Aligner:
           F = self.get_composed_field(G_cv, f_cv, G_z, f_z, bbox, mip, mip, mip)
       fields.append(F)
     # assign weight w if the difference between majority vector similarities are d
+
     if not softmin_temp:
       w = 0.99
       d = 2**mip
       n = len(fields)
       m = int(binom(n, (n+1)//2)) - 1
       softmin_temp = 2**mip
+
+    softmin_temp = softmin_temp / 4
+    blur_sigma = blur_sigma * 1
+
     return vector_vote(fields, softmin_temp=softmin_temp, blur_sigma=blur_sigma)
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
