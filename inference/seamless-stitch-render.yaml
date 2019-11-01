@@ -1,0 +1,78 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "2"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"creationTimestamp":null,"labels":{"run":"seamless-stitch-render"},"name":"seamless-stitch-render","namespace":"default"},"spec":{"replicas":200,"selector":{"matchLabels":{"run":"seamless-stitch-render"}},"strategy":{"rollingUpdate":{"maxSurge":"100%","maxUnavailable":"100%"},"type":"RollingUpdate"},"template":{"metadata":{"creationTimestamp":null,"labels":{"run":"seamless-stitch-render"}},"spec":{"containers":[{"args":["-c","python inference/worker.py --processes 16 --gpu_processes 1 --queue_name nkem-seamless-1 --lease_seconds 20 --device cpu"],"command":["/bin/sh"],"image":"seunglab/seamless:nkem-droso-stitch-render","imagePullPolicy":"Always","name":"seamless-stitch-render","resources":{"requests":{"cpu":14}},"volumeMounts":[{"mountPath":"/root/.cloudvolume/secrets","name":"secrets","readOnly":true}]}],"dnsPolicy":"Default","volumes":[{"name":"secrets","secret":{"secretName":"secrets"}}]}}},"status":{}}
+  creationTimestamp: "2019-10-27T22:16:24Z"
+  generation: 7
+  labels:
+    run: seamless-stitch-render
+  name: seamless-stitch-render
+  namespace: default
+  resourceVersion: "13307564"
+  selfLink: /apis/extensions/v1beta1/namespaces/default/deployments/seamless-stitch-render
+  uid: 69c2ffb8-f907-11e9-b289-4201ac10000a
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 100
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      run: seamless-stitch-render
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: seamless-stitch-render
+    spec:
+      containers:
+      - args:
+        - -c
+        - python inference/worker.py --processes 16 --queue_name
+          deepalign-stitch-stitch-render-1 --lease_seconds 20 --device cpu
+        command:
+        - /bin/sh
+        image: seunglab/seamless:nkem-droso-render
+        imagePullPolicy: Always
+        name: seamless-stitch-render
+        resources:
+          requests:
+            cpu: "14"
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /root/.cloudvolume/secrets
+          name: secrets
+          readOnly: true
+      dnsPolicy: Default
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: secrets
+        secret:
+          defaultMode: 420
+          secretName: secrets
+status:
+  conditions:
+  - lastTransitionTime: "2019-10-27T22:16:24Z"
+    lastUpdateTime: "2019-10-27T22:16:24Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2019-10-27T22:16:24Z"
+    lastUpdateTime: "2019-10-28T22:29:36Z"
+    message: ReplicaSet "seamless-stitch-render-6b5cbdddd9" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  observedGeneration: 7
