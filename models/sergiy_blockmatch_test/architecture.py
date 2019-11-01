@@ -14,9 +14,9 @@ class Model(nn.Module):
 
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.tile_step = 48
+        self.tile_step = 96
         self.tile_size = 256
-        self.max_disp = 64
+        self.max_disp = 128
 
     def __getitem__(self, index):
         return None

@@ -47,7 +47,8 @@ class Model(nn.Module):
         model_run_params = {'level_in': mip_in}
         stack = torch.cat((src, tgt), 1)
         adj_res = None
-        #src_folds = kwargs['additional_data']['src_folds']
+
+        src_folds = kwargs['additional_data']['src_folds']
         if self.range_adjust:
             tissue_mask = (src != 0).squeeze(0)
             pred_res_adj = self.align(stack, **model_run_params)
@@ -88,9 +89,9 @@ class Model(nn.Module):
         else:
             final_res = pred_res
 
-        final_res_optimizer = optimizer(src, tgt, final_res)
-        #final_res[..., 0] = src_folds
-        #final_res[..., 1] = src_folds
+        #final_res_optimizer = optimizer(src, tgt, final_res)
+        final_res[..., 0] = src_folds
+        final_res[..., 1] = src_folds
 
         #field = self.align(stack, mip_in=mip_in)
         final_res = final_res * 2 / src.shape[-2]

@@ -105,7 +105,7 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10):
     result_var = torch.cuda.FloatTensor(result).unsqueeze(0)
     scale = tgt.shape[-2] / result_var.shape[-2]
     result_ups_var = torch.nn.functional.interpolate(result_var.permute(0, 3, 1, 2),
-            scale_factor=scale, mode='bilinear')
+            scale_factor=scale, mode='bicubic')
 
     final_result_var = result_ups_var
     final_result = final_result_var.permute(0, 2, 3, 1)
