@@ -36,10 +36,10 @@ spec:
       - args:
         - -c
         - python inference/worker.py --processes 16 --queue_name
-          deepalign-stitch-stitch-render-1 --lease_seconds 20 --device cpu
+          deepalign-stitch-render-1 --lease_seconds 20 --device cpu
         command:
         - /bin/sh
-        image: seunglab/seamless:nkem-droso-render
+        image: seunglab/seamless:nkem-precoarse-minnie
         imagePullPolicy: Always
         name: seamless-stitch-render
         resources:

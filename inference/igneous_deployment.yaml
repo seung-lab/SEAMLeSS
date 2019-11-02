@@ -30,10 +30,10 @@ spec:
             limits:
               memory: 7.0Gi
           env:
-            - name: Standard 
+            - name: QUEUE_TYPE 
               value: aws
             - name: SQS_URL
-              value: 'https://sqs.us-east-1.amazonaws.com/098703261575/deepalign-igneous-1
+              value: 'https://sqs.us-east-1.amazonaws.com/098703261575/deepalign-igneous-1'
             - name: LEASE_SECONDS
               value: "800"
       volumes:
