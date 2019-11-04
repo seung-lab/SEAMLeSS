@@ -4,7 +4,7 @@ from cloudvolume.lib import Vec, Bbox
 import numpy as np
 import h5py
 
-def cutout_to_h5(vol, bbox, h5, name, dtype=np.uint8):
+def cutout_to_h5(vol, bbox, h5, name, dtype=np.uint8, repeats=1):
     """Make CloudVolume cutout and store in H5
 
     Args:
@@ -13,12 +13,15 @@ def cutout_to_h5(vol, bbox, h5, name, dtype=np.uint8):
         h5: h5py File object
         name: str for H5 dataset name
         dtype: Datatype of cutout in H5
+        repeats: int for duplication of the data (for parallelization)
 
     Returns:
         None. Stores cutout in (batch)xZxHxW shape
     """
     data = vol[bbox.to_slices()]
     data = np.transpose(data, (3,2,1,0))
+    if repeats > 1:
+        data = np.repeat(data, repeats=repeats, axis=0)
     print(data.shape)
     h5.create_dataset(name, data=data.astype(dtype))
 
@@ -50,11 +53,16 @@ if __name__ == '__main__':
         type=str,
         default='np.uint8',
         help='Datatype (converted via eval)')
+    parser.add_argument('--repeats',
+        type=int,
+        default=1,
+        help='number of times to repeat the dataset for parallelization')
     args = parser.parse_args()
     bbox = Bbox(args.bbox_start, args.bbox_stop)
     src = CloudVolume(args.src_path, mip=args.mip)
     src_bbox = src.bbox_to_mip(bbox, args.bbox_mip, args.mip)
     h5 = h5py.File(args.dst_path, 'w')
-    cutout_to_h5(src, src_bbox, h5, 'main', eval(args.dtype))
+    cutout_to_h5(src, src_bbox, h5, 'main', dtype=eval(args.dtype),
+                    repeats=args.repeats)
     h5.close()
 
