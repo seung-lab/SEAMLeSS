@@ -68,17 +68,6 @@ if __name__ == '__main__':
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   parser.add_argument('--restart', type=int, default=0)
-  parser.add_argument(
-    "--field_primer_path",
-    type=str,
-    help="if specified, applies field to source before aligning to target",
-  )
-  parser.add_argument(
-    "--field_primer_mip", 
-    type=int,
-    help="MIP level of the primer. E.g. the MIP of a coarse alignment",
-  )
-
   args = parse_args(parser)
   # Only compute matches to previous sections
   args.serial_operation = True
@@ -109,14 +98,10 @@ if __name__ == '__main__':
                                fill_missing=True, overwrite=False).path
     tgt_mask_cv = src_mask_cv
 
-  field_primer_path = cm.create(
-    args.field_primer_path,
-    data_type="int16",
-    num_channels=2,
-    fill_missing=True,
-    overwrite=False,
-  ).path
-  field_primer_mip = args.field_primer_mip
+  if src_mask_cv != None:
+      src_mask_cv = src_mask_cv.path
+  if tgt_mask_cv != None:
+      tgt_mask_cv = tgt_mask_cv.path
 
   # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius 
   block_dsts = {}
@@ -367,8 +352,7 @@ if __name__ == '__main__':
                             src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                             tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
                             tgt_mask_val=src_mask_val, prev_field_cv=None, 
-                            prev_field_z=None, field_primer_cv=field_primer_path,
-                            field_primer_mip=field_primer_mip)
+                            prev_field_z=None)
         yield from t
 
   class StarterRender(object):
@@ -404,8 +388,7 @@ if __name__ == '__main__':
                               src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                               tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
                               tgt_mask_val=src_mask_val, prev_field_cv=block_vvote_field, 
-                              prev_field_z=tgt_z, field_primer_cv=field_primer_path,
-                              field_primer_mip=field_primer_mip)
+                              prev_field_z=tgt_z)
           yield from t
 
   class BlockAlignVectorVote(object):
@@ -467,9 +450,7 @@ if __name__ == '__main__':
                               src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                               tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
                               tgt_mask_val=src_mask_val, 
-                              prev_field_cv=overlap_vvote_field, prev_field_z=tgt_z,
-                              field_primer_cv=field_primer_path,
-                              field_primer_mip=field_primer_mip)
+                              prev_field_cv=overlap_vvote_field, prev_field_z=tgt_z)
           yield from t
 
   class StitchAlignVectorVote(object):

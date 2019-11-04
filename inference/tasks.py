@@ -127,12 +127,12 @@ class ComputeFieldTask(RegisteredTask):
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     field_primer_cv, field_primer_mip):
+                     coarse_field_cv, coarse_field_mip):
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     field_primer_cv, field_primer_mip)
+                     coarse_field_cv, coarse_field_mip)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -160,32 +160,31 @@ class ComputeFieldTask(RegisteredTask):
       tgt_mask_cv = DCV(self.tgt_mask_cv)
     tgt_mask_mip = self.tgt_mask_mip
     tgt_mask_val = self.tgt_mask_val
-    if self.field_primer_cv:
-      field_primer_cv = DCV(self.field_primer_cv)
-    field_primer_mip = self.field_primer_mip
+    if self.coarse_field_cv:
+      coarse_field_cv = DCV(self.coarse_field_cv)
+    coarse_field_mip = self.coarse_field_mip
 
     print("\nCompute field\n"
           "model {}\n"
           "src {}\n"
           "tgt {}\n"
           "field {}\n"
-          "field primer {}, MIP{}\n"
+          "coarse field {}, MIP{}\n"
           "src_mask {}, val {}, MIP{}\n"
           "tgt_mask {}, val {}, MIP{}\n"
           "z={} to z={}\n"
-          "MIP{}\n".format(model_path, src_cv, tgt_cv, field_cv, field_primer_cv,
-                           field_primer_mip, src_mask_cv, src_mask_val,
+          "MIP{}\n".format(model_path, src_cv, tgt_cv, field_cv, coarse_field_cv,
+                           coarse_field_mip, src_mask_cv, src_mask_val,
                            src_mask_mip, tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
                            src_z, tgt_z, mip), flush=True)
     start = time()
     if not aligner.dry_run:
-      field = aligner.compute_field_chunk(model_path, src_cv, tgt_cv, src_z, tgt_z, 
-                                          patch_bbox, mip, pad, 
-                                          src_mask_cv, src_mask_mip, src_mask_val,
-                                          tgt_mask_cv, tgt_mask_mip, tgt_mask_val,
-                                          None, prev_field_cv, prev_field_z, 
-                                          prev_field_inverse, field_primer_cv,
-                                          field_primer_mip)
+      field = aligner.compute_field_chunk(model_path, src_cv=src_cv, tgt_cv=tgt_cv, src_z=src_z, tgt_z=tgt_z,
+                                          bbox=patch_bbox, mip=mip, pad=pad,
+                                          src_mask_cv=src_mask_cv, src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                                          tgt_mask_cv=tgt_mask_cv, tgt_mask_mip=tgt_mask_mip, tgt_mask_val=tgt_mask_val,
+                                          tgt_alt_z=None, prev_drift_field_cv=prev_field_cv, prev_drift_field_z=prev_field_z,
+                                          coarse_field_cv=coarse_field_cv, coarse_field_mip=coarse_field_mip)
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       end = time()
       diff = end - start

@@ -151,8 +151,11 @@ class EPyramid(nn.Module):
         self.src_encodings = {}
         self.tgt_encodings = {}
 
-    def forward(self, src, tgt, target_level, *, coarse_field=None):
+    def forward(self, src, tgt, target_level, *, coarse_field=None, coarse_field_mip=None):
         factor = self.train_size / src.shape[-2]
+
+        if coarse_field_mip is not None and coarse_field_mip < self.nlevels + 2:
+            coarse_field = downsample_field(coarse_field, coarse_field_mip, self.nlevels + 2)
 
         for i, module in enumerate(self.enclist):
             src, tgt = module(src, tgt)
@@ -167,9 +170,9 @@ class EPyramid(nn.Module):
                 if coarse_field is not None or fine_field_so_far is not None:
                     if coarse_field is not None and fine_field_so_far is not None:
                         combined_field_so_far = compose_fields(fine_field_so_far, coarse_field)
-                    else if coarse_field is not None:
+                    elif coarse_field is not None:
                         combined_field_so_far = coarse_field
-                    else if fine_field_so_far is not None:
+                    elif fine_field_so_far is not None:
                         combined_field_so_far = fine_field_so_far
                     enc_src = grid_sample(
                         enc_src,
