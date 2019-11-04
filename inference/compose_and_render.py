@@ -37,9 +37,9 @@ if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--downsample_shift', type=int, default=0,
     help='temporary hack to account for half pixel shifts caused by downsampling')
-  parser.add_argument('--section_lookup', type=str, 
+  parser.add_argument('--section_lookup', type=str,
     help='path to json file with section specific settings')
-  parser.add_argument('--z_range_path', type=str, 
+  parser.add_argument('--z_range_path', type=str,
     help='path to csv file with list of z indices to use')
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--info_path', type=str,
@@ -58,8 +58,8 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--pad', 
-    help='the size of the largest displacement expected; should be 2^high_mip', 
+  parser.add_argument('--pad',
+    help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
   args = parse_args(parser)
   # only compute matches to previous sections
@@ -155,25 +155,25 @@ if __name__ == '__main__':
 
   ptask = []
   range_list = make_range(z_range, a.threads)
-  
+
   start = time()
   for irange in range_list:
       ptask.append(ComposeTaskIterator(irange))
-  
+
   with ProcessPoolExecutor(max_workers=a.threads) as executor:
       executor.map(remote_upload, ptask)
- 
+
   end = time()
   diff = end - start
   print("Sending Compose Tasks use time:", diff)
   print('Running Compose Tasks')
-  # wait 
+  # wait
   start = time()
   a.wait_for_sqs_empty()
   end = time()
   diff = end - start
   print("Executing Compose Tasks use time:", diff)
- 
+
   class RenderTaskIterator(object):
       def __init__(self, zrange):
         self.zrange = zrange
@@ -193,9 +193,9 @@ if __name__ == '__main__':
               print("Overriding {} source dir with path {}".format(z, src_path))
           except KeyError:
             src_path = src.path
-          
+
           t = a.render(cm, src_path, field.path, dst.path, z, z, z, bbox,
-                           src_mip, fine_mip, affine=affine, prefix=prefix) 
+                           src_mip, fine_mip, affine=affine, prefix=prefix)
           yield from t
 
   ptask = []
@@ -210,7 +210,7 @@ if __name__ == '__main__':
   diff = end - start
   print("Sending Render Tasks use time:", diff)
   print('Running Render Tasks')
-  # wait 
+  # wait
   start = time()
   a.wait_for_sqs_empty()
   end = time()
