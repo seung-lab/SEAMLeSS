@@ -216,6 +216,8 @@ def train(train_loader, archive, epoch):
         data_time.update(time.time() - start_time)
 
         # compute output and loss
+        if torch.cuda.device_count() == 1:
+            sample = stack_dataset.ToDevice('cuda')(sample)
         prediction = submodule(sample.src.aug, sample.tgt.aug)
         loss = archive.loss(sample, prediction=prediction)
         loss = loss.mean()  # average across a batch if present
