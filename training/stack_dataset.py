@@ -209,4 +209,6 @@ class ToDevice(object):
                 X[k] = v.to(device=self.device)
             elif isinstance(v, dict):
                 X[k] = self(v)
+            elif isinstance(v, list):
+                X[k] = [x.to(device=self.device) for x in v]
         return X
