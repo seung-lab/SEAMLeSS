@@ -393,7 +393,7 @@ class ModelArchive(object):
                 p.requires_grad = True
             self._model.train().cuda()
             if torch.cuda.device_count() > 1:
-                self._model = DataParallelAccessAttributes(self._model)
+                self._model = torch.nn.DataParallel(self._model)
         return self._model
 
     def _load_objective(self, *args, **kwargs):
