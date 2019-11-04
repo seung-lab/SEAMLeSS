@@ -119,11 +119,11 @@ class Split(object):
         return dotdict({
             'src': {
                 'image': X[0:1],
-                'fold_mask': X[4:5],
+                'fold_mask': torch.zeros_like(X[0:1], dtype=torch.float),
             },
             'tgt': {
                 'image': X[1:2],
-                'fold_mask': X[4:5],
+                'fold_mask': torch.zeros_like(X[1:2], dtype=torch.float),
             },
         })
 
