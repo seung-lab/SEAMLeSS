@@ -89,10 +89,12 @@ class Model(nn.Module):
         else:
             final_res = pred_res
 
-        #final_res_optimizer = optimizer(src, tgt, final_res, src_folds)
+        final_res = optimizer(src, tgt, final_res, src_folds)
         #final_res[..., 0] = src_folds
         #final_res[..., 1] = src_folds
 
+        #final_res[..., 0] = 0
+        #final_res[..., 1] = 0
         #field = self.align(stack, mip_in=mip_in)
         final_res = final_res * 2 / src.shape[-2]
         #final_res = final_res.transpose(1, 2)

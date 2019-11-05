@@ -6,9 +6,9 @@ from .loss import unsupervised_loss
 from .residuals import res_warp_img
 
 def optimizer(src, tgt, pred_res, src_folds):
-    opti_loss = unsupervised_loss(smoothness_factor=25e1, use_defect_mask=True,
+    opti_loss = unsupervised_loss(smoothness_factor=50e1, use_defect_mask=True,
                                   white_threshold=-10, reverse=True,
-                                  coarsen_mse=3, coarsen_smooth=0,
+                                  coarsen_mse=2, coarsen_smooth=0,
                                   coarsen_positive_mse=0,
                                   positive_mse_mult=0)
     src = src.squeeze(0)
@@ -27,8 +27,8 @@ def optimizer(src, tgt, pred_res, src_folds):
             #'src_defects': torch.zeros_like(src), #src_folds,
             'tgt_defects': torch.zeros_like(tgt)
     }
-    num_epochs = 300
-    lr = 3e-2
+    num_epochs = 150
+    lr = 1e-2
     loss_bundle['pred_res'].requires_grad = True
 
     trainable = [loss_bundle['pred_res']]
@@ -67,4 +67,6 @@ def optimizer(src, tgt, pred_res, src_folds):
                     prev_loss = []
                 else:
                     del prev_loss[0]
+    print
+    ("HEYIOAJ:LKAHF:KHKLJ:SDFJAKL:SHF:KJADHFK:JDAHF:JKLHADkk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100kk100j")
     return prev_pred_res.unsqueeze(0)

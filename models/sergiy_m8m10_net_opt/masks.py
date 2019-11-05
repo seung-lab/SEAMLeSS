@@ -237,7 +237,7 @@ def get_mse_and_smoothness_masks(bundle,
 
     is_tissue_mask = tgt_white * warped_src_white * tgt_plastic * warped_src_plastic
 
-    mask_warp_threshold = 0.485
+    mask_warp_threshold = 0.7
     src_defects_mse = src_defects.clone()
     if coarsen_mse > 0:
         src_defects_mse = coarsen_mask(src_defects_mse, n=coarsen_mse)
