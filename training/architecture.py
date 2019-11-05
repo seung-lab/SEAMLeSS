@@ -100,7 +100,7 @@ class Model(nn.Module):
         If the SubmoduleView has only one level, this does nothing.
         """
         # TODO: init encoders, handle different size aligners
-        if len(self.aligners) > 1:
+        if len(self) > 1:
             if level == 'lowest':
                 state_dict = self.align.list[_index][1].state_dict()
                 self.align.list[_index][0].load_state_dict(state_dict)
