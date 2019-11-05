@@ -218,7 +218,9 @@ def train(train_loader, archive, epoch):
         # compute output and loss
         if torch.cuda.device_count() == 1:
             sample = stack_dataset.ToDevice('cuda')(sample)
-        prediction = submodule(sample.src.aug, sample.tgt.aug)
+        src = sample.src.image if sample.src.aug is None else sample.src.aug
+        tgt = sample.tgt.image if sample.tgt.aug is None else sample.tgt.aug
+        prediction = submodule(src, tgt)
         loss = archive.loss(sample, prediction=prediction)
         loss = loss.mean()  # average across a batch if present
 
