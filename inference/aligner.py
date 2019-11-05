@@ -680,7 +680,7 @@ class Aligner:
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
                         bbox, image_mip, field_mip, mask_cv=None,
                         mask_mip=0, mask_val=0, affine=None,
-                        use_cpu=False):
+                        use_cpu=False, return_field=False):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:
@@ -740,7 +740,6 @@ class Aligner:
                                src_mip=mask_mip,
                                dst_mip=image_mip, valid_val=mask_val)
           image = image.masked_fill_(mask, 0)
-        return image
       else:
         distance = self.profile_field(field)
         distance = (distance // (2 ** image_mip)) * 2 ** image_mip
@@ -756,6 +755,10 @@ class Aligner:
                                       to_tensor=True, normalizer=None)
         image = grid_sample(image, field, padding_mode='zeros')
         image = image[:,:,pad:-pad,pad:-pad]
+      
+      if return_field:
+        return image, field
+      else:
         return image
 
 
@@ -1123,7 +1126,7 @@ class Aligner:
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
                    bbox, src_mip, field_mip, mask_cv=None, mask_mip=0, 
                    mask_val=0, affine=None, use_cpu=False,
-             return_iterator= False):
+             return_iterator= False, field_dst_cv=None):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1165,7 +1168,7 @@ class Aligner:
             chunk = self.chunklist[i]
             yield tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
                        field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                       mask_mip, mask_val, affine, use_cpu)
+                       mask_mip, mask_val, affine, use_cpu, field_dst_cv)
     if return_iterator:
         return RenderTaskIterator(chunks,0, len(chunks))
     else:

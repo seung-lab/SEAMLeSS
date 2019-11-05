@@ -185,9 +185,10 @@ class ComputeFieldTask(RegisteredTask):
 
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
-               field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False):
+               field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False, field_dst_cv=None):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
                      field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu)
+    self.field_dst_cv = field_dst_cv
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
@@ -207,6 +208,9 @@ class RenderTask(RegisteredTask):
     affine = None 
     if self.affine:
       affine = np.array(self.affine)
+    field_dst_cv = None
+    if self.field_dst_cv:
+      field_dst_cv = DCV(self.field_dst_cv)
 
     print("\nRendering\n"
           "src {}\n"
@@ -218,11 +222,20 @@ class RenderTask(RegisteredTask):
                         field_mip, src_mip), flush=True)
     start = time()
     if not aligner.dry_run:
-      image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
-                                     patch_bbox, src_mip, field_mip,
-                                     mask_cv=mask_cv, mask_mip=mask_mip,
-                                     mask_val=mask_val, affine=affine,
-                                     use_cpu=self.use_cpu)
+      if field_dst_cv:
+        image, field = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
+                                      patch_bbox, src_mip, field_mip,
+                                      mask_cv=mask_cv, mask_mip=mask_mip,
+                                      mask_val=mask_val, affine=affine,
+                                      use_cpu=self.use_cpu, return_field=True)
+        field = field.data.cpu().numpy
+        aligner.save_field(field_dst_cv, field_z, field, patch_bbox, src_mip, relative=False, as_int16=True)
+      else:
+        image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
+                                      patch_bbox, src_mip, field_mip,
+                                      mask_cv=mask_cv, mask_mip=mask_mip,
+                                      mask_val=mask_val, affine=affine,
+                                      use_cpu=self.use_cpu, return_field=False)
       image = image.cpu().numpy()
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
       end = time()

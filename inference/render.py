@@ -45,6 +45,7 @@ if __name__ == '__main__':
   parser.add_argument('--info_path', type=str,
     help='path to CloudVolume to use as template info file')
   parser.add_argument('--field_path', type=str)
+  parser.add_argument('--field_dst_path', type=str, default=None)
   parser.add_argument('--field_mip', type=int)
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--src_mip', type=int)
@@ -103,6 +104,11 @@ if __name__ == '__main__':
                          fill_missing=True, overwrite=False)
   dst = cm.create(args.dst_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=True)
+  
+  # if args.field_dst_path:
+    # field_dst = cm.create(args.field_dst_path, data_type='int16', num_channels=2, fill_missing=True, overwrite=True)
+  # else:
+    # field_dst = None
 
   # Source Dict
   src_path_to_cv = {args.src_path: src}
@@ -155,7 +161,7 @@ if __name__ == '__main__':
             src_path = src.path
           
           t = a.render(cm, src_path, field.path, dst.path, z, z, z, bbox,
-                           src_mip, field_mip, affine=affine) 
+                           src_mip, field_mip, affine=affine, field_dst_cv=args.field_dst_path)
           yield from t
 
   ptask = []
