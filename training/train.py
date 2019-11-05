@@ -439,10 +439,17 @@ def load_archive(args):
                 raise ValueError('The model "{}" could not be found.'
                                  .format(args.saved_model))
             old = ModelArchive(args.saved_model, readonly=True)
-            archive = old.start_new(readonly=False, **vars(args))
+            archive = ModelArchive.start_new(old, **vars(args))
             # TODO: explicitly remove old model from memory
         else:
             archive = ModelArchive(readonly=False, **vars(args))
+            archive.set_log_titles([
+                'Time Stamp',
+                'Epoch',
+                'Iteration',
+                'Training Loss',
+                'Validation Loss',
+            ])
         archive.state_vars.update({
             'name': args.name,
             'height': args.height,
@@ -474,13 +481,6 @@ def load_archive(args):
             'penalty': args.penalty,
             'gpus': args.gpu_ids,
         })
-        archive.set_log_titles([
-            'Time Stamp',
-            'Epoch',
-            'Iteration',
-            'Training Loss',
-            'Validation Loss',
-        ])
         archive.set_optimizer_params(learning_rate=args.lr,
                                      weight_decay=args.wd)
 
