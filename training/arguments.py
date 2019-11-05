@@ -236,7 +236,7 @@ def _parse_args(args=None):
     if args.gpu_ids is None:
         args.gpu_ids = first_unused_gpu()
     if args.num_workers is None:
-        args.num_workers = len(args.gpu_ids.split(','))
+        args.num_workers = 4*len(args.gpu_ids.split(','))
     if 'batch_size' in args and args.batch_size is None:
         args.batch_size = len(args.gpu_ids.split(','))
     if 'test_' in args.name:  # random names for rapid testing
