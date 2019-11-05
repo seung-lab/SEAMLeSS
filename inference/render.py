@@ -105,10 +105,10 @@ if __name__ == '__main__':
   dst = cm.create(args.dst_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=True)
   
-  # if args.field_dst_path:
-    # field_dst = cm.create(args.field_dst_path, data_type='int16', num_channels=2, fill_missing=True, overwrite=True)
-  # else:
-    # field_dst = None
+  if args.field_dst_path:
+    field_dst = cm.create(args.field_dst_path, data_type='int16', num_channels=2, fill_missing=True, overwrite=True)
+  else:
+    field_dst = None
 
   # Source Dict
   src_path_to_cv = {args.src_path: src}
