@@ -133,8 +133,6 @@ if __name__ == '__main__':
               overwrite=False)
         source_lookup[z] = src_path_to_cv[src_path]
 
-  prefix = ''
-
   def remote_upload(tasks):
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
           tq.insert_all(tasks)
@@ -150,7 +148,7 @@ if __name__ == '__main__':
               t = a.compose(cm, fine_field.path, coarse_field.path,
                             field.path, z, z, z, bbox, fine_mip,
                             coarse_mip, fine_mip, factor=1, affine=affine,
-                            pad=pad, prefix=prefix)
+                            pad=pad)
               yield from t
 
   ptask = []
@@ -195,7 +193,7 @@ if __name__ == '__main__':
             src_path = src.path
 
           t = a.render(cm, src_path, field.path, dst.path, z, z, z, bbox,
-                           src_mip, fine_mip, affine=affine, prefix=prefix)
+                           src_mip, fine_mip, affine=affine)
           yield from t
 
   ptask = []
