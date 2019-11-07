@@ -785,7 +785,7 @@ class Aligner:
       assert(f_mip >= dst_mip)
       assert(g_mip >= dst_mip)
       padded_bbox = deepcopy(bbox)
-      padded_bbox.max_mip = dst_mip
+      padded_bbox.max_mip = max(dst_mip, f_mip, g_mip)
       print('Padding by {} at MIP{}'.format(pad, dst_mip))
       padded_bbox.uncrop(pad, mip=dst_mip)
       # Load warper vector field

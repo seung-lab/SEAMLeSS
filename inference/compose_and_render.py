@@ -1,22 +1,18 @@
 import gevent.monkey
 gevent.monkey.patch_all()
 
-from concurrent.futures import ProcessPoolExecutor
-import taskqueue
-from taskqueue import TaskQueue, GreenTaskQueue
-
-import sys
-import torch
-import json
-import math
 import csv
-from time import time, sleep
-from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
-from os.path import join
-from cloudmanager import CloudManager
-from tasks import run
-from boundingbox import BoundingBox
+import json
+from concurrent.futures import ProcessPoolExecutor
+from time import time
+
 import numpy as np
+from taskqueue import GreenTaskQueue
+
+from args import (get_aligner, get_argparser, get_bbox, get_provenance,
+                  parse_args)
+from cloudmanager import CloudManager
+
 
 def make_range(block_range, part_num):
     rangelen = len(block_range)
@@ -133,8 +129,6 @@ if __name__ == '__main__':
               overwrite=False)
         source_lookup[z] = src_path_to_cv[src_path]
 
-  prefix = ''
-
   def remote_upload(tasks):
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
           tq.insert_all(tasks)
@@ -150,7 +144,7 @@ if __name__ == '__main__':
               t = a.compose(cm, fine_field.path, coarse_field.path,
                             field.path, z, z, z, bbox, fine_mip,
                             coarse_mip, fine_mip, factor=1, affine=affine,
-                            pad=pad, prefix=prefix)
+                            pad=pad)
               yield from t
 
   ptask = []
@@ -195,7 +189,7 @@ if __name__ == '__main__':
             src_path = src.path
           
           t = a.render(cm, src_path, field.path, dst.path, z, z, z, bbox,
-                           src_mip, fine_mip, affine=affine, prefix=prefix) 
+                       src_mip, fine_mip, affine=affine) 
           yield from t
 
   ptask = []
@@ -216,6 +210,3 @@ if __name__ == '__main__':
   end = time()
   diff = end - start
   print("Executing Render Tasks use time:", diff)
-
-
-# # a.downsample_range(dst_cv, z_range, bbox, a.render_low_mip, a.render_high_mip)
