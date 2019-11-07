@@ -302,7 +302,7 @@ def downsample(x=1, type='average'):
 
 def upsample(x=1):
     if x > 0:
-        return nn.Upsample(scale_factor=2**x, mode='bilinear')
+        return nn.Upsample(scale_factor=2**x, mode='bicubic')
     else:
         return (lambda y: y)
 

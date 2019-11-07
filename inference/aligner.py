@@ -740,11 +740,13 @@ class Aligner:
                                src_mip=mask_mip,
                                dst_mip=image_mip, valid_val=mask_val)
           image = image.masked_fill_(mask, 0)
+        abs_field = field
       else:
         distance = self.profile_field(field)
         distance = (distance // (2 ** image_mip)) * 2 ** image_mip
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
 
+        abs_field = field.data.cpu().numpy()
         field -= distance.to(device = self.device)
         field = self.abs_to_rel_residual(field, padded_bbox, image_mip)
         field = field.to(device = self.device)
@@ -753,11 +755,11 @@ class Aligner:
                                       mask_cv=mask_cv, mask_mip=mask_mip,
                                       mask_val=mask_val,
                                       to_tensor=True, normalizer=None)
-        image = grid_sample(image, field, padding_mode='zeros')
+        image = grid_sample(image, field, padding_mode='zeros', mode='bilinear')
         image = image[:,:,pad:-pad,pad:-pad]
       
       if return_field:
-        return image, field
+        return image, abs_field
       else:
         return image
 
@@ -1176,7 +1178,7 @@ class Aligner:
         for chunk in chunks:
           batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
                            field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                           mask_mip, mask_val, affine, use_cpu))
+                           mask_mip, mask_val, affine, use_cpu, field_dst_cv))
         return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,

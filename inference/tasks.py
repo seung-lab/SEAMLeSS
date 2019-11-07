@@ -187,8 +187,7 @@ class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False, field_dst_cv=None):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
-                     field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu)
-    self.field_dst_cv = field_dst_cv
+                     field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu, field_dst_cv)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
@@ -228,8 +227,9 @@ class RenderTask(RegisteredTask):
                                       mask_cv=mask_cv, mask_mip=mask_mip,
                                       mask_val=mask_val, affine=affine,
                                       use_cpu=self.use_cpu, return_field=True)
-        field = field.data.cpu().numpy
-        aligner.save_field(field_dst_cv, field_z, field, patch_bbox, src_mip, relative=False, as_int16=True)
+        pad = 256
+        cropped_field = field[:,pad:field.shape[1]-pad,pad:field.shape[2]-pad,:]
+        aligner.save_field(cropped_field, field_dst_cv, dst_z, patch_bbox, src_mip, relative=False, as_int16=True)
       else:
         image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
                                       patch_bbox, src_mip, field_mip,
