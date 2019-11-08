@@ -800,7 +800,7 @@ class Aligner:
                            relative=False, to_tensor=True)
         if g_mip > dst_mip:
             g = upsample_field(g, g_mip, dst_mip)
-        return g
+        return g[:,pad:-pad,pad:-pad,:]
 
       distance = self.profile_field(f)
       distance = (distance // (2 ** g_mip)) * 2 ** g_mip
