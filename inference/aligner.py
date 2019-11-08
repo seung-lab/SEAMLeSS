@@ -586,6 +586,39 @@ class Aligner:
       tgt_padded_bbox, combined_distance_fine_snap.flip(0)
     )
 
+    if coarse_field_cv is not None:
+      if prev_drift_field_cv is not None:
+        prev_coarse_and_fine_field = self.cloudsample_compose(
+          prev_drift_field_cv, coarse_field_cv, tgt_z, tgt_z,
+          tgt_padded_bbox, mip, coarse_field_mip,
+          mip, factor=1., affine=None, pad=pad
+        )
+        prev_coarse_and_fine_distance = self.profile_field(prev_coarse_and_fine_field)
+        prev_coarse_and_fine_distance_snap = (prev_coarse_and_fine_distance // (2 ** mip)) * 2 ** mip
+        prev_coarse_and_fine_field -= prev_coarse_and_fine_distance_snap.to(device=self.device)
+        prev_coarse_and_fine_field = self.abs_to_rel_residual(prev_coarse_and_fine_field, tgt_padded_bbox, mip)
+      else:
+        # Fetch coarse alignment
+        prev_coarse_and_fine_field = self.get_field(
+          coarse_field_cv,
+          tgt_z,
+          tgt_padded_bbox,
+          coarse_field_mip,
+          relative=False,
+          to_tensor=True,
+        ).to(device=self.device)
+        prev_coarse_and_fine_distance = self.profile_field(prev_coarse_and_fine_field)
+        prev_coarse_and_fine_distance_snap = (prev_coarse_and_fine_distance // (2 ** mip)) * 2 ** mip
+        prev_coarse_and_fine_field -= prev_coarse_and_fine_distance_snap.to(device=self.device)
+        prev_coarse_and_fine_field = self.abs_to_rel_residual(prev_coarse_and_fine_field, tgt_padded_bbox, mip)
+        prev_coarse_and_fine_field = upsample_field(prev_coarse_and_fine_field, coarse_field_mip, mip)
+
+      tgt_img_padded_bbox = self.adjust_bbox(
+        tgt_padded_bbox, prev_coarse_and_fine_distance_snap.flip(0)
+      )
+    else:
+      tgt_img_padded_bbox = tgt_padded_bbox
+
     tgt_z = [tgt_z]
     if tgt_alt_z is not None:
       try:
@@ -606,9 +639,9 @@ class Aligner:
       normalizer=normalizer,
     )
     tgt_patch = self.get_composite_image(
-      tgt_cv,
+      src_cv,
       tgt_z,
-      tgt_padded_bbox,
+      tgt_img_padded_bbox,
       mip,
       mask_cv=tgt_mask_cv,
       mask_mip=tgt_mask_mip,
@@ -636,6 +669,8 @@ class Aligner:
       fine_field = model(
         src_patch,
         tgt_patch,
+        previous_combined_field=prev_coarse_and_fine_field,
+        previous_combined_field_mip=mip,
         coarse_field=coarse_field,
         coarse_field_mip=coarse_field_mip,
       )
@@ -902,7 +937,7 @@ class Aligner:
                            relative=False, to_tensor=True)
         if g_mip > dst_mip:
             g = upsample_field(g, g_mip, dst_mip)
-        return g
+        return g[:,pad:-pad,pad:-pad,:]
 
       distance = self.profile_field(f)
       distance = (distance // (2 ** g_mip)) * 2 ** g_mip

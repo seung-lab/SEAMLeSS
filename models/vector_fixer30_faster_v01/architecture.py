@@ -150,8 +150,12 @@ class EPyramid(nn.Module):
         self.nlevels = self.size - 1 - self.topskips
         self.src_encodings = {}
         self.tgt_encodings = {}
+        self.tgt_field = {}
 
-    def forward(self, src, tgt, target_level, *, coarse_field=None, coarse_field_mip=None):
+    def forward(self, src, tgt, target_level, *,
+        previous_combined_field=None, previous_combined_field_mip=None,
+        coarse_field=None, coarse_field_mip=None
+    ):
         factor = self.train_size / src.shape[-2]
 
         if coarse_field_mip is not None and coarse_field_mip < self.nlevels + 2:
@@ -162,6 +166,16 @@ class EPyramid(nn.Module):
             self.src_encodings[i] = src
             self.tgt_encodings[i] = tgt
             src, tgt = self.down(src), self.down(tgt)
+
+        if previous_combined_field is not None:
+            for i in range(1, len(self.enclist)):
+                # Could also do this consecutively...
+                warp_field = downsample_field(previous_combined_field, previous_combined_field_mip, previous_combined_field_mip + i)
+                self.tgt_encodings[i] = grid_sample(
+                    self.tgt_encodings[i],
+                    warp_field,
+                    padding_mode='zeros'
+                )
 
         fine_field_so_far = None
         for i in range(self.nlevels, target_level - 1, -1):
