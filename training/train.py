@@ -93,6 +93,7 @@ def main():
 
     # set available GPUs
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_ids
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 
     # either load or create the model, optimizer, and parameters
     archive = load_archive(args)
