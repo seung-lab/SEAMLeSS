@@ -2,7 +2,9 @@ import random
 import math
 import h5py
 import torch
+import numpy as np
 from torch.utils.data import Dataset, ConcatDataset
+from skimage.transform import resize
 
 from aug import aug_input, rotate_and_scale, random_translation
 from utilities.helpers import (upsample, downsample, grid_sample,
@@ -13,36 +15,48 @@ def compile_dataset(*h5_paths, transform=None, num_samples=None, repeats=1):
     datasets = []
     for h5_path in h5_paths:
         h5f = h5py.File(h5_path, 'r')
-        ds = [StackDataset(v, transform=transform, num_samples=num_samples,
-                           repeats=repeats)
-              for v in h5f.values()]
+        ds = [StackDataset(h5f, transform=transform, num_samples=num_samples,
+                           repeats=repeats)]
         datasets.extend(ds)
     return ConcatDataset(datasets)
 
 
 class StackDataset(Dataset):
-    """Deliver consecutive image pairs from 3D image stack
+    """Deliver image pairs from 4D image stack
 
     Args:
-        stack (4D ndarray): 1xZxHxW image array
+        h5f: HDF5 file with two datasets, "images" & "masks"
+             both datasets organized as 4D ndarrays,
+             Sx2xHxW image array (S is no. of sample pairs)
     """
 
-    def __init__(self, stack, transform=None, num_samples=None, repeats=1):
-        self.stack = stack
+    def __init__(self, h5f, transform=None, num_samples=None, repeats=1):
+        self.images = h5f['images']
+        if 'masks' in h5f.keys():
+            self.masks = h5f['masks']
+        else:
+            self.masks = np.zeros_like(self.images)
+        assert(len(self.images) == len(self.masks))
         self.N = (num_samples
-                  if num_samples and num_samples < len(stack) else len(stack))
+                  if num_samples and num_samples < len(self.images) else
+                  len(self.images))
         self.transform = transform
         self.repeats = repeats
 
     def __len__(self):
-        return 2*len(self.stack) * self.repeats
+        return 2*len(self.images) * self.repeats
 
     def __getitem__(self, id):
-        X = self.stack[id % self.N].copy()  # prevent modifying the dataset
+        s,t = self.images[id % self.N].copy()  # prevent modifying the dataset
+        sm,tm = self.masks[id % self.N].copy()
+        X = np.zeros_like(s, shape=(4, s.shape[-2], s.shape[-1]))
+        if sm.shape[0] != s.shape[0]:
+            sm = resize(sm, s.shape)
+            tm = resize(tm, t.shape)
         if id % 2*self.N >= self.N:  # flip source and target
-            # match i -> i+1 if id < N, else match i+1 -> i
-            s, t = X.copy()
-            X[0:6] = t, s
+            X[0:4] = t, s, tm, sm
+        else:
+            X[0:4] = s, t, sm, tm
         if self.transform:
             X = self.transform(X)
         return X, id
@@ -119,11 +133,11 @@ class Split(object):
         return dotdict({
             'src': {
                 'image': X[0:1],
-                'fold_mask': torch.zeros_like(X[0:1], dtype=torch.float),
+                'mask': X[2:3],
             },
             'tgt': {
                 'image': X[1:2],
-                'fold_mask': torch.zeros_like(X[1:2], dtype=torch.float),
+                'mask': X[3:4], 
             },
         })
 
