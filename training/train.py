@@ -198,10 +198,14 @@ def train(train_loader, archive, epoch):
     # switch to train mode and select the submodule to train
     archive.model.train()
     archive.adjust_learning_rate()
-    submodule = select_submodule(archive.model)
+    submodule = archive.model # select_submodule(archive.model)
     init_submodule(submodule)
-    print('training levels: {}'
-          .format(list(range(state_vars.height))[state_vars.levels]))
+    if state_vars.levels is None:
+        print('training levels: {}'
+          .format(list(range(state_vars.height))))
+    else:
+        print('training levels: {}'
+            .format(list(range(state_vars.height))[state_vars.levels]))
 
     start_time = time.time()
     start_iter = 0 if state_vars.iteration is None else state_vars.iteration
@@ -221,7 +225,7 @@ def train(train_loader, archive, epoch):
         src = sample.src.image if sample.src.aug is None else sample.src.aug
         tgt = sample.tgt.image if sample.tgt.aug is None else sample.tgt.aug
         prediction = submodule(src, tgt)
-        loss = archive.loss(sample, prediction=prediction)
+        loss = archive.loss(src, tgt, prediction=prediction)
         loss = loss.mean()  # average across a batch if present
 
         # compute gradient and do optimizer step
@@ -275,17 +279,20 @@ def validate(val_loader, archive, epoch):
 
     # switch to evaluate mode
     archive.model.eval()
-    submodule = select_submodule(archive.model)
+    submodule = archive.model #select_submodule(archive.model)
 
     # compute output and loss
     start_time = time.time()
     for i, (sample, id) in retry_enumerate(val_loader):
         sample = dotdict(sample)
+        if torch.cuda.device_count() == 1:
+            sample = stack_dataset.ToDevice('cuda')(sample)
+
         print('{0}\t'
               'Validation: [{1}/{2}]\t'
               .format(state_vars.name, i, len(val_loader)), end='\r')
         prediction = submodule(sample.src.image, sample.tgt.image)
-        loss = archive.val_loss(sample, prediction=prediction)
+        loss = archive.val_loss(sample.src.image, sample.tgt.image, prediction=prediction)
         losses.update(loss.item())
 
     # measure elapsed time

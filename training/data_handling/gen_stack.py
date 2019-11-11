@@ -40,7 +40,7 @@ size = (args.xe, args.ye) if args.xe is not None and args.ye is not None else No
 sampler = Sampler(source=('gs://' + args.source), dim=args.dim, mip=args.mip, height=args.stack_height,
                   zs=args.zs, ze=args.ze)
 if args.check_mask:
-    mask_sampler = Sampler(source=('gs://' + args.mask), dim=args.dim//(2**(5-args.mip)), mip=5,
+    mask_sampler = Sampler(source=('gs://' + args.mask), dim=args.dim//(2**(4-args.mip)), mip=4,
                            height=args.stack_height, zs=args.zs, ze=args.ze)
 
 def get_chunk(coords=None, coords_=None):
@@ -77,6 +77,9 @@ def get_chunk(coords=None, coords_=None):
             return chunk, coords, mask
     else:
         chunk = sampler.chunk_at_global_coords(coords, coords_)
+        if args.check_mask:
+            mask = mask_sampler.chunk_at_global_coords(coords, coords_)
+            return chunk, coords, mask
     return chunk, coords
 
 archived_coords = None
@@ -94,7 +97,7 @@ else:
 coord_record = []
 dataset = np.empty((N, args.stack_height, args.dim, args.dim))
 if args.check_mask:
-    mask_dataset = np.empty((N, args.stack_height, args.dim // (2**(5-args.mip)), args.dim // (2**(5 - args.mip))))
+    mask_dataset = np.empty((N, args.stack_height, args.dim // (2**(4-args.mip)), args.dim // (2**(4 - args.mip))))
 
 for i in range(N):
     coords, coords_ = None, None

@@ -21,14 +21,14 @@ class Sampler(object):
 
     def chunk_at_global_coords(self, xyz, xyz_):
         assert xyz[2] >= self.zs
-        assert xyz_[2] <= self.ze
+        assert xyz_[2] <= self.zs + self.ze
         factor = 2 ** self.vol.mip  # TODO: use CloudVolume's downsample_ratio
         x, x_ = xyz[0]//factor, xyz_[0]//factor
         y, y_ = xyz[1]//factor, xyz_[1]//factor
         z, z_ = xyz[2], xyz_[2]
         data = self.vol[x:x_, y:y_, z:z_].squeeze()
         print('min:', data.min(), 'max:', data.max())
-        if data.min(1).max() == 0:
+        if data.max() == 0:
             data = None
         else:
             print('Chunk shape {}'.format(data.shape))
