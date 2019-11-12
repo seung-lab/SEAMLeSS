@@ -3,9 +3,7 @@ Training code for SEAMLeSS networks.
 
 ## Getting started
 Training requires a training set. 
-A training set is an H5 file, containing at least one dataset. 
-Each dataset is a stack of images stored as a 4D array (1xZxWxH). 
-Images in the stack should be sequential along the Z dimension.
+See the [README in data_handling](data_handling/README.md) for more details.
 
 To train a network from scratch with default parameters, use the following
 command:
@@ -29,6 +27,3 @@ use the `--help` flag.
 ```
 python train.py --help 
 ```
-
-## Generating a training set
-See the [README in data_handling](data_handling/README.md) for more details.
