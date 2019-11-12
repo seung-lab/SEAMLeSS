@@ -311,16 +311,14 @@ def select_submodule(model):
     """
     if state_vars.levels is None:
         state_vars.levels = select_levels()
-    submodule = model[state_vars.levels]
+    submodule = model.module[state_vars.levels]
     if state_vars.plan == 'top_down':
         last = 'lowest'
     elif state_vars.plan == 'bottom_up':
         last = 'highest'
     else:
         last = 'all'
-    if torch.cuda.device_count() > 1:
-        return DataParallelAccessAttributes(submodule.train_level(last))
-    return submodule.train_level(last)
+    return torch.nn.DataParallel(submodule.train_level(last))
 
 
 def select_levels():
@@ -359,9 +357,9 @@ def init_submodule(submodule):
     if (index < state_vars.height
             and not state_vars.initialized_list[index]):
         if state_vars.plan == 'top_down':
-            submodule.init_level('lowest')
+            submodule.module.init_level('lowest')
         elif state_vars.plan == 'bottom_up':
-            submodule.init_level('highest')
+            submodule.module.init_level('highest')
         state_vars.initialized_list[index] = True
     return submodule
 
@@ -394,6 +392,7 @@ def create_debug_outputs(archive, sample, prediction, id=0):
             cp(debug_dir / 'tgt_aug_{}.png'.format(id), stack_dir)
         else:
             cp(debug_dir / 'tgt_{}.png'.format(id), stack_dir)
+        prediction = prediction.field_()
         warped_src = prediction[0:1, ...].detach().to(src.device).sample(
             src[0:1, ...])
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
