@@ -242,7 +242,8 @@ class ModelArchive(object):
                                  *args, **kwargs)
         cp(old_archive.paths['weights'], new_archive.paths['weights'])
         cp(old_archive.paths['loss'], new_archive.paths['loss'])
-        cp(old_archive.paths['progress'], new_archive.paths['progress'])
+        if old_archive.paths['progress'].exists():
+            cp(old_archive.paths['progress'], new_archive.paths['progress'])
 
         # Copy the old history into the new archive
         tempfile = new_archive.directory / 'history.txt.temp'
