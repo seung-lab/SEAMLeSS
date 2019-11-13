@@ -8,8 +8,8 @@ metadata:
   creationTimestamp: "2019-10-25T20:52:26Z"
   generation: 23
   labels:
-    run: seamless
-  name: seamless
+    run: seamless-coarse
+  name: seamless-coarse
   namespace: default
   resourceVersion: "30553245"
   selfLink: /apis/extensions/v1beta1/namespaces/default/deployments/seamless
@@ -36,12 +36,12 @@ spec:
       - args:
         - -c
         - python inference/worker.py --processes 5 --gpu_processes 1 --queue_name
-          nkem-seamless --lease_seconds 10
+          deepalign-coarse-1 --lease_seconds 10
         command:
         - /bin/sh
-        image: seunglab/seamless:nkem-minnie-fine
+        image: seunglab/seamless:sergiy-minnie-coarse
         imagePullPolicy: Always
-        name: seamless
+        name: seamless-coarse
         resources:
           limits:
             nvidia.com/gpu: "1"

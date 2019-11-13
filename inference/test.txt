@@ -1,0 +1,1954 @@
+Preparing 5 processes...
+GPU will be shared by up to 1 processes
+Creating Aligner object
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=19099 to z=19100
+MIP8
+
+Adding model ../models/sergiy_m8m10_net_opt to the cache
+Creating Aligner object
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=18848 to z=18850
+MIP8
+
+Adding model ../models/sergiy_m8m10_net_opt to the cache
+Creating Aligner object
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=19998 to z=20000
+MIP8
+
+Adding model ../models/sergiy_m8m10_net_opt to the cache
+Creating Aligner object
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=26499 to z=26500
+MIP8
+
+Adding model ../models/sergiy_m8m10_net_opt to the cache
+fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+Creating Aligner object
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=18899 to z=18900
+MIP8
+
+Adding model ../models/sergiy_m8m10_net_opt to the cache
+fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+Reading from exisiting model archive: sergiy_m8m10_net_opt
+Warning: The repository has changed since this net was last trained.
+/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/checkpoint/model_spec.json
+block_6convs_fms8to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+unet_3conv_m0m1_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+average_pool.json
+interpolate.json
+identity.json
+add.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+embedder_fms1to2.json
+block_3convs_3x3_fms1to32to2.json
+average_pool.json
+block_3convs_3x3_fms2to32to2.json
+Uplink mean weight [0] == 0.01206162292510271
+embedder_fms2to4.json
+block_3convs_3x3_fms2to32to4.json
+average_pool.json
+block_3convs_3x3_fms4to32to4.json
+Uplink mean weight [0] == -0.0008562161820009351
+average_pool.json
+upsample_residuals.json
+identity.json
+block_6convs_fms5to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+compute_field for -1280,-1280,19099_523008,523008,19100 to -1280,-1280,19100_523008,523008,19101
+pad: 256
+get_image for -66816,-66816,19099_588544,588544,19100
+Reading from exisiting model archive: sergiy_m8m10_net_opt
+Warning: The repository has changed since this net was last trained.
+/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/checkpoint/model_spec.json
+block_6convs_fms8to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+unet_3conv_m0m1_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+average_pool.json
+interpolate.json
+identity.json
+add.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+embedder_fms1to2.json
+block_3convs_3x3_fms1to32to2.json
+average_pool.json
+block_3convs_3x3_fms2to32to2.json
+Uplink mean weight [0] == 0.01206162292510271
+embedder_fms2to4.json
+block_3convs_3x3_fms2to32to4.json
+average_pool.json
+block_3convs_3x3_fms4to32to4.json
+Uplink mean weight [0] == -0.0008562161820009351
+average_pool.json
+upsample_residuals.json
+identity.json
+block_6convs_fms5to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+compute_field for -1280,-1280,26499_523008,523008,26500 to -1280,-1280,26500_523008,523008,26501
+pad: 256
+get_image for -66816,-66816,26499_588544,588544,26500
+Reading from exisiting model archive: sergiy_m8m10_net_opt
+Warning: The repository has changed since this net was last trained.
+/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/checkpoint/model_spec.json
+block_6convs_fms8to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+unet_3conv_m0m1_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+average_pool.json
+interpolate.json
+identity.json
+add.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+embedder_fms1to2.json
+block_3convs_3x3_fms1to32to2.json
+average_pool.json
+block_3convs_3x3_fms2to32to2.json
+Uplink mean weight [0] == 0.01206162292510271
+embedder_fms2to4.json
+block_3convs_3x3_fms2to32to4.json
+average_pool.json
+block_3convs_3x3_fms4to32to4.json
+Uplink mean weight [0] == -0.0008562161820009351
+average_pool.json
+upsample_residuals.json
+identity.json
+block_6convs_fms5to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+compute_field for -1280,-1280,18899_523008,523008,18900 to -1280,-1280,18900_523008,523008,18901
+pad: 256
+get_image for -66816,-66816,18899_588544,588544,18900
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8 at MIP8
+get_image: 0.717
+get_masked_image: 0.717
+get_image for -66816,-66816,19100_588544,588544,19101
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8 at MIP8
+get_image: 0.705
+get_masked_image: 0.706
+get_image for -66816,-66816,18900_588544,588544,18901
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even at MIP8
+get_image: 0.572
+get_masked_image: 0.573
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 22 acquired GPU lock
+GPU memory allocated: 57502720, cached: 60817408
+get_image for -66816,-66816,18899_588544,588544,18900
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even at MIP8
+get_image: 0.810
+get_masked_image: 0.810
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8 at MIP8
+get_image: 1.659
+get_masked_image: 1.659
+get_image for -66816,-66816,26500_588544,588544,26501
+Reading from exisiting model archive: sergiy_m8m10_net_opt
+Warning: The repository has changed since this net was last trained.
+/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/checkpoint/model_spec.json
+block_6convs_fms8to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+unet_3conv_m0m1_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+average_pool.json
+interpolate.json
+identity.json
+add.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+embedder_fms1to2.json
+block_3convs_3x3_fms1to32to2.json
+average_pool.json
+block_3convs_3x3_fms2to32to2.json
+Uplink mean weight [0] == 0.01206162292510271
+embedder_fms2to4.json
+block_3convs_3x3_fms2to32to4.json
+average_pool.json
+block_3convs_3x3_fms4to32to4.json
+Uplink mean weight [0] == -0.0008562161820009351
+average_pool.json
+upsample_residuals.json
+identity.json
+block_6convs_fms5to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+compute_field for -1280,-1280,19998_523008,523008,19999 to -1280,-1280,20000_523008,523008,20001
+pad: 256
+get_image for -66816,-66816,19998_588544,588544,19999
+Reading from exisiting model archive: sergiy_m8m10_net_opt
+Warning: The repository has changed since this net was last trained.
+/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/checkpoint/model_spec.json
+block_6convs_fms8to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+unet_3conv_m0m1_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+average_pool.json
+interpolate.json
+identity.json
+add.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+embedder_fms1to2.json
+block_3convs_3x3_fms1to32to2.json
+average_pool.json
+block_3convs_3x3_fms2to32to2.json
+Uplink mean weight [0] == 0.01206162292510271
+embedder_fms2to4.json
+block_3convs_3x3_fms2to32to4.json
+average_pool.json
+block_3convs_3x3_fms4to32to4.json
+Uplink mean weight [0] == -0.0008562161820009351
+average_pool.json
+upsample_residuals.json
+identity.json
+block_6convs_fms5to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+compute_field for -1280,-1280,18848_523008,523008,18849 to -1280,-1280,18850_523008,523008,18851
+pad: 256
+get_image for -66816,-66816,18848_588544,588544,18849
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even at MIP8
+get_image: 0.643
+get_masked_image: 0.644
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8 at MIP8
+get_image: 0.729
+get_masked_image: 0.737
+get_image for -66816,-66816,20000_588544,588544,20001
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/warped_folds_final at MIP8
+get_image: 1.194
+get_masked_image: 1.195
+THCudaCheck FAIL file=/pytorch/aten/src/THC/THCGeneral.cpp line=383 error=11 : invalid argument
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8 at MIP8
+get_image: 0.777
+get_masked_image: 0.777
+get_image for -66816,-66816,18850_588544,588544,18851
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even at MIP8
+get_image: 0.561
+get_masked_image: 0.561
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even at MIP8
+get_image: 0.751
+get_masked_image: 0.752
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 23 acquired GPU lock
+GPU memory allocated: 57502720, cached: 60817408
+get_image for -66816,-66816,19099_588544,588544,19100
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/warped_folds_final at MIP8
+get_image: 0.634
+get_masked_image: 0.635
+THCudaCheck FAIL file=/pytorch/aten/src/THC/THCGeneral.cpp line=383 error=11 : invalid argument
+0.20949991
+0.189364
+0.18713005
+0.18643028
+0.18617941
+0.18600848
+0.18588412
+0.18581334
+0.18578434
+worse
+0.18735695
+0.18589872
+worse
+0.1861098
+0.18576494
+0.18571422
+worse
+0.1865126
+GPU memory allocated: 478505984, cached: 6471811072
+GPU memory allocated: 321219584, cached: 1805647872
+Process 22 releasing GPU lock
+save_field for -1280,-1280,18899_523008,523008,18900 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1 at MIP8
+ComputeFieldTask: 68.680 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=26574 to z=26575
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,26574_523008,523008,26575 to -1280,-1280,26575_523008,523008,26576
+pad: 256
+get_image for -66816,-66816,26574_588544,588544,26575
+get_image: 0.326
+get_masked_image: 0.326
+get_image for -66816,-66816,26575_588544,588544,26576
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd at MIP8
+get_image: 0.463
+get_masked_image: 0.463
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 24 acquired GPU lock
+GPU memory allocated: 57502720, cached: 60817408
+get_image for -66816,-66816,26499_588544,588544,26500
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/warped_folds_final at MIP8
+get_image: 0.601
+get_masked_image: 0.601
+THCudaCheck FAIL file=/pytorch/aten/src/THC/THCGeneral.cpp line=383 error=11 : invalid argument
+0.19559817
+0.17991525
+0.17856467
+0.17822485
+0.17810644
+0.17807437
+0.17806935
+0.17805728
+worse
+0.17839283
+worse
+0.17892168
+0.17812337
+0.1780139
+0.17800297
+worse
+0.17839344
+worse
+0.17804833
+GPU memory allocated: 478505984, cached: 6471811072
+GPU memory allocated: 321219584, cached: 1805647872
+Process 23 releasing GPU lock
+save_field for -1280,-1280,19099_523008,523008,19100 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1 at MIP8
+ComputeFieldTask: 128.923 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=18848 to z=18850
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,18848_523008,523008,18849 to -1280,-1280,18850_523008,523008,18851
+pad: 256
+get_image for -66816,-66816,18848_588544,588544,18849
+get_image: 0.278
+get_masked_image: 0.278
+get_image for -66816,-66816,18850_588544,588544,18851
+get_image: 0.438
+get_masked_image: 0.439
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 25 acquired GPU lock
+GPU memory allocated: 57502720, cached: 60817408
+get_image for -66816,-66816,19998_588544,588544,19999
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/warped_folds_final at MIP8
+get_image: 0.650
+get_masked_image: 0.650
+THCudaCheck FAIL file=/pytorch/aten/src/THC/THCGeneral.cpp line=383 error=11 : invalid argument
+0.17781276
+0.16929318
+0.1684498
+0.16832307
+0.1682715
+0.16827618
+worse
+0.16978858
+0.16841143
+worse
+0.16865003
+0.1682987
+0.16827235
+0.168268
+worse
+0.16843076
+worse
+0.1687466
+0.16828994
+GPU memory allocated: 478505984, cached: 6471811072
+GPU memory allocated: 321219584, cached: 1805647872
+Process 24 releasing GPU lock
+save_field for -1280,-1280,26499_523008,523008,26500 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1 at MIP8
+ComputeFieldTask: 188.945 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=22074 to z=22075
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,22074_523008,523008,22075 to -1280,-1280,22075_523008,523008,22076
+pad: 256
+get_image for -66816,-66816,22074_588544,588544,22075
+get_image: 0.275
+get_masked_image: 0.275
+get_image for -66816,-66816,22075_588544,588544,22076
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd at MIP8
+get_image: 0.462
+get_masked_image: 0.462
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 26 acquired GPU lock
+GPU memory allocated: 57502720, cached: 60817408
+get_image for -66816,-66816,18848_588544,588544,18849
+0.23790036
+0.22757205
+0.22669147
+0.2265288
+0.22648096
+0.22644538
+0.22644982
+0.22639811
+worse
+0.22865108
+0.22657935
+worse
+0.22685784
+0.22640091
+0.22632673
+0.22633667
+worse
+0.2265417
+worse
+GPU memory allocated: 478505984, cached: 5842665472
+GPU memory allocated: 321219584, cached: 1805647872
+Process 25 releasing GPU lock
+save_field for -1280,-1280,19998_523008,523008,19999 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2 at MIP8
+ComputeFieldTask: 249.155 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=21647 to z=21650
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,21647_523008,523008,21648 to -1280,-1280,21650_523008,523008,21651
+pad: 256
+get_image for -66816,-66816,21647_588544,588544,21648
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/warped_folds_final at MIP8
+get_image: 1.386
+get_masked_image: 1.386
+THCudaCheck FAIL file=/pytorch/aten/src/THC/THCGeneral.cpp line=383 error=11 : invalid argument
+get_image: 0.330
+get_masked_image: 0.330
+get_image for -66816,-66816,21650_588544,588544,21651
+get_image: 0.369
+get_masked_image: 0.370
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 22 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,26574_588544,588544,26575
+Process 26 releasing GPU lock
+Process Process-5:
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.6/multiprocessing/process.py", line 258, in _bootstrap
+    self.run()
+  File "/opt/conda/lib/python3.6/multiprocessing/process.py", line 93, in run
+    self._target(*self._args, **self._kwargs)
+  File "inference/worker.py", line 30, in run_aligner
+    lease_seconds=args.lease_seconds)
+  File "/opt/conda/lib/python3.6/site-packages/taskqueue/taskqueue.py", line 281, in poll
+    task.execute(*execute_args, **execute_kwargs)
+  File "/opt/SEAMLeSS/inference/tasks.py", line 186, in execute
+    prev_field_inverse, src_folds_cv)
+  File "/opt/SEAMLeSS/inference/aligner.py", line 563, in compute_field_chunk
+    field = model(src_patch, tgt_patch, additional_data=additional_data)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/architecture.py", line 82, in forward
+    pred_res = self.align(x=stack, **model_run_params)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 38, in forward
+    result = self.down_path(state)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 100, in down_path
+    level_out = self.level_downmodules[str(level)](downmodule_in, state, level)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/artificery/parsers/warp_with_input_downmodule/parse.py", line 11, in forward
+    my_out = self.module(x)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/container.py", line 92, in forward
+    input = module(input)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 38, in forward
+    result = self.down_path(state)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 100, in down_path
+    level_out = self.level_downmodules[str(level)](downmodule_in, state, level)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/sequence.py", line 201, in forward
+    x = l(x)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/conv.py", line 338, in forward
+    self.padding, self.dilation, self.groups)
+RuntimeError: CUDA out of memory. Tried to allocate 600.00 MiB (GPU 0; 14.73 GiB total capacity; 3.51 GiB already allocated; 63.88 MiB free; 581.29 MiB cached)
+get_image: 0.485
+get_masked_image: 0.485
+Process 4 terminated with code 1. Restarting...
+Creating Aligner object
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/4
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=24746 to z=24750
+MIP8
+
+Adding model ../models/sergiy_m8m10_net_opt to the cache
+fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+Reading from exisiting model archive: sergiy_m8m10_net_opt
+Warning: The repository has changed since this net was last trained.
+/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/checkpoint/model_spec.json
+block_6convs_fms8to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+unet_3conv_m0m1_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+average_pool.json
+interpolate.json
+identity.json
+add.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+embedder_fms1to2.json
+block_3convs_3x3_fms1to32to2.json
+average_pool.json
+block_3convs_3x3_fms2to32to2.json
+Uplink mean weight [0] == 0.01206162292510271
+embedder_fms2to4.json
+block_3convs_3x3_fms2to32to4.json
+average_pool.json
+block_3convs_3x3_fms4to32to4.json
+Uplink mean weight [0] == -0.0008562161820009351
+average_pool.json
+upsample_residuals.json
+identity.json
+block_6convs_fms5to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+compute_field for -1280,-1280,24746_523008,523008,24747 to -1280,-1280,24750_523008,523008,24751
+pad: 256
+get_image for -66816,-66816,24746_588544,588544,24747
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8 at MIP8
+get_image: 0.684
+get_masked_image: 0.697
+get_image for -66816,-66816,24750_588544,588544,24751
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even at MIP8
+get_image: 0.571
+get_masked_image: 0.571
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 23 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,18848_588544,588544,18849
+get_image: 0.323
+get_masked_image: 0.323
+0.16227904
+0.15136667
+0.15038499
+0.15015808
+0.15009253
+0.15011078
+worse
+0.15078504
+worse
+0.15016666
+0.15024349
+0.1500368
+0.15003714
+0.15000838
+worse
+0.15019204
+worse
+0.15048067
+0.15005094
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 22 releasing GPU lock
+save_field for -1280,-1280,26574_523008,523008,26575 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+ComputeFieldTask: 243.926 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=16324 to z=16325
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,16324_523008,523008,16325 to -1280,-1280,16325_523008,523008,16326
+pad: 256
+get_image for -66816,-66816,16324_588544,588544,16325
+get_image: 0.276
+get_masked_image: 0.276
+get_image for -66816,-66816,16325_588544,588544,16326
+get_image: 0.428
+get_masked_image: 0.428
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 24 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,22074_588544,588544,22075
+get_image: 0.518
+get_masked_image: 0.519
+0.2697633
+0.2512052
+0.24959639
+0.2492888
+0.24919198
+0.24914178
+0.2491273
+worse
+0.2509498
+0.24922512
+worse
+0.2494547
+0.24910077
+0.24906513
+0.24905542
+worse
+0.24921691
+worse
+0.24948497
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 23 releasing GPU lock
+save_field for -1280,-1280,18848_523008,523008,18849 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2 at MIP8
+ComputeFieldTask: 244.116 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=21497 to z=21500
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,21497_523008,523008,21498 to -1280,-1280,21500_523008,523008,21501
+pad: 256
+get_image for -66816,-66816,21497_588544,588544,21498
+get_image: 0.364
+get_masked_image: 0.365
+get_image for -66816,-66816,21500_588544,588544,21501
+get_image: 0.386
+get_masked_image: 0.386
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 25 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,21647_588544,588544,21648
+get_image: 0.337
+get_masked_image: 0.337
+0.19860716
+0.18442129
+0.18321897
+0.18290909
+0.18281852
+0.18279639
+0.18275316
+worse
+0.18316956
+worse
+0.18416041
+0.18283182
+0.18270725
+0.18270117
+worse
+0.182926
+worse
+0.18342656
+0.1827578
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 24 releasing GPU lock
+save_field for -1280,-1280,22074_523008,523008,22075 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+ComputeFieldTask: 243.989 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=21948 to z=21950
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,21948_523008,523008,21949 to -1280,-1280,21950_523008,523008,21951
+pad: 256
+get_image for -66816,-66816,21948_588544,588544,21949
+get_image: 0.361
+get_masked_image: 0.362
+get_image for -66816,-66816,21950_588544,588544,21951
+get_image: 0.528
+get_masked_image: 0.528
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 655 acquired GPU lock
+GPU memory allocated: 57502720, cached: 60817408
+get_image for -66816,-66816,24746_588544,588544,24747
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/warped_folds_final at MIP8
+get_image: 0.547
+get_masked_image: 0.547
+THCudaCheck FAIL file=/pytorch/aten/src/THC/THCGeneral.cpp line=383 error=11 : invalid argument
+0.26849577
+0.25666907
+0.2557607
+0.2556229
+0.25558266
+worse
+0.2584522
+0.25578108
+worse
+0.25611693
+0.2556362
+0.25558692
+0.2555732
+worse
+0.25585428
+worse
+0.2570017
+0.25564146
+0.2555644
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 25 releasing GPU lock
+save_field for -1280,-1280,21647_523008,523008,21648 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3 at MIP8
+ComputeFieldTask: 243.795 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=21948 to z=21950
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,21948_523008,523008,21949 to -1280,-1280,21950_523008,523008,21951
+pad: 256
+get_image for -66816,-66816,21948_588544,588544,21949
+get_image: 0.351
+get_masked_image: 0.351
+get_image for -66816,-66816,21950_588544,588544,21951
+get_image: 0.395
+get_masked_image: 0.395
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 22 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,16324_588544,588544,16325
+Process 655 releasing GPU lock
+Process Process-6:
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.6/multiprocessing/process.py", line 258, in _bootstrap
+    self.run()
+  File "/opt/conda/lib/python3.6/multiprocessing/process.py", line 93, in run
+    self._target(*self._args, **self._kwargs)
+  File "inference/worker.py", line 30, in run_aligner
+    lease_seconds=args.lease_seconds)
+  File "/opt/conda/lib/python3.6/site-packages/taskqueue/taskqueue.py", line 281, in poll
+    task.execute(*execute_args, **execute_kwargs)
+  File "/opt/SEAMLeSS/inference/tasks.py", line 186, in execute
+    prev_field_inverse, src_folds_cv)
+  File "/opt/SEAMLeSS/inference/aligner.py", line 563, in compute_field_chunk
+    field = model(src_patch, tgt_patch, additional_data=additional_data)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/architecture.py", line 82, in forward
+    pred_res = self.align(x=stack, **model_run_params)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 38, in forward
+    result = self.down_path(state)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 100, in down_path
+    level_out = self.level_downmodules[str(level)](downmodule_in, state, level)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/artificery/parsers/warp_with_input_downmodule/parse.py", line 11, in forward
+    my_out = self.module(x)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/container.py", line 92, in forward
+    input = module(input)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 38, in forward
+    result = self.down_path(state)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 100, in down_path
+    level_out = self.level_downmodules[str(level)](downmodule_in, state, level)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/sequence.py", line 201, in forward
+    x = l(x)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/conv.py", line 338, in forward
+    self.padding, self.dilation, self.groups)
+RuntimeError: CUDA out of memory. Tried to allocate 600.00 MiB (GPU 0; 14.73 GiB total capacity; 3.51 GiB already allocated; 63.88 MiB free; 581.29 MiB cached)
+get_image: 0.299
+get_masked_image: 0.299
+Process 4 terminated with code 1. Restarting...
+Creating Aligner object
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/4
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=26946 to z=26950
+MIP8
+
+Adding model ../models/sergiy_m8m10_net_opt to the cache
+fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+Reading from exisiting model archive: sergiy_m8m10_net_opt
+Warning: The repository has changed since this net was last trained.
+/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/checkpoint/model_spec.json
+block_6convs_fms8to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+unet_3conv_m0m1_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+average_pool.json
+interpolate.json
+identity.json
+add.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+embedder_fms1to2.json
+block_3convs_3x3_fms1to32to2.json
+average_pool.json
+block_3convs_3x3_fms2to32to2.json
+Uplink mean weight [0] == 0.01206162292510271
+embedder_fms2to4.json
+block_3convs_3x3_fms2to32to4.json
+average_pool.json
+block_3convs_3x3_fms4to32to4.json
+Uplink mean weight [0] == -0.0008562161820009351
+average_pool.json
+upsample_residuals.json
+identity.json
+block_6convs_fms5to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+compute_field for -1280,-1280,26946_523008,523008,26947 to -1280,-1280,26950_523008,523008,26951
+pad: 256
+get_image for -66816,-66816,26946_588544,588544,26947
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8 at MIP8
+get_image: 0.666
+get_masked_image: 0.666
+get_image for -66816,-66816,26950_588544,588544,26951
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even at MIP8
+get_image: 0.573
+get_masked_image: 0.573
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 23 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,21497_588544,588544,21498
+get_image: 0.330
+get_masked_image: 0.330
+0.18237963
+0.17045656
+0.16952582
+0.16932797
+0.1692606
+0.16925982
+worse
+0.16996066
+worse
+0.16932699
+0.16944255
+0.1692498
+0.16921648
+worse
+0.17000502
+0.1693306
+worse
+0.16950947
+0.1692558
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 22 releasing GPU lock
+save_field for -1280,-1280,16324_523008,523008,16325 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+ComputeFieldTask: 242.997 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=20749 to z=20750
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,20749_523008,523008,20750 to -1280,-1280,20750_523008,523008,20751
+pad: 256
+get_image for -66816,-66816,20749_588544,588544,20750
+get_image: 0.383
+get_masked_image: 0.384
+get_image for -66816,-66816,20750_588544,588544,20751
+get_image: 0.425
+get_masked_image: 0.425
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 24 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,21948_588544,588544,21949
+0.30371684
+0.2897668
+0.288746
+0.2885943
+0.28853345
+0.28852096
+worse
+0.28949678
+0.2886334
+worse
+0.288793
+0.28854603
+0.28850436
+worse
+0.28924662
+0.28859472
+worse
+0.28869504
+worse
+0.28895146
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 23 releasing GPU lock
+save_field for -1280,-1280,21497_523008,523008,21498 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3 at MIP8
+ComputeFieldTask: 242.701 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/4
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=19421 to z=19425
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,19421_523008,523008,19422 to -1280,-1280,19425_523008,523008,19426
+pad: 256
+get_image for -66816,-66816,19421_588544,588544,19422
+get_image: 0.256
+get_masked_image: 0.257
+get_image for -66816,-66816,19425_588544,588544,19426
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd at MIP8
+get_image: 0.840
+get_masked_image: 0.840
+get_image: 2.668
+get_masked_image: 2.668
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 25 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,21948_588544,588544,21949
+get_image: 0.694
+get_masked_image: 0.694
+0.21969448
+0.20923622
+0.20841375
+0.2082998
+0.20827614
+0.20827259
+worse
+0.20966157
+0.20840903
+worse
+0.20861177
+0.20830695
+0.20826536
+worse
+0.20952114
+0.20835759
+worse
+0.20846891
+0.20826438
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 24 releasing GPU lock
+save_field for -1280,-1280,21948_523008,523008,21949 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2 at MIP8
+ComputeFieldTask: 244.975 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=21298 to z=21300
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,21298_523008,523008,21299 to -1280,-1280,21300_523008,523008,21301
+pad: 256
+get_image for -66816,-66816,21298_588544,588544,21299
+get_image: 0.281
+get_masked_image: 0.281
+get_image for -66816,-66816,21300_588544,588544,21301
+get_image: 5.290
+get_masked_image: 5.290
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 1048 acquired GPU lock
+GPU memory allocated: 57502720, cached: 60817408
+get_image for -66816,-66816,26946_588544,588544,26947
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/warped_folds_final at MIP8
+get_image: 0.611
+get_masked_image: 0.611
+THCudaCheck FAIL file=/pytorch/aten/src/THC/THCGeneral.cpp line=383 error=11 : invalid argument
+0.21969448
+0.20923622
+0.20841375
+0.2082998
+0.20827614
+0.20827259
+worse
+0.20966157
+0.20840903
+worse
+0.20861177
+0.20830695
+0.20826536
+worse
+0.20952114
+0.20835759
+worse
+0.20846891
+0.20826438
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 25 releasing GPU lock
+save_field for -1280,-1280,21948_523008,523008,21949 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+ComputeFieldTask: 244.981 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=24447 to z=24450
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,24447_523008,523008,24448 to -1280,-1280,24450_523008,523008,24451
+pad: 256
+get_image for -66816,-66816,24447_588544,588544,24448
+get_image: 0.406
+get_masked_image: 0.406
+get_image for -66816,-66816,24450_588544,588544,24451
+get_image: 0.558
+get_masked_image: 0.558
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 22 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,20749_588544,588544,20750
+Process 1048 releasing GPU lock
+Process Process-7:
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.6/multiprocessing/process.py", line 258, in _bootstrap
+    self.run()
+  File "/opt/conda/lib/python3.6/multiprocessing/process.py", line 93, in run
+    self._target(*self._args, **self._kwargs)
+  File "inference/worker.py", line 30, in run_aligner
+    lease_seconds=args.lease_seconds)
+  File "/opt/conda/lib/python3.6/site-packages/taskqueue/taskqueue.py", line 281, in poll
+    task.execute(*execute_args, **execute_kwargs)
+  File "/opt/SEAMLeSS/inference/tasks.py", line 186, in execute
+    prev_field_inverse, src_folds_cv)
+  File "/opt/SEAMLeSS/inference/aligner.py", line 563, in compute_field_chunk
+    field = model(src_patch, tgt_patch, additional_data=additional_data)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/architecture.py", line 82, in forward
+    pred_res = self.align(x=stack, **model_run_params)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 38, in forward
+    result = self.down_path(state)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 100, in down_path
+    level_out = self.level_downmodules[str(level)](downmodule_in, state, level)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/artificery/parsers/warp_with_input_downmodule/parse.py", line 11, in forward
+    my_out = self.module(x)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/container.py", line 92, in forward
+    input = module(input)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 38, in forward
+    result = self.down_path(state)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 100, in down_path
+    level_out = self.level_downmodules[str(level)](downmodule_in, state, level)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/sequence.py", line 201, in forward
+    x = l(x)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/conv.py", line 338, in forward
+    self.padding, self.dilation, self.groups)
+RuntimeError: CUDA out of memory. Tried to allocate 600.00 MiB (GPU 0; 14.73 GiB total capacity; 3.51 GiB already allocated; 63.88 MiB free; 581.29 MiB cached)
+Process 4 terminated with code 1. Restarting...
+Creating Aligner object
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=17023 to z=17025
+MIP8
+
+Adding model ../models/sergiy_m8m10_net_opt to the cache
+fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+get_image: 2.567
+get_masked_image: 2.567
+Reading from exisiting model archive: sergiy_m8m10_net_opt
+Warning: The repository has changed since this net was last trained.
+/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/checkpoint/model_spec.json
+block_6convs_fms8to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+unet_3conv_m0m1_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+average_pool.json
+interpolate.json
+identity.json
+add.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+embedder_fms1to2.json
+block_3convs_3x3_fms1to32to2.json
+average_pool.json
+block_3convs_3x3_fms2to32to2.json
+Uplink mean weight [0] == 0.01206162292510271
+embedder_fms2to4.json
+block_3convs_3x3_fms2to32to4.json
+average_pool.json
+block_3convs_3x3_fms4to32to4.json
+Uplink mean weight [0] == -0.0008562161820009351
+average_pool.json
+upsample_residuals.json
+identity.json
+block_6convs_fms5to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+compute_field for -1280,-1280,17023_523008,523008,17024 to -1280,-1280,17025_523008,523008,17026
+pad: 256
+get_image for -66816,-66816,17023_588544,588544,17024
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8 at MIP8
+get_image: 0.584
+get_masked_image: 0.584
+get_image for -66816,-66816,17025_588544,588544,17026
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd at MIP8
+get_image: 0.645
+get_masked_image: 0.645
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 23 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,19421_588544,588544,19422
+get_image: 0.310
+get_masked_image: 0.310
+0.21244262
+0.20315501
+0.20237038
+0.20223564
+0.20222302
+worse
+0.20298775
+worse
+0.20229152
+0.20242523
+0.20221236
+0.20220372
+worse
+0.20244974
+worse
+0.20296161
+0.20228979
+0.2022014
+0.20219937
+worse
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 22 releasing GPU lock
+save_field for -1280,-1280,20749_523008,523008,20750 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/1
+ComputeFieldTask: 247.264 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/4
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=16746 to z=16750
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,16746_523008,523008,16747 to -1280,-1280,16750_523008,523008,16751
+pad: 256
+get_image for -66816,-66816,16746_588544,588544,16747
+get_image: 0.312
+get_masked_image: 0.316
+get_image for -66816,-66816,16750_588544,588544,16751
+get_image: 0.468
+get_masked_image: 0.469
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 24 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,21298_588544,588544,21299
+get_image: 0.552
+get_masked_image: 0.552
+0.43103305
+0.3953519
+0.39210185
+0.39127037
+0.39093563
+0.3907654
+0.39073387
+0.3907141
+worse
+0.39166674
+0.39077806
+worse
+0.3908994
+0.390703
+0.39061728
+worse
+0.3912523
+0.39061865
+worse
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 23 releasing GPU lock
+save_field for -1280,-1280,19421_523008,523008,19422 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/4
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/4 at MIP8
+ComputeFieldTask: 247.329 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=18372 to z=18375
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,18372_523008,523008,18373 to -1280,-1280,18375_523008,523008,18376
+pad: 256
+get_image for -66816,-66816,18372_588544,588544,18373
+get_image: 0.397
+get_masked_image: 0.399
+get_image for -66816,-66816,18375_588544,588544,18376
+get_image: 1.496
+get_masked_image: 1.496
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 25 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,24447_588544,588544,24448
+get_image: 0.265
+get_masked_image: 0.265
+0.2663787
+0.2541017
+0.25311285
+0.2529496
+0.2529108
+0.25291198
+worse
+0.25334045
+worse
+0.25443357
+0.2530166
+0.25289336
+0.25289765
+worse
+0.25424352
+0.25296918
+worse
+0.2531098
+0.25289726
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 24 releasing GPU lock
+save_field for -1280,-1280,21298_523008,523008,21299 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+ComputeFieldTask: 245.271 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=16097 to z=16100
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,16097_523008,523008,16098 to -1280,-1280,16100_523008,523008,16101
+pad: 256
+get_image for -66816,-66816,16097_588544,588544,16098
+get_image: 0.682
+get_masked_image: 0.682
+get_image for -66816,-66816,16100_588544,588544,16101
+get_image: 0.454
+get_masked_image: 0.457
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 1441 acquired GPU lock
+GPU memory allocated: 57502720, cached: 60817408
+get_image for -66816,-66816,17023_588544,588544,17024
+0.36791575
+0.35046384
+0.3490962
+0.34880465
+0.348739
+0.34871262
+0.34869617
+worse
+0.3499148
+0.34892637
+worse
+0.3492785
+0.34871823
+0.34864444
+0.348643
+worse
+0.34885487
+worse
+0.34936327
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 25 releasing GPU lock
+save_field for -1280,-1280,24447_523008,523008,24448 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+ComputeFieldTask: 244.946 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=19322 to z=19325
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,19322_523008,523008,19323 to -1280,-1280,19325_523008,523008,19326
+pad: 256
+get_image for -66816,-66816,19322_588544,588544,19323
+get_image: 0.578
+get_masked_image: 0.578
+get_image for -66816,-66816,19325_588544,588544,19326
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd at MIP8
+get_image: 0.472
+get_masked_image: 0.472
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/warped_folds_final at MIP8
+get_image: 6.314
+get_masked_image: 6.314
+THCudaCheck FAIL file=/pytorch/aten/src/THC/THCGeneral.cpp line=383 error=11 : invalid argument
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 22 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,16746_588544,588544,16747
+Process 1441 releasing GPU lock
+Process Process-8:
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.6/multiprocessing/process.py", line 258, in _bootstrap
+    self.run()
+  File "/opt/conda/lib/python3.6/multiprocessing/process.py", line 93, in run
+    self._target(*self._args, **self._kwargs)
+  File "inference/worker.py", line 30, in run_aligner
+    lease_seconds=args.lease_seconds)
+  File "/opt/conda/lib/python3.6/site-packages/taskqueue/taskqueue.py", line 281, in poll
+    task.execute(*execute_args, **execute_kwargs)
+  File "/opt/SEAMLeSS/inference/tasks.py", line 186, in execute
+    prev_field_inverse, src_folds_cv)
+  File "/opt/SEAMLeSS/inference/aligner.py", line 563, in compute_field_chunk
+    field = model(src_patch, tgt_patch, additional_data=additional_data)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/architecture.py", line 82, in forward
+    pred_res = self.align(x=stack, **model_run_params)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 38, in forward
+    result = self.down_path(state)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 100, in down_path
+    level_out = self.level_downmodules[str(level)](downmodule_in, state, level)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/artificery/parsers/warp_with_input_downmodule/parse.py", line 11, in forward
+    my_out = self.module(x)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/container.py", line 92, in forward
+    input = module(input)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 38, in forward
+    result = self.down_path(state)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 100, in down_path
+    level_out = self.level_downmodules[str(level)](downmodule_in, state, level)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/sequence.py", line 201, in forward
+    x = l(x)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/conv.py", line 338, in forward
+    self.padding, self.dilation, self.groups)
+RuntimeError: CUDA out of memory. Tried to allocate 600.00 MiB (GPU 0; 14.73 GiB total capacity; 3.51 GiB already allocated; 63.88 MiB free; 581.29 MiB cached)
+get_image: 0.502
+get_masked_image: 0.504
+Process 4 terminated with code 1. Restarting...
+Creating Aligner object
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=18722 to z=18725
+MIP8
+
+Adding model ../models/sergiy_m8m10_net_opt to the cache
+fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+Reading from exisiting model archive: sergiy_m8m10_net_opt
+Warning: The repository has changed since this net was last trained.
+/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/checkpoint/model_spec.json
+block_6convs_fms8to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+unet_3conv_m0m1_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+average_pool.json
+interpolate.json
+identity.json
+add.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+embedder_fms1to2.json
+block_3convs_3x3_fms1to32to2.json
+average_pool.json
+block_3convs_3x3_fms2to32to2.json
+Uplink mean weight [0] == 0.01206162292510271
+embedder_fms2to4.json
+block_3convs_3x3_fms2to32to4.json
+average_pool.json
+block_3convs_3x3_fms4to32to4.json
+Uplink mean weight [0] == -0.0008562161820009351
+average_pool.json
+upsample_residuals.json
+identity.json
+block_6convs_fms5to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+compute_field for -1280,-1280,18722_523008,523008,18723 to -1280,-1280,18725_523008,523008,18726
+pad: 256
+get_image for -66816,-66816,18722_588544,588544,18723
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8 at MIP8
+get_image: 0.616
+get_masked_image: 0.616
+get_image for -66816,-66816,18725_588544,588544,18726
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd at MIP8
+get_image: 0.561
+get_masked_image: 0.561
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 23 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,18372_588544,588544,18373
+get_image: 0.505
+get_masked_image: 0.505
+0.36717844
+0.3380371
+0.33558148
+0.3349081
+0.3346615
+0.33462715
+0.33459565
+worse
+0.33490136
+worse
+0.33562782
+0.33464825
+worse
+0.33469474
+worse
+0.3349737
+0.33453876
+0.33447087
+worse
+0.33468702
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 22 releasing GPU lock
+save_field for -1280,-1280,16746_523008,523008,16747 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/4
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/4 at MIP8
+ComputeFieldTask: 251.868 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/4
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=25746 to z=25750
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,25746_523008,523008,25747 to -1280,-1280,25750_523008,523008,25751
+pad: 256
+get_image for -66816,-66816,25746_588544,588544,25747
+get_image: 0.259
+get_masked_image: 0.259
+get_image for -66816,-66816,25750_588544,588544,25751
+get_image: 0.385
+get_masked_image: 0.385
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 24 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,16097_588544,588544,16098
+get_image: 0.514
+get_masked_image: 0.514
+0.30147076
+0.2807262
+0.2790777
+0.27862984
+0.27852738
+0.2784622
+0.2784292
+worse
+0.2786813
+worse
+0.27925754
+0.27847967
+0.27836654
+0.27835244
+worse
+0.27852622
+worse
+0.27883267
+0.2783975
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 23 releasing GPU lock
+save_field for -1280,-1280,18372_523008,523008,18373 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+ComputeFieldTask: 248.756 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=19672 to z=19675
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,19672_523008,523008,19673 to -1280,-1280,19675_523008,523008,19676
+pad: 256
+get_image for -66816,-66816,19672_588544,588544,19673
+get_image: 0.328
+get_masked_image: 0.328
+get_image for -66816,-66816,19675_588544,588544,19676
+get_image: 0.474
+get_masked_image: 0.480
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 25 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,19322_588544,588544,19323
+get_image: 0.384
+get_masked_image: 0.389
+0.28081927
+0.26439136
+0.26313132
+0.26283437
+0.26278618
+0.26274976
+worse
+0.26344755
+worse
+0.26549506
+0.2628928
+0.26274216
+0.26270694
+worse
+0.2639982
+0.2627806
+worse
+0.26292092
+0.26270694
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 24 releasing GPU lock
+save_field for -1280,-1280,16097_523008,523008,16098 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3 at MIP8
+ComputeFieldTask: 248.847 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=18523 to z=18525
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,18523_523008,523008,18524 to -1280,-1280,18525_523008,523008,18526
+pad: 256
+get_image for -66816,-66816,18523_588544,588544,18524
+get_image: 0.319
+get_masked_image: 0.320
+get_image for -66816,-66816,18525_588544,588544,18526
+get_image: 0.562
+get_masked_image: 0.562
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 1834 acquired GPU lock
+GPU memory allocated: 57502720, cached: 60817408
+get_image for -66816,-66816,18722_588544,588544,18723
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/warped_folds_final at MIP8
+get_image: 0.696
+get_masked_image: 0.696
+THCudaCheck FAIL file=/pytorch/aten/src/THC/THCGeneral.cpp line=383 error=11 : invalid argument
+0.33431202
+0.31250036
+0.3105675
+0.31009793
+0.3099228
+0.30976075
+0.30969647
+0.3096505
+0.3096465
+worse
+0.3106202
+0.30972284
+worse
+0.3098446
+0.30959016
+0.30957866
+worse
+0.3103738
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 25 releasing GPU lock
+save_field for -1280,-1280,19322_523008,523008,19323 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+ComputeFieldTask: 248.857 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/2
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=18248 to z=18250
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,18248_523008,523008,18249 to -1280,-1280,18250_523008,523008,18251
+pad: 256
+get_image for -66816,-66816,18248_588544,588544,18249
+get_image: 0.440
+get_masked_image: 0.441
+get_image for -66816,-66816,18250_588544,588544,18251
+get_image: 0.612
+get_masked_image: 0.612
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 22 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,25746_588544,588544,25747
+Process 1834 releasing GPU lock
+Process Process-9:
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.6/multiprocessing/process.py", line 258, in _bootstrap
+    self.run()
+  File "/opt/conda/lib/python3.6/multiprocessing/process.py", line 93, in run
+    self._target(*self._args, **self._kwargs)
+  File "inference/worker.py", line 30, in run_aligner
+    lease_seconds=args.lease_seconds)
+  File "/opt/conda/lib/python3.6/site-packages/taskqueue/taskqueue.py", line 281, in poll
+    task.execute(*execute_args, **execute_kwargs)
+  File "/opt/SEAMLeSS/inference/tasks.py", line 186, in execute
+    prev_field_inverse, src_folds_cv)
+  File "/opt/SEAMLeSS/inference/aligner.py", line 563, in compute_field_chunk
+    field = model(src_patch, tgt_patch, additional_data=additional_data)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/architecture.py", line 82, in forward
+    pred_res = self.align(x=stack, **model_run_params)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 38, in forward
+    result = self.down_path(state)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 100, in down_path
+    level_out = self.level_downmodules[str(level)](downmodule_in, state, level)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/artificery/parsers/warp_with_input_downmodule/parse.py", line 11, in forward
+    my_out = self.module(x)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/container.py", line 92, in forward
+    input = module(input)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 38, in forward
+    result = self.down_path(state)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/scalenet.py", line 100, in down_path
+    level_out = self.level_downmodules[str(level)](downmodule_in, state, level)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/scalenet/sequence.py", line 201, in forward
+    x = l(x)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/module.py", line 493, in __call__
+    result = self.forward(*input, **kwargs)
+  File "/opt/conda/lib/python3.6/site-packages/torch/nn/modules/conv.py", line 338, in forward
+    self.padding, self.dilation, self.groups)
+RuntimeError: CUDA out of memory. Tried to allocate 600.00 MiB (GPU 0; 14.73 GiB total capacity; 3.51 GiB already allocated; 63.88 MiB free; 581.29 MiB cached)
+Process 4 terminated with code 1. Restarting...
+Creating Aligner object
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/3
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=22072 to z=22075
+MIP8
+
+Adding model ../models/sergiy_m8m10_net_opt to the cache
+fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+get_image: 2.274
+get_masked_image: 2.275
+Reading from exisiting model archive: sergiy_m8m10_net_opt
+Warning: The repository has changed since this net was last trained.
+/opt/SEAMLeSS/models/sergiy_m8m10_net_opt/checkpoint/model_spec.json
+block_6convs_fms8to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+unet_3conv_m0m1_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms32to32_kyle.json
+block_3convs_fms2to32_kyle.json
+block_3convs_fms32to32_kyle.json
+average_pool.json
+interpolate.json
+identity.json
+add.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+embedder_fms1to2.json
+block_3convs_3x3_fms1to32to2.json
+average_pool.json
+block_3convs_3x3_fms2to32to2.json
+Uplink mean weight [0] == 0.01206162292510271
+embedder_fms2to4.json
+block_3convs_3x3_fms2to32to4.json
+average_pool.json
+block_3convs_3x3_fms4to32to4.json
+Uplink mean weight [0] == -0.0008562161820009351
+average_pool.json
+upsample_residuals.json
+identity.json
+block_6convs_fms5to32_skip25.json
+categorical/categorical_compch15_gridfalse_maxvalue7_outch2_stepnull_trainsttrue.json
+compute_field for -1280,-1280,22072_523008,523008,22073 to -1280,-1280,22075_523008,523008,22076
+pad: 256
+get_image for -66816,-66816,22072_588544,588544,22073
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8 at MIP8
+get_image: 0.574
+get_masked_image: 0.574
+get_image for -66816,-66816,22075_588544,588544,22076
+Creating CloudVolume for gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/odd at MIP8
+get_image: 0.520
+get_masked_image: 0.520
+src_patch.shape torch.Size([1, 1, 2560, 2560])
+tgt_patch.shape torch.Size([1, 1, 2560, 2560])
+Process 23 acquired GPU lock
+GPU memory allocated: 293956608, cached: 1805647872
+get_image for -66816,-66816,19672_588544,588544,19673
+get_image: 0.386
+get_masked_image: 0.387
+0.29010856
+0.27783522
+0.27686384
+0.2767188
+0.27667743
+0.2766709
+worse
+0.27695248
+worse
+0.2775131
+0.27671826
+0.27665228
+0.2766437
+worse
+0.2768588
+0.27665392
+0.27660906
+worse
+0.2772109
+GPU memory allocated: 478505984, cached: 5790236672
+GPU memory allocated: 321219584, cached: 1805647872
+Process 22 releasing GPU lock
+save_field for -1280,-1280,25746_523008,523008,25747 at MIP8 to gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/4
+ComputeFieldTask: 241.954 s
+
+Compute field
+model ../models/sergiy_m8m10_net_opt
+src gs://seunglab_minnie_phase3/alignment/precoarse_vv5_tempdiv4_step128_maxdisp128/ncc/ncc_m8
+tgt gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/image_blocks/even
+field gs://seunglab_minnie_phase3/alignment/coarse_v1/inference_x2_optim300_lr3em2_sm25e1_maskthresh07_mse3_vv5_long_block_size25/field/block/4
+src_mask None, val 1, MIP8
+tgt_mask None, val 1, MIP8
+z=17696 to z=17700
+MIP8
+
+Loading model ../models/sergiy_m8m10_net_opt from cache
+compute_field for -1280,-1280,17696_523008,523008,17697 to -1280,-1280,17700_523008,523008,17701
+pad: 256
+get_image for -66816,-66816,17696_588544,588544,17697
+get_image: 0.327
+get_masked_image: 0.327
+get_image for -66816,-66816,17700_588544,588544,17701
+get_image: 0.613
+get_masked_image: 0.613

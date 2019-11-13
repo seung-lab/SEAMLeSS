@@ -138,3 +138,4 @@ inference/docker/secret.yaml
 models/
 !models/sergiy_blockmatch_test/**
 !models/sergiy_m8m10_rigid_net/**
+!models/sergiy_m8m10_net_opt/**
