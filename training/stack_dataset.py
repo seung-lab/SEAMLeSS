@@ -14,8 +14,7 @@ from utilities.helpers import (upsample, downsample, grid_sample,
 def compile_dataset(*h5_paths, transform=None, num_samples=None, repeats=1):
     datasets = []
     for h5_path in h5_paths:
-        h5f = h5py.File(h5_path, 'r')
-        ds = [StackDataset(h5f, transform=transform, num_samples=num_samples,
+        ds = [StackDataset(h5_path, transform=transform, num_samples=num_samples,
                            repeats=repeats)]
         datasets.extend(ds)
     return ConcatDataset(datasets)
@@ -30,25 +29,37 @@ class StackDataset(Dataset):
              Sx2xHxW image array (S is no. of sample pairs)
     """
 
-    def __init__(self, h5f, transform=None, num_samples=None, repeats=1):
-        self.images = h5f['images']
-        if 'masks' in h5f.keys():
-            self.masks = h5f['masks']
-        else:
-            self.masks = np.zeros_like(self.images)
-        assert(len(self.images) == len(self.masks))
-        self.N = (num_samples
-                  if num_samples and num_samples < len(self.images) else
-                  len(self.images))
+    def __init__(self, h5_path, transform=None, num_samples=None, repeats=1):
+        self.h5_path = h5_path
         self.transform = transform
         self.repeats = repeats
+        self.images = None
+        self.masks = None
+
+        with h5py.File(self.h5_path, 'r') as h5f:
+            assert 'images' in h5f.keys()
+            self.N = (
+                num_samples
+                if num_samples and num_samples < len(h5f['images'])
+                else len(h5f['images'])
+            )
+            if 'masks' in h5f.keys():
+                assert len(h5f['masks']) == len(h5f['images'])
 
     def __len__(self):
-        return 2*len(self.images) * self.repeats
+        return 2 * self.N * self.repeats
 
     def __getitem__(self, id):
-        s,t = self.images[id % self.N].copy()  # prevent modifying the dataset
-        sm,tm = self.masks[id % self.N].copy()
+        if self.images is None:
+            h5f = h5py.File(self.h5_path, 'r')
+            self.images = h5f['images']
+            if 'masks' in h5f.keys():
+                self.masks = h5f['masks']
+            else:
+                self.masks = np.zeros_like(self.images)
+
+        s, t = self.images[id % self.N]
+        sm, tm = self.masks[id % self.N]
         X = np.zeros_like(s, shape=(4, s.shape[-2], s.shape[-1]))
         if sm.shape[0] != s.shape[0]:
             sm = resize(sm, s.shape)
