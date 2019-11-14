@@ -27,7 +27,7 @@ def optimizer(src, tgt, pred_res, src_folds):
             #'src_defects': torch.zeros_like(src), #src_folds,
             'tgt_defects': torch.zeros_like(tgt)
     }
-    num_epochs = 300
+    num_epochs = 200
     lr = 3e-2
     loss_bundle['pred_res'].requires_grad = True
 

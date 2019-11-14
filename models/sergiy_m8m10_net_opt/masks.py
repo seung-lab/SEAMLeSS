@@ -193,15 +193,15 @@ def coarsen_mask(mask, n=1, flip=True):
             mask = convolve(mask, kernel) > 0
             mask = mask.astype(np.int16) > 1
         else:
+            mask = mask.type(torch.cuda.FloatTensor)
             kernel_var = torch.cuda.FloatTensor(kernel).unsqueeze(0).unsqueeze(0)
             k = torch.nn.Parameter(data=kernel_var, requires_grad=False)
             if flip:
                 mask = 1 - mask
             mask =  (torch.nn.functional.conv2d(mask.unsqueeze(1),
-                kernel_var, padding=1) > 1).squeeze(1)
+                kernel_var, padding=1) > 1).squeeze(1).type(torch.cuda.FloatTensor)
             if flip:
                 mask = 1 - mask
-            mask = mask.type(torch.cuda.FloatTensor)
     return mask
 
 def get_mse_and_smoothness_masks(bundle,
@@ -214,12 +214,12 @@ def get_mse_and_smoothness_masks(bundle,
     tgt = bundle['tgt']
     pred_res = bundle['pred_res']
     pred_tgt = bundle['pred_tgt']
-
     src_edges = (1 - bundle['src_edges'])
 
     #src_defects = ((1 - bundle['src_defects']) > 0.15).type(torch.cuda.FloatTensor)#* get_defect_mask(src_var, threshold=white_threshold)
     #tgt_defects = ((1 - bundle['tgt_defects']) > 0.15).type(torch.cuda.FloatTensor)
-    src_defects = ((1 - bundle['src_defects']) > 0.99).type(torch.cuda.FloatTensor)#* get_defect_mask(src_var, threshold=white_threshold)
+    binarized_src_defects = (bundle['src_defects'] > 0.01).type(torch.cuda.FloatTensor)#* get_defect_mask(src_var, threshold=white_threshold)
+    src_defects = (1 - binarized_src_defects)
     tgt_defects = (1 - bundle['tgt_defects']).type(torch.cuda.FloatTensor)
     src_plastic = (1 - bundle['src_plastic'])
     tgt_plastic = (1 - bundle['tgt_plastic'])

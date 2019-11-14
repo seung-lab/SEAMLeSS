@@ -50,7 +50,7 @@ class Model(nn.Module):
 
         src_folds = kwargs['additional_data']['src_folds']
         if self.range_adjust:
-            tissue_mask = (src != 0).squeeze(0)
+            tissue_mask = (src != 0).squeeze(0).type(torch.cuda.FolatTensor)
             pred_res_adj = self.align(stack, **model_run_params)
             if pred_res_adj.shape[1] == 2:
                 pred_res_adj = pred_res_adj.permute(0, 2, 3, 1)

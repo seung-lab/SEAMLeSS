@@ -1,6 +1,6 @@
 botocore
-torch==1.1.0 # for out of date CUDA versions, go to https://pytorch.org/ to install torch
-torchfields==0.0.4
+torch # for out of date CUDA versions, go to https://pytorch.org/ to install torch
+torchfields
 artificery
 torchvision
 numpy>=1.16.2
