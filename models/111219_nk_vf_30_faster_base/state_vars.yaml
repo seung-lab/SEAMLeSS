@@ -1,8 +1,17 @@
 batch_size: 1
 checkpoint_time: 100
-encodings: false
+encodings: true
 epoch: 0
 epochs_per_mip: 2
+feature_maps:
+- 12
+- 18
+- 24
+- 30
+- 36
+- 42
+- 48
+- 54
 gamma: 0.1
 gamma_step: 30
 gpus: '0'
@@ -30,7 +39,7 @@ num_samples: null
 penalty: lap
 plan: all
 repeats: 1
-skip: 1
+seed: null
 skip_aug: true
 start_lr: 0.0005
 supervised: false
