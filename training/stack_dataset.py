@@ -1,21 +1,25 @@
-import random
 import math
-import h5py
-import torch
-import numpy as np
-from torch.utils.data import Dataset, ConcatDataset
-from skimage.transform import resize
+import random
+from itertools import permutations
 
-from aug import aug_input, rotate_and_scale, random_translation
-from utilities.helpers import (upsample, downsample, grid_sample,
-                               dotdict)
+import h5py
+import numpy as np
+import torch
+from skimage.transform import resize
+from torch.utils.data import ConcatDataset, Dataset
+
+from aug import aug_input, random_translation, rotate_and_scale
+from utilities.helpers import dotdict, downsample
 
 
 def compile_dataset(*h5_paths, transform=None, num_samples=None, repeats=1):
     datasets = []
     for h5_path in h5_paths:
-        ds = [StackDataset(h5_path, transform=transform, num_samples=num_samples,
-                           repeats=repeats)]
+        ds = [
+            StackDataset(
+                h5_path, transform=transform, num_samples=num_samples, repeats=repeats
+            )
+        ]
         datasets.extend(ds)
     return ConcatDataset(datasets)
 
@@ -36,38 +40,42 @@ class StackDataset(Dataset):
         self.images = None
         self.masks = None
 
-        with h5py.File(self.h5_path, 'r') as h5f:
-            assert 'images' in h5f.keys()
+        with h5py.File(self.h5_path, "r") as h5f:
+            assert "images" in h5f.keys()
+            if "masks" in h5f.keys():
+                assert h5f["masks"].shape[-4:-2] == h5f["images"].shape[-4:-2]
             self.N = (
                 num_samples
-                if num_samples and num_samples < len(h5f['images'])
-                else len(h5f['images'])
+                if num_samples and num_samples < len(h5f["images"])
+                else len(h5f["images"])
             )
-            if 'masks' in h5f.keys():
-                assert len(h5f['masks']) == len(h5f['images'])
+            self.stack_height = h5f["images"].shape[-3]
+
+        self.permutations = tuple(permutations(range(self.stack_height), 2))
 
     def __len__(self):
-        return 2 * self.N * self.repeats
+        return self.N * self.repeats * len(self.permutations)
 
     def __getitem__(self, id):
         if self.images is None:
-            h5f = h5py.File(self.h5_path, 'r')
-            self.images = h5f['images']
-            if 'masks' in h5f.keys():
-                self.masks = h5f['masks']
+            h5f = h5py.File(self.h5_path, "r")
+            self.images = h5f["images"]
+            if "masks" in h5f.keys():
+                self.masks = h5f["masks"]
             else:
                 self.masks = np.zeros_like(self.images)
 
-        s, t = self.images[id % self.N]
-        sm, tm = self.masks[id % self.N]
+        img_id = id % self.N
+        perm_id = id % len(self.permutations)
+        s, t = self.images[img_id][self.permutations[perm_id], ...]
+        sm, tm = self.masks[img_id][self.permutations[perm_id], ...]
+
         X = np.zeros_like(s, shape=(4, s.shape[-2], s.shape[-1]))
         if sm.shape[0] != s.shape[0]:
             sm = resize(sm, s.shape)
             tm = resize(tm, t.shape)
-        if id % 2*self.N >= self.N:  # flip source and target
-            X[0:4] = t, s, tm, sm
-        else:
-            X[0:4] = s, t, sm, tm
+
+        X[0:4] = s, t, sm, tm
         if self.transform:
             X = self.transform(X)
         return X, id
