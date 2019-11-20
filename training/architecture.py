@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
-from utilities.helpers import (grid_sample, upsample, downsample,
-                               load_model_from_dict, compose_fields,
-                               upsample_field, time_function)
-import numpy as np
+import torchfields  # noqa: unused
+from utilities.helpers import downsample, load_model_from_dict
 
 
 class Model(nn.Module):
@@ -15,17 +13,19 @@ class Model(nn.Module):
     `feature_maps` is the number of feature maps per encoding layer
     """
 
-    def __init__(self, height, skip=0, topskips=0, k=7, *args, **kwargs):
+    def __init__(self, feature_maps=None, encodings=True, *args, **kwargs):
         super().__init__()
-        self.height = height
-        self.encode = None
-        self.pyramid = EPyramid(height, skip, topskips, k)
+        self.feature_maps = feature_maps
+        self.encode = (EncodingPyramid(self.feature_maps, **kwargs)
+                       if encodings else None)
+        self.align = AligningPyramid(self.feature_maps if encodings
+                                     else [1]*len(feature_maps), **kwargs)
 
-    def __getitem__(self, index):
-        return self.submodule(index)
-
-    def forward(self, src, tgt, skip=0, in_field=None, **kwargs):
-        return self.pyramid(src, tgt, skip)
+    def forward(self, src, tgt, in_field=None, **kwargs):
+        if self.encode:
+            src, tgt = self.encode(src, tgt, **kwargs)
+        field = self.align(src, tgt, in_field, **kwargs)
+        return field
 
     def load(self, path):
         """
@@ -43,11 +43,21 @@ class Model(nn.Module):
         with path.open('wb') as f:
             torch.save(self.state_dict(), f)
 
+    def __len__(self):
+        return self.height
+
+    @property
+    def height(self):
+        return len(self.feature_maps)
+
+    def __getitem__(self, index):
+        return self.submodule(index)
+
     def submodule(self, index):
         """
         Returns a submodule as indexed by `index`.
 
-        Submodules with lower indecies are intended to be trained earlier,
+        Submodules with lower indices are intended to be trained earlier,
         so this also decides the training order.
 
         `index` must be an int, a slice, or None.
@@ -55,16 +65,10 @@ class Model(nn.Module):
         If `index` is None or greater than the height, the submodule
         returned contains the whole model.
         """
-        if ((isinstance(index, int) and index >= self.height)
-                or index.stop is None or index.stop >= self.height):
-            for p in self.parameters():
-                p.requires_grad = True
-            self.train_all = lambda: self
-            self.train_last = lambda: self
-            self.pixel_size_ratio = 0
-            return self
-        else:
-            raise NotImplementedError()
+        if index is None or (isinstance(index, int)
+                             and index >= self.height):
+            index = slice(self.height)
+        return _SubmoduleView(self, index)
 
     def train_level(self, level=slice(None), _index=slice(None)):
         """
@@ -76,147 +80,249 @@ class Model(nn.Module):
         if level == 'all':
             for p in self.parameters():
                 p.requires_grad = True
+        elif level == 'lowest':
+            for p in self.align.list[_index][0].parameters():
+                p.requires_grad = True
+        elif level == 'highest':
+            for p in self.align.list[_index][-1].parameters():
+                p.requires_grad = True
         else:
-            raise NotImplementedError()
+            for p in self.align.list[_index][level].parameters():
+                p.requires_grad = True
         return self
 
+    def init_level(self, level='lowest', _index=slice(None)):
+        """
+        Initialize the last level of the SubmoduleView by copying the trained
+        weights of the next to last level.
+        Whether the last level is the lowest or highest level is determined
+        by the `level` argument.
+        If the SubmoduleView has only one level, this does nothing.
+        """
+        # TODO: init encoders, handle different size aligners
+        if len(self.aligners) > 1:
+            if level == 'lowest':
+                state_dict = self.align.list[_index][1].state_dict()
+                self.align.list[_index][0].load_state_dict(state_dict)
+            elif level == 'highest':
+                state_dict = self.align.list[_index][-2].state_dict()
+                self.align.list[_index][-1].load_state_dict(state_dict)
+        return self
 
-class G(nn.Module):
-    def initc(self, m):
-        m.weight.data *= np.sqrt(6)
+    @property
+    def pixel_size_ratio(self, _index=slice(None)):
+        """
+        The ratio of the pixel size of the submodule's highest level to
+        the pixel size at its input level.
+        By assumption, each level of the network has equal ability, so this
+        is a measure of the power of the submodule to detect and correct
+        large misalignments in its input scale.
+        """
+        return 2**(self.height - 1)
 
-    def __init__(self, k=7, f=nn.LeakyReLU(inplace=True), infm=2):
-        super(G, self).__init__()
+
+class Encoder(nn.Module):
+    """
+    Module that implements a two-convolution siamese encoder.
+    These can be stacked to build an encoding pyramid.
+    """
+
+    def __init__(self, infm, outfm, k=3):
+        super().__init__()
         p = (k-1)//2
-        self.conv1 = nn.Conv2d(infm, 32, k, padding=p)
-        self.conv2 = nn.Conv2d(32, 64, k, padding=p)
-        self.conv3 = nn.Conv2d(64, 32, k, padding=p)
-        self.conv4 = nn.Conv2d(32, 16, k, padding=p)
-        self.conv5 = nn.Conv2d(16, 2, k, padding=p)
-        self.seq = nn.Sequential(self.conv1, f,
-                                 self.conv2, f,
-                                 self.conv3, f,
-                                 self.conv4, f,
-                                 self.conv5)
-        self.initc(self.conv1)
-        self.initc(self.conv2)
-        self.initc(self.conv3)
-        self.initc(self.conv4)
-        self.initc(self.conv5)
+        self.seq = nn.Sequential(
+            nn.Conv2d(infm, outfm, k, padding=p),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(outfm, outfm, k, padding=p),
+            nn.LeakyReLU(inplace=True),
+        )
+        self.seq.apply(init_leaky_relu)
 
-    def forward(self, src, tgt):
-        x = torch.cat([src, tgt], 1)
-        return self.seq(x).permute(0, 2, 3, 1) / 10
+    def forward(self, src, tgt, **kwargs):
+        return self.seq(src), self.seq(tgt)
 
 
-class Enc(nn.Module):
-    def initc(self, m):
-        m.weight.data *= np.sqrt(6)
+class EncodingPyramid(nn.Module):
+    """
+    A stack of siamese encoders with one Encoder module at each mip level.
+    It takes a pair of images and returns a list of encodings, one for
+    each element of `feature_list`
 
-    def __init__(self, infm, outfm):
-        super(Enc, self).__init__()
-        if not outfm:
-            outfm = infm
-        self.f = nn.LeakyReLU(inplace=True)
-        self.c1 = nn.Conv2d(infm, outfm, 3, padding=1)
-        self.c2 = nn.Conv2d(outfm, outfm, 3, padding=1)
-        self.initc(self.c1)
-        self.initc(self.c2)
-        self.infm = infm
-        self.outfm = outfm
-        self.seq = [nn.Sequential(
-            self.c1,
-            self.f,
-            self.c2,
-            self.f,
-        )]
+    `feature_list` should be a list of integers, each of which specifies
+    the number of feature maps at a particular mip level.
+    For example,
+        >>> EncodingPyramid([2, 4, 8, 16])
+    creates a pyramid with four Encoder modules, with 2, 4, 8, and 16
+    feature maps respectively.
+    `input_fm` is the number of input feature maps, and should remain 1
+    for normal image inputs.
+    """
 
-    def forward(self, src, tgt):
-        return self.seq[0](src), self.seq[0](tgt)
+    def __init__(self, feature_list, input_fm=1, **kwargs):
+        super().__init__()
+        self.feature_list = [input_fm] + list(feature_list)
+        self.list = nn.ModuleList([
+            Encoder(infm, outfm)
+            for infm, outfm
+            in zip(self.feature_list[:-1], self.feature_list[1:])
+        ])
 
-
-class PreEnc(nn.Module):
-    def initc(self, m):
-        m.weight.data *= np.sqrt(6)
-
-    def __init__(self, outfm=12):
-        super(PreEnc, self).__init__()
-        self.f = nn.LeakyReLU(inplace=True)
-        self.c1 = nn.Conv2d(1, outfm // 2, 7, padding=3)
-        self.c2 = nn.Conv2d(outfm // 2, outfm // 2, 7, padding=3)
-        self.c3 = nn.Conv2d(outfm // 2, outfm, 7, padding=3)
-        self.c4 = nn.Conv2d(outfm, outfm // 2, 7, padding=3)
-        self.c5 = nn.Conv2d(outfm // 2, 1, 7, padding=3)
-        self.initc(self.c1)
-        self.initc(self.c2)
-        self.initc(self.c3)
-        self.initc(self.c4)
-        self.initc(self.c5)
-        self.pelist = nn.ModuleList(
-            [self.c1, self.c2, self.c3, self.c4, self.c5])
-
-    def forward(self, x):
-        outputs = []
-        for x_ch in range(x.size(1)):
-            out = x[:, x_ch:x_ch+1]
-            for idx, m in enumerate(self.pelist):
-                out = m(out)
-                if idx < len(self.pelist) - 1:
-                    out = self.f(out)
-            outputs.append(out)
-        return torch.cat(outputs, 1)
+    def forward(self, src, tgt, **kwargs):
+        src_encodings = []
+        tgt_encodings = []
+        for module in self.list:
+            src, tgt = module(src, tgt, **kwargs)
+            src_encodings.append(src)
+            tgt_encodings.append(tgt)
+            src, tgt = downsample()(src), downsample()(tgt)
+        return src_encodings, tgt_encodings
 
 
-class EPyramid(nn.Module):
-    def __init__(self, size, skip, topskips, k):
-        super(EPyramid, self).__init__()
-        print('Constructing EPyramid with size {} ({} downsamples)...'
-              .format(size, size-1))
-        fm_0 = 12
-        fm_coef = 6
-        self.identities = {}
-        self.skip = skip
-        self.topskips = topskips
-        self.size = size
-        enc_outfms = [fm_0 + fm_coef * idx for idx in range(size)]
-        enc_infms = [1] + enc_outfms[:-1]
-        self.mlist = nn.ModuleList([G(k=k, infm=enc_outfms[level]*2)
-                                    for level in range(size)])
-        self.up = upsample()
-        self.down = downsample(type='max')
-        self.enclist = nn.ModuleList([Enc(infm=infm, outfm=outfm)
-                                      for infm, outfm
-                                      in zip(enc_infms, enc_outfms)])
-        self.train_size = 1280
-        self.pe = PreEnc(fm_0)
-        self.nlevels = self.size - 1 - self.topskips
-        self.src_encodings = {}
-        self.tgt_encodings = {}
+class Aligner(nn.Module):
+    """
+    Module that takes a pair of images as input and outputs a vector field
+    that can be used to transform one to the other.
 
-    def forward(self, src, tgt, target_level):
-        factor = self.train_size / src.shape[-2]
+    While the output of the module has the standard shape for input to
+    the PyTorch gridsampler, the units of the field is pixels in order
+    to be agnostic to the size of the input images.
+    """
 
-        for i, module in enumerate(self.enclist):
-            src, tgt = module(src, tgt)
-            self.src_encodings[i] = src
-            self.tgt_encodings[i] = tgt
-            src, tgt = self.down(src), self.down(tgt)
+    def __init__(self, channels=1, k=7):
+        super().__init__()
+        p = (k-1)//2
+        self.channels = channels
+        self.seq = nn.Sequential(
+            nn.Conv2d(channels * 2, 16, k, padding=p),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(16, 16, k, padding=p),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(16, 16, k, padding=p),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(16, 16, k, padding=p),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(16, 2, k, padding=p),
+        )
+        self.seq.apply(init_leaky_relu)
 
-        field_so_far = 0
-        first_iter = True
-        for i in range(self.nlevels, target_level - 1, -1):
-            if i >= self.skip and i != 0:  # don't run the lowest aligner
-                enc_src, enc_tgt = self.src_encodings[i], self.tgt_encodings[i]
-                if not first_iter:
-                    enc_src = grid_sample(
-                        enc_src,
-                        field_so_far, padding_mode='zeros')
-                rfield = self.mlist[i](enc_src, enc_tgt) * factor
-                if first_iter:
-                    field_so_far = rfield
-                    first_iter = False
-                else:
-                    field_so_far = compose_fields(rfield, field_so_far)
-            if i != target_level:
-                field_so_far = upsample_field(field_so_far, i, i-1)
-        return field_so_far.permute(0, 3, 1, 2)
+    def forward(self, src, tgt, **kwargs):
+        if src.shape[1] != tgt.shape[1]:
+            raise ValueError('Cannot align src and tgt of different shapes. '
+                             'src: {}, tgt: {}'.format(src.shape, tgt.shape))
+        elif src.shape[1] % self.channels != 0:
+            raise ValueError('Number of channels does not divide stack size. '
+                             '{} channels for {}'
+                             .format(self.channels, src.shape))
+        if src.shape[1] == self.channels:
+            stack = torch.cat((src, tgt), dim=1)
+            field = self.seq(stack)
+            return field.field_().from_pixels()
+        else:  # stack of encodings
+            fields = []
+            for pair in zip(src.split(self.channels, dim=1),
+                            tgt.split(self.channels, dim=1)):
+                stack = torch.cat(pair, dim=1)
+                fields.append(self.seq(stack))
+            return (sum(fields) / len(fields)).field_().from_pixels()
+
+
+class AligningPyramid(nn.Module):
+    """
+    A stack of Aligner modules with one Aligner at each mip level.
+    It takes a pair of images and produces a vector field which maps from
+    the first image, the source, to the second image, the target.
+
+    If `src_input` and `tgt_input` are lists, then they are taken to be
+    precomputed encodings or downsamples of the respective images.
+
+    `feature_list` should be a list of integers, each of which specifies
+    the number of feature maps at a particular mip level.
+    For example,
+        >>> AligningPyramid([2, 4, 8, 16])
+    creates a pyramid with four Aligner modules, with 2, 4, 8, and 16
+    feature maps respectively.
+    """
+
+    def __init__(self, feature_list, **kwargs):
+        super().__init__()
+        self.feature_list = list(feature_list)
+        self.list = nn.ModuleList([Aligner(ch) for ch in feature_list])
+
+    def forward(self, src_input, tgt_input, accum_field=None,
+                _index=slice(None), **kwargs):
+        prev_level = None
+        for i, aligner in zip(reversed(range(len(self.list))[_index]),
+                              reversed(self.list[_index])):
+            if isinstance(src_input, list) and isinstance(tgt_input, list):
+                src, tgt = src_input[i], tgt_input[i]
+            else:
+                src, tgt = downsample(i)(src_input), downsample(i)(tgt_input)
+            if prev_level is not None:
+                accum_field = accum_field.up(mips=(prev_level - i))
+                src = accum_field.sample(src)
+            res_field = aligner(src, tgt, **kwargs)
+            if accum_field is not None:
+                accum_field = res_field.compose_with(accum_field)
+            else:
+                accum_field = res_field
+            prev_level = i
+        accum_field = accum_field.up(prev_level)
+        return accum_field
+
+
+class _SubmoduleView(nn.Module):
+    """
+    Returns a view into a sequence of aligners of a model.
+    This is useful for training and testing.
+    """
+
+    def __init__(self, model, index):
+        super().__init__()
+        if isinstance(index, int):
+            index = slice(index, index+1)
+        self.model = model
+        self.index = index
+
+    def forward(self, *args, **kwargs):
+        kwargs.update(_index=self.index)
+        return self.model.forward(*args, **kwargs)
+
+    def train_level(self, *args, **kwargs):
+        kwargs.update(_index=self.index)
+        self.model.train_level(*args, **kwargs)
+        return self
+
+    def init_level(self, *args, **kwargs):
+        kwargs.update(_index=self.index)
+        self.model.init_level(*args, **kwargs)
+        return self
+
+    @property
+    def pixel_size_ratio(self, _index=slice(None)):
+        return 2**(range(self.height)[_index][-1])
+
+    def __len__(self):
+        return self.height
+
+    @property
+    def height(self):
+        return self.model.height
+
+
+def init_leaky_relu(m, a=None):
+    """
+    Initialize to account for the default negative slope of LeakyReLU.
+    PyTorch's LeakyReLU by defualt has a slope of 0.01 for negative
+    values, but the default initialization for Conv2d uses
+    `kaiming_uniform_` with `a=math.sqrt(5)`. (ref: https://goo.gl/Bx3wdS)
+    Instead, this initializes according to He, K. et al. (2015).
+    (ref https://goo.gl/hH6qaM)
+
+    If `a` is given it uses that as the negative slope. If it is None,
+    the default for LeakyReLU is used.
+    """
+    if not isinstance(m, torch.nn.Conv2d):
+        return
+    if a is None:
+        a = nn.modules.activation.LeakyReLU().negative_slope
+    nn.init.kaiming_uniform_(m.weight, a=a)
