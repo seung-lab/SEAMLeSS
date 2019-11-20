@@ -224,27 +224,30 @@ class ModelArchive(object):
 
         self.save()
 
-    def start_new(self, name, *args, **kwargs):
+    @classmethod
+    def start_new(cls, old_archive, name, *args, **kwargs):
         """
         Creates and returns a new model archive initialized with the
-        weights of this model.
+        weights of old_archive.
 
         The new model's training history is copied from the old model
         and appended to.
         """
-        if self._exists():
+        # if self._exists():
+        if ModelArchive.model_exists(name):
             raise ValueError('The model "{}" already exists.'.format(name))
-        new_archive = type(self)(name, readonly=False,
-                                 weights_file=self.paths['weights'],
+        new_archive = ModelArchive(name, readonly=False,
+                                 weights_file=old_archive.paths['weights'],
                                  *args, **kwargs)
-        cp(self.paths['weights'], new_archive.paths['weights'])
-        cp(self.paths['loss'], new_archive.paths['loss'])
-        cp(self.paths['progress'], new_archive.paths['progress'])
+        cp(old_archive.paths['weights'], new_archive.paths['weights'])
+        cp(old_archive.paths['loss'], new_archive.paths['loss'])
+        if old_archive.paths['progress'].exists():
+            cp(old_archive.paths['progress'], new_archive.paths['progress'])
 
         # Copy the old history into the new archive
         tempfile = new_archive.directory / 'history.txt.temp'
         cp(new_archive.paths['history'], tempfile)
-        cp(self.paths['history'], new_archive.paths['history'])
+        cp(old_archive.paths['history'], new_archive.paths['history'])
         with new_archive.paths['history'].open(mode='a') as f:
             f.writelines(tempfile.read_text())
         tempfile.unlink()  # delete the temporary file
@@ -392,7 +395,6 @@ class ModelArchive(object):
                 p.requires_grad = True
             self._model.train().cuda()
             self._model = torch.nn.DataParallel(self._model)
-
         return self._model
 
     def _load_objective(self, *args, **kwargs):

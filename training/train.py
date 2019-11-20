@@ -72,6 +72,7 @@ import time
 import datetime
 import math
 import random
+from collections import defaultdict
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -93,6 +94,7 @@ def main():
 
     # set available GPUs
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_ids
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 
     # either load or create the model, optimizer, and parameters
     archive = load_archive(args)
@@ -193,7 +195,7 @@ def main():
 def train(train_loader, archive, epoch):
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    losses = AverageMeter()
+    losses = defaultdict(AverageMeter)
 
     # switch to train mode and select the submodule to train
     archive.model.train()
@@ -216,17 +218,28 @@ def train(train_loader, archive, epoch):
         data_time.update(time.time() - start_time)
 
         # compute output and loss
-        prediction = submodule(sample.src.aug, sample.tgt.aug)
+        if torch.cuda.device_count() == 1:
+            sample = stack_dataset.ToDevice('cuda')(sample)
+        src = sample.src.image if sample.src.aug is None else sample.src.aug
+        tgt = sample.tgt.image if sample.tgt.aug is None else sample.tgt.aug
+        prediction = submodule(src, tgt)
+
         loss = archive.loss(sample, prediction=prediction)
-        loss = loss.mean()  # average across a batch if present
+        try:
+            for k,v in loss.items():
+                loss[k] = v.mean()
+        except TypeError:
+            loss = {'loss': loss.mean()}
 
         # compute gradient and do optimizer step
-        if math.isfinite(loss.item()):
+        if math.isfinite(loss['loss'].item()):
             archive.optimizer.zero_grad()
-            loss.backward()
+            loss['loss'].backward()
             archive.optimizer.step()
-        loss = loss.item()  # get python value without the computation graph
-        losses.update(loss)
+
+        for k,v in loss.items():
+            losses[k].update(v.item())
+
         state_vars.iteration = i + 1  # advance iteration to resume correctly
         archive.save()
         state_vars.iteration = i  # revert back for logging & visualizations
@@ -243,31 +256,32 @@ def train(train_loader, archive, epoch):
                datetime.datetime.now(),
                epoch,
                i,
-               loss if math.isfinite(loss) else '',
+               loss['loss'].item() if math.isfinite(loss['loss']) else '',
                '',
             ])
+            loss_str = '\t'.join(['{loss_type}: {loss.val:12.10f} ({loss.avg:.10f})'.format(loss_type=k, loss=v) for (k,v) in losses.items()])
             print('{0}\t'
                   'Epoch: {1} [{2}/{3}]\t'
                   'Sample: {id}\t'
-                  'Loss {loss.val:12.10f} ({loss.avg:.10f})\t'
+                  '{loss}\t'
                   'BatchTime {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'DataTime {data_time.val:.3f} ({data_time.avg:.3f})\t'
                   .format(
                       state_vars.name,
                       epoch, i, len(train_loader), batch_time=batch_time,
-                      data_time=data_time, loss=losses, id=id))
+                      data_time=data_time, loss=loss_str, id=id))
         if state_vars.vis_time and i % state_vars.vis_time == 0:
             create_debug_outputs(archive, sample, prediction, id)
         elif i % 50:
             archive.visualize_loss('Training Loss', 'Validation Loss')
 
         start_time = time.time()
-    return losses.avg
+    return losses['loss'].avg
 
 
 @torch.no_grad()
 def validate(val_loader, archive, epoch):
-    losses = AverageMeter()
+    losses = defaultdict(AverageMeter)
 
     # switch to evaluate mode
     archive.model.eval()
@@ -277,26 +291,33 @@ def validate(val_loader, archive, epoch):
     start_time = time.time()
     for i, (sample, id) in retry_enumerate(val_loader):
         sample = dotdict(sample)
+        if torch.cuda.device_count() == 1:
+            sample = stack_dataset.ToDevice('cuda')(sample)
         print('{0}\t'
               'Validation: [{1}/{2}]\t'
               .format(state_vars.name, i, len(val_loader)), end='\r')
         prediction = submodule(sample.src.image, sample.tgt.image)
         loss = archive.val_loss(sample, prediction=prediction)
-        losses.update(loss.item())
+        try:
+            for k,v in loss.items():
+                losses[k].update(v.item())
+        except TypeError:
+            losses['loss'].update(loss.item())
 
     # measure elapsed time
     batch_time = (time.time() - start_time)
 
     # debugging outputs and printing
     create_debug_outputs(archive, sample, prediction)
+    loss_str = '\t'.join(['{loss_type}: {loss.val:12.10f}'.format(loss_type=k, loss=v) for (k,v) in losses.items()])
     print('{0}\t'
           'Validation: [{1}/{1}]\t'
-          'Loss {loss.avg:.10f}\t\t\t'
+          '{loss}\t'
           'Time {batch_time:.3f}\t'
-          .format(state_vars.name, len(val_loader),
-                  batch_time=batch_time, loss=losses))
+          .format(state_vars.name, len(val_loader), loss=loss_str,
+                  batch_time=batch_time))
 
-    return losses.avg
+    return losses['loss'].avg
 
 
 def select_submodule(model):
@@ -387,6 +408,7 @@ def create_debug_outputs(archive, sample, prediction, id=0):
             cp(debug_dir / 'tgt_aug_{}.png'.format(id), stack_dir)
         else:
             cp(debug_dir / 'tgt_{}.png'.format(id), stack_dir)
+        prediction = prediction.field_()
         warped_src = prediction[0:1, ...].detach().to(src.device).sample(
             src[0:1, ...])
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
@@ -435,10 +457,17 @@ def load_archive(args):
                 raise ValueError('The model "{}" could not be found.'
                                  .format(args.saved_model))
             old = ModelArchive(args.saved_model, readonly=True)
-            archive = old.start_new(readonly=False, **vars(args))
+            archive = ModelArchive.start_new(old, **vars(args))
             # TODO: explicitly remove old model from memory
         else:
             archive = ModelArchive(readonly=False, **vars(args))
+            archive.set_log_titles([
+                'Time Stamp',
+                'Epoch',
+                'Iteration',
+                'Training Loss',
+                'Validation Loss',
+            ])
         archive.state_vars.update({
             'name': args.name,
             'height': args.height,
@@ -470,13 +499,6 @@ def load_archive(args):
             'penalty': args.penalty,
             'gpus': args.gpu_ids,
         })
-        archive.set_log_titles([
-            'Time Stamp',
-            'Epoch',
-            'Iteration',
-            'Training Loss',
-            'Validation Loss',
-        ])
         archive.set_optimizer_params(learning_rate=args.lr,
                                      weight_decay=args.wd)
 

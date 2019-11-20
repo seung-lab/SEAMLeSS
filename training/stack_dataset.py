@@ -1,48 +1,81 @@
-import random
 import math
-import h5py
-import torch
-from torch.utils.data import Dataset, ConcatDataset
+import random
+from itertools import permutations
 
-from aug import aug_input, rotate_and_scale, random_translation
-from utilities.helpers import (upsample, downsample, grid_sample,
-                               dotdict)
+import h5py
+import numpy as np
+import torch
+from skimage.transform import resize
+from torch.utils.data import ConcatDataset, Dataset
+
+from aug import aug_input, random_translation, rotate_and_scale
+from utilities.helpers import dotdict, downsample
 
 
 def compile_dataset(*h5_paths, transform=None, num_samples=None, repeats=1):
     datasets = []
     for h5_path in h5_paths:
-        h5f = h5py.File(h5_path, 'r')
-        ds = [StackDataset(v, transform=transform, num_samples=num_samples,
-                           repeats=repeats)
-              for v in h5f.values()]
+        ds = [
+            StackDataset(
+                h5_path, transform=transform, num_samples=num_samples, repeats=repeats
+            )
+        ]
         datasets.extend(ds)
     return ConcatDataset(datasets)
 
 
 class StackDataset(Dataset):
-    """Deliver consecutive image pairs from 3D image stack
+    """Deliver image pairs from 4D image stack
 
     Args:
-        stack (4D ndarray): 1xZxHxW image array
+        h5f: HDF5 file with two datasets, "images" & "masks"
+             both datasets organized as 4D ndarrays,
+             Sx2xHxW image array (S is no. of sample pairs)
     """
 
-    def __init__(self, stack, transform=None, num_samples=None, repeats=1):
-        self.stack = stack
-        self.N = (num_samples
-                  if num_samples and num_samples < len(stack) else len(stack))
+    def __init__(self, h5_path, transform=None, num_samples=None, repeats=1):
+        self.h5_path = h5_path
         self.transform = transform
         self.repeats = repeats
+        self.images = None
+        self.masks = None
+
+        with h5py.File(self.h5_path, "r") as h5f:
+            assert "images" in h5f.keys()
+            if "masks" in h5f.keys():
+                assert h5f["masks"].shape[-4:-2] == h5f["images"].shape[-4:-2]
+            self.N = (
+                num_samples
+                if num_samples and num_samples < len(h5f["images"])
+                else len(h5f["images"])
+            )
+            self.stack_height = h5f["images"].shape[-3]
+
+        self.permutations = tuple(permutations(range(self.stack_height), 2))
 
     def __len__(self):
-        return 2*len(self.stack) * self.repeats
+        return self.N * self.repeats * len(self.permutations)
 
     def __getitem__(self, id):
-        X = self.stack[id % self.N].copy()  # prevent modifying the dataset
-        if id % 2*self.N >= self.N:  # flip source and target
-            # match i -> i+1 if id < N, else match i+1 -> i
-            s, t, sc, tc, sf, tf = X.copy()
-            X[0:6] = t, s, tc, sc, tf, sf
+        if self.images is None:
+            h5f = h5py.File(self.h5_path, "r")
+            self.images = h5f["images"]
+            if "masks" in h5f.keys():
+                self.masks = h5f["masks"]
+            else:
+                self.masks = np.zeros_like(self.images)
+
+        img_id = id % self.N
+        perm_id = id % len(self.permutations)
+        s, t = self.images[img_id][self.permutations[perm_id], ...]
+        sm, tm = self.masks[img_id][self.permutations[perm_id], ...]
+
+        X = np.zeros_like(s, shape=(4, s.shape[-2], s.shape[-1]))
+        if sm.shape[0] != s.shape[0]:
+            sm = resize(sm, s.shape)
+            tm = resize(tm, t.shape)
+
+        X[0:4] = s, t, sm, tm
         if self.transform:
             X = self.transform(X)
         return X, id
@@ -119,11 +152,11 @@ class Split(object):
         return dotdict({
             'src': {
                 'image': X[0:1],
-                'fold_mask': X[4:5],
+                'mask': X[2:3],
             },
             'tgt': {
                 'image': X[1:2],
-                'fold_mask': X[4:5],
+                'mask': X[3:4], 
             },
         })
 
@@ -166,16 +199,15 @@ class RandomField(object):
         self.num_downsamples = num_downsamples
 
     def __call__(self, X):
-        zero = torch.zeros_like(X.src.image)
-        zero = torch.cat([zero, zero.clone()], 1)
+        zero = torch.zeros_like(X.src.image).unsqueeze(0)
         smaller = downsample(self.num_downsamples)(zero)
         std = self.max_displacement / zero.shape[-2] / math.sqrt(2)
-        field = torch.nn.init.normal_(smaller, mean=0, std=std)
-        field = upsample(self.num_downsamples)(field)
-        X.truth = field.permute(0, 2, 3, 1)
+        smaller = torch.cat([smaller, smaller.clone()], 1)
+        field = torch.nn.init.normal_(smaller, mean=0, std=std).field_()
+        field = field.up(self.num_downsamples)
+        X.truth = field.squeeze()
         for k in X.tgt:
-            X.tgt[k] = grid_sample(
-                X.src[k], X.truth, padding_mode='zeros')
+            X.tgt[k] = field.sample(X.src[k])
         return X
 
 
@@ -210,4 +242,6 @@ class ToDevice(object):
                 X[k] = v.to(device=self.device)
             elif isinstance(v, dict):
                 X[k] = self(v)
+            elif isinstance(v, list):
+                X[k] = [x.to(device=self.device) for x in v]
         return X

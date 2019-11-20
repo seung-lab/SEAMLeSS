@@ -289,11 +289,13 @@ class _SubmoduleView(nn.Module):
 
     def train_level(self, *args, **kwargs):
         kwargs.update(_index=self.index)
-        return self.model.train_level(*args, **kwargs)
+        self.model.train_level(*args, **kwargs)
+        return self
 
     def init_level(self, *args, **kwargs):
         kwargs.update(_index=self.index)
-        return self.model.init_level(*args, **kwargs)
+        self.model.init_level(*args, **kwargs)
+        return self
 
     @property
     def pixel_size_ratio(self, _index=slice(None)):
@@ -304,7 +306,7 @@ class _SubmoduleView(nn.Module):
 
     @property
     def height(self):
-        return len(self.model.height)
+        return self.model.height
 
 
 def init_leaky_relu(m, a=None):

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import torchfields  # noqa: unused
+import torchfields # noqa: unused
 from utilities import masklib
 from training.loss import smoothness_penalty
 
@@ -88,6 +88,7 @@ class SelfSupervisedLoss(nn.Module):
         super().__init__()
         self.field_penalty = smoothness_penalty(penalty)
         self.lambda1 = lambda1
+        self.eps = 1e-7
 
     def forward(self, sample, prediction):
         prediction.field_()
@@ -121,7 +122,7 @@ class SelfSupervisedLoss(nn.Module):
                     except Exception as e:
                         print('Target mask failed: {}: {}'.format(e.__class__.__name__, e))
                         print('mask shape:', mask.shape)
-            mse_loss = image_loss_map.sum() / image_weights.sum()
+            mse_loss = image_loss_map.sum() / (image_weights.sum() + self.eps)
         else:
             mse_loss = image_loss_map.mean()
         sample.image_loss_map = image_loss_map
@@ -152,8 +153,11 @@ class SelfSupervisedLoss(nn.Module):
         sample.field_loss_map = field_loss_map
 
         loss = (mse_loss + self.lambda1 * field_loss)
-        return loss
-
+        return {
+            'loss': loss,
+            'mse_loss': mse_loss,
+            'smooth_loss': self.lambda1 * field_loss
+        }
 
 @torch.no_grad()
 def gen_masks(src, tgt, threshold=10):
@@ -169,7 +173,7 @@ def gen_masks(src, tgt, threshold=10):
 
 
 @torch.no_grad()
-def prepare_masks(sample, threshold=0.7):
+def prepare_masks(sample, threshold=0):
     """
     Returns properly formatted masks with which to weight the loss function.
     If masks is None, this calls gen_masks to generate them.
@@ -191,11 +195,11 @@ def prepare_masks(sample, threshold=0.7):
     src_weights, tgt_weights = torch.ones_like(src), torch.ones_like(tgt)
     src_field_weights = torch.ones_like(src)
     tgt_field_weights = torch.ones_like(tgt)
-    if sample.src.fold_mask is None or len(sample.src.fold_mask) == 0:
+    if sample.src.mask is None or len(sample.src.mask) == 0:
         src_defects, tgt_defects = gen_masks(src, tgt, threshold)
     else:
-        src_defects = sample.src.fold_mask > threshold
-        tgt_defects = sample.tgt.fold_mask > threshold
+        src_defects = sample.src.mask > threshold
+        tgt_defects = sample.tgt.mask > threshold
 
     # Tissue (MSE) masks
     src_mask_0 = masklib.dilate(src_defects, radius=tissue_radius0)
