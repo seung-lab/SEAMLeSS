@@ -97,13 +97,12 @@ if __name__ == '__main__':
                       create_info=True)
 
   # Create src CloudVolumes
-  src = cm.create(args.src_path, data_type='uint8', num_channels=1,
+  src = cm.create(args.src_path, data_type='float32', num_channels=1,
                      fill_missing=True, overwrite=False)
   field = cm.create(args.field_path, data_type='int16', num_channels=2,
                          fill_missing=True, overwrite=False)
-  dst = cm.create(args.dst_path, data_type='uint8', num_channels=1,
+  dst = cm.create(args.dst_path, data_type='float32', num_channels=1,
                      fill_missing=True, overwrite=True)
-
   # Source Dict
   src_path_to_cv = {args.src_path: src}
 
@@ -126,7 +125,7 @@ if __name__ == '__main__':
 
         if src_path not in src_path_to_cv:
           src_path_to_cv[src_path] = cm.create(src_path,
-              data_type='uint8', num_channels=1, fill_missing=True,
+              data_type='float32', num_channels=1, fill_missing=True,
               overwrite=False)
         source_lookup[z] = src_path_to_cv[src_path]
 
