@@ -1,6 +1,6 @@
 import torch.utils.data
 import torchvision.transforms as transforms
-import stack_dataset
+from data import dataset
 
 class DataLoader(object):
     """Template for training & validation data loaders below
@@ -16,22 +16,22 @@ class TrainingDataLoader(DataLoader):
     """
     def __init__(self, state_vars, archive):
         self.transform = transforms.Compose([
-                stack_dataset.ToFloatTensor(),
-                stack_dataset.Preprocess(archive.preprocessor),
-                stack_dataset.OnlyIf(stack_dataset.RandomRotateAndScale(),
+                dataset.ToFloatTensor(),
+                dataset.Preprocess(archive.preprocessor),
+                dataset.OnlyIf(dataset.RandomRotateAndScale(),
                                      not state_vars.skip_aug),
-                stack_dataset.OnlyIf(stack_dataset.RandomFlip(),
+                dataset.OnlyIf(dataset.RandomFlip(),
                                      not state_vars.skip_aug),
-                stack_dataset.Split(),
-                stack_dataset.OnlyIf(stack_dataset.RandomTranslation(20),
+                dataset.Split(),
+                dataset.OnlyIf(dataset.RandomTranslation(20),
                                      not state_vars.skip_aug),
-                stack_dataset.OnlyIf(stack_dataset.RandomField(),
+                dataset.OnlyIf(dataset.RandomField(),
                                      state_vars.supervised),
-                stack_dataset.OnlyIf(stack_dataset.RandomAugmentation(),
+                dataset.OnlyIf(dataset.RandomAugmentation(),
                                      not state_vars.skip_aug),
-                stack_dataset.ToDevice('cpu'),
+                dataset.ToDevice('cpu'),
         ])
-        self.dataset = stack_dataset.compile_dataset(
+        self.dataset = dataset.compile_dataset(
                             state_vars.training_set_path,
                             transform=self.transform,
                             num_samples=state_vars.num_samples,
@@ -48,17 +48,18 @@ class TrainingDataLoader(DataLoader):
 class ValidationDataLoader(DataLoader):
 
     def __init__(self, state_vars, archive):
-        self.transform = transforms.Compose([
-                            stack_dataset.ToFloatTensor(),
-                            stack_dataset.Preprocess(archive.preprocessor),
-                            stack_dataset.Split(),
-        ])
-        self.dataset = stack_dataset.compile_dataset(
-                            state_vars.validation_set_path,
-                            transform=self.transform)
-        self.loader = torch.utils.data.DataLoader(
-                        self.dataset,
-                        batch_size=1,
-                        shuffle=False,
-                        num_workers=0,
-                        pin_memory=False)
+        if state_vars.validation_set_path:
+            self.transform = transforms.Compose([
+                                dataset.ToFloatTensor(),
+                                dataset.Preprocess(archive.preprocessor),
+                                dataset.Split(),
+            ])
+            self.dataset = dataset.compile_dataset(
+                                state_vars.validation_set_path,
+                                transform=self.transform)
+            self.loader = torch.utils.data.DataLoader(
+                            self.dataset,
+                            batch_size=1,
+                            shuffle=False,
+                            num_workers=0,
+                            pin_memory=False)

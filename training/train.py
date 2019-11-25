@@ -76,12 +76,11 @@ from collections import defaultdict
 
 import torch
 import torch.backends.cudnn as cudnn
-import torch.utils.data
-import torchvision.transforms as transforms
 import torchfields  # noqa: unused
 from pathlib import Path
 
-import stack_dataset
+from data.loader import TrainingDataLoader, ValidationDataLoader
+from data import dataset
 from utilities.archive import ModelArchive
 from utilities.helpers import (grid_sample, save_chunk,
                                dvl as save_vectors, AverageMeter,
@@ -103,47 +102,10 @@ def main():
     # optimize cuda processes
     cudnn.benchmark = True
 
-    # set up training data
-    train_transform = transforms.Compose([
-        stack_dataset.ToFloatTensor(),
-        stack_dataset.Preprocess(archive.preprocessor),
-        stack_dataset.OnlyIf(stack_dataset.RandomRotateAndScale(),
-                             not state_vars.skip_aug),
-        stack_dataset.OnlyIf(stack_dataset.RandomFlip(),
-                             not state_vars.skip_aug),
-        stack_dataset.Split(),
-        stack_dataset.OnlyIf(stack_dataset.RandomTranslation(20),
-                             not state_vars.skip_aug),
-        stack_dataset.OnlyIf(stack_dataset.RandomField(),
-                             state_vars.supervised),
-        stack_dataset.OnlyIf(stack_dataset.RandomAugmentation(),
-                             not state_vars.skip_aug),
-        stack_dataset.ToDevice('cpu'),
-    ])
-    train_dataset = stack_dataset.compile_dataset(
-        state_vars.training_set_path, transform=train_transform,
-        num_samples=state_vars.num_samples, repeats=state_vars.repeats)
-    train_sampler = torch.utils.data.RandomSampler(train_dataset)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=state_vars.batch_size,
-        shuffle=(train_sampler is None), num_workers=args.num_workers,
-        pin_memory=(state_vars.validation_set_path is None),
-        sampler=train_sampler)
-
-    # set up validation data if present
+    train_loader = TrainingDataLoader(state_vars, archive).loader
+    val_loader = None
     if state_vars.validation_set_path:
-        val_transform = transforms.Compose([
-            stack_dataset.ToFloatTensor(),
-            stack_dataset.Preprocess(archive.preprocessor),
-            stack_dataset.Split(),
-        ])
-        validation_dataset = stack_dataset.compile_dataset(
-            state_vars.validation_set_path, transform=val_transform)
-        val_loader = torch.utils.data.DataLoader(
-            validation_dataset, batch_size=1,
-            shuffle=False, num_workers=0, pin_memory=False)
-    else:
-        val_loader = None
+        val_loader = ValidationDataLoader(state_vars, archive).loader
 
     # Averaging
     train_losses = AverageMeter()
@@ -219,7 +181,7 @@ def train(train_loader, archive, epoch):
 
         # compute output and loss
         if torch.cuda.device_count() == 1:
-            sample = stack_dataset.ToDevice('cuda')(sample)
+            sample = dataset.ToDevice('cuda')(sample)
         src = sample.src.image if sample.src.aug is None else sample.src.aug
         tgt = sample.tgt.image if sample.tgt.aug is None else sample.tgt.aug
         prediction = submodule(src, tgt)
@@ -292,7 +254,7 @@ def validate(val_loader, archive, epoch):
     for i, (sample, id) in retry_enumerate(val_loader):
         sample = dotdict(sample)
         if torch.cuda.device_count() == 1:
-            sample = stack_dataset.ToDevice('cuda')(sample)
+            sample = dataset.ToDevice('cuda')(sample)
         print('{0}\t'
               'Validation: [{1}/{2}]\t'
               .format(state_vars.name, i, len(val_loader)), end='\r')
@@ -389,7 +351,7 @@ def create_debug_outputs(archive, sample, prediction, id=0):
         debug_dir = archive.new_debug_directory(exist_ok=True)
         stack_dir = debug_dir / 'stack'
         stack_dir.mkdir(exist_ok=True)
-        sample = stack_dataset.ToDevice('cuda')(sample)
+        sample = dataset.ToDevice('cuda')(sample)
         src, tgt = sample.src.image, sample.tgt.image
         save_chunk(src[0:1, ...], str(debug_dir / 'src_{}'.format(id)))
         # cp(debug_dir / 'src_{}.png'.format(id), stack_dir)
@@ -498,6 +460,7 @@ def load_archive(args):
             'lambda1': args.lambda1,
             'penalty': args.penalty,
             'gpus': args.gpu_ids,
+            'num_workers': args.num_workers,
         })
         archive.set_optimizer_params(learning_rate=args.lr,
                                      weight_decay=args.wd)
