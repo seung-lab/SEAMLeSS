@@ -12,7 +12,7 @@ from aug import aug_input, random_translation, rotate_and_scale
 from utilities.helpers import dotdict, downsample
 
 
-def compile_dataset(*h5_paths, transform=None, num_samples=None, repeats=1):
+def compile(*h5_paths, transform=None, num_samples=None, repeats=1):
     datasets = []
     for h5_path in h5_paths:
         ds = [

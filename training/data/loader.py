@@ -31,7 +31,7 @@ class TrainingDataLoader(DataLoader):
                                      not state_vars.skip_aug),
                 dataset.ToDevice('cpu'),
         ])
-        self.dataset = dataset.compile_dataset(
+        self.dataset = dataset.compile(
                             state_vars.training_set_path,
                             transform=self.transform,
                             num_samples=state_vars.num_samples,
@@ -54,7 +54,7 @@ class ValidationDataLoader(DataLoader):
                                 dataset.Preprocess(archive.preprocessor),
                                 dataset.Split(),
             ])
-            self.dataset = dataset.compile_dataset(
+            self.dataset = dataset.compile(
                                 state_vars.validation_set_path,
                                 transform=self.transform)
             self.loader = torch.utils.data.DataLoader(
