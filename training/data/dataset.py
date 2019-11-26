@@ -12,17 +12,63 @@ from aug import aug_input, random_translation, rotate_and_scale
 from utilities.helpers import dotdict, downsample
 
 
-def compile(*h5_paths, transform=None, num_samples=None, repeats=1):
+def compile(*h5_paths, dataset_class=StackDataset, transform=None,
+                        num_samples=None, repeats=1):
     datasets = []
     for h5_path in h5_paths:
         ds = [
-            StackDataset(
+            dataset_class(
                 h5_path, transform=transform, num_samples=num_samples, repeats=repeats
             )
         ]
         datasets.extend(ds)
     return ConcatDataset(datasets)
 
+class LabelDataset(Dataset):
+    """Deliver image & label pairs
+
+    Args:
+        h5f: HDF5 file with two datasets, "images" & "labels"
+             both datasets organized as 4D ndarrays,
+             1xNxWxH image array (N is no. of sample pairs,
+             W,H may differ between images and labels)
+    """
+    def __init__(self, h5_path, transform=None, **kwargs):
+        self.h5_path = h5_path
+        self.transform = transform
+        self.images = None
+        self.labels = None
+
+        with h5py.File(self.h5_path, "r") as h5f:
+            assert "images" in h5f.keys()
+            if "labels" in h5f.keys():
+                assert h5f["labels"].shape[-4:-2] == h5f["labels"].shape[-4:-2]
+            self.N = len(h5f["images"])
+
+    def __len__(self):
+        return self.N
+
+    def __getitem__(self, id):
+        if self.images is None:
+            h5f = h5py.File(self.h5_path, "r")
+            self.images = h5f["images"]
+            if "labels" in h5f.keys():
+                self.labels = h5f["labels"]
+            else:
+                self.labels = np.zeros_like(self.images)
+
+        img_id = id % self.N
+        img = self.images[img_id]
+        label = self.labels[img_id]
+
+        X = np.zeros_like(img, shape=(2, img.shape[-2], img.shape[-1]))
+        if label.shape[0] != img.shape[0]:
+            label = resize(label, img.shape)
+
+        X[:2] = img, label
+        if self.transform:
+            X = self.transform(X)
+        return X, id
 
 class StackDataset(Dataset):
     """Deliver image pairs from 4D image stack
