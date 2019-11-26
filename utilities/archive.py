@@ -65,6 +65,7 @@ class ModelArchive(object):
         self._name = name
         self.directory = directory
         self.readonly = readonly
+        self.data = self.directory / 'data/'
         self.intermediate_models = self.directory / 'intermediate_models/'
         self.debug_outputs = self.directory / 'debug_outputs/'
         self.last_training_record = self.directory / '.last_training_record'
@@ -75,6 +76,9 @@ class ModelArchive(object):
             'optimizer': self.directory / 'optimizer.pt',
             # the state of the pseudorandom number gerenrators
             'prand': self.directory / 'prand.pt',
+            # details of the dataset & dataloaders
+            'dataset': self.data / 'dataset.py'
+            'dataloader': self.data / 'dataloader.py'
             # other paths
             'loss': self.directory / 'loss.csv',
             'command': self.directory / 'command.txt',
@@ -190,6 +194,10 @@ class ModelArchive(object):
         cp(git_root()/'training'/'architecture.py', self.paths['architecture'])
         cp(git_root()/'training'/'objective.py', self.paths['objective'])
         cp(git_root()/'training'/'preprocessor.py', self.paths['preprocessor'])
+
+        # copy the dataset and dataloader definitions into the archive
+        cp(git_root()/'training'/'data'/'dataset.py', self.paths['dataset'])
+        cp(git_root()/'training'/'data'/'dataloader.py', self.paths['dataloader'])
 
         # record the status of the git repository
         with self.paths['commit'].open(mode='wb') as f:
