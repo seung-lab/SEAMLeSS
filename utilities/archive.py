@@ -149,9 +149,9 @@ class ModelArchive(object):
                           'old commit by running `git checkout {}`'
                           '\nDo you wish to proceed?  [y/N]'
                           .format(saved_commit))
-                    if input().lower() not in {'yes', 'y'}:
-                        print('Exiting')
-                        sys.exit()
+                    # if input().lower() not in {'yes', 'y'}:
+                    #     print('Exiting')
+                    #     sys.exit()
                     print('OK, proceeding...')
 
         # load the model, optimizer, and state variables
@@ -489,6 +489,31 @@ class ModelArchive(object):
             with self.paths['state_vars'].open('w') as f:
                 f.write(s)
 
+    def restore_checkpoint(self, epoch, iteration):
+        """
+        Restore training state from a checkpoint.
+        """
+        if self.readonly:
+            raise ReadOnlyError(self._name)
+        if epoch is None:
+            checkpt_name = 'init'
+        elif iteration is None:
+            checkpt_name = 'e{}'.format(epoch)
+        else:
+            checkpt_name = 'e{}_t{}'.format(epoch, iteration)
+        check_dir = self.intermediate_models / checkpt_name
+        if not check_dir.exists():
+            raise FileExistsError(check_dir, " does not exist")
+
+        try:
+            cp(check_dir / 'weights.pt', self.directory)
+            cp(check_dir / 'optimizer.pt', self.directory)
+            cp(check_dir / 'prand.pt', self.directory)
+            cp(check_dir / 'state_vars.yaml', self.directory)
+            cp(check_dir / 'plot.png', self.directory)
+        except:
+            raise FileExistsError("Could not fully restore checkpoint ", check_dir)
+
     def create_checkpoint(self, epoch, iteration, save=True):
         """
         Save a checkpoint in the training.
@@ -511,10 +536,10 @@ class ModelArchive(object):
         if check_dir.exists():
             print('Checkpoint {} already exists. Overwrite? [y/N]'
                   .format(check_dir))
-            if input().lower() not in {'yes', 'y'}:
-                check_dir = check_dir / 'new_checkpoint'
-            else:
-                print('OK, overwriting...')
+            # if input().lower() not in {'yes', 'y'}:
+            #     check_dir = check_dir / 'new_checkpoint'
+            # else:
+            print('OK, overwriting...')
         check_dir.mkdir(exist_ok=True)
         cp(self.paths['weights'], check_dir)
         cp(self.paths['optimizer'], check_dir)
@@ -767,7 +792,7 @@ def warn_change(param_name, before, now):
                   'in the archive.\n'
                   'Would you like to proceed?  [y/N]'
                   .format(param_name, before, now))
-    if input().lower() not in {'yes', 'y'}:
-        print('Exiting')
-        sys.exit()
+    # if input().lower() not in {'yes', 'y'}:
+    #     print('Exiting')
+    #     sys.exit()
     print('OK, proceeding...')

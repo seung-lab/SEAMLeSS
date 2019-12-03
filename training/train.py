@@ -72,6 +72,7 @@ import time
 import datetime
 import math
 import random
+from tenacity import retry, retry_if_exception_type
 from collections import defaultdict
 
 import torch
@@ -87,7 +88,12 @@ from utilities.helpers import (grid_sample, save_chunk,
                                dvl as save_vectors, AverageMeter,
                                retry_enumerate, cp, dotdict)
 
+class LossCorruptionError(Exception):
+    def __init__(self, epoch, iteration):
+        self.epoch = epoch
+        self.iteration = iteration
 
+@retry(retry=retry_if_exception_type(LossCorruptionError))
 def main():
     global state_vars
     args = parse_args()
@@ -158,7 +164,13 @@ def main():
         archive.save()
 
         # train for one epoch
-        train_loss = train(train_loader, archive, epoch)
+        try:
+            train_loss = train(train_loader, archive, epoch)
+        except LossCorruptionError as e:
+            print("***Critical loss spottet - jumping back to e{}_{}.".format(e.epoch, e.iteration))
+            archive.restore_checkpoint(e.epoch, e.iteration)
+            raise
+
         train_losses.update(train_loss)
 
         # evaluate on validation set
@@ -231,6 +243,31 @@ def train(train_loader, archive, epoch):
         except TypeError:
             loss = {'loss': loss.mean()}
 
+        # HACK: Sometimes the loss inexplicably explodes. bnehoran thinks it happens in the backward
+        #       pass when a floating point vector points precisely to the boundary of the field,
+        #       see issue https://github.com/pytorch/pytorch/issues/23925
+        #       For now, just restore an older checkpoint and continue from there. Usually works,
+        #       as those errors are rare and random enough.
+        if state_vars.catastrophic_loss is None:
+            catastrophic_loss = False
+        elif not math.isfinite(loss['loss'].item()):
+            catastrophic_loss = True
+        else:
+            catastrophic_loss = loss['loss'].item() > state_vars.catastrophic_loss
+        if catastrophic_loss:
+            if start_iter > 50:
+                known_good_epoch = epoch
+                known_good_iter = max(start_iter, i - 50)
+            elif i - 50 < 0:
+                known_good_epoch = max(0, epoch - 1)
+                known_good_iter = len(train_loader) + i - 50
+
+            known_good_checkpoint = (
+                known_good_epoch,
+                known_good_iter // state_vars.checkpoint_time * state_vars.checkpoint_time
+            )
+            raise LossCorruptionError(*known_good_checkpoint)
+
         # compute gradient and do optimizer step
         if math.isfinite(loss['loss'].item()):
             archive.optimizer.zero_grad()
@@ -274,6 +311,11 @@ def train(train_loader, archive, epoch):
             create_debug_outputs(archive, sample, prediction, id)
         elif i % 50:
             archive.visualize_loss('Training Loss', 'Validation Loss')
+
+        # Cleanup - might help with CUDA OOM?
+        if i == start_iter:
+            torch.cuda.empty_cache()  # Release cudnn.benchmarking stuff
+        del sample, src, tgt, loss
 
         start_time = time.time()
     return losses['loss'].avg

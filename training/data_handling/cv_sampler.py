@@ -28,7 +28,7 @@ class Sampler(object):
         z, z_ = xyz[2], xyz_[2]
         data = self.vol[x:x_, y:y_, z:z_].squeeze()
         print('min:', data.min(), 'max:', data.max())
-        if data.min(1).max() == 0:
+        if data.max() == 0:
             data = None
         else:
             print('Chunk shape {}'.format(data.shape))

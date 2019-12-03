@@ -179,13 +179,11 @@ def prepare_masks(sample, threshold=0):
     If masks is None, this calls gen_masks to generate them.
     """
     # MSE coefficient on the defect (src, tgt) and radius:
-    tissue_coef0 = 0, 0
     tissue_radius0 = 5
     # MSE coefficient in the defect neighborhood (src, tgt) and radius:
     tissue_coef1 = 2, 2
     tissue_radius1 = 35
     # smoothness coefficient on the defect (src, tgt) and radius:
-    field_coef0 = 0, 0
     field_radius0 = 0
     # smoothness coefficient in the defect neighborhood (src, tgt) and radius:
     field_coef1 = 0.01, 0.01
@@ -198,31 +196,35 @@ def prepare_masks(sample, threshold=0):
     if sample.src.mask is None or len(sample.src.mask) == 0:
         src_defects, tgt_defects = gen_masks(src, tgt, threshold)
     else:
-        src_defects = sample.src.mask > threshold
-        tgt_defects = sample.tgt.mask > threshold
+        src_defects = sample.src.mask
+        tgt_defects = sample.tgt.mask
 
     # Tissue (MSE) masks
-    src_mask_0 = masklib.dilate(src_defects, radius=tissue_radius0)
-    tgt_mask_0 = masklib.dilate(tgt_defects, radius=tissue_radius0)
-    src_mask_1 = masklib.dilate(src_defects, radius=tissue_radius1)
-    tgt_mask_1 = masklib.dilate(tgt_defects, radius=tissue_radius1)
+    src_mask_0 = masklib.dilate(src_defects > threshold, radius=tissue_radius0)
+    tgt_mask_0 = masklib.dilate(tgt_defects > threshold, radius=tissue_radius0)
+    src_mask_1 = masklib.dilate(src_defects > threshold, radius=tissue_radius1)
+    tgt_mask_1 = masklib.dilate(tgt_defects > threshold, radius=tissue_radius1)
     # coefficient in the defect neighborhood:
-    src_weights[src_mask_1], tgt_weights[tgt_mask_1] = tissue_coef1
+    src_weights[src_mask_1] = tissue_coef1[0] - tissue_coef1[0] * src_defects[src_mask_1] / 255.0
+    tgt_weights[tgt_mask_1] = tissue_coef1[1] - tissue_coef1[1] * tgt_defects[tgt_mask_1] / 255.0
     # coefficient on the defect:
-    src_weights[src_mask_0], tgt_weights[tgt_mask_0] = tissue_coef0
+    src_weights[src_mask_0] = tissue_coef1[0] - tissue_coef1[0] * src_defects[src_mask_0] / 255.0
+    tgt_weights[tgt_mask_0] = tissue_coef1[1] - tissue_coef1[1] * tgt_defects[tgt_mask_0] / 255.0
     # no MSE outside tissue
     src_weights[(src*255.0).to(torch.uint8) < 1] = 0
     tgt_weights[(tgt*255.0).to(torch.uint8) < 1] = 0
 
     # Field (smoothness) masks
-    src_field_mask_0 = masklib.dilate(src_defects, radius=field_radius0)
-    tgt_field_mask_0 = masklib.dilate(tgt_defects, radius=field_radius0)
-    src_field_mask_1 = masklib.dilate(src_defects, radius=field_radius1)
-    tgt_field_mask_1 = masklib.dilate(tgt_defects, radius=field_radius1)
+    src_field_mask_0 = masklib.dilate(src_defects > threshold, radius=field_radius0)
+    tgt_field_mask_0 = masklib.dilate(tgt_defects > threshold, radius=field_radius0)
+    src_field_mask_1 = masklib.dilate(src_defects > threshold, radius=field_radius1)
+    tgt_field_mask_1 = masklib.dilate(tgt_defects > threshold, radius=field_radius1)
     # coefficient in the defect neighborhood:
-    src_field_weights[src_field_mask_1], tgt_field_weights[tgt_field_mask_1] = field_coef1
+    src_field_weights[src_field_mask_1] = field_coef1[0] - field_coef1[0] * src_defects[src_field_mask_1] / 255.0
+    tgt_field_weights[tgt_field_mask_1] = field_coef1[1] - field_coef1[1] * tgt_defects[tgt_field_mask_1] / 255.0
     # coefficient on the defect:
-    src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
+    src_field_weights[src_field_mask_0] = field_coef1[0] - field_coef1[0] * src_defects[src_field_mask_0] / 255.0
+    tgt_field_weights[tgt_field_mask_0] = field_coef1[1] - field_coef1[1] * tgt_defects[tgt_field_mask_0] / 255.0
 
     src_aug_masks = ([1.0 - m.float() for m in sample.src.aug_masks]
                      if sample.src.aug_masks else [])

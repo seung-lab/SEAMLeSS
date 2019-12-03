@@ -759,15 +759,21 @@ class Dilation(RegisteredTask):
           .format(src_cv, dst_cv, src_z, dst_z, mip, radius), 
           flush=True)
     start = time()
-    pad = (radius - 1) // 2 
+    assert(abs(radius) > 0)
+    pad = (abs(radius) - 1) // 2 
     padded_bbox = deepcopy(bbox)
     padded_bbox.max_mip = mip
     padded_bbox.uncrop(pad, mip=mip)
     d = aligner.get_data(src_cv, src_z, padded_bbox, src_mip=mip, dst_mip=mip,
                          to_float=True, to_tensor=True)
-    assert(radius > 0)
-    s = torch.ones((1,1,radius,radius), device=d.device)
-    o = conv2d(d, s) > 0
+
+    s = torch.ones((1,1,abs(radius),abs(radius)), device=d.device)
+
+    if radius > 0:
+      o = conv2d(d, s) > 0
+    else:
+      o = conv2d(1.0 - d, torch.flip(s, dims=[-1,-2])) <= 0
+
     if o.is_cuda:
       o = o.data.cpu()
     o = o.numpy()

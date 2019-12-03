@@ -40,7 +40,7 @@ size = (args.xe, args.ye) if args.xe is not None and args.ye is not None else No
 sampler = Sampler(source=('gs://' + args.source), dim=args.dim, mip=args.mip, height=args.stack_height,
                   zs=args.zs, ze=args.ze)
 if args.check_mask:
-    mask_sampler = Sampler(source=('gs://' + args.mask), dim=args.dim//(2**(5-args.mip)), mip=5,
+    mask_sampler = Sampler(source=('gs://' + args.mask), dim=args.dim//(2**(4-args.mip)), mip=4,
                            height=args.stack_height, zs=args.zs, ze=args.ze)
 
 def get_chunk(coords=None, coords_=None):
@@ -77,6 +77,10 @@ def get_chunk(coords=None, coords_=None):
             return chunk, coords, mask
     else:
         chunk = sampler.chunk_at_global_coords(coords, coords_)
+        if args.check_mask: 
+            mask = mask_sampler.chunk_at_global_coords(coords, coords_)
+            return chunk, coords, mask
+
     return chunk, coords
 
 archived_coords = None
@@ -92,11 +96,24 @@ else:
     N = args.count
 
 coord_record = []
-dataset = np.empty((N, args.stack_height, args.dim, args.dim))
+
+h5f = h5py.File(args.name + '_' + ('test' if args.test else 'train') + '_mip' + str(args.mip) + '.h5', 'w')
+h5f.create_dataset(
+    'images',
+    (N, args.stack_height, args.dim, args.dim),
+    chunks=(1, 1, args.dim, args.dim),
+    compression="lzf"
+)
 if args.check_mask:
-    mask_dataset = np.empty((N, args.stack_height, args.dim // (2**(5-args.mip)), args.dim // (2**(5 - args.mip))))
+    h5f.create_dataset(
+        'masks',
+        (N, args.stack_height, args.dim // (2**(4-args.mip)), args.dim // (2**(4 - args.mip))),
+        chunks=(1,1, args.dim // (2**(4-args.mip)), args.dim // (2**(4 - args.mip))),
+        compression="lzf"
+    )
 
 for i in range(N):
+    print(i)
     coords, coords_ = None, None
     if archived_coords is not None:
         ac = archived_coords[i]
@@ -108,25 +125,15 @@ for i in range(N):
         chunk, coords, mask = get_chunk(coords, coords_)
     coord_record.append(coords)
     if chunk is not None:
-        dataset[i,:,:,:] = np.transpose(chunk, (2,0,1))
+        h5f['images'][i,:,:,:] = np.transpose(chunk, (2,0,1))
         if args.check_mask:
-            mask_dataset[i,:,:,:] = np.transpose(mask, (2,0,1))
+            h5f['masks'][i,:,:,:] = np.transpose(mask, (2,0,1))
     else:
-        print('None chunk')
-        dataset[i,:,:,:] = 0
+        print("Empty coords")
+        continue
 
-    print(i)
+h5f.close()
 
 record_file = open(args.name + '_' + ('test' if args.test else 'train') + '_mip' + str(args.mip) + 'coords.txt', 'w')
 record_file.write(str(coord_record))
 record_file.close()
-
-h5f = h5py.File(args.name + '_' + ('test' if args.test else 'train') + '_mip' + str(args.mip) + '.h5', 'w')
-h5f.create_dataset('main', data=dataset)
-
-if args.check_mask:
-    mask_name = args.mask[(args.mask).rfind('/')+1:]
-    print('Adding mask dataset:', mask_name)
-    h5f.create_dataset(mask_name, data=mask_dataset)
-
-h5f.close()
