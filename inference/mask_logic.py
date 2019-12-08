@@ -12,7 +12,7 @@ from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenanc
 from os.path import join
 from cloudmanager import CloudManager
 from time import time
-from tasks import run 
+from tasks import run
 
 def print_run(diff, n_tasks):
   if n_tasks > 0:
@@ -37,13 +37,14 @@ if __name__ == '__main__':
   parser.add_argument('--paths', type=str, nargs='+')
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--op', type=str)
+  parser.add_argument('--threshold', type=float, default=None)
   parser.add_argument('--z_offsets', type=int, nargs='+',
     help='offsets from z to evaluate each image from paths')
-  parser.add_argument('--dst_offset', type=int, 
+  parser.add_argument('--dst_offset', type=int,
     help='offset from z where dst will be written')
   parser.add_argument('--mip_list', type=int, nargs='+',
     help='mip level of each image in paths')
-  parser.add_argument('--dst_mip', type=int, 
+  parser.add_argument('--dst_mip', type=int,
     help='mip level of dst image')
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
@@ -52,17 +53,18 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--pad', 
-    help='the size of the largest displacement expected; should be 2^high_mip', 
+  parser.add_argument('--pad',
+    help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
+  parser.add_argument('--size_chunk', type=int, default=256)
   args = parse_args(parser)
   # Only compute matches to previous sections
   a = get_aligner(args)
   a.device = torch.device('cpu')
   bbox = get_bbox(args)
   provenance = get_provenance(args)
-  
+
   # Simplify var names
   mip = args.dst_mip
   mip_list = args.mip_list
@@ -80,7 +82,7 @@ if __name__ == '__main__':
 
   # Create CloudVolume Manager
   cm = CloudManager(args.paths[0], max_mip, pad, provenance, batch_size=1,
-                    size_chunk=256, batch_mip=mip)
+                    size_chunk=args.size_chunk, batch_mip=mip)
   # Create src CloudVolumes
   cv_list = []
   for path in args.paths:
@@ -100,8 +102,8 @@ if __name__ == '__main__':
           for z in self.brange:
               z_list = [z+zo for zo in z_offsets]
               dst_z = z + dst_offset
-              t = a.mask_logic(cm, cv_list, dst, z_list, dst_z, bbox, mip_list, mip, 
-                               op=args.op)
+              t = a.mask_logic(cm, cv_list, dst, z_list, dst_z, bbox, mip_list, mip,
+                               op=args.op, threshold=args.threshold)
               yield from t
 
   range_list = make_range(full_range, a.threads)
