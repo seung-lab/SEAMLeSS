@@ -49,6 +49,8 @@ if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--param_lookup', type=str,
     help='relative path to CSV file identifying params to use per z range')
+  parser.add_argument('--skip_list_lookup', type=str,
+    help='relative path to file identifying list of skip sections')
   # parser.add_argument('--z_range_path', type=str,
   #   help='path to csv file with list of z indices to use')
   parser.add_argument('--src_path', type=str)
@@ -155,6 +157,14 @@ if __name__ == '__main__':
            tgt_radius_lookup[z] = tgt_radius
            vvote_lookup[z] = [-i for i in range(1, tgt_radius+1)]
 
+  if args.skip_list_lookup is not None:
+    with open(args.skip_list_lookup, 'r') as f:
+      line = f.readline()
+      while line:
+        skip_ind = int(line)
+        skip_list.append(skip_ind)
+        line = f.readline()
+
   # Filter out skipped sections from vvote_offsets
   min_offset = 0
   for z, tgt_radius in vvote_lookup.items():
@@ -258,6 +268,8 @@ if __name__ == '__main__':
   for b,v in block_start_to_stitch_offsets.items():
     print(b)
     assert(len(v) % 2 == 1)
+
+  default_vv_temp = (2**mip)/6
 
   # Create field CloudVolumes
   print('Creating field & overlap CloudVolumes')
@@ -413,7 +425,8 @@ if __name__ == '__main__':
         tgt_offsets = vvote_lookup[z]
         fields = {i: block_pair_fields[i] for i in tgt_offsets}
         t = a.vector_vote(cm, fields, block_vvote_field, z, bbox, mip,
-                          inverse=False, serial=True, softmin_temp=2**mip, blur_sigma=1)
+                          inverse=False, serial=True,
+                          softmin_temp=default_vv_temp, blur_sigma=1)
         yield from t
 
   class BlockAlignRender(object):
@@ -476,7 +489,7 @@ if __name__ == '__main__':
         tgt_offsets = vvote_lookup[z]
         fields = {i: stitch_pair_fields[i] for i in tgt_offsets}
         t = a.vector_vote(cm, fields, overlap_vvote_field, z, bbox, mip,
-                          inverse=False, serial=True, softmin_temp=2**mip, blur_sigma=1)
+                          inverse=False, serial=True, softmin_temp=default_vv_temp, blur_sigma=1)
         yield from t
 
   class StitchAlignRender(object):
@@ -516,7 +529,7 @@ if __name__ == '__main__':
         offsets = block_start_to_stitch_offsets[z]
         fields = {i: stitch_fields[i] for i in offsets}
         t = a.vector_vote(cm, fields, broadcasting_field, z, bbox, mip,
-                          inverse=False, serial=True, softmin_temp=2**mip, blur_sigma=1)
+                          inverse=False, serial=True, softmin_temp=default_vv_temp, blur_sigma=1)
         yield from t
 
   # Serial alignment with block stitching
