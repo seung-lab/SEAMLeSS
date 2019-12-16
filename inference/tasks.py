@@ -15,6 +15,7 @@ from cloudvolume.lib import scatter
 from boundingbox import BoundingBox, deserialize_bbox
 from fcorr import fcorr_conjunction
 from scipy import ndimage
+from utilities.helpers import upsample_field
 
 from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue, GreenTaskQueue
 from concurrent.futures import ProcessPoolExecutor
@@ -127,12 +128,12 @@ class ComputeFieldTask(RegisteredTask):
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip):
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv):
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip)
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -162,7 +163,13 @@ class ComputeFieldTask(RegisteredTask):
     tgt_mask_val = self.tgt_mask_val
     if self.coarse_field_cv:
       coarse_field_cv = DCV(self.coarse_field_cv)
+    else:
+      coarse_field_cv = None
     coarse_field_mip = self.coarse_field_mip
+    if self.tgt_field_cv:
+      tgt_field_cv = DCV(self.tgt_field_cv)
+    else:
+      tgt_field_cv = None
 
     print("\nCompute field\n"
           "model {}\n"
@@ -183,8 +190,8 @@ class ComputeFieldTask(RegisteredTask):
                                           bbox=patch_bbox, mip=mip, pad=pad,
                                           src_mask_cv=src_mask_cv, src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                                           tgt_mask_cv=tgt_mask_cv, tgt_mask_mip=tgt_mask_mip, tgt_mask_val=tgt_mask_val,
-                                          tgt_alt_z=None, prev_drift_field_cv=prev_field_cv, prev_drift_field_z=prev_field_z,
-                                          coarse_field_cv=coarse_field_cv, coarse_field_mip=coarse_field_mip)
+                                          tgt_alt_z=None, prev_field_cv=prev_field_cv, prev_field_z=prev_field_z,
+                                          coarse_field_cv=coarse_field_cv, coarse_field_mip=coarse_field_mip, tgt_field_cv=tgt_field_cv)
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       end = time()
       diff = end - start
@@ -355,6 +362,43 @@ class CloudMultiComposeTask(RegisteredTask):
             end = time()
             diff = end - start
             print('MultiComposeTask: {:.3f} s'.format(diff))
+
+class CloudUpsampleFieldTask(RegisteredTask):
+  def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, src_mip, dst_mip):
+    super().__init__(src_cv, dst_cv, src_z, dst_z, patch_bbox, src_mip, dst_mip)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
+    src_z = self.src_z
+    dst_z = self.dst_z
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    src_mip = self.src_mip
+    dst_mip = self.dst_mip
+
+    print("\nUpsample Field\n"
+          "src: {}\n"
+          "dst: {}\n"
+          "Z: {} -> {}\n"
+          "MIP: {} -> {}\n".format(
+            src_cv, dst_cv, src_z, dst_z, src_mip, dst_mip
+          ), flush=True)
+    start = time()
+    if not aligner.dry_run:
+      field = aligner.get_field(
+        src_cv,
+        src_z,
+        patch_bbox,
+        src_mip,
+        relative=False,
+        to_tensor=True,
+      ).to(device=aligner.device)
+      field = upsample_field(field, src_mip, dst_mip)
+      field = field.cpu().numpy()
+      aligner.save_field(field, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
+    end = time()
+    diff = end - start
+    print('Upsample Field Task: {:.3f} s'.format(diff))
 
 
 class CPCTask(RegisteredTask):

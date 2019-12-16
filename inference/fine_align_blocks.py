@@ -268,6 +268,12 @@ if __name__ == "__main__":
     starter_restart = -100
     if args.restart <= 0:
         starter_restart = args.restart
+
+    original_copy_range = [z for z_range in copy_offset_to_z_range.values() for z in z_range]
+    original_starter_range = [
+        z for z_range in starter_offset_to_z_range.values() for z in z_range
+    ]
+
     copy_offset_to_z_range = {
         k: v for k, v in copy_offset_to_z_range.items() if k == args.restart
     }
@@ -309,7 +315,6 @@ if __name__ == "__main__":
     # Create field CloudVolumes
     print("Creating field & overlap CloudVolumes")
     block_pair_fields = {}
-    composed_block_pair_fields = {}
     for z_offset in offset_range:
         block_pair_fields[z_offset] = cm.create(
             join(args.dst_path, "field", "block", str(z_offset)),
@@ -318,22 +323,8 @@ if __name__ == "__main__":
             fill_missing=True,
             overwrite=True,
         ).path
-        composed_block_pair_fields[z_offset] = cm.create(
-            join(args.dst_path, "field", "composed_block", str(z_offset)),
-            data_type="int16",
-            num_channels=2,
-            fill_missing=True,
-            overwrite=True,
-        ).path
     block_vvote_field = cm.create(
         join(args.dst_path, "field", "vvote"),
-        data_type="int16",
-        num_channels=2,
-        fill_missing=True,
-        overwrite=True,
-    ).path
-    composed_block_vvote_field = cm.create(
-        join(args.dst_path, "field", "composed_vvote"),
         data_type="int16",
         num_channels=2,
         fill_missing=True,
@@ -350,13 +341,6 @@ if __name__ == "__main__":
         ).path
     overlap_vvote_field = cm.create(
         join(args.dst_path, "field", "stitch", "vvote", "field"),
-        data_type="int16",
-        num_channels=2,
-        fill_missing=True,
-        overwrite=True,
-    ).path
-    composed_overlap_vvote_field = cm.create(
-        join(args.dst_path, "field", "composed_stitch", "vvote", "field"),
         data_type="int16",
         num_channels=2,
         fill_missing=True,
@@ -456,6 +440,28 @@ if __name__ == "__main__":
                 )
                 yield from t
 
+    class StarterUpsampleField:
+        def __init__(self, z_range):
+            print(z_range)
+            self.z_range = z_range
+
+        def __iter__(self):
+            for z in self.z_range:
+                bbox = bbox_lookup[z]
+                field_dst = block_pair_fields[0]
+
+                t = a.cloud_upsample_field(
+                    cm,
+                    coarse_field_cv,
+                    field_dst,
+                    src_z=z,
+                    dst_z=z,
+                    bbox=bbox,
+                    src_mip=coarse_field_mip,
+                    dst_mip=mip
+                )
+                yield from t
+
     class StarterComputeField(object):
         def __init__(self, z_range):
             self.z_range = z_range
@@ -467,6 +473,7 @@ if __name__ == "__main__":
                 bbox = bbox_lookup[z]
                 z_offset = starter_z_to_offset[z]
                 field = block_pair_fields[z_offset]
+                tgt_field = block_pair_fields[0]
                 tgt_z = z + z_offset
                 t = a.compute_field(
                     cm,
@@ -489,34 +496,7 @@ if __name__ == "__main__":
                     prev_field_z=None,
                     coarse_field_cv=coarse_field_cv,
                     coarse_field_mip=coarse_field_mip,
-                )
-                yield from t
-
-    class StarterComposeField(object):
-        def __init__(self, z_range):
-            self.z_range = z_range
-
-        def __iter__(self):
-            for z in self.z_range:
-                bbox = bbox_lookup[z]
-                z_offset = starter_z_to_offset[z]
-                fine_field = block_pair_fields[z_offset]
-                combined_field = composed_block_pair_fields[z_offset]
-                t = a.compose(
-                    cm,
-                    f_cv=fine_field,
-                    g_cv=coarse_field_cv,
-                    dst_cv=combined_field,
-                    f_z=z,
-                    g_z=z,
-                    dst_z=z,
-                    bbox=bbox,
-                    f_mip=mip,
-                    g_mip=coarse_field_mip,
-                    dst_mip=mip,
-                    factor=1.0,
-                    affine=None,
-                    pad=pad,
+                    tgt_field_cv=tgt_field,
                 )
                 yield from t
 
@@ -528,12 +508,12 @@ if __name__ == "__main__":
             for z in self.z_range:
                 dst = starter_dst_lookup[z]
                 z_offset = starter_z_to_offset[z]
-                combined_field = composed_block_pair_fields[z_offset]
+                fine_field = block_pair_fields[z_offset]
                 bbox = bbox_lookup[z]
                 t = a.render(
                     cm,
                     src,
-                    combined_field,
+                    fine_field,
                     dst,
                     src_z=z,
                     field_z=z,
@@ -560,6 +540,12 @@ if __name__ == "__main__":
                 for tgt_offset in tgt_offsets:
                     tgt_z = src_z + tgt_offset
                     fine_field = block_pair_fields[tgt_offset]
+                    if tgt_z in original_copy_range:
+                        tgt_field = block_pair_fields[0]
+                    elif tgt_z in original_starter_range:
+                        tgt_field = block_pair_fields[starter_z_to_offset[tgt_z]]
+                    else:
+                        tgt_field = block_vvote_field
                     t = a.compute_field(
                         cm,
                         model_path,
@@ -577,10 +563,11 @@ if __name__ == "__main__":
                         tgt_mask_cv=src_mask_cv,
                         tgt_mask_mip=src_mask_mip,
                         tgt_mask_val=src_mask_val,
-                        prev_field_cv=block_vvote_field,
+                        prev_field_cv=tgt_field,
                         prev_field_z=tgt_z,
                         coarse_field_cv=coarse_field_cv,
                         coarse_field_mip=coarse_field_mip,
+                        tgt_field_cv=tgt_field,
                     )
                     yield from t
 
@@ -602,35 +589,8 @@ if __name__ == "__main__":
                     mip,
                     inverse=False,
                     serial=True,
-                    softmin_temp=2 ** mip,
+                    softmin_temp=(2 ** mip) / 6.0,
                     blur_sigma=1,
-                )
-                yield from t
-
-    class BlockAlignComposeField(object):
-        def __init__(self, z_range):
-            self.z_range = z_range
-
-        def __iter__(self):
-            for z in self.z_range:
-                bbox = bbox_lookup[z]
-                fine_field = block_vvote_field
-                combined_field = composed_block_vvote_field
-                t = a.compose(
-                    cm,
-                    f_cv=fine_field,
-                    g_cv=coarse_field_cv,
-                    dst_cv=combined_field,
-                    f_z=z,
-                    g_z=z,
-                    dst_z=z,
-                    bbox=bbox,
-                    f_mip=mip,
-                    g_mip=coarse_field_mip,
-                    dst_mip=mip,
-                    factor=1.0,
-                    affine=None,
-                    pad=pad,
                 )
                 yield from t
 
@@ -645,7 +605,7 @@ if __name__ == "__main__":
                 t = a.render(
                     cm,
                     src,
-                    composed_block_vvote_field,
+                    block_vvote_field,
                     dst,
                     src_z=z,
                     field_z=z,
@@ -691,9 +651,15 @@ if __name__ == "__main__":
                 bbox = bbox_lookup[z]
                 model_path = model_lookup[z]
                 tgt_offsets = vvote_lookup[z]
+                last_tgt_offset = tgt_offsets[0] + 1 # HACK
                 for tgt_offset in tgt_offsets:
                     tgt_z = z + tgt_offset
                     fine_field = stitch_pair_fields[tgt_offset]
+                    if last_tgt_offset > 0:
+                        tgt_field = overlap_vvote_field
+                    else:
+                        tgt_field = stitch_pair_fields[last_tgt_offset]
+                    last_tgt_offset = tgt_offset
                     t = a.compute_field(
                         cm,
                         model_path,
@@ -715,6 +681,7 @@ if __name__ == "__main__":
                         prev_field_z=tgt_z,
                         coarse_field_cv=coarse_field_cv,
                         coarse_field_mip=coarse_field_mip,
+                        tgt_field_cv=tgt_field,
                     )
                     yield from t
 
@@ -741,33 +708,6 @@ if __name__ == "__main__":
                 )
                 yield from t
 
-    class StitchAlignComposeField(object):
-        def __init__(self, z_range):
-            self.z_range = z_range
-
-        def __iter__(self):
-            for z in self.z_range:
-                bbox = bbox_lookup[z]
-                fine_field = overlap_vvote_field
-                combined_field = composed_overlap_vvote_field
-                t = a.compose(
-                    cm,
-                    f_cv=fine_field,
-                    g_cv=coarse_field_cv,
-                    dst_cv=combined_field,
-                    f_z=z,
-                    g_z=z,
-                    dst_z=z,
-                    bbox=bbox,
-                    f_mip=mip,
-                    g_mip=coarse_field_mip,
-                    dst_mip=mip,
-                    factor=1.0,
-                    affine=None,
-                    pad=pad,
-                )
-                yield from t
-
     class StitchAlignRender(object):
         def __init__(self, z_range):
             self.z_range = z_range
@@ -779,7 +719,7 @@ if __name__ == "__main__":
                 t = a.render(
                     cm,
                     block_dst,
-                    composed_overlap_vvote_field,
+                    overlap_vvote_field,
                     overlap_image,
                     src_z=z,
                     field_z=z,
@@ -842,9 +782,10 @@ if __name__ == "__main__":
     print("START BLOCK ALIGNMENT")
     print("COPY STARTING SECTION OF ALL BLOCKS")
     execute(StarterCopy, copy_range)
+    print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
+    execute(StarterUpsampleField, copy_range)
     print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
     execute(StarterComputeField, starter_range)
-    execute(StarterComposeField, starter_range)
     execute(StarterRender, starter_range)
     for z_offset in sorted(block_offset_to_z_range.keys()):
         z_range = list(block_offset_to_z_range[z_offset])
@@ -852,8 +793,6 @@ if __name__ == "__main__":
         execute(BlockAlignComputeField, z_range)
         print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
         execute(BlockAlignVectorVote, z_range)
-        print("COMPOSE BLOCK OFFSET {}".format(z_offset))
-        execute(BlockAlignComposeField, z_range)
         print("RENDER BLOCK OFFSET {}".format(z_offset))
         execute(BlockAlignRender, z_range)
 
@@ -867,8 +806,6 @@ if __name__ == "__main__":
         execute(StitchAlignComputeField, z_range)
         print("VECTOR VOTE OVERLAPPING OFFSET {}".format(z_offset))
         execute(StitchAlignVectorVote, z_range)
-        print("COMPOSE OVERLAPPING OFFSET {}".format(z_offset))
-        execute(StitchAlignComposeField, z_range)
         print("RENDER OVERLAPPING OFFSET {}".format(z_offset))
         execute(StitchAlignRender, z_range)
 

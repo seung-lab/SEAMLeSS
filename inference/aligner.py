@@ -30,7 +30,7 @@ from training.loss import lap
 from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               np_downsample, invert, compose_fields, upsample_field, downsample_field, \
                               is_identity, cpc, vector_vote, get_affine_field, is_blank, \
-                              identity_grid
+                              identity_grid, percentile
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -126,6 +126,7 @@ class Aligner:
       new_bbox = BoundingBox(x_range[0] + dis[0], x_range[1] + dis[0],
                              y_range[0] + dis[1], y_range[1] + dis[1],
                              mip=0)
+      new_bbox.max_mip = bbox.max_mip
       return new_bbox
 
   ##############
@@ -462,8 +463,19 @@ class Aligner:
     return favg
 
   def profile_field(self, field):
+    # import IPython
+    # IPython.embed()
     avg_x = self.avg_field(field[0,...,0])
     avg_y = self.avg_field(field[0,...,1])
+    print("AVERAGE:", avg_x, avg_y)
+    nonzero = field[(field[...,0] != 0) & (field[...,1] != 0)]
+    low_l = percentile(nonzero, 1)
+    high_l = percentile(nonzero, 99)
+    mid = 0.5*(low_l + high_l)
+
+    print("MID:", mid[0].item(), mid[1].item())
+    return mid.cpu()
+
     return torch.Tensor([avg_x, avg_y])
 
   #############################
@@ -488,10 +500,11 @@ class Aligner:
     tgt_mask_mip=0,
     tgt_mask_val=0,
     tgt_alt_z=None,
-    prev_drift_field_cv=None,
-    prev_drift_field_z=None,
+    prev_field_cv=None,
+    prev_field_z=None,
     coarse_field_cv=None,
-    coarse_field_mip=None
+    coarse_field_mip=None,
+    tgt_field_cv=None,
   ):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
@@ -505,9 +518,9 @@ class Aligner:
       mip: int of MIP level to use for bbox
       pad: int for amount of padding to add to the bbox before processing
       mask_cv: MiplessCloudVolume with mask to be used for both src & tgt image
-      prev_drift_field_cv: if specified, a MiplessCloudVolume containing the
-                      previously predicted field to be profile and displace
-                      the src chunk
+      prev_field_cv: if specified, a MiplessCloudVolume containing the
+                     previously predicted field to be profile and displace
+                     the src chunk
 
     Returns:
       field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
@@ -526,98 +539,121 @@ class Aligner:
       coarse_field_mip = bbox.mip
 
     # Displace src bbox by coarse vector field to adjust for large translations
-    tgt_padded_bbox = deepcopy(bbox)
-    tgt_padded_bbox.max_mip = coarse_field_mip
-    tgt_padded_bbox.uncrop(pad, mip=mip)
-
     coarse_field = None
     coarse_distance_fine_snap = torch.Tensor([0, 0])
     drift_distance_fine_snap = torch.Tensor([0, 0])
+    drift_distance_coarse_snap = torch.Tensor([0, 0])
 
-    if prev_drift_field_cv is not None:
-      # Fetch fine alignment of previous section
-      prev_field = self.get_field(
-        prev_drift_field_cv,
-        prev_drift_field_z,
-        tgt_padded_bbox,
+    tgt_field = None
+    padded_tgt_bbox_fine = deepcopy(bbox)
+    padded_tgt_bbox_fine.uncrop(pad, mip)
+    if tgt_field_cv is not None:
+      # Fetch vector field of previous section
+      tgt_field = self.get_field(
+        tgt_field_cv,
+        tgt_z,
+        padded_tgt_bbox_fine,
         mip,
-        relative=False,
+        relative=True,
         to_tensor=True,
       ).to(device=self.device)
 
-      drift_distance = self.profile_field(prev_field)
+      if coarse_field_cv is not None and not is_identity(tgt_field):
+        # Alignment with coarse field: Need to subtract the coarse field out of
+        # the tgt_field to get the current alignment drift
+        prev_coarse_field = self.get_field(
+          coarse_field_cv,
+          tgt_z,
+          padded_tgt_bbox_fine,
+          coarse_field_mip,
+          relative=True,
+          to_tensor=True,
+        ).to(device=self.device)
+
+        # import IPython
+        # IPython.embed()
+        prev_coarse_field = prev_coarse_field.permute(0, 3, 1, 2).field_()
+        try:
+          prev_coarse_field_inv = prev_coarse_field.up(coarse_field_mip - mip).inverse()
+        except RuntimeError as e:
+          print("INVERSE CALCULATION NEEDS TOO MUCH MEMORY: ", e)
+          prev_coarse_field_inv = prev_coarse_field.inverse().up(coarse_field_mip - mip)
+
+        prev_drift_field = prev_coarse_field_inv.compose_with(tgt_field.permute(0, 3, 1, 2).field_())
+        prev_drift_field = prev_drift_field.permute(0, 2, 3, 1)
+      else:
+        # Alignment without coarse field: tgt_field contains only the drift
+        # or prev_field is identity
+        prev_drift_field = tgt_field
+
+      prev_drift_field = self.rel_to_abs_residual(prev_drift_field, mip)
+      drift_distance = self.profile_field(prev_drift_field)
       drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
       drift_distance_coarse_snap = (
         drift_distance // (2 ** coarse_field_mip)
       ) * 2 ** coarse_field_mip
-      src_padded_bbox = self.adjust_bbox(
-        tgt_padded_bbox, drift_distance_coarse_snap.flip(0)
-      )
-    else:
-      src_padded_bbox = tgt_padded_bbox
 
+      tgt_field = self.rel_to_abs_residual(tgt_field, mip)
+      tgt_distance = self.profile_field(prev_drift_field)
+      tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
+      tgt_field -= tgt_distance_fine_snap.to(device=self.device)
+      tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
+
+    print(
+      "Displacement adjustment TGT: {} px".format(
+        drift_distance_fine_snap,
+      )
+    )
+
+    padded_tgt_bbox_fine = self.adjust_bbox(padded_tgt_bbox_fine, drift_distance_fine_snap.flip(0))
+
+
+    # import IPython
+    # IPython.embed()
     if coarse_field_cv is not None:
       # Fetch coarse alignment
+      padded_src_bbox_coarse = self.adjust_bbox(bbox, drift_distance_coarse_snap.flip(0))
+      padded_src_bbox_coarse.max_mip = coarse_field_mip
+      padded_src_bbox_coarse.uncrop(pad, mip)
+
+      padded_src_bbox_coarse_field = deepcopy(padded_src_bbox_coarse)
+      padded_src_bbox_coarse_field.uncrop(2**coarse_field_mip, 0)
+
       coarse_field = self.get_field(
         coarse_field_cv,
         src_z,
-        src_padded_bbox,
+        padded_src_bbox_coarse_field,
         coarse_field_mip,
         relative=False,
         to_tensor=True,
       ).to(device=self.device)
+      coarse_field = coarse_field.permute(0, 3, 1, 2)
+      coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bilinear')(coarse_field)
+      coarse_field = coarse_field.permute(0, 2, 3, 1)
+
+      crop = 2 ** (coarse_field_mip - mip)
+      offset = np.array((drift_distance_coarse_snap - drift_distance_fine_snap) // 2 ** mip, dtype=np.int)
+      coarse_field = coarse_field[:, crop+offset[0]:-crop+offset[0], crop+offset[1]:-crop+offset[1], :]
+
       coarse_distance = self.profile_field(coarse_field)
       coarse_distance_fine_snap = (coarse_distance // (2 ** mip)) * 2 ** mip
       coarse_field -= coarse_distance_fine_snap.to(device=self.device)
-      coarse_field = self.abs_to_rel_residual(coarse_field, tgt_padded_bbox, mip)
+      coarse_field = self.abs_to_rel_residual(coarse_field, padded_src_bbox_coarse, mip)
 
     combined_distance_fine_snap = (
       coarse_distance_fine_snap + drift_distance_fine_snap
     )
 
     print(
-      "Displacement adjustment: {} + {} --> {} px".format(
+      "Displacement adjustment SRC: {} + {} --> {} px".format(
         coarse_distance_fine_snap,
         drift_distance_fine_snap,
         combined_distance_fine_snap,
       )
     )
-    src_padded_bbox = self.adjust_bbox(
-      tgt_padded_bbox, combined_distance_fine_snap.flip(0)
-    )
 
-    if coarse_field_cv is not None:
-      if prev_drift_field_cv is not None:
-        prev_coarse_and_fine_field = self.cloudsample_compose(
-          prev_drift_field_cv, coarse_field_cv, tgt_z, tgt_z,
-          tgt_padded_bbox, mip, coarse_field_mip,
-          mip, factor=1., affine=None, pad=pad
-        )
-        prev_coarse_and_fine_distance = self.profile_field(prev_coarse_and_fine_field)
-        prev_coarse_and_fine_distance_snap = (prev_coarse_and_fine_distance // (2 ** mip)) * 2 ** mip
-        prev_coarse_and_fine_field -= prev_coarse_and_fine_distance_snap.to(device=self.device)
-        prev_coarse_and_fine_field = self.abs_to_rel_residual(prev_coarse_and_fine_field, tgt_padded_bbox, mip)
-      else:
-        # Fetch coarse alignment
-        prev_coarse_and_fine_field = self.get_field(
-          coarse_field_cv,
-          tgt_z,
-          tgt_padded_bbox,
-          coarse_field_mip,
-          relative=False,
-          to_tensor=True,
-        ).to(device=self.device)
-        prev_coarse_and_fine_distance = self.profile_field(prev_coarse_and_fine_field)
-        prev_coarse_and_fine_distance_snap = (prev_coarse_and_fine_distance // (2 ** mip)) * 2 ** mip
-        prev_coarse_and_fine_field -= prev_coarse_and_fine_distance_snap.to(device=self.device)
-        prev_coarse_and_fine_field = self.abs_to_rel_residual(prev_coarse_and_fine_field, tgt_padded_bbox, mip)
-        prev_coarse_and_fine_field = upsample_field(prev_coarse_and_fine_field, coarse_field_mip, mip)
-
-      tgt_img_padded_bbox = self.adjust_bbox(
-        tgt_padded_bbox, prev_coarse_and_fine_distance_snap.flip(0)
-      )
-    else:
-      tgt_img_padded_bbox = tgt_padded_bbox
+    padded_src_bbox_fine = self.adjust_bbox(bbox, combined_distance_fine_snap.flip(0))
+    padded_src_bbox_fine.uncrop(pad, mip)
 
     tgt_z = [tgt_z]
     if tgt_alt_z is not None:
@@ -630,7 +666,7 @@ class Aligner:
     src_patch = self.get_masked_image(
       src_cv,
       src_z,
-      src_padded_bbox,
+      padded_src_bbox_fine,
       mip,
       mask_cv=src_mask_cv,
       mask_mip=src_mask_mip,
@@ -641,7 +677,7 @@ class Aligner:
     tgt_patch = self.get_composite_image(
       src_cv,
       tgt_z,
-      tgt_img_padded_bbox,
+      padded_tgt_bbox_fine,
       mip,
       mask_cv=tgt_mask_cv,
       mask_mip=tgt_mask_mip,
@@ -666,24 +702,42 @@ class Aligner:
       )
 
       # model produces field in relative coordinates
-      fine_field = model(
+      accum_field, fine_field = model(
         src_patch,
         tgt_patch,
-        previous_combined_field=prev_coarse_and_fine_field,
-        previous_combined_field_mip=mip,
-        coarse_field=coarse_field,
-        coarse_field_mip=coarse_field_mip,
+        tgt_field=tgt_field,
+        # previous_combined_field_mip=mip,
+        src_field=coarse_field,
+        # coarse_field_mip=coarse_field_mip,
       )
+
+      if src_z == 17451:
+        from PIL import Image
+        warped_tgt = tgt_field.permute(0,3,1,2).field_().sample(tgt_patch)
+        warped_tgt_image = Image.fromarray(np.array(warped_tgt.cpu().numpy()[0,0,:,:]*255, dtype=np.uint8))
+        warped_tgt_image.save(f"deb/{bbox.get_offset()}_{tgt_z[0]}_tgt.png")
+
+        warped_coarse_src = coarse_field.permute(0,3,1,2).field_().sample(src_patch)
+        warped_coarse_src_image = Image.fromarray(np.array(warped_coarse_src.cpu().numpy()[0,0,:,:]*255, dtype=np.uint8))
+        warped_coarse_src_image.save(f"deb/{bbox.get_offset()}_{tgt_z[0]}_src.png")
+
+        warped_src = accum_field.permute(0,3,1,2).field_().sample(src_patch)
+        warped_src_image = Image.fromarray(np.array(warped_src.cpu().numpy()[0,0,:,:]*255, dtype=np.uint8))
+        warped_src_image.save(f"deb/{bbox.get_offset()}_{tgt_z[0]}_warped_src.png")
+
+        print("TGT FIELD: ", tgt_z[0], tgt_field_cv)
+
+
       print(
         "GPU memory allocated: {}, cached: {}".format(
           torch.cuda.memory_allocated(), torch.cuda.memory_cached()
         )
       )
 
-      fine_field = self.rel_to_abs_residual(fine_field, mip)
-      fine_field = fine_field[:, pad:-pad, pad:-pad, :]
-      fine_field += drift_distance_fine_snap.to(device=self.device)
-      fine_field = fine_field.data.cpu().numpy()
+      accum_field = self.rel_to_abs_residual(accum_field, mip)
+      accum_field = accum_field[:, pad:-pad, pad:-pad, :]
+      accum_field += combined_distance_fine_snap.to(device=self.device) 
+      accum_field = accum_field.data.cpu().numpy()
 
       # clear unused, cached memory so that other processes can allocate it
       torch.cuda.empty_cache()
@@ -698,7 +752,7 @@ class Aligner:
         print("Process {} releasing GPU lock".format(os.getpid()))
         self.gpu_lock.release()
 
-    return fine_field
+    return accum_field
 
   def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
                     chunk_size):
@@ -772,6 +826,8 @@ class Aligner:
           G_z = z+z_offset
           F = self.get_composed_field(G_cv, f_cv, G_z, f_z, bbox, mip, mip, mip)
       fields.append(F)
+    if len(fields) == 1:
+      return fields[0]
     # assign weight w if the difference between majority vector similarities are d
     if not softmin_temp:
       w = 0.99
@@ -926,6 +982,7 @@ class Aligner:
       print('Padding by {} at MIP{}'.format(pad, dst_mip))
       padded_bbox.uncrop(pad, mip=dst_mip)
       # Load warper vector field
+
       f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
                              relative=False, to_tensor=True)
       f = f * factor
@@ -1199,7 +1256,7 @@ class Aligner:
                     tgt_mask_mip=0, tgt_mask_val=0,
                     return_iterator=False, prev_field_cv=None, prev_field_z=None,
                     prev_field_inverse=False, coarse_field_cv=None,
-                    coarse_field_mip=0):
+                    coarse_field_mip=0,tgt_field_cv=None):
     """Compute field to warp src section to tgt section 
   
     Args:
@@ -1246,7 +1303,7 @@ class Aligner:
                                           src_mask_cv, src_mask_val, src_mask_mip, 
                                           tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
                                           prev_field_cv, prev_field_z, prev_field_inverse,
-                                          coarse_field_cv, coarse_field_mip)
+                                          coarse_field_cv, coarse_field_mip, tgt_field_cv)
     if return_iterator:
         return ComputeFieldTaskIterator(chunks,0, len(chunks))
     else:
@@ -1257,7 +1314,7 @@ class Aligner:
                                               src_mask_cv, src_mask_val, src_mask_mip, 
                                               tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
                                               prev_field_cv, prev_field_z, prev_field_inverse,
-                                              coarse_field_cv, coarse_field_mip))
+                                              coarse_field_cv, coarse_field_mip, tgt_field_cv))
         return batch
   
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
@@ -1475,6 +1532,50 @@ class Aligner:
             batch.append(tasks.CloudMultiComposeTask(cv_list, dst_cv, z_list,
                                                 dst_z, chunk, mip_list,
                                                 dst_mip, factors, pad))
+        return batch
+
+  def cloud_upsample_field(self, cm, src_cv, dst_cv, src_z, dst_z,
+      bbox, src_mip, dst_mip, return_iterator=False):
+    """Upsample Vector Field
+
+    Args:
+       cm: CloudManager that corresponds to the f_cv, g_cv, dst_cv
+       src_cv: MiplessCloudVolume of (low res) source field
+       dst_cv: MiplessCloudVolume of (higher res) destination field
+       src_z: int of section index to process
+       dst_z: int of section index to process
+       bbox: BoundingBox of region to process
+       src_mip: MIP of source vector field
+       dst_mip: MIP of upsampled vector field
+    """
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
+                                    cm.vec_voxel_offsets[dst_mip], 
+                                    mip=dst_mip)
+    class CloudUpsampleFieldIterator():
+        def __init__(self, cl, start, stop):
+          self.chunklist = cl
+          self.start = start
+          self.stop = stop
+        def __len__(self):
+          return self.stop - self.start
+        def __getitem__(self, slc):
+          itr = deepcopy(self)
+          itr.start = slc.start
+          itr.stop = slc.stop
+          return itr
+        def __iter__(self):
+          for i in range(self.start, self.stop):
+            chunk = self.chunklist[i]
+            yield tasks.CloudUpsampleFieldTask(src_cv, dst_cv, src_z, dst_z, 
+                                     chunk, src_mip, dst_mip)
+    if return_iterator:
+        return CloudUpsampleFieldIterator(chunks,0, len(chunks))
+    else:
+        batch = []
+        for chunk in chunks:
+          batch.append(tasks.CloudUpsampleFieldTask(src_cv, dst_cv, src_z, dst_z, 
+                                         chunk, src_mip, dst_mip))
         return batch
 
   def cpc(self, cm, src_cv, tgt_cv, dst_cv, src_z, tgt_z, bbox, src_mip, dst_mip, 
