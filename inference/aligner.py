@@ -641,7 +641,7 @@ class Aligner:
       d = 2**mip
       n = len(fields)
       m = int(binom(n, (n+1)//2)) - 1
-      softmin_temp = 2**mip
+      softmin_temp = (2**mip)/6
     return vector_vote(fields, softmin_temp=softmin_temp, blur_sigma=blur_sigma)
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
