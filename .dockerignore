@@ -136,4 +136,4 @@ inference/docker/secret.yaml
 
 # isolate single modle
 # models/
-# !models/vector_fixer30_faster_v01/**
+!models/sergiy_fine_test1/**

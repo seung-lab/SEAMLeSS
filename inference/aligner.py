@@ -524,7 +524,6 @@ class Aligner:
       except TypeError:
         tgt_z.append(tgt_alt_z)
       print('alternative target slices:', tgt_alt_z)
-
     src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
                                 mask_cv=src_mask_cv, mask_mip=src_mask_mip,
                                 mask_val=src_mask_val,
@@ -2087,7 +2086,7 @@ class Aligner:
         responses.append(int(response['Attributes'][a]))
       print('{}     '.format(responses[-2:]), end="\r", flush=True)
       if i < 2:
-        sleep(1)
+        sleep(5)
     return all(i == 0 for i in responses)
 
   def wait_for_sqs_empty(self):

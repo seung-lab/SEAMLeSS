@@ -1,0 +1,77 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "8"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"extensions/v1beta1","kind":"Deployment","metadata":{"annotations":{"deployment.kubernetes.io/revision":"2"},"creationTimestamp":"2019-11-21T03:16:17Z","generation":15,"labels":{"run":"seamless-sergiy-fine"},"name":"seamless-sergiy-fine","namespace":"default","resourceVersion":"71088432","selfLink":"/apis/extensions/v1beta1/namespaces/default/deployments/seamless-fine-align","uid":"480aaec3-0c0d-11ea-a214-4201ac100029"},"spec":{"progressDeadlineSeconds":600,"replicas":5,"revisionHistoryLimit":2,"selector":{"matchLabels":{"run":"seamless-sergiy-fine"}},"strategy":{"rollingUpdate":{"maxSurge":"100%","maxUnavailable":"100%"},"type":"RollingUpdate"},"template":{"metadata":{"creationTimestamp":null,"labels":{"run":"seamless-sergiy-fine"}},"spec":{"containers":[{"args":["-c","python inference/worker.py --processes 8 --gpu_processes 1 --queue_name deepalign-fine-1 --lease_seconds 100"],"command":["/bin/sh"],"image":"seunglab/seamless:sergiy-minnie-fine","imagePullPolicy":"Always","name":"seamless-sergiy-fine","resources":{"limits":{"nvidia.com/gpu":"1"}},"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","volumeMounts":[{"mountPath":"/root/.cloudvolume/secrets","name":"secrets","readOnly":true}]}],"dnsPolicy":"Default","restartPolicy":"Always","schedulerName":"default-scheduler","securityContext":{},"terminationGracePeriodSeconds":30,"volumes":[{"name":"secrets","secret":{"defaultMode":420,"secretName":"secrets"}}]}}},"status":{"conditions":[{"lastTransitionTime":"2019-11-21T03:16:17Z","lastUpdateTime":"2019-11-21T03:16:17Z","message":"Deployment has minimum availability.","reason":"MinimumReplicasAvailable","status":"True","type":"Available"},{"lastTransitionTime":"2019-11-21T03:16:17Z","lastUpdateTime":"2019-11-27T20:52:55Z","message":"ReplicaSet \"seamless-fine-align-778fcc7df\" has successfully progressed.","reason":"NewReplicaSetAvailable","status":"True","type":"Progressing"}],"observedGeneration":15}}
+  creationTimestamp: "2019-12-08T13:12:03Z"
+  generation: 40
+  labels:
+    run: seamless-sergiy-fine-2
+  name: seamless-sergiy-fine-2
+  namespace: default
+  resourceVersion: "76432790"
+  selfLink: /apis/extensions/v1beta1/namespaces/default/deployments/seamless-sergiy-fine-2
+  uid: 53872c5f-19bc-11ea-8233-4201ac10002a
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 40
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      run: seamless-sergiy-fine-2
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: seamless-sergiy-fine-2
+    spec:
+      containers:
+      - args:
+        - -c
+        - python inference/worker.py --processes 1 --gpu_processes 1 --queue_name
+          deepalign-fine-2 --lease_seconds 180
+        command:
+        - /bin/sh
+        image: seunglab/seamless:sergiy-minnie-fine-multi1
+        imagePullPolicy: Always
+        name: seamless-sergiy-fine-2
+        resources:
+          limits:
+            nvidia.com/gpu: "1"
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /root/.cloudvolume/secrets
+          name: secrets
+          readOnly: true
+      dnsPolicy: Default
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: secrets
+        secret:
+          defaultMode: 420
+          secretName: secrets
+status:
+  availableReplicas: 38
+  conditions:
+  - lastTransitionTime: "2019-12-08T13:12:03Z"
+    lastUpdateTime: "2019-12-08T13:12:03Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  observedGeneration: 40
+  readyReplicas: 38
+  replicas: 40
+  unavailableReplicas: 2
+  updatedReplicas: 40
