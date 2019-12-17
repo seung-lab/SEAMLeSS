@@ -463,14 +463,12 @@ class Aligner:
     return favg
 
   def profile_field(self, field):
-    # import IPython
-    # IPython.embed()
     avg_x = self.avg_field(field[0,...,0])
     avg_y = self.avg_field(field[0,...,1])
-    print("AVERAGE:", avg_x, avg_y)
+    print("AVG:", avg_x.item(), avg_y.item())
     nonzero = field[(field[...,0] != 0) & (field[...,1] != 0)]
-    low_l = percentile(nonzero, 1)
-    high_l = percentile(nonzero, 99)
+    low_l = percentile(nonzero, 0)
+    high_l = percentile(nonzero, 100)
     mid = 0.5*(low_l + high_l)
 
     print("MID:", mid[0].item(), mid[1].item())
@@ -538,7 +536,7 @@ class Aligner:
     if coarse_field_mip is None:
       coarse_field_mip = bbox.mip
 
-    # Displace src bbox by coarse vector field to adjust for large translations
+    # Find the target patch (Coarse+Fine vector field)
     coarse_field = None
     coarse_distance_fine_snap = torch.Tensor([0, 0])
     drift_distance_fine_snap = torch.Tensor([0, 0])
@@ -548,7 +546,7 @@ class Aligner:
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
     if tgt_field_cv is not None:
-      # Fetch vector field of previous section
+      # Fetch vector field of target section
       tgt_field = self.get_field(
         tgt_field_cv,
         tgt_z,
@@ -561,7 +559,7 @@ class Aligner:
       if coarse_field_cv is not None and not is_identity(tgt_field):
         # Alignment with coarse field: Need to subtract the coarse field out of
         # the tgt_field to get the current alignment drift
-        prev_coarse_field = self.get_field(
+        tgt_coarse_field = self.get_field(
           coarse_field_cv,
           tgt_z,
           padded_tgt_bbox_fine,
@@ -570,31 +568,29 @@ class Aligner:
           to_tensor=True,
         ).to(device=self.device)
 
-        # import IPython
-        # IPython.embed()
-        prev_coarse_field = prev_coarse_field.permute(0, 3, 1, 2).field_()
+        tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_()
         try:
-          prev_coarse_field_inv = prev_coarse_field.up(coarse_field_mip - mip).inverse()
+          tgt_coarse_field_inv = tgt_coarse_field.up(coarse_field_mip - mip).inverse()
         except RuntimeError as e:
           print("INVERSE CALCULATION NEEDS TOO MUCH MEMORY: ", e)
-          prev_coarse_field_inv = prev_coarse_field.inverse().up(coarse_field_mip - mip)
+          tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
 
-        prev_drift_field = prev_coarse_field_inv.compose_with(tgt_field.permute(0, 3, 1, 2).field_())
-        prev_drift_field = prev_drift_field.permute(0, 2, 3, 1)
+        tgt_drift_field = tgt_coarse_field_inv.compose_with(tgt_field.permute(0, 3, 1, 2).field_())
+        tgt_drift_field = tgt_drift_field.permute(0, 2, 3, 1)
       else:
         # Alignment without coarse field: tgt_field contains only the drift
         # or prev_field is identity
-        prev_drift_field = tgt_field
+        tgt_drift_field = tgt_field
 
-      prev_drift_field = self.rel_to_abs_residual(prev_drift_field, mip)
-      drift_distance = self.profile_field(prev_drift_field)
+      tgt_drift_field = self.rel_to_abs_residual(tgt_drift_field, mip)
+      drift_distance = self.profile_field(tgt_drift_field[:, pad:-pad, pad:-pad, :])
       drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
       drift_distance_coarse_snap = (
         drift_distance // (2 ** coarse_field_mip)
       ) * 2 ** coarse_field_mip
 
       tgt_field = self.rel_to_abs_residual(tgt_field, mip)
-      tgt_distance = self.profile_field(prev_drift_field)
+      tgt_distance = self.profile_field(tgt_field[:, pad:-pad, pad:-pad, :])
       tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
       tgt_field -= tgt_distance_fine_snap.to(device=self.device)
       tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
@@ -605,11 +601,8 @@ class Aligner:
       )
     )
 
-    padded_tgt_bbox_fine = self.adjust_bbox(padded_tgt_bbox_fine, drift_distance_fine_snap.flip(0))
+    padded_tgt_bbox_fine = self.adjust_bbox(padded_tgt_bbox_fine, tgt_distance_fine_snap.flip(0))
 
-
-    # import IPython
-    # IPython.embed()
     if coarse_field_cv is not None:
       # Fetch coarse alignment
       padded_src_bbox_coarse = self.adjust_bbox(bbox, drift_distance_coarse_snap.flip(0))
@@ -632,10 +625,10 @@ class Aligner:
       coarse_field = coarse_field.permute(0, 2, 3, 1)
 
       crop = 2 ** (coarse_field_mip - mip)
-      offset = np.array((drift_distance_coarse_snap - drift_distance_fine_snap) // 2 ** mip, dtype=np.int)
+      offset = np.array((drift_distance_fine_snap - drift_distance_coarse_snap) // 2 ** mip, dtype=np.int)
       coarse_field = coarse_field[:, crop+offset[0]:-crop+offset[0], crop+offset[1]:-crop+offset[1], :]
 
-      coarse_distance = self.profile_field(coarse_field)
+      coarse_distance = self.profile_field(coarse_field[:, pad:-pad, pad:-pad, :])
       coarse_distance_fine_snap = (coarse_distance // (2 ** mip)) * 2 ** mip
       coarse_field -= coarse_distance_fine_snap.to(device=self.device)
       coarse_field = self.abs_to_rel_residual(coarse_field, padded_src_bbox_coarse, mip)
@@ -706,24 +699,22 @@ class Aligner:
         src_patch,
         tgt_patch,
         tgt_field=tgt_field,
-        # previous_combined_field_mip=mip,
         src_field=coarse_field,
-        # coarse_field_mip=coarse_field_mip,
       )
 
-      if src_z == 17451:
+      if bbox.get_offset() == (201728.0, 181248.0):
         from PIL import Image
         warped_tgt = tgt_field.permute(0,3,1,2).field_().sample(tgt_patch)
         warped_tgt_image = Image.fromarray(np.array(warped_tgt.cpu().numpy()[0,0,:,:]*255, dtype=np.uint8))
-        warped_tgt_image.save(f"deb/{bbox.get_offset()}_{tgt_z[0]}_tgt.png")
+        warped_tgt_image.save(f"deb/{src_z}/{bbox.get_offset()}_{tgt_z[0]}_tgt.png")
 
         warped_coarse_src = coarse_field.permute(0,3,1,2).field_().sample(src_patch)
         warped_coarse_src_image = Image.fromarray(np.array(warped_coarse_src.cpu().numpy()[0,0,:,:]*255, dtype=np.uint8))
-        warped_coarse_src_image.save(f"deb/{bbox.get_offset()}_{tgt_z[0]}_src.png")
+        warped_coarse_src_image.save(f"deb/{src_z}/{bbox.get_offset()}_{tgt_z[0]}_src.png")
 
         warped_src = accum_field.permute(0,3,1,2).field_().sample(src_patch)
         warped_src_image = Image.fromarray(np.array(warped_src.cpu().numpy()[0,0,:,:]*255, dtype=np.uint8))
-        warped_src_image.save(f"deb/{bbox.get_offset()}_{tgt_z[0]}_warped_src.png")
+        warped_src_image.save(f"deb/{src_z}/{bbox.get_offset()}_{tgt_z[0]}_warped_src.png")
 
         print("TGT FIELD: ", tgt_z[0], tgt_field_cv)
 
