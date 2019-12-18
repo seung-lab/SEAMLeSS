@@ -385,15 +385,20 @@ class CloudUpsampleFieldTask(RegisteredTask):
           ), flush=True)
     start = time()
     if not aligner.dry_run:
+      bbox = deepcopy(patch_bbox)
+      bbox.max_mip = src_mip
+      pad = 2**(src_mip-dst_mip)
+      bbox.uncrop(pad, dst_mip)
       field = aligner.get_field(
         src_cv,
         src_z,
-        patch_bbox,
+        bbox,
         src_mip,
         relative=False,
         to_tensor=True,
       ).to(device=aligner.device)
       field = upsample_field(field, src_mip, dst_mip)
+      field = field[:, pad:-pad, pad:-pad, :]
       field = field.cpu().numpy()
       aligner.save_field(field, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
     end = time()

@@ -463,18 +463,16 @@ class Aligner:
     return favg
 
   def profile_field(self, field):
-    avg_x = self.avg_field(field[0,...,0])
-    avg_y = self.avg_field(field[0,...,1])
-    print("AVG:", avg_x.item(), avg_y.item())
     nonzero = field[(field[...,0] != 0) & (field[...,1] != 0)]
+    if len(nonzero) == 0:
+      return torch.Tensor([0, 0])
+
     low_l = percentile(nonzero, 0)
     high_l = percentile(nonzero, 100)
     mid = 0.5*(low_l + high_l)
 
     print("MID:", mid[0].item(), mid[1].item())
     return mid.cpu()
-
-    return torch.Tensor([avg_x, avg_y])
 
   #############################
   # CloudVolume chunk methods #
@@ -569,11 +567,7 @@ class Aligner:
         ).to(device=self.device)
 
         tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_()
-        try:
-          tgt_coarse_field_inv = tgt_coarse_field.up(coarse_field_mip - mip).inverse()
-        except RuntimeError as e:
-          print("INVERSE CALCULATION NEEDS TOO MUCH MEMORY: ", e)
-          tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
+        tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
 
         tgt_drift_field = tgt_coarse_field_inv.compose_with(tgt_field.permute(0, 3, 1, 2).field_())
         tgt_drift_field = tgt_drift_field.permute(0, 2, 3, 1)
@@ -583,14 +577,14 @@ class Aligner:
         tgt_drift_field = tgt_field
 
       tgt_drift_field = self.rel_to_abs_residual(tgt_drift_field, mip)
-      drift_distance = self.profile_field(tgt_drift_field[:, pad:-pad, pad:-pad, :])
+      drift_distance = self.profile_field(tgt_drift_field)
       drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
       drift_distance_coarse_snap = (
         drift_distance // (2 ** coarse_field_mip)
       ) * 2 ** coarse_field_mip
 
       tgt_field = self.rel_to_abs_residual(tgt_field, mip)
-      tgt_distance = self.profile_field(tgt_field[:, pad:-pad, pad:-pad, :])
+      tgt_distance = self.profile_field(tgt_field)
       tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
       tgt_field -= tgt_distance_fine_snap.to(device=self.device)
       tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
@@ -626,9 +620,9 @@ class Aligner:
 
       crop = 2 ** (coarse_field_mip - mip)
       offset = np.array((drift_distance_fine_snap - drift_distance_coarse_snap) // 2 ** mip, dtype=np.int)
-      coarse_field = coarse_field[:, crop+offset[0]:-crop+offset[0], crop+offset[1]:-crop+offset[1], :]
+      coarse_field = coarse_field[:, crop+offset[1]:-crop+offset[1], crop+offset[0]:-crop+offset[0], :]
 
-      coarse_distance = self.profile_field(coarse_field[:, pad:-pad, pad:-pad, :])
+      coarse_distance = self.profile_field(coarse_field)
       coarse_distance_fine_snap = (coarse_distance // (2 ** mip)) * 2 ** mip
       coarse_field -= coarse_distance_fine_snap.to(device=self.device)
       coarse_field = self.abs_to_rel_residual(coarse_field, padded_src_bbox_coarse, mip)
@@ -701,23 +695,6 @@ class Aligner:
         tgt_field=tgt_field,
         src_field=coarse_field,
       )
-
-      if bbox.get_offset() == (201728.0, 181248.0):
-        from PIL import Image
-        warped_tgt = tgt_field.permute(0,3,1,2).field_().sample(tgt_patch)
-        warped_tgt_image = Image.fromarray(np.array(warped_tgt.cpu().numpy()[0,0,:,:]*255, dtype=np.uint8))
-        warped_tgt_image.save(f"deb/{src_z}/{bbox.get_offset()}_{tgt_z[0]}_tgt.png")
-
-        warped_coarse_src = coarse_field.permute(0,3,1,2).field_().sample(src_patch)
-        warped_coarse_src_image = Image.fromarray(np.array(warped_coarse_src.cpu().numpy()[0,0,:,:]*255, dtype=np.uint8))
-        warped_coarse_src_image.save(f"deb/{src_z}/{bbox.get_offset()}_{tgt_z[0]}_src.png")
-
-        warped_src = accum_field.permute(0,3,1,2).field_().sample(src_patch)
-        warped_src_image = Image.fromarray(np.array(warped_src.cpu().numpy()[0,0,:,:]*255, dtype=np.uint8))
-        warped_src_image.save(f"deb/{src_z}/{bbox.get_offset()}_{tgt_z[0]}_warped_src.png")
-
-        print("TGT FIELD: ", tgt_z[0], tgt_field_cv)
-
 
       print(
         "GPU memory allocated: {}, cached: {}".format(
