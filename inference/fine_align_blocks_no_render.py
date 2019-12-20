@@ -95,6 +95,22 @@ if __name__ == "__main__":
         type=int,
         help="MIP level of the primer. E.g. the MIP of a coarse alignment",
     )
+    parser.add_argument(
+        "--render_dst",
+        type=str,
+        default=None,
+        help="If specified, CloudVolume path to render to instead of default"
+    )
+    parser.add_argument(
+        "--skip_alignment",
+        action='store_true',
+        help="If True, skip compute field and vector voting"
+    )
+    parser.add_argument(
+        "--skip_render",
+        action='store_true',
+        help="If True, skip rendering"
+    )
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -110,6 +126,8 @@ if __name__ == "__main__":
     src_mask_val = args.src_mask_val
     src_mask_mip = args.src_mask_mip
     block_size = args.block_size
+    do_alignment = not args.skip_alignment
+    do_render = not args.skip_render
 
     # Create CloudVolume Manager
     cm = CloudManager(
@@ -152,16 +170,20 @@ if __name__ == "__main__":
     ).path
     coarse_field_mip = args.coarse_field_mip
 
+    render_dst = args.dst_path
+    if args.render_dst is not None:
+        render_dst = args.render_dst
+
     # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius
     block_dsts = {}
     block_types = ["even", "odd"]
     for i, block_type in enumerate(block_types):
         block_dst = cm.create(
-            join(args.dst_path, "image_blocks", block_type),
+            join(render_dst, "image_blocks", block_type),
             data_type="uint8",
             num_channels=1,
             fill_missing=True,
-            overwrite=True,
+            overwrite=do_render,
         )
         block_dsts[i] = block_dst.path
 
@@ -322,14 +344,14 @@ if __name__ == "__main__":
             data_type="int16",
             num_channels=2,
             fill_missing=True,
-            overwrite=True,
+            overwrite=do_alignment,
         ).path
     block_vvote_field = cm.create(
         join(args.dst_path, "field", "vvote"),
         data_type="int16",
         num_channels=2,
         fill_missing=True,
-        overwrite=True,
+        overwrite=do_alignment,
     ).path
     stitch_pair_fields = {}
     for z_offset in offset_range:
@@ -338,21 +360,21 @@ if __name__ == "__main__":
             data_type="int16",
             num_channels=2,
             fill_missing=True,
-            overwrite=True,
+            overwrite=do_alignment,
         ).path
     overlap_vvote_field = cm.create(
         join(args.dst_path, "field", "stitch", "vvote", "field"),
         data_type="int16",
         num_channels=2,
         fill_missing=True,
-        overwrite=True,
+        overwrite=do_alignment,
     ).path
     overlap_image = cm.create(
         join(args.dst_path, "field", "stitch", "vvote", "image"),
         data_type="uint8",
         num_channels=1,
         fill_missing=True,
-        overwrite=True,
+        overwrite=do_render,
     ).path
     stitch_fields = {}
     for z_offset in offset_range:
@@ -361,14 +383,14 @@ if __name__ == "__main__":
             data_type="int16",
             num_channels=2,
             fill_missing=True,
-            overwrite=True,
+            overwrite=do_alignment,
         ).path
     broadcasting_field = cm.create(
         join(args.dst_path, "field", "stitch", "broadcasting"),
         data_type="int16",
         num_channels=2,
         fill_missing=True,
-        overwrite=True,
+        overwrite=do_alignment,
     ).path
 
     # Task scheduling functions
@@ -404,7 +426,8 @@ if __name__ == "__main__":
                 print("Run {}".format(task_iterator))
                 # wait
                 start = time()
-                a.wait_for_sqs_empty()
+                if do_alignment:
+                    a.wait_for_sqs_empty()
                 end = time()
                 diff = end - start
                 print("Executing {} use time: {}\n".format(task_iterator, diff))
@@ -704,7 +727,7 @@ if __name__ == "__main__":
                     mip,
                     inverse=False,
                     serial=True,
-                    softmin_temp=2 ** mip,
+                    softmin_temp=(2 ** coarse_field_mip) / 6.0,
                     blur_sigma=1,
                 )
                 yield from t
@@ -774,44 +797,53 @@ if __name__ == "__main__":
                     mip,
                     inverse=False,
                     serial=True,
-                    softmin_temp=2 ** mip,
+                    softmin_temp=(2 ** coarse_field_mip) / 6.0,
                     blur_sigma=1,
                 )
                 yield from t
 
     # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
-    print("COPY STARTING SECTION OF ALL BLOCKS")
-    execute(StarterCopy, copy_range)
-    print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
-    execute(StarterUpsampleField, copy_range)
-    print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
-    execute(StarterComputeField, starter_range)
-    execute(StarterRender, starter_range)
+    if do_render:
+        print("COPY STARTING SECTION OF ALL BLOCKS")
+        execute(StarterCopy, copy_range)
+    if do_alignment:
+        print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
+        execute(StarterUpsampleField, copy_range)
+        print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
+        execute(StarterComputeField, starter_range)
+    if do_render:
+        execute(StarterRender, starter_range)
     for z_offset in sorted(block_offset_to_z_range.keys()):
         z_range = list(block_offset_to_z_range[z_offset])
-        print("ALIGN BLOCK OFFSET {}".format(z_offset))
-        execute(BlockAlignComputeField, z_range)
-        print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-        execute(BlockAlignVectorVote, z_range)
-        print("RENDER BLOCK OFFSET {}".format(z_offset))
-        execute(BlockAlignRender, z_range)
+        if do_alignment:
+            print("ALIGN BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignComputeField, z_range)
+            print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignVectorVote, z_range)
+        if do_render:
+            print("RENDER BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignRender, z_range)
 
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
     print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
-    execute(StitchOverlapCopy, overlap_copy_range)
+    if do_render:
+        execute(StitchOverlapCopy, overlap_copy_range)
     for z_offset in sorted(stitch_offset_to_z_range.keys()):
         z_range = list(stitch_offset_to_z_range[z_offset])
-        print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
-        execute(StitchAlignComputeField, z_range)
-        print("VECTOR VOTE OVERLAPPING OFFSET {}".format(z_offset))
-        execute(StitchAlignVectorVote, z_range)
-        print("RENDER OVERLAPPING OFFSET {}".format(z_offset))
-        execute(StitchAlignRender, z_range)
+        if do_alignment:
+            print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
+            execute(StitchAlignComputeField, z_range)
+            print("VECTOR VOTE OVERLAPPING OFFSET {}".format(z_offset))
+            execute(StitchAlignVectorVote, z_range)
+        if do_render:
+            print("RENDER OVERLAPPING OFFSET {}".format(z_offset))
+            execute(StitchAlignRender, z_range)
 
-    print("COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING")
-    execute(StitchBroadcastCopy, stitch_range)
-    print("VECTOR VOTE STITCHING FIELDS")
-    execute(StitchBroadcastVectorVote, block_starts[1:])
+    if do_alignment:
+        print("COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING")
+        execute(StitchBroadcastCopy, stitch_range)
+        print("VECTOR VOTE STITCHING FIELDS")
+        execute(StitchBroadcastVectorVote, block_starts[1:])
 

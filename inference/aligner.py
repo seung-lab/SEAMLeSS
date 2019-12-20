@@ -1,3 +1,4 @@
+import torch
 import concurrent.futures
 from copy import deepcopy, copy
 from functools import partial
@@ -19,7 +20,6 @@ from skimage import img_as_ubyte
 from skimage.filters import gabor
 from skimage.morphology import rectangle, dilation, closing, opening
 from taskqueue import TaskQueue, LocalTaskQueue
-import torch
 from torch.nn.functional import interpolate, max_pool2d, conv2d
 import torch.nn as nn
 
@@ -2271,7 +2271,7 @@ class Aligner:
         responses.append(int(response['Attributes'][a]))
       print('{}     '.format(responses[-2:]), end="\r", flush=True)
       if i < 2:
-        sleep(1)
+        sleep(2)
     return all(i == 0 for i in responses)
 
   def wait_for_sqs_empty(self):

@@ -3,13 +3,13 @@ kind: Deployment
 metadata:
   creationTimestamp: null
   labels:
-    run: seamless
-  name: seamless
+    run: seamless-manuel-100
+  name: seamless-manuel-100
 spec:
   replicas: 1 
   selector:
     matchLabels:
-      run: seamless
+      run: seamless-manuel-100
   strategy:
     rollingUpdate:
       maxSurge: 100%
@@ -19,14 +19,14 @@ spec:
     metadata:
       creationTimestamp: null
       labels:
-        run: seamless
+        run: seamless-manuel-100
     spec:
       containers:
-      - image: seunglab/seamless:nkem-minnie-fine
-        name: seamless
+      - image: seunglab/seamless:jit-100-test-p
+        name: seamless-manuel-100
         imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/worker.py --processes 8 --gpu_processes 3 --queue_name nkem-seamless-1 --lease_seconds 40"]
+        args: ["-c", "python inference/worker.py --processes 8 --device cpu --queue_name manuel-seamless --lease_seconds 40"]
         resources: 
           limits:
             nvidia.com/gpu: 1
