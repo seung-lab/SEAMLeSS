@@ -71,6 +71,7 @@ if __name__ == '__main__':
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
+  parser.add_argument('--chunk_size', type=int, default=2048)
   parser.add_argument('--pad',
     help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
@@ -82,7 +83,7 @@ if __name__ == '__main__':
   args.serial_operation = True
   a = get_aligner(args)
   provenance = get_provenance(args)
-  chunk_size = 1024*2
+  chunk_size = args.chunk_size
 
   # Simplify var names
   mip = args.mip
