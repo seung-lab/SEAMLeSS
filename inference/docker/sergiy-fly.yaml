@@ -1,0 +1,73 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "8"
+    kubectl.kubernetes.io/last-applied-configuration: |
+  labels:
+    run: sergiy-fly
+  name: sergiy-fly
+  namespace: default
+  resourceVersion: "76432790"
+  selfLink: /apis/extensions/v1beta1/namespaces/default/deployments/sergiy-fly
+  uid: 53872c5f-19bc-11ea-8233-4201ac10002a
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 10
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      run: sergiy-fly
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: sergiy-fly
+    spec:
+      containers:
+      - args:
+        - -c
+        - python python3 copy_fly.py --queue sergiy-fly-1 --mode worker 
+        command:
+        - /bin/sh
+        image: seunglab/ncc_inference
+        imagePullPolicy: Always
+        name: sergiy-fly
+        resources:
+          limits:
+            nvidia.com/gpu: "1"
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /root/.cloudvolume/secrets
+          name: secrets
+          readOnly: true
+      dnsPolicy: Default
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: secrets
+        secret:
+          defaultMode: 420
+          secretName: secrets
+status:
+  availableReplicas: 38
+  conditions:
+  - lastTransitionTime: "2019-12-08T13:12:03Z"
+    lastUpdateTime: "2019-12-08T13:12:03Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  observedGeneration: 40
+  readyReplicas: 38
+  replicas: 40
+  unavailableReplicas: 2
+  updatedReplicas: 40

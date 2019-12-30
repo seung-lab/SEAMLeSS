@@ -125,14 +125,15 @@ def optimize_pre_post_ups(opti_loss, src, tgt, src_defects, tgt_defects, initial
     return prev_pre_res, prev_post_res
 
 def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defects, tgt_defects, mips, crop=2, bot_mip=4):
-    sm_val = 30e0
+    sm_val = 50e0
+    sm_val2 = 250e0
     sm = {
         4:  sm_val,
         5:  sm_val,
         6:  sm_val,
-        7:  sm_val,
-        8: 10e0,
-        9: 10e0
+        7:  150e0,
+        8: 200e0,
+        9: 350e0
     }
 
     lr = {
@@ -141,7 +142,7 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
         6: 20e-2,
         7: 20e-2,
         8: 20e-2,
-        9: 10e-2
+        9: 20e-2
     }
     num_iter = {
         4: 800,
@@ -178,12 +179,12 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
                                       positive_mse_mult=0),
         8: unsupervised_loss(smoothness_factor=sm[8], use_defect_mask=True,
                                       white_threshold=-10, reverse=True,
-                                      coarsen_mse=2,coarsen_smooth=2,
+                                      coarsen_mse=3,coarsen_smooth=3,
                                       coarsen_positive_mse=0,
                                       positive_mse_mult=0),
         9: unsupervised_loss(smoothness_factor=sm[9], use_defect_mask=True,
                                       white_threshold=-10, reverse=True,
-                                      coarsen_mse=2,coarsen_smooth=2,
+                                      coarsen_mse=4,coarsen_smooth=4,
                                       coarsen_positive_mse=0,
                                       positive_mse_mult=0)
     }
@@ -244,8 +245,8 @@ def optimize_metric(model, src, tgt, pred_res_start, src_defects, tgt_defects):
     tgt_defects = tgt_defects.squeeze(0)
     pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defects, tgt_defects, mips, crop=0, bot_mip=5)
 
-    mips = [7, 6, 5, 4]
-    pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt, src_defects, tgt_defects, mips, crop=0, bot_mip=4)
+    mips = [7]#[7, 6, 5, 4]
+    pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt, src_defects, tgt_defects, mips, crop=0, bot_mip=7)
     return pred_res_opt
 
 

@@ -1,2 +1,2 @@
 x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
-170000,170000,0,210000,210000,29000,0,sergiy_fine_test1,3,0,sergiy_testing
+170000,170000,0,190000,190000,29000,0,sergiy_fine_test1,1,0,sergiy_testing
