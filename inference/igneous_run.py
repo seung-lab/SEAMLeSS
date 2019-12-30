@@ -8,7 +8,7 @@ with TaskQueue('sergiy-fly-1') as tq:
             'precomputed://gs://fafb_v15_montages/sergiy_playground/main_region',
         chunk_size=[1024, 1024, 1],
         fill_missing=True,
-        bounds=Bbox((0, 0, 3100), (231424*8*1024, 114688+8*1024, 3400)),
+        bounds=Bbox((0, 0, 3000), (231424+8*1024, 114688+8*1024, 3400)),
         mip=0,
         num_mips=6,
         preserve_chunk_size=True,
