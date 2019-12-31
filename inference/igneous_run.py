@@ -9,9 +9,9 @@ with TaskQueue('sergiy-fly-1') as tq:
         chunk_size=[1024, 1024, 1],
         fill_missing=True,
         bounds=Bbox((0, 0, 3000), (231424+8*1024, 114688+8*1024, 3400)),
-        mip=0,
-        num_mips=6,
-        preserve_chunk_size=True,
+        mip=6,
+        num_mips=3,
+        preserve_chunk_size=False,
         delete_black_uploads=True
     )
     tq.insert_all(tasks)
