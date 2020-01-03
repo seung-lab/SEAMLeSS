@@ -84,6 +84,20 @@ if __name__ == '__main__':
   parser.add_argument('--decay_dist', type=int, default=10)
   parser.add_argument('--suffix', type=str, default='',
     help='string to append to directory names')
+  parser.add_argument(
+    "--skip_stitching",
+    action='store_true',
+    help="If True, skip compute field and vector voting"
+  )
+  parser.add_argument(
+    "--skip_render",
+    action='store_true',
+    help="If True, skip rendering"
+  )
+  parser.add_argument(
+    "--render_mip",
+    type=int
+  )
   args = parse_args(parser)
   # Only compute matches to previous sections
   a = get_aligner(args)
@@ -97,10 +111,23 @@ if __name__ == '__main__':
   src_mask_val = 1
   src_mask_mip = 8
   block_size = args.block_size
+  do_stitching = not args.skip_stitching
+  do_render = not args.skip_render
+  render_mip = args.render_mip or args.mip
 
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
                     size_chunk=chunk_size, batch_mip=mip)
+
+  cmr = CloudManager(
+    args.src_path,
+    max_mip,
+    pad,
+    provenance,
+    batch_size=1,
+    size_chunk=chunk_size,
+    batch_mip=render_mip,
+  )
   
   # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
   bbox_lookup = {}
@@ -167,10 +194,10 @@ if __name__ == '__main__':
   compose_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format(args.suffix), 
                                  'compose'),
                           data_type='int16', num_channels=2,
-                          fill_missing=True, overwrite=True).path
-  final_dst = cm.create(join(args.dst_path, 'image_stitch{}'.format(args.suffix)), 
+                          fill_missing=True, overwrite=do_stitching).path
+  final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.suffix)), 
                         data_type='uint8', num_channels=1, fill_missing=True, 
-                        overwrite=True).path
+                        overwrite=do_render).path
 
   # Task scheduling functions
   def remote_upload(tasks):
@@ -205,7 +232,8 @@ if __name__ == '__main__':
         print('Run {}'.format(task_iterator))
         # wait
         start = time()
-        a.wait_for_sqs_empty()
+        if do_stitching:
+          a.wait_for_sqs_empty()
         end = time()
         diff = end - start
         print('Executing {} use time: {}\n'.format(task_iterator, diff))
@@ -240,5 +268,7 @@ if __name__ == '__main__':
                      bbox=bbox, src_mip=mip, field_mip=mip)
         yield from t
 
-  execute(StitchCompose, compose_range)
-  execute(StitchRender, compose_range)
+  if do_stitching:
+    execute(StitchCompose, compose_range)
+  if do_render:
+    execute(StitchRender, compose_range)

@@ -128,12 +128,12 @@ class ComputeFieldTask(RegisteredTask):
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv):
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False):
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z, 
                      patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip, 
                      tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv)
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -170,6 +170,7 @@ class ComputeFieldTask(RegisteredTask):
       tgt_field_cv = DCV(self.tgt_field_cv)
     else:
       tgt_field_cv = None
+    stitch = self.stitch
 
     print("\nCompute field\n"
           "model {}\n"
@@ -186,12 +187,18 @@ class ComputeFieldTask(RegisteredTask):
                            src_z, tgt_z, mip), flush=True)
     start = time()
     if not aligner.dry_run:
-      field = aligner.compute_field_chunk(model_path, src_cv=src_cv, tgt_cv=tgt_cv, src_z=src_z, tgt_z=tgt_z,
-                                          bbox=patch_bbox, mip=mip, pad=pad,
-                                          src_mask_cv=src_mask_cv, src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                                          tgt_mask_cv=tgt_mask_cv, tgt_mask_mip=tgt_mask_mip, tgt_mask_val=tgt_mask_val,
-                                          tgt_alt_z=None, prev_field_cv=prev_field_cv, prev_field_z=prev_field_z,
-                                          coarse_field_cv=coarse_field_cv, coarse_field_mip=coarse_field_mip, tgt_field_cv=tgt_field_cv)
+      if stitch:
+        field = aligner.compute_field_chunk_stitch(model_path, field_cv=tgt_field_cv, image_cv=src_cv, src_z=src_z, tgt_z=tgt_z,
+                                            bbox=patch_bbox, mip=mip, pad=pad,
+                                            src_mask_cv=src_mask_cv, src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                                            tgt_mask_cv=tgt_mask_cv, tgt_mask_mip=tgt_mask_mip, tgt_mask_val=tgt_mask_val)
+      else:
+        field = aligner.compute_field_chunk(model_path, src_cv=src_cv, tgt_cv=tgt_cv, src_z=src_z, tgt_z=tgt_z,
+                                            bbox=patch_bbox, mip=mip, pad=pad,
+                                            src_mask_cv=src_mask_cv, src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+                                            tgt_mask_cv=tgt_mask_cv, tgt_mask_mip=tgt_mask_mip, tgt_mask_val=tgt_mask_val,
+                                            tgt_alt_z=None, prev_field_cv=prev_field_cv, prev_field_z=prev_field_z,
+                                            coarse_field_cv=coarse_field_cv, coarse_field_mip=coarse_field_mip, tgt_field_cv=tgt_field_cv)
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       end = time()
       diff = end - start

@@ -450,7 +450,7 @@ if __name__ == '__main__':
                               src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                               tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
                               tgt_mask_val=src_mask_val, 
-                              prev_field_cv=overlap_vvote_field, prev_field_z=tgt_z)
+                              prev_field_cv=overlap_vvote_field, prev_field_z=tgt_z,old=True)
           yield from t
 
   class StitchAlignVectorVote(object):
@@ -506,26 +506,26 @@ if __name__ == '__main__':
                           inverse=False, serial=True, softmin_temp=2**mip, blur_sigma=1)
         yield from t
 
-  # Serial alignment with block stitching 
-  print('START BLOCK ALIGNMENT')
-  print('COPY STARTING SECTION OF ALL BLOCKS')
-  execute(StarterCopy, copy_range)
-  print('ALIGN STARTER SECTIONS FOR EACH BLOCK')
-  execute(StarterComputeField, starter_range)
-  execute(StarterRender, starter_range)
-  for z_offset in sorted(block_offset_to_z_range.keys()):
-    z_range = list(block_offset_to_z_range[z_offset])
-    print('ALIGN BLOCK OFFSET {}'.format(z_offset))
-    execute(BlockAlignComputeField, z_range)
-    print('VECTOR VOTE BLOCK OFFSET {}'.format(z_offset))
-    execute(BlockAlignVectorVote, z_range)
-    print('RENDER BLOCK OFFSET {}'.format(z_offset))
-    execute(BlockAlignRender, z_range)
+  # # Serial alignment with block stitching 
+  # print('START BLOCK ALIGNMENT')
+  # print('COPY STARTING SECTION OF ALL BLOCKS')
+  # execute(StarterCopy, copy_range)
+  # print('ALIGN STARTER SECTIONS FOR EACH BLOCK')
+  # execute(StarterComputeField, starter_range)
+  # execute(StarterRender, starter_range)
+  # for z_offset in sorted(block_offset_to_z_range.keys()):
+  #   z_range = list(block_offset_to_z_range[z_offset])
+  #   print('ALIGN BLOCK OFFSET {}'.format(z_offset))
+  #   execute(BlockAlignComputeField, z_range)
+  #   print('VECTOR VOTE BLOCK OFFSET {}'.format(z_offset))
+  #   execute(BlockAlignVectorVote, z_range)
+  #   print('RENDER BLOCK OFFSET {}'.format(z_offset))
+  #   execute(BlockAlignRender, z_range)
 
-  print('END BLOCK ALIGNMENT')
-  print('START BLOCK STITCHING')
-  print('COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS')
-  execute(StitchOverlapCopy, overlap_copy_range)
+  # print('END BLOCK ALIGNMENT')
+  # print('START BLOCK STITCHING')
+  # print('COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS')
+  # execute(StitchOverlapCopy, overlap_copy_range)
   for z_offset in sorted(stitch_offset_to_z_range.keys()):
     z_range = list(stitch_offset_to_z_range[z_offset])
     print('ALIGN OVERLAPPING OFFSET {}'.format(z_offset))

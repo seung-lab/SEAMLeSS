@@ -111,6 +111,10 @@ if __name__ == "__main__":
         action='store_true',
         help="If True, skip rendering"
     )
+    parser.add_argument(
+        "--render_mip",
+        type=int
+    )
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -128,6 +132,7 @@ if __name__ == "__main__":
     block_size = args.block_size
     do_alignment = not args.skip_alignment
     do_render = not args.skip_render
+    render_mip = args.render_mip or args.mip
 
     # Create CloudVolume Manager
     cm = CloudManager(
@@ -139,10 +144,20 @@ if __name__ == "__main__":
         size_chunk=chunk_size,
         batch_mip=mip,
     )
+    # Create CloudVolume Manager
+    cmr = CloudManager(
+        args.src_path,
+        max_mip,
+        pad,
+        provenance,
+        batch_size=1,
+        size_chunk=chunk_size,
+        batch_mip=render_mip,
+    )
 
     # Create src CloudVolumes
     print("Create src & align image CloudVolumes")
-    src = cm.create(
+    src = cmr.create(
         args.src_path,
         data_type="uint8",
         num_channels=1,
@@ -178,7 +193,7 @@ if __name__ == "__main__":
     block_dsts = {}
     block_types = ["even", "odd"]
     for i, block_type in enumerate(block_types):
-        block_dst = cm.create(
+        block_dst = cmr.create(
             join(render_dst, "image_blocks", block_type),
             data_type="uint8",
             num_channels=1,
@@ -187,13 +202,16 @@ if __name__ == "__main__":
         )
         block_dsts[i] = block_dst.path
 
+    # import ipdb
+    # ipdb.set_trace
+
     # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
     bbox_lookup = {}
     model_lookup = {}
     tgt_radius_lookup = {}
     vvote_lookup = {}
     # skip_list = []
-    skip_list = [17491]
+    skip_list = [17491, 17891]
     with open(args.param_lookup) as f:
         reader = csv.reader(f, delimiter=",")
         for k, r in enumerate(reader):
@@ -393,6 +411,9 @@ if __name__ == "__main__":
         overwrite=do_alignment,
     ).path
 
+    # import ipdb
+    # ipdb.set_trace()
+
     # Task scheduling functions
     def remote_upload(tasks):
         with GreenTaskQueue(queue_name=args.queue_name) as tq:
@@ -456,7 +477,7 @@ if __name__ == "__main__":
                     field_z=z,
                     dst_z=z,
                     bbox=bbox,
-                    src_mip=mip,
+                    src_mip=render_mip,
                     field_mip=coarse_field_mip,
                     mask_cv=src_mask_cv,
                     mask_val=src_mask_val,
@@ -543,7 +564,7 @@ if __name__ == "__main__":
                     field_z=z,
                     dst_z=z,
                     bbox=bbox,
-                    src_mip=mip,
+                    src_mip=render_mip,
                     field_mip=mip,
                     mask_cv=src_mask_cv,
                     mask_val=src_mask_val,
@@ -635,7 +656,7 @@ if __name__ == "__main__":
                     field_z=z,
                     dst_z=z,
                     bbox=bbox,
-                    src_mip=mip,
+                    src_mip=render_mip,
                     field_mip=mip,
                     mask_cv=src_mask_cv,
                     mask_val=src_mask_val,
@@ -664,6 +685,68 @@ if __name__ == "__main__":
                 )
                 t = ti + tf
                 yield from t
+
+    # class StitchAlignComputeField(object):
+    #     def __init__(self, z_range):
+    #         self.z_range = z_range
+
+    #     def __iter__(self):
+    #         for z in self.z_range:
+    #             block_dst = block_dst_lookup[z]
+    #             bbox = bbox_lookup[z]
+    #             model_path = model_lookup[z]
+    #             tgt_offsets = vvote_lookup[z]
+    #             last_tgt_offset = tgt_offsets[0] + 1 # HACK
+    #             for tgt_offset in tgt_offsets:
+    #                 tgt_z = z + tgt_offset
+    #                 fine_field = stitch_pair_fields[tgt_offset]
+    #                 if last_tgt_offset > 0:
+    #                     tgt_field = overlap_vvote_field
+    #                 else:
+    #                     tgt_field = stitch_pair_fields[last_tgt_offset]
+    #                 last_tgt_offset = tgt_offset
+    #                 t = a.compute_field(
+    #                     cm,
+    #                     model_path,
+    #                     src,
+    #                     overlap_image,
+    #                     fine_field,
+    #                     z,
+    #                     tgt_z,
+    #                     bbox,
+    #                     mip,
+    #                     pad,
+    #                     src_mask_cv=src_mask_cv,
+    #                     src_mask_mip=src_mask_mip,
+    #                     src_mask_val=src_mask_val,
+    #                     tgt_mask_cv=src_mask_cv,
+    #                     tgt_mask_mip=src_mask_mip,
+    #                     tgt_mask_val=src_mask_val,
+    #                     tgt_field_cv=block_vvote_field,
+    #                     stitch=True
+    #                 )
+    #                 yield from t
+
+    # class StitchAlignComputeField(object):
+    #     def __init__(self, z_range):
+    #         self.z_range = z_range
+
+    #     def __iter__(self):
+    #         for z in self.z_range:
+    #             block_dst = block_dst_lookup[z] 
+    #             bbox = bbox_lookup[z]
+    #             model_path = model_lookup[z]
+    #             tgt_offsets = vvote_lookup[z]
+    #             for tgt_offset in tgt_offsets:
+    #                 tgt_z = z + tgt_offset
+    #                 field = stitch_pair_fields[tgt_offset]
+    #                 t = a.compute_field(cm, model_path, block_dst, overlap_image, field, 
+    #                                     z, tgt_z, bbox, mip, pad, src_mask_cv=src_mask_cv,
+    #                                     src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+    #                                     tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
+    #                                     tgt_mask_val=src_mask_val, 
+    #                                     prev_field_cv=overlap_vvote_field, prev_field_z=tgt_z,old=True)
+    #                 yield from t
 
     class StitchAlignComputeField(object):
         def __init__(self, z_range):
@@ -749,7 +832,7 @@ if __name__ == "__main__":
                     field_z=z,
                     dst_z=z,
                     bbox=bbox,
-                    src_mip=mip,
+                    src_mip=render_mip,
                     field_mip=mip,
                     mask_cv=src_mask_cv,
                     mask_val=src_mask_val,
@@ -802,8 +885,8 @@ if __name__ == "__main__":
                 )
                 yield from t
 
-    # Serial alignment with block stitching
-    print("START BLOCK ALIGNMENT")
+    # # Serial alignment with block stitching
+    # print("START BLOCK ALIGNMENT")
     if do_render:
         print("COPY STARTING SECTION OF ALL BLOCKS")
         execute(StarterCopy, copy_range)
