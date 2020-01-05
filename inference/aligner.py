@@ -478,6 +478,118 @@ class Aligner:
   # CloudVolume chunk methods #
   #############################
 
+  def compute_field_chunk_stitch_old(
+    self,
+    model_path,
+    bbox,
+    pad,
+    image_cv,
+    src_z,
+    field_cv,
+    tgt_z,
+    mip,
+    src_mask_cv=None,
+    src_mask_mip=0,
+    src_mask_val=0,
+    tgt_mask_cv=None,
+    tgt_mask_mip=0,
+    tgt_mask_val=0,
+  ):
+    """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
+    Args:
+      model_path: str for relative path to model directory
+      src_z: int of section to be warped
+      src_cv: MiplessCloudVolume with source image
+      tgt_z: int of section to be warped to
+      tgt_cv: MiplessCloudVolume with target image
+      bbox: BoundingBox for region of both sections to process
+      mip: int of MIP level to use for bbox
+      pad: int for amount of padding to add to the bbox before processing
+      mask_cv: MiplessCloudVolume with mask to be used for both src & tgt image
+      prev_field_cv: if specified, a MiplessCloudVolume containing the
+                     previously predicted field to be profile and displace
+                     the src chunk
+    Returns:
+      field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
+    """
+    archive = self.get_model_archive(model_path)
+    model = archive.model
+    normalizer = archive.preprocessor
+    print('compute_field for {0} to {1}'.format(bbox.stringify(src_z),
+                                                bbox.stringify(tgt_z)))
+    print('pad: {}'.format(pad))
+    padded_bbox = deepcopy(bbox)
+    padded_bbox.max_mip = mip
+    padded_bbox.uncrop(pad, mip=mip)
+
+    if prev_field_cv is not None:
+        field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
+                           relative=False, to_tensor=True)
+        if prev_field_inverse:
+          field = -field
+        distance = self.profile_field(field)
+        print('Displacement adjustment: {} px'.format(distance))
+        distance = (distance // (2 ** mip)) * 2 ** mip
+        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+    else:
+        distance = torch.Tensor([0, 0])
+        new_bbox = padded_bbox
+
+    tgt_z = [tgt_z]
+    if tgt_alt_z is not None:
+      try:
+        tgt_z.extend(tgt_alt_z)
+      except TypeError:
+        tgt_z.append(tgt_alt_z)
+      print('alternative target slices:', tgt_alt_z)
+
+    src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
+                                mask_cv=src_mask_cv, mask_mip=src_mask_mip,
+                                mask_val=src_mask_val,
+                                to_tensor=True, normalizer=normalizer)
+    tgt_patch = self.get_composite_image(tgt_cv, tgt_z, padded_bbox, mip,
+                                mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
+                                mask_val=tgt_mask_val,
+                                to_tensor=True, normalizer=normalizer)
+    import ipdb
+    ipdb.set_trace()
+    print('src_patch.shape {}'.format(src_patch.shape))
+    print('tgt_patch.shape {}'.format(tgt_patch.shape))
+
+    # Running the model is the only part that will increase memory consumption
+    # significantly - only incrementing the GPU lock here should be sufficient.
+    if self.gpu_lock is not None:
+      self.gpu_lock.acquire()
+      print("Process {} acquired GPU lock".format(os.getpid()))
+
+    try:
+      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+
+      # model produces field in relative coordinates
+      field, fine_field = model(
+        src_patch,
+        tgt_patch,
+        tgt_field=tgt_field,
+        src_field=src_field,
+      )
+      import ipdb
+      ipdb.set_trace()
+      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+      field = self.rel_to_abs_residual(field, mip)
+      field = field[:,pad:-pad,pad:-pad,:]
+      field += distance.to(device=self.device)
+      field = field.data.cpu().numpy()
+      # clear unused, cached memory so that other processes can allocate it
+      torch.cuda.empty_cache()
+
+      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+    finally:
+      if self.gpu_lock is not None:
+        print("Process {} releasing GPU lock".format(os.getpid()))
+        self.gpu_lock.release()
+
+    return field
+
   def compute_field_chunk_stitch(
     self,
     model_path,
