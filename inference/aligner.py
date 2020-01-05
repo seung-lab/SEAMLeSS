@@ -478,23 +478,11 @@ class Aligner:
   # CloudVolume chunk methods #
   #############################
 
-  def compute_field_chunk_stitch_old(
-    self,
-    model_path,
-    bbox,
-    pad,
-    image_cv,
-    src_z,
-    field_cv,
-    tgt_z,
-    mip,
-    src_mask_cv=None,
-    src_mask_mip=0,
-    src_mask_val=0,
-    tgt_mask_cv=None,
-    tgt_mask_mip=0,
-    tgt_mask_val=0,
-  ):
+  def compute_field_chunk_stitch_old(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad, 
+                          src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
+                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
+                          tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
+                          prev_field_inverse=False):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
     Args:
       model_path: str for relative path to model directory

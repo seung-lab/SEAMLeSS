@@ -952,8 +952,8 @@ if __name__ == "__main__":
     # print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
     print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
-    if do_render:
-        execute(StitchOverlapCopy, overlap_copy_range)
+    # if do_render:
+    #     execute(StitchOverlapCopy, overlap_copy_range)
     for z_offset in sorted(stitch_offset_to_z_range.keys()):
         z_range = list(stitch_offset_to_z_range[z_offset])
         if do_alignment:
