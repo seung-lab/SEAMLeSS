@@ -188,10 +188,16 @@ class ComputeFieldTask(RegisteredTask):
     start = time()
     if not aligner.dry_run:
       if stitch:
-        field = aligner.compute_field_chunk_stitch_old(model_path, field_cv=tgt_field_cv, image_cv=src_cv, src_z=src_z, tgt_z=tgt_z,
-                                            bbox=patch_bbox, mip=mip, pad=pad,
-                                            src_mask_cv=src_mask_cv, src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                                            tgt_mask_cv=tgt_mask_cv, tgt_mask_mip=tgt_mask_mip, tgt_mask_val=tgt_mask_val)
+        # field = aligner.compute_field_chunk_stitch_old(model_path, field_cv=tgt_field_cv, image_cv=src_cv, src_z=src_z, tgt_z=tgt_z,
+        #                                     bbox=patch_bbox, mip=mip, pad=pad,
+        #                                     src_mask_cv=src_mask_cv, src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
+        #                                     tgt_mask_cv=tgt_mask_cv, tgt_mask_mip=tgt_mask_mip, tgt_mask_val=tgt_mask_val)
+        field = aligner.compute_field_chunk_stitch_old(model_path, src_cv, tgt_cv, src_z, tgt_z, 
+                                            patch_bbox, mip, pad, 
+                                            src_mask_cv, src_mask_mip, src_mask_val,
+                                            tgt_mask_cv, tgt_mask_mip, tgt_mask_val,
+                                            None, prev_field_cv, prev_field_z, 
+                                            prev_field_inverse)
       else:
         field = aligner.compute_field_chunk(model_path, src_cv=src_cv, tgt_cv=tgt_cv, src_z=src_z, tgt_z=tgt_z,
                                             bbox=patch_bbox, mip=mip, pad=pad,
