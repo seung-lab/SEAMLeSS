@@ -539,8 +539,8 @@ class Aligner:
                                 mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
                                 mask_val=tgt_mask_val,
                                 to_tensor=True, normalizer=normalizer)
-    import ipdb
-    ipdb.set_trace()
+    # import ipdb
+    # ipdb.set_trace()
     print('src_patch.shape {}'.format(src_patch.shape))
     print('tgt_patch.shape {}'.format(tgt_patch.shape))
 
@@ -553,15 +553,18 @@ class Aligner:
     try:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
 
+      zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,3072,3072])))
+      zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
+
       # model produces field in relative coordinates
       field, fine_field = model(
         src_patch,
         tgt_patch,
-        tgt_field=tgt_field,
-        src_field=src_field,
+        tgt_field=zero_fieldC,
+        src_field=zero_fieldC,
       )
-      import ipdb
-      ipdb.set_trace()
+      # import ipdb
+      # ipdb.set_trace()
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       field = self.rel_to_abs_residual(field, mip)
       field = field[:,pad:-pad,pad:-pad,:]
