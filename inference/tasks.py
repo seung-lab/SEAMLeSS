@@ -56,6 +56,7 @@ class PredictImageTask(RegisteredTask):
     image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox_in, chunk_size, overlap)
     image = image.cpu().numpy()
     min_bound = src_cv[mip].bounds.minpt
+    print(overlap, min_bound, patch_range)
     image = image[(slice(0,1),slice(0,1)) + 
                   tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),
                               overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size) for i in [0,1]])]
