@@ -68,7 +68,7 @@ if __name__ == '__main__':
   mip = args.mip
   max_mip = args.max_mip
   pad = args.max_displacement
-  chunk_size = (256*4, 256*4)
+  chunk_size = (256, 256)
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
