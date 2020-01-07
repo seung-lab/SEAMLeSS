@@ -1,108 +1,57 @@
-import sys
-import torch
-import json
-from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
-from os.path import join
-from cloudmanager import CloudManager
-from time import time
-from tasks import run 
+import numpy as np
+import itertools
 
-def print_run(diff, n_tasks):
-  if n_tasks > 0:
-    print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
 
-if __name__ == '__main__':
-  parser = get_argparser()
-  parser.add_argument('--model_path', type=str,
-    help='relative path to the ModelArchive to use for computing fields')
-  parser.add_argument('--src_path', type=str)
-  parser.add_argument('--src_mask_path', type=str, default='',
-    help='CloudVolume path of mask to use with src images; default None')
-  parser.add_argument('--src_mask_mip', type=int, default=8,
-    help='MIP of source mask')
-  parser.add_argument('--src_mask_val', type=int, default=1,
-    help='Value of of mask that indicates DO NOT mask')
-  parser.add_argument('--dst_path', type=str)
-  parser.add_argument('--mip', type=int)
-  parser.add_argument('--bbox_start', nargs=3, type=int,
-    help='bbox origin, 3-element int list')
-  parser.add_argument('--bbox_stop', nargs=3, type=int,
-    help='bbox origin+shape, 3-element int list')
-  parser.add_argument('--bbox_mip', type=int, default=0,
-    help='MIP level at which bbox_start & bbox_stop are specified')
-  parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--max_displacement', 
-    help='the size of the largest displacement expected; should be 2^high_mip', 
-    type=int, default=2048)
-  parser.add_argument('--block_size', type=int, default=10)
-  args = parse_args(parser)
-  # Only compute matches to previous sections
-  args.serial_operation = True
-  a = get_aligner(args)
-  bbox = get_bbox(args)
-  provenance = get_provenance(args)
+def chunk_bboxes(vol_size, chunk_size, overlap=(0,0)):
+
+  x_bnds = bounds1D(vol_size[0], chunk_size[0], overlap[0])
+  y_bnds = bounds1D(vol_size[1], chunk_size[1], overlap[1])
+
+  bboxes = [tuple(zip(xs, ys))
+            for (xs, ys) in itertools.product(x_bnds, y_bnds)]
+
+  return bboxes
+
+def bounds1D(full_width, step_size, overlap=0):
+
+  assert step_size > 0, "invalid step_size: {}".format(step_size)
+  assert full_width > 0, "invalid volume_width: {}".format(full_width)
+  assert overlap >= 0, "invalid overlap: {}".format(overlap)
+
+  start = 0
+  end = step_size
+
+  bounds = []
+  while end < full_width:
+    bounds.append((start, end))
+
+    start += step_size - overlap
+    end = start + step_size
+
+  # last window
+  end = full_width
+  bounds.append((start, end))
+
+  return bounds
+
+def defect_detect(model, image, chunk_size, overlap):
+
+  img_size = image.shape[2:]
   
-  # Simplify var names
-  mip = args.mip
-  max_mip = args.max_mip
-  pad = args.max_displacement
-  chunk_size = (256, 256)
+  overlap = np.array(overlap)
+  bboxes = chunk_bboxes(img_size, chunk_size, 2*overlap)
 
-  # Compile ranges
-  full_range = range(args.bbox_start[2], args.bbox_stop[2])
-  # Create CloudVolume Manager
-  cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=256, batch_mip=mip)
+  pred = np.zeros(image.shape)
 
-  # Create src CloudVolumes
-  src = cm.create(args.src_path, data_type='uint8', num_channels=1,
-                     fill_missing=True, overwrite=False)
+  for b in bboxes:
+    bs = b[0]
+    be = b[1]
 
-  # Create dst CloudVolumes
-  dst = cm.create(join(args.dst_path, 'image'),
-                  data_type='uint8', num_channels=1, fill_missing=True,
-                  overwrite=True)
+    patch = image[0,0,bs[0]:be[0],bs[1]:be[1]]
+    pred_patch = model(patch)
 
-  batch =[]
-  prefix = str(mip)
-  # for z in full_range:
-  #     print("fold detection for z={}".format(z))
-  #     t = a.predict_image(cm, args.model_path, src, dst, z, mip, bbox,
-  #                     chunk_size, prefix);
-  #     batch.extend(t)
-  # print(">>>>> Generation done!")
-  # start = time()
-  # run(a, batch)
-  # end = time()
-  # diff = end - start
-  # print_run(diff, len(batch))
-  # start = time()
-  # # wait 
-  # n = len(batch)
-  # a.wait_for_queue_empty(dst.path, 'predict_image_done/{}'.format(prefix), n)
-  # end = time()
-  # diff = end - start
-  # print_run(diff, len(batch))
+    pred[0,0,bs[0]+overlap[0]:be[0]-overlap[0],bs[1]+overlap[1]:be[1]-overlap[1]] = pred_patch
 
-  range_idx = range(args.bbox_start[2], args.bbox_stop[2], 100)
-  for i in range_idx:
-    part_range = range(i, i+100)
-    for z in part_range:
-        print("fold detection for z={}".format(z))
-        t = a.predict_image(cm, args.model_path, src, dst, z, mip, bbox,
-                        chunk_size, prefix);
-        batch.extend(t)
-    print(">>>>> Generation done!")
-    start = time()
-    run(a, batch)
-    end = time()
-    diff = end - start
-    print_run(diff, len(batch))
-    start = time()
-    # wait 
-    n = len(batch)
-    a.wait_for_queue_empty(dst.path, 'predict_image_done/{}'.format(prefix), n)
-    end = time()
-    diff = end - start
-    print_run(diff, len(batch))
+  return pred 
+
 

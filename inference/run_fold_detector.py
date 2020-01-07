@@ -38,12 +38,6 @@ if __name__ == '__main__':
   parser.add_argument('--model_path', type=str,
     help='relative path to the ModelArchive to use for computing fields')
   parser.add_argument('--src_path', type=str)
-  parser.add_argument('--src_mask_path', type=str, default='',
-    help='CloudVolume path of mask to use with src images; default None')
-  parser.add_argument('--src_mask_mip', type=int, default=8,
-    help='MIP of source mask')
-  parser.add_argument('--src_mask_val', type=int, default=1,
-    help='Value of of mask that indicates DO NOT mask')
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--mip', type=int)
   parser.add_argument('--bbox_start', nargs=3, type=int,
@@ -56,7 +50,10 @@ if __name__ == '__main__':
   parser.add_argument('--max_displacement',
     help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
-  parser.add_argument('--block_size', type=int, default=10)
+  parser.add_argument('--chunk_size', nargs=2, type=int,
+    help='chunk size')
+  parser.add_argument('--overlap', nargs=2, type=int,
+    help='chunk overlap')
   args = parse_args(parser)
   # Only compute matches to previous sections
   args.serial_operation = True
@@ -68,7 +65,8 @@ if __name__ == '__main__':
   mip = args.mip
   max_mip = args.max_mip
   pad = args.max_displacement
-  chunk_size = (256, 256)
+  chunk_size = args.chunk_size
+  overlap = args.overlap
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -96,7 +94,7 @@ if __name__ == '__main__':
       def __iter__(self):
           for z in self.brange:
               t = a.predict_image(cm, args.model_path, src.path, dst.path, z, mip, bbox,
-                                  chunk_size, prefix)
+                                  chunk_size, overlap, prefix)
               yield from t
   range_list = make_range(full_range, a.threads)
 

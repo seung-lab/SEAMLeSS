@@ -42,6 +42,7 @@ import tenacity
 import boto3
 from fcorr import get_fft_power2, get_hp_fcorr
 from fold_detec_post import postprocess
+from fold_detection import defect_detect
 
 retry = tenacity.retry(
   reraise=True, 
@@ -115,6 +116,17 @@ class Aligner:
         chunks.append(BoundingBox(xs, xs + chunk_size[0],
                                  ys, ys + chunk_size[1],
                                  mip=mip, max_mip=max_mip))
+    # xs = calign_x_range[0]
+    # ys = calign_y_range[0]
+    # while xs < calign_x_range[1]:
+    #   while ys < calign_y_range[1]:
+    #     chunks.append(BoundingBox(xs, xs + chunk_size[0],
+    #                               ys, ys + chunk_size[1],
+    #                               mip=mip, max_mip=max_mip))
+
+    #     xs += chunk_size[0] - overlap[0]
+    #     ys += chunk_size[1] - overlap[1]
+
     return chunks
 
   def adjust_bbox(self, bbox, dis):
@@ -251,7 +263,12 @@ class Aligner:
     """
     x_range = bbox.x_range(mip=src_mip)
     y_range = bbox.y_range(mip=src_mip)
-    data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
+    vol_start = cv[src_mip].bounds.minpt
+    vol_end = cv[src_mip].bounds.maxpt
+    xs = max(x_range[0],vol_start[0]); ys = max(y_range[0],vol_start[1])
+    xe = min(x_range[1],vol_end[0]); ye = min(y_range[1],vol_end[1])
+
+    data = cv[src_mip][xs:xe, ys:ye, z]
     data = np.transpose(data, (2,3,0,1))
     if to_float:
       data = np.divide(data, float(255.0), dtype=np.float32)
@@ -556,7 +573,7 @@ class Aligner:
     return field
 
   def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
-                    chunk_size, prefix=''):
+                    chunk_size, overlap, prefix=''):
     chunks = self.break_into_chunks(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.num_scales)
@@ -565,15 +582,15 @@ class Aligner:
     batch = []
     for patch_bbox in chunks:
       batch.append(tasks.PredictImageTask(model_path, src_cv, dst_cv, z, mip,
-                                        patch_bbox, prefix))
+                                        patch_bbox, overlap, prefix))
     return batch
 
-  def predict_image_chunk(self, model_path, src_cv, z, mip, bbox):
+  def predict_image_chunk(self, model_path, src_cv, z, mip, bbox, chunk_size=(256,256), overlap=(0,0)):
     archive = self.get_model_archive(model_path)
     model = archive.model
     image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
     if torch.sum(image)>0:
-      return model(image)
+      return defect_detect(model, image, chunk_size, overlap)
     else:
       return image
     
