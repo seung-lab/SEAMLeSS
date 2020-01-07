@@ -254,7 +254,7 @@ class Aligner:
     vol_start = cv[src_mip].bounds.minpt
     vol_end = cv[src_mip].bounds.maxpt
     xs = max(x_range[0],vol_start[0]); ys = max(y_range[0],vol_start[1])
-    xe = min(x_range[1],vol_end[0]); ye = min(y_range[1],vol_end[1])
+    xe = x_range[1]; ye = y_range[1]
 
     data = cv[src_mip][xs:xe, ys:ye, z]
     data = np.transpose(data, (2,3,0,1))
