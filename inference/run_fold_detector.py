@@ -47,9 +47,6 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--max_displacement',
-    help='the size of the largest displacement expected; should be 2^high_mip',
-    type=int, default=2048)
   parser.add_argument('--chunk_size', nargs=2, type=int,
     help='chunk size')
   parser.add_argument('--overlap', nargs=2, type=int,
@@ -64,9 +61,9 @@ if __name__ == '__main__':
   # Simplify var names
   mip = args.mip
   max_mip = args.max_mip
-  pad = args.max_displacement
   chunk_size = args.chunk_size
   overlap = args.overlap
+  pad = 0
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -79,9 +76,8 @@ if __name__ == '__main__':
                      fill_missing=True, overwrite=False)
 
   # Create dst CloudVolumes
-  dst = cm.create(join(args.dst_path, 'image'),
-                  data_type='uint8', num_channels=1, fill_missing=True,
-                  overwrite=True)
+  dst = cm.create(args.dst_path,
+                  data_type='uint8', num_channels=1, fill_missing=True, overwrite=True)
 
   def remote_upload(tasks):
     with GreenTaskQueue(queue_name=args.queue_name) as tq:
