@@ -52,12 +52,12 @@ class PredictImageTask(RegisteredTask):
           "at z={}\n"
           "MIP{}\n".format(src_cv, dst_cv, z, mip), flush=True)
     start = time()
+    
     chunk_size = (256,256)
     image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox_in, chunk_size, overlap)
     image = image.cpu().numpy()
     min_bound = src_cv[mip].bounds.minpt
-    print(image.shape)
-    image = image[(slice(0,1),slice(0,1),) + tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
+    image = image[(slice(0,1),slice(0,1),)+tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
     aligner.save_image(image, dst_cv, z, patch_bbox_out, mip)
 
     with Storage(dst_cv.path) as stor:
