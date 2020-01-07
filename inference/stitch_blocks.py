@@ -195,6 +195,10 @@ if __name__ == '__main__':
                                  'compose'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=do_stitching).path
+  # compose_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format('decay1000'), 
+  #                                'compose'),
+  #                         data_type='int16', num_channels=2,
+  #                         fill_missing=True, overwrite=do_stitching).path
   final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.suffix)), 
                         data_type='uint8', num_channels=1, fill_missing=True, 
                         overwrite=do_render).path
@@ -265,7 +269,7 @@ if __name__ == '__main__':
       for z in self.z_range:
         bbox = bbox_lookup[z]
         t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
-                     bbox=bbox, src_mip=mip, field_mip=mip)
+                     bbox=bbox, src_mip=render_mip, field_mip=mip)
         yield from t
 
   if do_stitching:

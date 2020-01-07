@@ -251,6 +251,16 @@ class RenderTask(RegisteredTask):
                                      mask_val=mask_val, affine=affine,
                                      use_cpu=self.use_cpu)
       image = image.cpu().numpy()
+      # import ipdb
+      # ipdb.set_trace()
+      # import ipdb
+      # try:
+      #   aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
+      #   ipdb.set_trace()
+      #   a = 10
+      # except:
+      #   ipdb.set_trace()
+      #   b = 100
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
       end = time()
       diff = end - start

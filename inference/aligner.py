@@ -341,11 +341,11 @@ class Aligner:
     #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
     if to_uint8:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
-    try:
-      cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
-    except:
-      import ipdb
-      ipdb.set_trace()
+    # try:
+    cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
+    # except:
+      # import ipdb
+      # ipdb.set_trace()
 
   def save_image_batch(self, cv, z_range, float_patch, bbox, mip, to_uint8=True):
     x_range = bbox.x_range(mip=mip)
@@ -1136,6 +1136,7 @@ class Aligner:
           self.device = 'cpu'
       assert(field_mip >= image_mip)
       pad = 256
+      # pad = 1024
       padded_bbox = deepcopy(bbox)
       padded_bbox.max_mip = max(image_mip, field_mip)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
