@@ -63,7 +63,6 @@ class Aligner:
     if queue_name:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
     
-    self.chunk_size = (1024, 1024)
     self.device = torch.device('cuda')
 
     self.model_archives = {}
@@ -92,8 +91,6 @@ class Aligner:
        mip: int for MIP level at which bbox is defined
        max_mip: int for the maximum MIP level at which the bbox is valid
     """
-    if chunk_size[0] > self.chunk_size[0] or chunk_size[1] > self.chunk_size[1]:
-      chunk_size = self.chunk_size 
 
     raw_x_range = bbox.x_range(mip=mip)
     raw_y_range = bbox.y_range(mip=mip)
@@ -116,16 +113,7 @@ class Aligner:
         chunks.append(BoundingBox(xs, xs + chunk_size[0],
                                  ys, ys + chunk_size[1],
                                  mip=mip, max_mip=max_mip))
-    # xs = calign_x_range[0]
-    # ys = calign_y_range[0]
-    # while xs < calign_x_range[1]:
-    #   while ys < calign_y_range[1]:
-    #     chunks.append(BoundingBox(xs, xs + chunk_size[0],
-    #                               ys, ys + chunk_size[1],
-    #                               mip=mip, max_mip=max_mip))
 
-    #     xs += chunk_size[0] - overlap[0]
-    #     ys += chunk_size[1] - overlap[1]
 
     return chunks
 
