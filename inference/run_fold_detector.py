@@ -74,7 +74,7 @@ if __name__ == '__main__':
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=256, batch_mip=mip)
+                    size_chunk=chunk_size[0], batch_mip=mip)
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
