@@ -261,6 +261,13 @@ if __name__ == "__main__":
     block_stops = block_starts[1:]
     if block_starts[-1] != args.z_stop:
         block_stops.append(args.z_stop)
+    section_to_block_start = {}
+    for z in range(args.z_start, args.z_stop):
+        # try:
+        section_to_block_start[z] = max(filter(lambda x: (x <= z), block_starts))
+        # except:
+            # import ipdb
+            # ipdb.set_trace()
     # print('initial_block_starts {}'.format(list(initial_block_starts)))
     # print('block_starts {}'.format(block_starts))
     # print('block_stops {}'.format(block_stops))
@@ -374,21 +381,21 @@ if __name__ == "__main__":
     stitch_pair_fields = {}
     for z_offset in offset_range:
         stitch_pair_fields[z_offset] = cm.create(
-            join(args.dst_path, "field", "stitch2", str(z_offset)),
+            join(args.dst_path, "field", "stitch", str(z_offset)),
             data_type="int16",
             num_channels=2,
             fill_missing=True,
             overwrite=do_alignment,
         ).path
     overlap_vvote_field = cm.create(
-        join(args.dst_path, "field", "stitch2", "vvote", "field"),
+        join(args.dst_path, "field", "stitch", "vvote", "field"),
         data_type="int16",
         num_channels=2,
         fill_missing=True,
         overwrite=do_alignment,
     ).path
     overlap_image = cm.create(
-        join(args.dst_path, "field", "stitch2", "vvote", "image"),
+        join(args.dst_path, "field", "stitch", "vvote", "image"),
         data_type="uint8",
         num_channels=1,
         fill_missing=True,
@@ -397,14 +404,14 @@ if __name__ == "__main__":
     stitch_fields = {}
     for z_offset in offset_range:
         stitch_fields[z_offset] = cm.create(
-            join(args.dst_path, "field", "stitch2", "vvote", str(z_offset)),
+            join(args.dst_path, "field", "stitch", "vvote", str(z_offset)),
             data_type="int16",
             num_channels=2,
             fill_missing=True,
             overwrite=do_alignment,
         ).path
     broadcasting_field = cm.create(
-        join(args.dst_path, "field", "stitch2", "broadcasting"),
+        join(args.dst_path, "field", "stitch", "broadcasting"),
         data_type="int16",
         num_channels=2,
         fill_missing=True,
@@ -587,7 +594,7 @@ if __name__ == "__main__":
                     fine_field = block_pair_fields[tgt_offset]
                     if tgt_z in original_copy_range:
                         tgt_field = block_pair_fields[0]
-                    elif tgt_z in original_starter_range:
+                    elif tgt_z in original_starter_range and src_z > section_to_block_start[src_z] and section_to_block_start[src_z] > tgt_z:
                         tgt_field = block_pair_fields[starter_z_to_offset[tgt_z]]
                     else:
                         tgt_field = block_vvote_field
@@ -745,7 +752,9 @@ if __name__ == "__main__":
                                         src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
                                         tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
                                         tgt_mask_val=src_mask_val, 
-                                        prev_field_cv=overlap_vvote_field, prev_field_z=tgt_z,stitch=True)
+                                        prev_field_cv=overlap_vvote_field,
+                                        # prev_field_cv=None,
+                                        prev_field_z=tgt_z,stitch=True)
                     yield from t
 
     # class StitchAlignComputeField(object):
@@ -927,33 +936,33 @@ if __name__ == "__main__":
                 yield from t
 
     # # Serial alignment with block stitching
-    # print("START BLOCK ALIGNMENT")
-    # if do_render:
-    #     print("COPY STARTING SECTION OF ALL BLOCKS")
-    #     execute(StarterCopy, copy_range)
-    # if do_alignment:
-    #     print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
-    #     execute(StarterUpsampleField, copy_range)
-    #     print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
-    #     execute(StarterComputeField, starter_range)
-    # if do_render:
-    #     execute(StarterRender, starter_range)
-    # for z_offset in sorted(block_offset_to_z_range.keys()):
-    #     z_range = list(block_offset_to_z_range[z_offset])
-    #     if do_alignment:
-    #         print("ALIGN BLOCK OFFSET {}".format(z_offset))
-    #         execute(BlockAlignComputeField, z_range)
-    #         print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-    #         execute(BlockAlignVectorVote, z_range)
-    #     if do_render:
-    #         print("RENDER BLOCK OFFSET {}".format(z_offset))
-    #         execute(BlockAlignRender, z_range)
+    print("START BLOCK ALIGNMENT")
+    if do_render:
+        print("COPY STARTING SECTION OF ALL BLOCKS")
+        execute(StarterCopy, copy_range)
+    if do_alignment:
+        print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
+        execute(StarterUpsampleField, copy_range)
+        print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
+        execute(StarterComputeField, starter_range)
+    if do_render:
+        execute(StarterRender, starter_range)
+    for z_offset in sorted(block_offset_to_z_range.keys()):
+        z_range = list(block_offset_to_z_range[z_offset])
+        if do_alignment:
+            print("ALIGN BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignComputeField, z_range)
+            print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignVectorVote, z_range)
+        if do_render:
+            print("RENDER BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignRender, z_range)
 
-    # print("END BLOCK ALIGNMENT")
+    print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
     print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
-    # if do_render:
-    #     execute(StitchOverlapCopy, overlap_copy_range)
+    if do_render:
+        execute(StitchOverlapCopy, overlap_copy_range)
     for z_offset in sorted(stitch_offset_to_z_range.keys()):
         z_range = list(stitch_offset_to_z_range[z_offset])
         if do_alignment:

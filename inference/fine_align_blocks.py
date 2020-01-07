@@ -241,6 +241,9 @@ if __name__ == "__main__":
     block_stops = block_starts[1:]
     if block_starts[-1] != args.z_stop:
         block_stops.append(args.z_stop)
+    section_to_block_start = {}
+    for z in range(z_start, z_stop):
+        section_to_block_start[z] = max(filter(lambda x: (x < z), block_starts))
     # print('initial_block_starts {}'.format(list(initial_block_starts)))
     # print('block_starts {}'.format(block_starts))
     # print('block_stops {}'.format(block_stops))
@@ -391,8 +394,8 @@ if __name__ == "__main__":
         overwrite=True,
     ).path
 
-    import ipdb
-    ipdb.set_trace()
+    # import ipdb
+    # ipdb.set_trace()
 
     # Task scheduling functions
     def remote_upload(tasks):
@@ -567,7 +570,7 @@ if __name__ == "__main__":
                     fine_field = block_pair_fields[tgt_offset]
                     if tgt_z in original_copy_range:
                         tgt_field = block_pair_fields[0]
-                    elif tgt_z in original_starter_range:
+                    elif tgt_z in original_starter_range and section_to_block_start[src_z] > tgt_z:
                         tgt_field = block_pair_fields[starter_z_to_offset[tgt_z]]
                     else:
                         tgt_field = block_vvote_field

@@ -184,18 +184,18 @@ if __name__ == '__main__':
   tgt_mask_cv = None
 
   broadcasting_field = cm.create(join(args.dst_path, 'field', 
-                                      'stitch2', 'broadcasting'),
+                                      'stitch3', 'broadcasting'),
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=False).path
   block_field = cm.create(join(args.dst_path, 'field', 'vvote'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=False).path
 
-  compose_field = cm.create(join(args.dst_path, 'field', 'stitch2{}'.format(args.suffix), 
+  compose_field = cm.create(join(args.dst_path, 'field', 'stitch3{}'.format(args.suffix), 
                                  'compose'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=do_stitching).path
-  final_dst = cmr.create(join(args.dst_path, 'image_stitch2{}'.format(args.suffix)), 
+  final_dst = cmr.create(join(args.dst_path, 'image_stitch3{}'.format(args.suffix)), 
                         data_type='uint8', num_channels=1, fill_missing=True, 
                         overwrite=do_render).path
 
