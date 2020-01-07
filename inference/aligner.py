@@ -553,7 +553,7 @@ class Aligner:
     try:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
 
-      zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,3072,3072])))
+      zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,2048,2048])))
       zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
 
       # model produces field in relative coordinates
