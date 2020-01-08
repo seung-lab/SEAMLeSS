@@ -582,13 +582,13 @@ class Aligner:
     else:
       return image
     
-  def fold_postprocess(self, cm, src_cv, dst_cv, z, mip, bbox, thr_binarize, w_connect, thr_filter, w_dilate):
-    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+  def fold_postprocess(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, thr_filter, w_dilate):
+    chunks = self.break_into_chunks(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.num_scales)
     batch = []
     for patch_bbox in chunks:
-      batch.append(tasks.FoldDetecPostTask(src_cv, dst_cv,patch_bbox, mip, z, thr_binarize, w_connect, thr_filter, w_dilate))
+      batch.append(tasks.FoldDetecPostTask(src_cv, dst_cv,patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter, w_dilate))
     return batch
  
   def fold_postprocess_chunk(self, src_cv, bbox, z, mip, thr_binarize, w_connect, thr_filter, w_dilate):

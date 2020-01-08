@@ -59,9 +59,6 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--max_displacement',
-    help='the size of the largest displacement expected; should be 2^high_mip',
-    type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   args = parse_args(parser)
   # Only compute matches to previous sections
@@ -74,8 +71,9 @@ if __name__ == '__main__':
   # Simplify var names
   mip = args.mip
   max_mip = args.max_mip
-  pad = args.max_displacement
-  chunk_size = (1024, 1024)
+  pad = 0
+  chunk_size = (2048,2048)
+  overlap = (512,512)
 
   thr_binarize = args.thr_binarize
   w_connect = args.w_connect
@@ -86,14 +84,14 @@ if __name__ == '__main__':
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=1024, batch_mip=mip)
+                    size_chunk=chunk_size[0], batch_mip=mip)
 
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False)
 
   # Create dst CloudVolumes
-  dst = cm.create(join(args.dst_path, 'image'),
+  dst = cm.create(args.dst_path,
                   data_type='uint8', num_channels=1, fill_missing=True,
                   overwrite=True)
 
@@ -107,7 +105,7 @@ if __name__ == '__main__':
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-              t = a.fold_postprocess(cm, src.path, dst.path, z, mip, bbox, thr_binarize, w_connect, thr_filter, w_dilate)
+              t = a.fold_postprocess(cm, src.path, dst.path, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, thr_filter, w_dilate)
               yield from t
   range_list = make_range(full_range, a.threads)
 

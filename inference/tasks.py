@@ -46,13 +46,14 @@ class PredictImageTask(RegisteredTask):
     patch_bbox_out = deserialize_bbox(self.bbox)
     patch_size = patch_bbox_out.size(mip)
     prefix = self.prefix
+
     print("\nPredict Image\n"
           "src {}\n"
           "dst {}\n"
           "at z={}\n"
           "MIP{}\n".format(src_cv, dst_cv, z, mip), flush=True)
     start = time()
-    
+
     chunk_size = (256,256)
     image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox_in, chunk_size, overlap)
     image = image.cpu().numpy()
@@ -67,6 +68,47 @@ class PredictImageTask(RegisteredTask):
     end = time()
     diff = end - start
     print(':{:.3f} s'.format(diff))
+
+class FoldDetecPostTask(RegisteredTask):
+  def __init__(self, cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter, w_dilate):
+    super(). __init__(cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter, w_dilate)
+
+  def execute(self, aligner):
+    cv = DCV(self.cv)
+    dst_cv = DCV(self.dst_cv)
+    z = self.z
+    mip = self.mip
+    overlap = self.overlap
+    overlap_bbox = np.array(overlap)*(2**mip)
+    
+    patch_bbox_in = deserialize_bbox(self.patch_bbox)
+    patch_bbox_in.extend(overlap_bbox)
+    patch_range = patch_bbox_in.range(mip)
+    patch_bbox_out = deserialize_bbox(self.patch_bbox)
+    patch_size = patch_bbox_out.size(mip)
+
+    thr_binarize = self.thr_binarize
+    w_connect = self.w_connect
+    thr_filter = self.thr_filter
+    w_dilate = self.w_dilate
+    
+    print("\nFold detection postprocess "
+          "cv {}\n"
+          "z={}\n"
+          "at MIP{}"
+          "\n".format(cv, z, mip), flush=True)
+
+    start = time()
+    image = aligner.fold_postprocess_chunk(cv, patch_bbox_in, z, mip, thr_binarize, w_connect, thr_filter, w_dilate)
+    image = image[np.newaxis,np.newaxis,...]
+    min_bound = cv[mip].bounds.minpt
+    image = image[(slice(0,1),slice(0,1),)+
+                  tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),
+                    overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
+    aligner.save_image(image, dst_cv, z, patch_bbox_out, mip, to_uint8=True)
+    end = time()
+    diff = end - start
+    print('Fold detection postprocess task: {:.3f} s'.format(diff))
 
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, 
@@ -549,33 +591,6 @@ class UpsampleRenderRechunkTask(RegisteredTask):
       aligner.save_image_patch_batch(dst_cv, (z_range[0], z_range[-1]+1), warped_patch, 
                                   patch_bbox, image_mip)
     aligner.pool.map(chunkwise, patches)
-
-class FoldDetecPostTask(RegisteredTask):
-  def __init__(self, cv, dst_cv, patch_bbox, mip, z, thr_binarize, w_connect, thr_filter, w_dilate):
-    super(). __init__(cv, dst_cv, patch_bbox, mip, z, thr_binarize, w_connect, thr_filter, w_dilate)
-
-  def execute(self, aligner):
-    cv = DCV(self.cv)
-    dst_cv = DCV(self.dst_cv)
-    z = self.z
-    patch_bbox = deserialize_bbox(self.patch_bbox)
-    mip = self.mip
-    thr_binarize = self.thr_binarize
-    w_connect = self.w_connect
-    thr_filter = self.thr_filter
-    w_dilate = self.w_dilate
-    print("\nFold detection postprocess "
-          "cv {}\n"
-          "z={}\n"
-          "at MIP{}"
-          "\n".format(cv, z, mip), flush=True)
-    start = time()
-    image = aligner.fold_postprocess_chunk(cv, patch_bbox, z, mip, thr_binarize, w_connect, thr_filter, w_dilate)
-    image = image[np.newaxis,np.newaxis,...]
-    aligner.save_image(image, dst_cv, z, patch_bbox, mip, to_uint8=True)
-    end = time()
-    diff = end - start
-    print('Fold detection postprocess task: {:.3f} s'.format(diff))
 
 class ComputeFcorrTask(RegisteredTask):
   def __init__(self, cv, dst_cv, dst_nopost, patch_bbox, mip, z1, z2, prefix):
