@@ -1,6 +1,6 @@
-# FoldNet0106
+# CrackNet0108
 
 Trained by Alex Bae
 
-exp_dir = '/usr/people/jabae/seungmount/research/Alex/fold_detection/exp/FoldNet_v2/FoldNet_mip4_contrast_0106/'
-chkpt_num = 106k
+exp_dir = '/usr/people/jabae/seungmount/research/Alex/fold_detection/exp/CrackNet_v0/CrackNet_mip4_contrast_0108/'
+chkpt_num = 70k
