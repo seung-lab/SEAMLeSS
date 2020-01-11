@@ -80,6 +80,7 @@ if __name__ == '__main__':
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
+  parser.add_argument('--render_pad', type=int, default=256)
   parser.add_argument('--block_size', type=int, default=10)
   parser.add_argument('--decay_dist', type=int, default=10)
   parser.add_argument('--suffix', type=str, default='',
@@ -114,6 +115,7 @@ if __name__ == '__main__':
   do_stitching = not args.skip_stitching
   do_render = not args.skip_render
   render_mip = args.render_mip or args.mip
+  render_pad = args.render_pad
 
   # Create CloudVolume Manager
   cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
@@ -171,6 +173,7 @@ if __name__ == '__main__':
   # Compile ranges
   decay_dist = args.decay_dist
   compose_range = range(args.z_start, args.z_stop)
+  render_range = range(args.z_start+1, args.z_stop)
   influencing_blocks_lookup = {z: [] for z in compose_range}
   for b_start in block_starts:
     for z in range(b_start+1, b_start+decay_dist+1):
@@ -184,14 +187,14 @@ if __name__ == '__main__':
   tgt_mask_cv = None
 
   broadcasting_field = cm.create(join(args.dst_path, 'field', 
-                                      'stitch', 'broadcasting'),
+                                      'stitchtemp', 'broadcasting'),
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=False).path
   block_field = cm.create(join(args.dst_path, 'field', 'vvote'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=False).path
 
-  compose_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format(args.suffix), 
+  compose_field = cm.create(join(args.dst_path, 'field', 'stitchtemp{}'.format(args.suffix), 
                                  'compose'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=do_stitching).path
@@ -199,7 +202,7 @@ if __name__ == '__main__':
   #                                'compose'),
   #                         data_type='int16', num_channels=2,
   #                         fill_missing=True, overwrite=do_stitching).path
-  final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.suffix)), 
+  final_dst = cmr.create(join(args.dst_path, 'image_stitchtempmip1{}'.format(args.suffix)), 
                         data_type='uint8', num_channels=1, fill_missing=True, 
                         overwrite=do_render).path
 
@@ -269,7 +272,7 @@ if __name__ == '__main__':
       for z in self.z_range:
         bbox = bbox_lookup[z]
         t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
-                     bbox=bbox, src_mip=render_mip, field_mip=mip)
+                     bbox=bbox, src_mip=render_mip, field_mip=mip, pad=render_pad)
         yield from t
 
   if do_stitching:

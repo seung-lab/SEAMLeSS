@@ -889,7 +889,8 @@ class Aligner:
         to_tensor=True,
       ).to(device=self.device)
       coarse_field = coarse_field.permute(0, 3, 1, 2)
-      coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bilinear')(coarse_field)
+      # coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bilinear')(coarse_field)
+      coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bicubic')(coarse_field)      
       coarse_field = coarse_field.permute(0, 2, 3, 1)
 
       crop = 2 ** (coarse_field_mip - mip)
@@ -1115,7 +1116,7 @@ class Aligner:
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
                         bbox, image_mip, field_mip, mask_cv=None,
                         mask_mip=0, mask_val=0, affine=None,
-                        use_cpu=False):
+                        use_cpu=False, pad=256):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:
@@ -1135,8 +1136,8 @@ class Aligner:
       if use_cpu:
           self.device = 'cpu'
       assert(field_mip >= image_mip)
-      pad = 256
-      # pad = 1024
+      # pad = 256
+      # pad = 2048
       padded_bbox = deepcopy(bbox)
       padded_bbox.max_mip = max(image_mip, field_mip)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
@@ -1563,7 +1564,7 @@ class Aligner:
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
                    bbox, src_mip, field_mip, mask_cv=None, mask_mip=0, 
                    mask_val=0, affine=None, use_cpu=False,
-             return_iterator= False):
+             return_iterator= False, pad=256):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1605,7 +1606,7 @@ class Aligner:
             chunk = self.chunklist[i]
             yield tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
                        field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                       mask_mip, mask_val, affine, use_cpu)
+                       mask_mip, mask_val, affine, use_cpu, pad)
     if return_iterator:
         return RenderTaskIterator(chunks,0, len(chunks))
     else:
@@ -1613,7 +1614,7 @@ class Aligner:
         for chunk in chunks:
           batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
                            field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                           mask_mip, mask_val, affine, use_cpu))
+                           mask_mip, mask_val, affine, use_cpu, pad))
         return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,
