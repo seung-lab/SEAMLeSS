@@ -159,11 +159,28 @@ class Aligner:
   # Image IO + handlers #
   #######################
 
-  def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True):
+  def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True,
+               mask_op='none'):
     start = time()
     data = self.get_data(cv, z, bbox, src_mip=src_mip, dst_mip=dst_mip,
                              to_float=False, to_tensor=to_tensor, normalizer=None)
-    mask = data == valid_val
+    if mask_op == 'eq':
+        mask = data == valid_val
+    elif mask_op == 'lt':
+        mask = data < valid_val
+    elif mask_op == 'gt':
+        mask = data > valid_val
+    elif mask_op == 'lte':
+        mask = data <= valid_val
+    elif mask_op == 'gte':
+        mask = data >= valid_val
+    elif mask_op == 'ne':
+        mask = data != valid_val
+    elif mask_op == 'none':
+        mask = data != data
+    else:
+        raise Exception("Mask op {} unsupported".format(mask_op))
+
     end = time()
     diff = end - start
     print('get_mask: {:.3f}'.format(diff), flush=True)
@@ -185,7 +202,7 @@ class Aligner:
     return image
 
   def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
-                             to_tensor=True, normalizer=None):
+                             to_tensor=True, normalizer=None, mask_op='none'):
     """Get image with mask applied
     """
     start = time()
@@ -194,7 +211,7 @@ class Aligner:
     if mask_cv is not None:
       mask = self.get_mask(mask_cv, z, bbox,
                            src_mip=mask_mip,
-                           dst_mip=image_mip, valid_val=mask_val)
+                           dst_mip=image_mip, valid_val=mask_val, mask_op=mask_op)
       image = image.masked_fill_(mask, 0)
     if not to_tensor:
       image = image.cpu().numpy()
@@ -1119,7 +1136,8 @@ class Aligner:
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
                         bbox, image_mip, field_mip, mask_cv=None,
                         mask_mip=0, mask_val=0, affine=None,
-                        use_cpu=False, pad=256):
+                        use_cpu=False, pad=256, return_mask=False,
+                        blackout_mask_op='eq', return_mask_op='eq'):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:
@@ -1142,7 +1160,6 @@ class Aligner:
       # pad = 256
       # pad = 2048
       padded_bbox = deepcopy(bbox)
-      padded_bbox.max_mip = max(image_mip, field_mip)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
       padded_bbox.uncrop(pad, mip=image_mip)
 
@@ -1193,10 +1210,19 @@ class Aligner:
         image = self.get_masked_image(image_cv, image_z, new_bbox, image_mip,
                                       mask_cv=mask_cv, mask_mip=mask_mip,
                                       mask_val=mask_val,
-                                      to_tensor=True, normalizer=None)
+                                      to_tensor=True, normalizer=None,
+                                      mask_op=blackout_mask_op)
         image = grid_sample(image, field, padding_mode='zeros')
         image = image[:,:,pad:-pad,pad:-pad]
-        return image
+        if return_mask:
+            mask = self.get_mask(mask_cv, image_z, new_bbox,
+                               src_mip=mask_mip,
+                               dst_mip=image_mip, valid_val=mask_val, mask_op=return_mask_op)
+            warped_mask = grid_sample(mask.float(), field, padding_mode='zeros')
+            cropped_warped_mask = warped_mask[:,:,pad:-pad,pad:-pad]
+            return image, cropped_warped_mask
+        else:
+            return image
 
 
   def cloudsample_compose(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip,

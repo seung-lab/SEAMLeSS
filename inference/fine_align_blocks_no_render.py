@@ -740,18 +740,18 @@ if __name__ == "__main__":
 
         def __iter__(self):
             for z in self.z_range:
-                block_dst = block_dst_lookup[z] 
+                block_dst = block_dst_lookup[z]
                 bbox = bbox_lookup[z]
                 model_path = model_lookup[z]
                 tgt_offsets = vvote_lookup[z]
                 for tgt_offset in tgt_offsets:
                     tgt_z = z + tgt_offset
                     field = stitch_pair_fields[tgt_offset]
-                    t = a.compute_field(cm, model_path, block_dst, overlap_image, field, 
+                    t = a.compute_field(cm, model_path, block_dst, overlap_image, field,
                                         z, tgt_z, bbox, mip, pad, src_mask_cv=src_mask_cv,
                                         src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                                        tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                                        tgt_mask_val=src_mask_val, 
+                                        tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip,
+                                        tgt_mask_val=src_mask_val,
                                         prev_field_cv=overlap_vvote_field,
                                         # prev_field_cv=None,
                                         prev_field_z=tgt_z,stitch=True)
