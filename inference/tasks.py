@@ -229,7 +229,18 @@ class RenderTask(RegisteredTask):
                                      mask_cv=mask_cv, mask_mip=mask_mip,
                                      mask_val=mask_val, affine=affine,
                                      use_cpu=self.use_cpu)
+      if True:
+            zero_image_mask = image.abs() < 0.05
+            prev_image = aligner.get_masked_image(dst_cv, dst_z-1, patch_bbox, src_mip,
+                                      mask_cv=mask_cv, mask_mip=mask_mip,
+                                      mask_val=mask_val,
+                                      to_tensor=True, normalizer=None)
+
+            image[zero_image_mask] = prev_image[zero_image_mask]
+
+
       image = image.cpu().numpy()
+      aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
       end = time()
       diff = end - start

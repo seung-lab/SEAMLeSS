@@ -564,8 +564,10 @@ class Aligner:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       field = self.rel_to_abs_residual(field, mip)
       field = field[:,pad:-pad,pad:-pad,:]
-      field += distance.to(device=self.device)
-      field = field.data.cpu().numpy()
+      field_adj = field.clone()
+      field_mask = ((field[..., 0] == 0) * (field[..., 1] == 0)) == False
+      field_adj[field_mask] += distance.to(device=self.device)
+      field_adj = field_adj.data.cpu().numpy()
       # clear unused, cached memory so that other processes can allocate it
       torch.cuda.empty_cache()
 
@@ -575,7 +577,7 @@ class Aligner:
         print("Process {} releasing GPU lock".format(os.getpid()))
         self.gpu_lock.release()
 
-    return field
+    return field_adj
 
   def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
                     chunk_size):
@@ -699,7 +701,8 @@ class Aligner:
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
                         bbox, image_mip, field_mip, mask_cv=None,
                         mask_mip=0, mask_val=0, affine=None,
-                        use_cpu=False):
+                        use_cpu=False, blackout_zeros=True,
+                        blackout_value=0):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:
@@ -765,15 +768,22 @@ class Aligner:
         distance = (distance // (2 ** image_mip)) * 2 ** image_mip
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
 
-        field -= distance.to(device = self.device)
-        field = self.abs_to_rel_residual(field, padded_bbox, image_mip)
-        field = field.to(device = self.device)
+        field_adj = field - distance.to(device = self.device)
+        field_adj = self.abs_to_rel_residual(field_adj, padded_bbox, image_mip)
+        field_adj = field_adj.to(device = self.device)
 
         image = self.get_masked_image(image_cv, image_z, new_bbox, image_mip,
                                       mask_cv=mask_cv, mask_mip=mask_mip,
                                       mask_val=mask_val,
                                       to_tensor=True, normalizer=None)
-        image = grid_sample(image, field, padding_mode='zeros')
+        image = grid_sample(image, field_adj, padding_mode='zeros')
+
+        if blackout_zeros:
+            zero_field_mask = (field == 0).unsqueeze(0)
+            zero_image_mask = zero_field_mask[..., 0] * zero_field_mask[..., 1]
+
+            image[zero_image_mask] = blackout_value
+
         image = image[:,:,pad:-pad,pad:-pad]
         return image
 
@@ -956,7 +966,7 @@ class Aligner:
   def cloudsample_image_batch(self, z_range, image_cv, field_cv,
                               bbox, image_mip, field_mip,
                               mask_cv=None, mask_mip=0, mask_val=0,
-                              as_int16=True):
+                              as_int16=True, dst_cv=None, dst_z=None):
     """Warp a batch of sections using the cloudsampler
 
     Args:
@@ -977,7 +987,7 @@ class Aligner:
       image = self.cloudsample_image(z, z, image_cv, field_cv, bbox,
                                   image_mip, field_mip,
                                   mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val,
-                                  as_int16=as_int16)
+                                  as_int16=as_int16, dst_cv=dst_cv, dst_z=z)
       batch.append(image)
     return torch.cat(batch, axis=0)
 
@@ -1434,7 +1444,7 @@ class Aligner:
     else:
         def chunkwise(patch_bbox):
           warped_patch = self.cloudsample_image_batch(src_z, field_cv, field_z,
-                                                      patch_bbox, mip, batch)
+                                                      patch_bbox, mip, batch, dst_cv=dst_cv, dst_z=dst_z)
           self.save_image_batch(dst_cv, (dst_z, dst_z + batch), warped_patch, patch_bbox, mip)
         self.pool.map(chunkwise, chunks)
     end = time()
