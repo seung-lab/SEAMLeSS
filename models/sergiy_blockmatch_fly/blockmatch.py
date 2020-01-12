@@ -1,6 +1,51 @@
 import torch
 
+import itertools
+import copy
+
 import numpy as np
+def get_peak(x, eps=1.E-3, randomize=False):
+    # x_in is shape BxXxY
+    d = x.shape[-1]
+    peak = torch.zeros((x.shape[0], 2), device=x.device, dtype=torch.long)
+
+    for b in range(x.shape[0]):
+        m = x[b].argmax()
+        initial_peak = [int(m // d), int(m % d)]
+
+        if randomize:
+            peak_value = x[b, initial_peak[0], initial_peak[1]].squeeze(0)
+            peaks_mask = x[b] >= (peak_value - eps)
+            peaks_coords = peaks_mask.nonzero()
+            random_peak_id = np.random.randint(0, peaks_coords.shape[0])
+            chosen_one = peaks_coords[random_peak_id]
+            peak[b, 0] = chosen_one[0]
+            peak[b, 1] = chosen_one[1]
+        else:
+            peak[b, 0] = initial_peak[0]
+            peak[b, 1] = initial_peak[1]
+    return peak
+
+def zone_out_around_peak(x, peak, zone_dist, fill=None):
+    if fill == None:
+        fill = float("-inf")
+    d = x.shape[-1]
+    zoned_x = x.clone()
+    for b in range(x.shape[0]):
+        x_low = max(peak[b, 0] - zone_dist, 0)
+        x_high = min(peak[b, 0] + zone_dist + 1, d)
+        y_low = max(peak[b, 1] - zone_dist, 0)
+        y_high = min(peak[b, 1] + zone_dist + 1, d)
+        zoned_x[b, x_low:x_high, y_low:y_high] = fill
+    return zoned_x
+
+def get_two_peaks(x_in, zone_dist=1, eps=1.E-3):
+    # x_in is shape BxXxY
+    first_peak = get_peak(x_in)
+    zoned_x = zone_out_around_peak(x_in, first_peak, zone_dist)
+    second_peak = get_peak(zoned_x)
+    return first_peak, second_peak
+
 
 def get_black_mask(img, black_threshold):
     if black_threshold == 0:
@@ -63,7 +108,82 @@ def normalize(img, per_feature_center=True, per_feature_var=False, eps=1e-5,
 
     return img_out
 
-def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10):
+def get_index_neighbors(index, shape, diagonals=False, reach=1):
+    result = []
+
+    if diagonals:
+        offsets = itertools.product(np.arange(0, reach + 2) - 1, repeat=2)
+    else:
+        offsets = []
+        offsets += itertools.product(np.arange(0, reach + 2) - 1, [0])
+        offsets += itertools.product([0], np.arange(0, reach + 2) - 1)
+
+    for o in offsets:
+        new_index = list(copy.copy(index))
+        new_index[0] += o[0]
+        new_index[1] += o[1]
+        if new_index[0] >= 0 and new_index[1] >=0 and \
+           new_index[0] < shape[0] and new_index[1] < shape[1]:
+               result.append(new_index)
+    return result
+
+def get_neighbor_average(index, field):
+    neighbors = get_index_neighbors(index, field.shape)
+    result = 0
+    valid_count = 0
+    nonzero_count = 0
+    invalid_count = 0
+
+    for i in neighbors:
+        value = field[i[0], i[1]]
+        if not np.isnan(value).any() and not np.isinf(value).any():
+            valid_count += 1
+            if value[0] != 0 or value[1] != 0:
+                result += value
+                nonzero_count += 1
+        else:
+            invalid_count += 1
+
+    if valid_count == 0 or (invalid_count > 0 and nonzero_count == 0):
+        return None
+    elif nonzero_count > 0:
+        return result / nonzero_count
+    else:
+        return 0
+
+def extrapolate_field_missing_values(field):
+    field[..., 0] = extrapolate_missing_values(field[..., 0])
+    field[..., 1] = extrapolate_missing_values(field[..., 1])
+    return field
+
+def extrapolate_missing_values(array):
+    missing_map = (np.isnan(array) + np.isinf(array)) > 0
+    missing_indexes = np.nonzero(missing_map)
+    missing_coords = list(set(zip(missing_indexes[0], missing_indexes[1])))
+
+    missing_count = len(missing_coords)
+    while missing_count > 0:
+        print ("Purging ", len(missing_coords))
+        for i in missing_coords:
+            v = get_neighbor_average(i, array)
+            if v is not None:
+                array[i[0], i[1]] = v
+
+        missing_map = (np.isnan(array) + np.isinf(array)) > 0
+        missing_indexes = np.nonzero(missing_map)
+        missing_coords = list(set(zip(missing_indexes[0], missing_indexes[1])))
+        prev_missing_count = missing_count
+        missing_count = len(missing_coords)
+        if missing_count >= prev_missing_count:
+            print ("Purge stuck, 0 everything")
+            break
+    array[missing_indexes] = 0
+
+
+    return array
+
+def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_px=500,
+                filler="inf"):
     src = src.squeeze()
     tgt = tgt.squeeze()
 
@@ -79,7 +199,9 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10):
     img_size = padded_tgt.shape[-1]
     tile_count = 1 + (img_size - max_disp*2 - tile_size) // tile_step
     result = np.zeros((tile_count, tile_count, 2))
-
+    peaks = []
+    peak_vals = []
+    peak_ratios = []
     for x_tile in range(0, tile_count):
         for y_tile in range(0, tile_count):
             src_tile_coord, tgt_tile_coord = compute_tile_coords(x_tile, y_tile, tile_size,
@@ -92,35 +214,61 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10):
                 match_displacement = [0, 0]
                 if get_black_fraction(src_tile, 0) != 1.0 and \
                         get_black_fraction(tgt_tile, 0) != 1.0:
-                    print ('skipping: {} {}'.format(get_black_fraction(src_tile, 0), get_black_fraction(tgt_tile, 0)))
+                    #print ('skipping: {} {}'.format(get_black_fraction(src_tile, 0), get_black_fraction(tgt_tile, 0)))
+                    pass
             else:
-                ncc = get_ncc(tgt_tile, src_tile, div_by_overlap=True)
+                ncc = get_ncc(tgt_tile, src_tile, div_by_overlap=True,
+                        min_overlap_count=min_overlap_px)
+                ncc_np = ncc.squeeze().cpu().numpy()
+
                 if ncc.var() < 1E-13 or ((ncc != ncc).sum() > 0):
                     #match_displacement = [0, 0]
-                    print ("black ncc")
+                    match_displacement = [float(filler), float(filler)]
+                    #print ("black ncc")
                 else:
-                    match = np.unravel_index(ncc.argmax(), ncc.shape)
-                    match_tile_start = (tgt_tile_coord[0].start + match[0], tgt_tile_coord[1].start + match[1])
-                    src_tile_start   = (src_tile_coord[0].start, src_tile_coord[1].start)
-                    match_displacement = np.subtract(src_tile_start, match_tile_start)
+                    peak1, peak2 = get_two_peaks(ncc, 8)
+                    peaks.append([peak1, peak2])
+                    match = np.unravel_index(ncc_np.argmax(), ncc_np.shape)
+                    peak_vals.append([ncc_np[peak1[0][0],  peak1[0][1]],
+                                      ncc_np[peak2[0][0],  peak2[0][1]],
+                                    ])
+                    peak_ratios.append(peak_vals[-1][0] / (peak_vals[-1][1] + 1e-5))
+                    if peak_ratios[-1] < 1.1:
+                        match_displacement = [float(filler), float(filler)]
+                    else:
+                        match_tile_start = (tgt_tile_coord[0].start + match[0], tgt_tile_coord[1].start + match[1])
+                        src_tile_start   = (src_tile_coord[0].start, src_tile_coord[1].start)
+                        match_displacement = np.subtract(src_tile_start, match_tile_start)
+
             result[x_tile, y_tile, 0] = -match_displacement[1]
             result[x_tile, y_tile, 1] = -match_displacement[0]
 
-    result_var = torch.cuda.FloatTensor(result).unsqueeze(0)
+    patched_result = extrapolate_missing_values(result)
+
+    result_var = torch.cuda.FloatTensor(patched_result).unsqueeze(0)
+
     scale = tgt.shape[-2] / result_var.shape[-2]
     result_ups_var = torch.nn.functional.interpolate(result_var.permute(0, 3, 1, 2),
             scale_factor=scale, mode='bicubic')
 
     final_result_var = result_ups_var
+    #final_result_var = filter_black_field(final_result_var, src, black_threshold=0.1)
+
     final_result = final_result_var.permute(0, 2, 3, 1)
     return final_result
 
-def get_ncc(tgt, tmpl, div_by_overlap=False, min_overlap=0.5):
+def filter_black_field(field, img, black_threshold=0):
+    black_mask = (img.abs() < black_threshold).squeeze()
+    field[..., black_mask] = 0
+    return field
+
+def get_ncc(tgt, tmpl, div_by_overlap=False, min_overlap_ratio=0.6,
+            min_overlap_count=500):
     tgt = tgt.unsqueeze(0).unsqueeze(0)
     tmpl = tmpl.unsqueeze(0).unsqueeze(0)
     #import pdb; pdb.set_trace()
 
-    mask_val = 0.2
+    mask_val = 0.05
     tgt_mask = tgt.abs() > mask_val
     tmpl_mask = tmpl.abs() > mask_val
 
@@ -130,13 +278,14 @@ def get_ncc(tgt, tmpl, div_by_overlap=False, min_overlap=0.5):
 
     if div_by_overlap:
         overlap_count = get_cc(tgt_mask.float(), tmpl_mask.float(), div_by_tmpl_size=False)
-        overlap_count /= (tmpl_mask != 0).sum()
-        adjusted_ncc = ncc / (overlap_count)
-        #ncc[overlap_count != 0] = adjusted_ncc[overlap_count != 0]
-        #ncc[overlap_count < min_overlap] = ncc.min()
-        print ("Bad overlap count: {}".format((overlap_count < min_overlap).sum()))
+        overlap_ratio = overlap_count / (tmpl_mask != 0).sum()
+        adjusted_ncc = ncc / (overlap_count + 1e-5)
+        ncc[overlap_count != 0] = adjusted_ncc[overlap_count != 0]
+        ncc[overlap_count < min_overlap_count] = ncc.min()
+        ncc[overlap_ratio < min_overlap_ratio] = ncc.min()
+        #print ("Bad overlap count: {}".format((overlap_ratio < min_overlap_ratio).sum()))
 
-    return ncc.squeeze().cpu().numpy()
+    return ncc
 
 def get_cc(target, template, feature_weights=None, normalize_cc=False, div_by_tmpl_size=True):
     cc_side = target.shape[-1] - template.shape[-1] + 1

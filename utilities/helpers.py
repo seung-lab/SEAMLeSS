@@ -811,6 +811,7 @@ def vector_vote(fields, softmin_temp, blur_sigma=None):
   """
   if len(fields) == 1:
       return fields[0]
+
   print('softmin_temp {}'.format(softmin_temp))
   fields_blurred = fields
   if blur_sigma:
