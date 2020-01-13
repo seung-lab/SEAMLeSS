@@ -3,6 +3,8 @@ import torch.nn as nn
 import torchfields  # noqa: unused
 from utilities.helpers import grid_sample, downsample, downsample_field, load_model_from_dict
 
+from .optimizer import optimize
+from .residuals import res_warp_img, combine_residuals
 
 class Model(nn.Module):
     """
@@ -23,9 +25,26 @@ class Model(nn.Module):
 
     def forward(self, src, tgt, src_field=None, tgt_field=None, **kwargs):
         if self.encode:
-            src, tgt = self.encode(src, tgt, tgt_field=tgt_field, **kwargs)
-        accum_field, fine_field = self.align(src, tgt, src_field=src_field, **kwargs)
-        return accum_field.permute(0, 2, 3, 1), fine_field.permute(0, 2, 3, 1)
+            src_enc, tgt_enc = self.encode(src, tgt, tgt_field=tgt_field, **kwargs)
+        else:
+            src_enc, tgt_enc = src, tgt
+        accum_field, fine_field = self.align(src_enc, tgt_enc, src_field=src_field, **kwargs)
+        accum_field = accum_field.permute(0, 2, 3, 1)
+        if src.var() > 1e-4:
+            print ("Optimizing")
+            accum_field = accum_field * src.shape[-2] / 2
+            fine_field = fine_field.permute(0, 2, 3, 1)
+            src = res_warp_img(src, src_field, is_pix_res=True)
+            tgt = tgt
+            pred_res = optimize(src, tgt, accum_field, (src==0).float(),
+                                    torch.zeros_like(tgt), max_iter=200,
+                                    normalize_imgs=True)
+            final_res = pred_res * 2 / src.shape[-2]
+        else:
+            print ("Not optimizing black chunk")
+            final_res  = accum_field
+
+        return final_res, fine_field
 
     def load(self, path):
         """
