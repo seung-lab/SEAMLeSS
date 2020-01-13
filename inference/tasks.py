@@ -252,7 +252,7 @@ class RenderTask(RegisteredTask):
                                      mask_cv=mask_cv, mask_mip=mask_mip,
                                      mask_val=mask_val, affine=affine,
                                      use_cpu=self.use_cpu, pad=self.pad,
-                                     return_mask=True, blackout_mask_op='none',
+                                     return_mask=True, blackout_mask_op='gte',
                                      return_mask_op='gte')
       seethrough = False
       if seethrough:

@@ -952,6 +952,7 @@ class Aligner:
       mask_val=src_mask_val,
       to_tensor=True,
       normalizer=normalizer,
+      mask_op='gte'
     )
 
     padded_tgt_bbox_fine = deepcopy(bbox)
