@@ -1,9 +1,0 @@
-{
-    "type": "TransparentSeq",
-    "modules": [
-        {"path": "block_3convs_3x3_fms1to32to1_kyle.json"},
-        {"path": "average_pool.json"},
-        {"path": "block_3convs_3x3_fms1to32to1_kyle.json"}
-    ],
-    "checkpoint_init": "trained_ncc_m8.state.pth.tar"
-}

@@ -1,8 +1,0 @@
-{
-    "type": "TransparentSeq",
-    "modules": [
-        {"path": "block_3convs_3x3_fms1to32to2.json"},
-        {"path": "average_pool.json"},
-        {"path": "block_3convs_3x3_fms2to32to2.json"}
-    ]
-}
