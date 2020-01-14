@@ -2,11 +2,7 @@ import torch
 import torch.nn as nn
 import torchfields  # noqa: unused
 from utilities.helpers import grid_sample, downsample, downsample_field, load_model_from_dict
-import artificery
-import os
 
-from .optimizer import optimize
-from .residuals import res_warp_img, combine_residuals
 
 class Model(nn.Module):
     """
@@ -24,51 +20,12 @@ class Model(nn.Module):
                        if encodings else None)
         self.align = AligningPyramid(self.feature_maps if encodings
                                      else [1]*len(feature_maps), **kwargs)
-        self.opt_encoder = self.load_opt_encoder()
-
-    def load_opt_encoder(self):
-        a = artificery.Artificery()
-        path = os.path.dirname(os.path.abspath(__file__))
-        checkpoint_folder_path = os.path.join(path, 'checkpoint')
-        spec_path = os.path.join(checkpoint_folder_path, "model_spec.json")
-        my_p = a.parse(spec_path)
-        name = 'model'
-        checkpoint_path = os.path.join(checkpoint_folder_path, "{}.state.pth.tar".format(name))
-        if os.path.isfile(checkpoint_path):
-            checkpoint_params = torch.load(checkpoint_path)
-            my_p.load_state_dict(checkpoint_params)
-        else:
-            raise Exception("Weights are missing")
-        my_p.name = name
-        return my_p
-
 
     def forward(self, src, tgt, src_field=None, tgt_field=None, **kwargs):
         if self.encode:
-            src_enc, tgt_enc = self.encode(src, tgt, tgt_field=tgt_field, **kwargs)
-        else:
-            src_enc, tgt_enc = src, tgt
-        accum_field, fine_field = self.align(src_enc, tgt_enc, src_field=src_field, **kwargs)
-        accum_field = accum_field.permute(0, 2, 3, 1)
-        if src.var() > 1e-4:
-            print ("Optimizing")
-            accum_field = accum_field * src.shape[-2] / 2
-            fine_field = fine_field.permute(0, 2, 3, 1)
-            src = res_warp_img(src, src_field, is_pix_res=True)
-            tgt = tgt
-            src_defects = (src < 0.15).float()
-            tgt_defects = (tgt < 0.15).float()
-            pred_res = optimize(src, tgt, accum_field, src_defects.float(),
-                                    tgt_defects.float(), max_iter=1,
-                                    normalize_imgs=True)
-            sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
-            pred_res[sm_mask[0]] = 0
-            final_res = pred_res * 2 / src.shape[-2]
-        else:
-            print ("Not optimizing black chunk")
-            final_res  = accum_field
-
-        return final_res, fine_field
+            src, tgt = self.encode(src, tgt, tgt_field=tgt_field, **kwargs)
+        accum_field, fine_field = self.align(src, tgt, src_field=src_field, **kwargs)
+        return accum_field.permute(0, 2, 3, 1), fine_field.permute(0, 2, 3, 1)
 
     def load(self, path):
         """

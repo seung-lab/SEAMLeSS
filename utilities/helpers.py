@@ -19,7 +19,7 @@ from torch.nn.functional import softmax
 from itertools import combinations
 from skimage.transform import rescale
 from skimage.morphology import disk as skdisk
-from skimage.filters.rank import maximum as skmaximum 
+from skimage.filters.rank import maximum as skmaximum
 from functools import reduce
 from copy import deepcopy
 import matplotlib
@@ -27,6 +27,27 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt  # noqa: 402
 plt.switch_backend('agg')
 import matplotlib.cm as cm  # noqa: 402
+
+
+def coarsen_mask(mask_in, count, flip=False):
+    with torch.no_grad():
+        kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
+        mask = mask_in.type(torch.cuda.FloatTensor)
+        while len(mask.shape) < 4:
+            mask = mask.unsqueeze(0)
+        kernel_var = torch.cuda.FloatTensor(kernel).unsqueeze(0).unsqueeze(0)
+        k = torch.nn.Parameter(data=kernel_var, requires_grad=False)
+        if flip:
+            mask = 1 - mask
+        for _ in range(count):
+            mask =  (torch.nn.functional.conv2d(mask,
+                        kernel_var, padding=1) >= 1).type(torch.cuda.FloatTensor)
+
+        if flip:
+            mask = 1 - mask
+        while len(mask.shape) > len(mask_in.shape):
+            mask = mask.squeeze(0)
+    return mask
 
 
 def compose_functions(fseq):
@@ -710,14 +731,14 @@ def dilate_mask(mask, radius=5):
   return skmaximum(np.squeeze(mask).astype(np.uint8), skdisk(radius)).reshape(mask.shape).astype(np.bool)
 
 
-def is_blank(image):    
+def is_blank(image):
   """Check if image is blank (assumes ndarray or torch tensor only)
-  """ 
+  """
   if isinstance(image, np.ndarray):
     return np.min(image) == 0 and np.max(image) == 0
   else:
     return torch.min(image) == 0 and torch.max(image) == 0
-    
+
 
 def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   """Compute the inverse vector field of residual field U by optimization
@@ -734,9 +755,9 @@ def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   Returns
      V: 4D tensor for absolute residual vector field such that V(U) = I.
   """
-  V = -deepcopy(U) 
+  V = -deepcopy(U)
   if tensor_approx_eq(U,V):
-    return V 
+    return V
   V.requires_grad = True
   n = U.shape[1] * U.shape[2]
   opt = torch.optim.SGD([V], lr=lr)
@@ -745,7 +766,7 @@ def invert(U, lr=0.1, max_iter=1000, currn=5, avgn=20, eps=1e-9):
   print('Optimizing inverse field')
   for t in range(max_iter):
     currt = t
-    f = compose_fields(U, V) 
+    f = compose_fields(U, V)
     g = compose_fields(V, U)
     L = 0.5*torch.mean(f**2) + 0.5*torch.mean(g**2)
     costs.append(L)
@@ -774,7 +795,7 @@ def center_image(X, scale_factor, device=torch.device('cpu')):
   X_bar_down = avg_pool(X)
   # X_bar = interpolate(X_bar_down, scale_factor=scale_factor, mode='nearest')
   X_bar = interpolate(X_bar_down, size=X.shape[2:], mode='nearest')
-  return X - X_bar    
+  return X - X_bar
 
 def cpc(S, T, scale_factor, norm=True, device=torch.device('cpu')):
   chunk_dim = get_chunk_dim(scale_factor)
@@ -1015,12 +1036,12 @@ def percentile(field, q):
     # https://gist.github.com/spezold/42a451682422beb42bc43ad0c0967a30
     """
     Return the ``q``-th percentile of the flattened input tensor's data.
-    
+
     CAUTION:
      * Needs PyTorch >= 1.1.0, as ``torch.kthvalue()`` is used.
      * Values are not interpolated, which corresponds to
        ``numpy.percentile(..., interpolation="nearest")``.
-       
+
     :param field: Input tensor.
     :param q: Percentile to compute, which must be between 0 and 100 inclusive.
     :return: Resulting value (scalar).

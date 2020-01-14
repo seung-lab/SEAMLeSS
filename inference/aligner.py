@@ -657,6 +657,7 @@ class Aligner:
         to_tensor=True,
       ).to(device=self.device)
     tgt_field = self.rel_to_abs_residual(tgt_field, mip)
+    tgt_field = torch.zeros_like(tgt_field)
     tgt_distance = self.profile_field(tgt_field)
     tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
     tgt_field -= tgt_distance_fine_snap.to(device=self.device)

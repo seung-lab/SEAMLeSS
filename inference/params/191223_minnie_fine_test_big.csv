@@ -1,0 +1,2 @@
+x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
+180000,160000,0,210000,190000,18000,0,nk_vf_30_minnie_jit_mip3_opt,1,0,nkem_testing
