@@ -32,9 +32,33 @@ def bounds1D(full_width, step_size, overlap=0):
 
   # last window
   end = full_width
-  bounds.append((start, end))
+  bounds.append((end-step_size, end))
 
   return bounds
+
+# def defect_detect(model, image, chunk_size, overlap):
+
+#   img_size = image.shape[2:]
+  
+#   overlap = np.array(overlap)
+#   bboxes = chunk_bboxes(img_size, chunk_size, 2*overlap)
+
+#   pred = torch.zeros(image.shape)
+
+#   for b in bboxes:
+#     bs = b[0]
+#     be = b[1]
+#     xsize = be[0]-bs[0]
+#     ysize = be[1]-bs[1]
+
+#     patch = image[0,0,bs[0]:be[0],bs[1]:be[1]]
+
+#     patch = torch.reshape(patch,(1,1,xsize,ysize))
+#     pred_patch = model(patch)
+
+#     pred[0,0,bs[0]+overlap[0]:be[0]-overlap[0],bs[1]+overlap[1]:be[1]-overlap[1]] = pred_patch[0,0,overlap[0]:-overlap[0],overlap[1]:-overlap[1]]
+
+#   return pred
 
 def defect_detect(model, image, chunk_size, overlap):
 
@@ -48,13 +72,39 @@ def defect_detect(model, image, chunk_size, overlap):
   for b in bboxes:
     bs = b[0]
     be = b[1]
-    xsize = be[0]-bs[0]
-    ysize = be[1]-bs[1]
 
     patch = image[0,0,bs[0]:be[0],bs[1]:be[1]]
 
-    patch = torch.reshape(patch,(1,1,xsize,ysize))
-    pred_patch = model(patch)
+    img = patch.numpy().reshape((chunk_size[0],chunk_size[1]))
+
+    if np.sum(img==0):
+      pred_patch = torch.zeros((1,1,chunk_size[0],chunk_size[1]))
+
+    else:
+      img_rowl = np.cumsum(np.sum(img,axis=1))
+      img_colu = np.cumsum(np.sum(img,axis=0))
+      img_rowr = np.cumsum(np.sum(img,axis=1)[::-1])
+      img_colb = np.cumsum(np.sum(img,axis=0)[::-1])
+
+      idxl = np.where(img_rowl==0)[0]
+      idxu = np.where(img_colu==0)[0]
+      idxr = np.where(img_rowr==0)[0]
+      idxb = np.where(img_colb==0)[0]
+
+      xs = 0; xe = chunk_size[0]; ys = 0; ye = chunk_size[1]
+      if idxl.shape[0] or idxu.shape[0] or idxr.shape[0] or idxb.shape[0]:
+        if idxl.shape[0]:
+          xs = idxl[-1]
+        if idxu.shape[0]:
+          ys = idxu[-1]
+        if idxr.shape[0]:
+          xe = chunk_size[0]-idxr[-1]
+        if idxb.shape[0]:
+          ye = chunk_size[1]-idxb[-1]
+
+      patch = image[0,0,bs[0]+xs:be[0]-(chunk_size[0]-xe),bs[1]+ys:be[1]-(chunk_size[1]-ye)]
+      patch = torch.reshape(patch,(1,1,chunk_size[0],chunk_size[1]))
+      pred_patch = model(patch)
 
     pred[0,0,bs[0]+overlap[0]:be[0]-overlap[0],bs[1]+overlap[1]:be[1]-overlap[1]] = pred_patch[0,0,overlap[0]:-overlap[0],overlap[1]:-overlap[1]]
 
