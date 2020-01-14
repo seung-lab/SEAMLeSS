@@ -52,9 +52,16 @@ def defect_detect(model, image, chunk_size, overlap):
     ysize = be[1]-bs[1]
 
     patch = image[0,0,bs[0]:be[0],bs[1]:be[1]]
-    patch[patch==0] = 200
+    patch_aux = patch.copy()
+    patch_aux[patch==0] = 200
+
     patch = torch.reshape(patch,(1,1,xsize,ysize))
-    pred_patch = model(patch)
+    pred = model(patch)
+
+    patch_aux = torch.reshape(patch_aux,(1,1,xsize,ysize))
+    pred_aux = model(patch_aux)
+
+    pred_patch = (pred+pred_aux)*patch
 
     pred[0,0,bs[0]+overlap[0]:be[0]-overlap[0],bs[1]+overlap[1]:be[1]-overlap[1]] = pred_patch[0,0,overlap[0]:-overlap[0],overlap[1]:-overlap[1]]
 
