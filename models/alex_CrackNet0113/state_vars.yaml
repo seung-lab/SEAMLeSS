@@ -1,5 +1,5 @@
-name: FoldNet0106
-model_dir: /usr/people/jabae/seungmount/research/Alex/fold_detection/exp/FoldNet_v2/FoldNet_mip4_contrast_0106/model/
+name: CrackNet0113
+model_dir: /usr/people/jabae/seungmount/research/Alex/fold_detection/exp/CrackNet_v1/CrackNet_mip4_contrast_0113/model/
 net: >
   UNet(
     (conv_in): ConvBlock(
@@ -74,5 +74,5 @@ net: >
     )
     (conv_out): Conv2d(16, 1, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
   )
-log_dir: /usr/people/jabae/seungmount/research/Alex/fold_detection/exp/FoldNet_v2/FoldNet_mip4_contrast_0106/log/
-exp_dir: /usr/people/jabae/seungmount/research/Alex/fold_detection/exp/FoldNet_v2/FoldNet_mip4_contrast_0106
+log_dir: /usr/people/jabae/seungmount/research/Alex/fold_detection/exp/CrackNet_v1/CrackNet_mip4_contrast_0113/log/
+exp_dir: /usr/people/jabae/seungmount/research/Alex/fold_detection/exp/CrackNet_v1/CrackNet_mip4_contrast_0113/
