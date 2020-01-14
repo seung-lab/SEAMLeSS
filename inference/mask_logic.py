@@ -1,6 +1,5 @@
 import gevent.monkey
 gevent.monkey.patch_all()
-import torch
 
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
@@ -19,7 +18,6 @@ def print_run(diff, n_tasks):
   if n_tasks > 0:
     print (": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks))
 
-
 def make_range(block_range, part_num):
     rangelen = len(block_range)
     if(rangelen < part_num):
@@ -36,23 +34,17 @@ def make_range(block_range, part_num):
 
 if __name__ == '__main__':
   parser = get_argparser()
-  parser.add_argument('--src_path', type=str)
-  parser.add_argument('--src_mask_path', type=str, default='',
-    help='CloudVolume path of mask to use with src images; default None')
-  parser.add_argument('--src_mask_mip', type=int, default=8,
-    help='MIP of source mask')
-  parser.add_argument('--src_mask_val', type=int, default=1,
-    help='Value of of mask that indicates DO NOT mask')
+  parser.add_argument('--paths', type=str, nargs='+')
   parser.add_argument('--dst_path', type=str)
-  parser.add_argument('--mip', type=int)
-  parser.add_argument('--thr_binarize', type=float, default=0,
-    help='Threshold for binary mask')
-  parser.add_argument('--w_connect', type=int, default=0,
-    help='Width to dilate to connect adjacent components')
-  parser.add_argument('--thr_filter', type=int, default=0,
-    help='Size threshold to filter small components')
-  parser.add_argument('--w_dilate', type=int, default=0,
-    help='Width to dilate')
+  parser.add_argument('--op', type=str)
+  parser.add_argument('--z_offsets', type=int, nargs='+',
+    help='offsets from z to evaluate each image from paths')
+  parser.add_argument('--dst_offset', type=int,
+    help='offset from z where dst will be written')
+  parser.add_argument('--mip_list', type=int, nargs='+',
+    help='mip level of each image in paths')
+  parser.add_argument('--dst_mip', type=int,
+    help='mip level of dst image')
   parser.add_argument('--bbox_start', nargs=3, type=int,
     help='bbox origin, 3-element int list')
   parser.add_argument('--bbox_stop', nargs=3, type=int,
@@ -60,80 +52,81 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
+  parser.add_argument('--pad',
+    help='the size of the largest displacement expected; should be 2^high_mip',
+    type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   args = parse_args(parser)
   # Only compute matches to previous sections
-  args.serial_operation = True
   a = get_aligner(args)
   a.device = torch.device('cpu')
   bbox = get_bbox(args)
   provenance = get_provenance(args)
 
   # Simplify var names
-  mip = args.mip
+  mip = args.dst_mip
+  mip_list = args.mip_list
   max_mip = args.max_mip
-  pad = 0
-  chunk_size = (2048,2048)
-  overlap = (512,512)
-
-  thr_binarize = args.thr_binarize
-  w_connect = args.w_connect
-  thr_filter = args.thr_filter
-  w_dilate = args.w_dilate
+  pad = args.pad
+  z_offsets = args.z_offsets
+  dst_offset = args.dst_offset
+  print('mip {}'.format(mip))
+  print('mip_list {}'.format(mip_list))
+  print('z_offsets {}'.format(z_offsets))
+  print('dst_offset {}'.format(dst_offset))
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
-  # Create CloudVolume Manager
-  cm = CloudManager(args.src_path, max_mip, pad, provenance, batch_size=1,
-                    size_chunk=chunk_size[0], batch_mip=mip)
 
+  # Create CloudVolume Manager
+  cm = CloudManager(args.paths[0], max_mip, pad, provenance, batch_size=1,
+                    size_chunk=256*4, batch_mip=mip)
   # Create src CloudVolumes
-  src = cm.create(args.src_path, data_type='uint8', num_channels=1,
-                     fill_missing=True, overwrite=False)
+  cv_list = []
+  for path in args.paths:
+    cv = cm.create(path, data_type='float32', num_channels=1,
+                   fill_missing=True, overwrite=False)
+    cv_list.append(cv.path)
 
   # Create dst CloudVolumes
-  dst = cm.create(args.dst_path,
-                  data_type='uint8', num_channels=1, fill_missing=True,
-                  overwrite=True)
+  dst = cm.create(args.dst_path, data_type='uint8', num_channels=1, fill_missing=True,
+                  overwrite=True).path
 
-  def remote_upload(tasks):
-    with GreenTaskQueue(queue_name=args.queue_name) as tq:
-        tq.insert_all(tasks)
-  batch =[]
   prefix = str(mip)
   class TaskIterator():
       def __init__(self, brange):
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-              t = a.fold_postprocess(cm, src.path, dst.path, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, 
-                                    thr_filter, w_dilate)
+              z_list = [z+zo for zo in z_offsets]
+              dst_z = z + dst_offset
+              t = a.mask_logic(cm, cv_list, dst, z_list, dst_z, bbox, mip_list, mip,
+                               op=args.op)
               yield from t
+
   range_list = make_range(full_range, a.threads)
+
+  def remote_upload(tasks):
+    with GreenTaskQueue(queue_name=args.queue_name) as tq:
+        tq.insert_all(tasks)
 
   start = time()
   ptask = []
   for i in range_list:
       ptask.append(TaskIterator(i))
 
+  #with  LocalTaskQueue(parallel=1) as tq:
+  #    tq.insert_all(ptask[0], args=[a])
   if a.distributed:
-      with ProcessPoolExecutor(max_workers=a.threads) as executor:
-          executor.map(remote_upload, ptask)
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
   else:
       for t in ptask:
-          tq = LocalTaskQueue(parallel=1)
-          tq.insert_all(t, args= [a])
+        tq = LocalTaskQueue(parallel=1)
+        tq.insert_all(t, args= [a])
 
   end = time()
   diff = end - start
   print("Sending Tasks use time:", diff)
   print('Running Tasks')
   # wait
-  start = time()
-  #if args.use_sqs_wait:
-  a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing Tasks use time:", diff)
-
-

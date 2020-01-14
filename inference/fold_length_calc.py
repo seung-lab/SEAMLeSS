@@ -12,6 +12,7 @@ import json
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
 from cloudmanager import CloudManager
+from cloudvolume import CloudVolume
 from time import time
 from tasks import run
 
@@ -37,12 +38,6 @@ def make_range(block_range, part_num):
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--src_path', type=str)
-  parser.add_argument('--src_mask_path', type=str, default='',
-    help='CloudVolume path of mask to use with src images; default None')
-  parser.add_argument('--src_mask_mip', type=int, default=8,
-    help='MIP of source mask')
-  parser.add_argument('--src_mask_val', type=int, default=1,
-    help='Value of of mask that indicates DO NOT mask')
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--mip', type=int)
   parser.add_argument('--thr_binarize', type=float, default=0,
@@ -60,7 +55,6 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--block_size', type=int, default=10)
   args = parse_args(parser)
   # Only compute matches to previous sections
   args.serial_operation = True
@@ -74,7 +68,7 @@ if __name__ == '__main__':
   max_mip = args.max_mip
   pad = 0
   chunk_size = (2048,2048)
-  overlap = (512,512)
+#   overlap = (512,512)
 
   thr_binarize = args.thr_binarize
   w_connect = args.w_connect
@@ -92,9 +86,22 @@ if __name__ == '__main__':
                      fill_missing=True, overwrite=False)
 
   # Create dst CloudVolumes
-  dst = cm.create(args.dst_path,
-                  data_type='uint8', num_channels=1, fill_missing=True,
-                  overwrite=True)
+#   dst = cm.create(args.dst_path,
+#                   data_type='uint8', num_channels=1, fill_missing=True,
+#                   overwrite=True)
+
+  info = CloudVolume.create_new_info(
+    num_channels=1,
+    layer_type='segmentation',
+    data_type='uint32',
+    encoding="compressed_segmentation",
+    resolution=cm.info['scales'][mip]['resolution'],
+    voxel_offset=cm.dst_voxel_offsets[mip],
+    chunk_size=cm.dst_chunk_sizes[mip],
+    volume_size=cm.vec_total_sizes[mip],
+  )
+  vol = CloudVolume(args.dst_path, info=info)
+  vol.commit_info()
 
   def remote_upload(tasks):
     with GreenTaskQueue(queue_name=args.queue_name) as tq:
@@ -106,8 +113,8 @@ if __name__ == '__main__':
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-              t = a.fold_postprocess(cm, src.path, dst.path, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, 
-                                    thr_filter, w_dilate)
+              t = a.calculate_fold_lengths(cm, src.path, args.dst_path, z, mip, bbox, chunk_size, thr_binarize, w_connect, 
+                                    thr_filter)
               yield from t
   range_list = make_range(full_range, a.threads)
 

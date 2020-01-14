@@ -10,6 +10,7 @@ RUN apt-get update \
   && pip install --no-cache-dir -r requirements.txt \
   && python -c "import imageio; imageio.plugins.ffmpeg.download();" \
   # Register SEAMLeSS
+  && git init \
   && python setup.py develop \
   # Cleanup apt
   && apt-get clean \

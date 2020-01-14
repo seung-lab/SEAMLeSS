@@ -13,6 +13,8 @@ def get_argparser():
   parser.add_argument('--queue_name', type=str, default=None)
   parser.add_argument('--processes', type=positive_int, default=1,
      help='no. of processes to spawn on a single worker')
+  parser.add_argument('--device', type=str, default='cuda',
+     help='device arg to pass for PyTorch objects; either cpu or cuda')
   parser.add_argument('--gpu_processes', type=positive_int, default=None,
      help='max no. of processes that might share the GPU at any given time')
   parser.add_argument('--threads', type=int, default=1,

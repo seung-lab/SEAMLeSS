@@ -41,7 +41,7 @@ import tasks
 import tenacity
 import boto3
 from fcorr import get_fft_power2, get_hp_fcorr
-from fold_detec_post import postprocess
+from fold_detec_post import postprocess, postprocess_length_filter
 from fold_detection import defect_detect
 
 retry = tenacity.retry(
@@ -52,7 +52,7 @@ retry = tenacity.retry(
 
 class Aligner:
   def __init__(self, threads=1, queue_name=None, task_batch_size=1, 
-                     dry_run=False, **kwargs):
+               device='cuda', dry_run=False, **kwargs):
     print('Creating Aligner object')
 
     self.distributed = (queue_name != None)
@@ -63,7 +63,8 @@ class Aligner:
     if queue_name:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
     
-    self.device = torch.device('cuda')
+    # self.device = torch.device('cuda')
+    self.device = torch.device(device)
 
     self.model_archives = {}
     
@@ -581,7 +582,18 @@ class Aligner:
       return defect_detect(model, image, chunk_size, overlap)
     else:
       return image
+
+  def calculate_fold_lengths(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, thr_binarize, w_connect, thr_filter):
+    return [tasks.FoldLengthCalcTask(src_cv, dst_cv, bbox, mip, z, chunk_size, thr_binarize, w_connect, thr_filter, cm.dst_voxel_offsets[mip])]
     
+  def calculate_fold_lengths_z(self, cv, bbox, mip, z, thr_binarize, w_connect, thr_filter):
+    # import ipdb
+    # ipdb.set_trace()
+    image = self.get_image(cv, z, bbox, mip, to_tensor=False)
+    return postprocess_length_filter(image[0,0,...],
+                      thr_binarize=thr_binarize, w_connect=w_connect,
+                      thr_filter=thr_filter)
+  
   def fold_postprocess(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, thr_filter, w_dilate):
     chunks = self.break_into_chunks(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
@@ -595,8 +607,18 @@ class Aligner:
     image = self.get_image(src_cv, z, bbox, mip, to_tensor=False)
     return postprocess(image[0,0,...],
                       thr_binarize=thr_binarize, w_connect=w_connect,
-                      thr_filter=thr_filter, w_dilate=w_dilate) 
+                      thr_filter=thr_filter, w_dilate=w_dilate)
 
+  def mask_logic(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, mip_list,
+                 dst_mip, op='or'):
+      chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[dst_mip],
+                                      cm.dst_voxel_offsets[dst_mip],
+                                      mip=dst_mip, max_mip=cm.max_mip)
+      batch = []
+      for chunk in chunks:
+        batch.append(tasks.MaskLogicTask(cv_list, dst_cv, z_list, dst_z, chunk,
+                                         mip_list, dst_mip, op))
+      return batch
 
   def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
                         inverse=False, serial=True):
@@ -1633,6 +1655,24 @@ class Aligner:
       #print("++++closed shape",closed.shape)
       return closed, tmp_image
 
+  def mask_conjunction_chunk(self, cv_list, z_list, bbox, mip_list, dst_mip):
+    mask = self.get_data(cv_list[0], z_list[0], bbox, src_mip=mip_list[0],
+                          dst_mip=dst_mip, to_float=False, to_tensor=False)
+    for cv, z, mip in zip(cv_list[1:], z_list[1:], mip_list[1:]):
+      mask = np.logical_and(mask, self.get_data(cv, z, bbox, src_mip=mip,
+                                                dst_mip=dst_mip, to_float=False,
+                                                to_tensor=False))
+    return mask
+
+  def mask_disjunction_chunk(self, cv_list, z_list, bbox, mip_list, dst_mip):
+    mask = self.get_data(cv_list[0], z_list[0], bbox, src_mip=mip_list[0],
+                          dst_mip=dst_mip, to_float=False, to_tensor=False)
+    for cv, z, mip in zip(cv_list[1:], z_list[1:], mip_list[1:]):
+      mask = np.logical_or(mask, self.get_data(cv, z, bbox, src_mip=mip,
+                                                dst_mip=dst_mip, to_float=False,
+                                                to_tensor=False))
+    return mask
+
   def wait_for_queue_empty(self, path, prefix, chunks_len):
     if self.distributed:
       print("\nWait\n"
@@ -1670,7 +1710,7 @@ class Aligner:
         responses.append(int(response['Attributes'][a]))
       print('{}     '.format(responses[-2:]), end="\r", flush=True)
       if i < 2:
-        sleep(1)
+        sleep(2)
     return all(i == 0 for i in responses)
 
   def wait_for_sqs_empty(self):

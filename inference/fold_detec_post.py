@@ -7,7 +7,6 @@ import fastremap
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 
-
 def postprocess(img, thr_binarize=0, w_connect=0, thr_filter=0, w_dilate=0):
 
 	if thr_binarize:
@@ -22,6 +21,18 @@ def postprocess(img, thr_binarize=0, w_connect=0, thr_filter=0, w_dilate=0):
 		img = dilate_mask(img, w_dilate)
 
 	return img
+
+
+def postprocess_length_filter(img, thr_binarize=0, w_connect=0, thr_filter=0):
+
+	if thr_binarize:
+		img = threshold_image(img, abs(thr_binarize))
+		if thr_binarize<0:
+			img = 1 - img
+	if w_connect:
+		img = dilate_mask(img, w_connect)
+
+	return length_filter_mask(img)
 
 
 def threshold_image(img, thr):
@@ -58,3 +69,8 @@ def filter_mask(img, size_thr):
 	img_relab = np.reshape(fastremap.remap_from_array_kv(img_lab_vec, fold_num, fold_size), img_lab.shape)
 
 	return (img_relab>=size_thr).astype('uint8')
+
+def length_filter_mask(img):
+	import ipdb
+	ipdb.set_trace()
+	pass

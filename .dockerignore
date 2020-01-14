@@ -132,3 +132,8 @@ debug_outputs/
 
 # secrets
 inference/docker/secret.yaml
+.git/
+
+# isolate single modle
+models/
+!models/alex_FoldNet0106_124k/**

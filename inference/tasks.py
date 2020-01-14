@@ -69,6 +69,17 @@ class PredictImageTask(RegisteredTask):
     diff = end - start
     print(':{:.3f} s'.format(diff))
 
+# WARNING: Tries to fit entire slice into memory
+class FoldLengthCalcTask(RegisteredTask):
+  def __init__(self, cv, dst_cv, bbox, mip, z, chunk_size, thr_binarize, w_connect, thr_filter, voxel_offsets):
+    super(). __init__(cv, dst_cv, bbox, mip, z, chunk_size, thr_binarize, w_connect, thr_filter, voxel_offsets)
+
+  def execute(self, aligner):
+    cv = DCV(self.cv)
+    dst_cv = DCV(self.dst_cv)
+    bbox = deserialize_bbox(self.bbox)
+    image = aligner.calculate_fold_lengths_z(cv, bbox, self.mip, self.z, self.thr_binarize, self.w_connect, self.thr_filter)
+
 class FoldDetecPostTask(RegisteredTask):
   def __init__(self, cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter, w_dilate):
     super(). __init__(cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter, w_dilate)
@@ -91,6 +102,14 @@ class FoldDetecPostTask(RegisteredTask):
     w_connect = self.w_connect
     thr_filter = self.thr_filter
     w_dilate = self.w_dilate
+
+    # length_filter = self.length_filter
+    # if length_filter:
+    #   small_dst_cv = DCV(self.small_dst_cv)
+    #   medium_dst_cv = DCV(self.medium_dst_cv)
+    #   large_dst_cv = DCV(self.large_dst_cv)
+    #   medium_length_threshold = self.medium_length_threshold
+    #   large_length_threshold = self.large_length_threshold
     
     print("\nFold detection postprocess "
           "cv {}\n"
@@ -99,6 +118,15 @@ class FoldDetecPostTask(RegisteredTask):
           "\n".format(cv, z, mip), flush=True)
 
     start = time()
+    # if length_filter:
+      # assert(medium_length_threshold < large_length_threshold)
+      # small_fold_image, medium_fold_image, large_fold_image = aligner.fold_postprocess_chunk(cv, patch_bbox_in, z, mip, thr_binarize, w_connect, thr_filter, w_dilate, 
+      #                                        length_filter, medium_length_threshold, large_length_threshold)
+      # aligner.save_image(small_fold_image, small_dst_cv, z, patch_bbox_out, mip, to_uint8=True)
+      # aligner.save_image(medium_fold_image, medium_dst_cv, z, patch_bbox_out, mip, to_uint8=True)
+      # aligner.save_image(large_fold_image, large_dst_cv, z, patch_bbox_out, mip, to_uint8=True)
+      # pass
+    # else:
     image = aligner.fold_postprocess_chunk(cv, patch_bbox_in, z, mip, thr_binarize, w_connect, thr_filter, w_dilate)
     image = image[np.newaxis,np.newaxis,...]
     min_bound = cv[mip].bounds.minpt
@@ -109,6 +137,42 @@ class FoldDetecPostTask(RegisteredTask):
     end = time()
     diff = end - start
     print('Fold detection postprocess task: {:.3f} s'.format(diff))
+
+class MaskLogicTask(RegisteredTask):
+  def __init__(self, cv_list, dst_cv, z_list, dst_z, bbox, mip_list, dst_mip, op):
+    super(). __init__(cv_list, dst_cv, z_list, dst_z, bbox, mip_list, dst_mip, op)
+
+  def execute(self, aligner):
+    cv_list = [DCV(f) for f in self.cv_list]
+    dst = DCV(self.dst_cv)
+    z_list = self.z_list
+    dst_z = self.dst_z
+    patch_bbox = deserialize_bbox(self.bbox)
+    mip_list = self.mip_list
+    dst_mip = self.dst_mip
+    op = self.op
+    print("\nMaskLogicTask\n"
+          "op {}\n"
+          "cv_list {}\n"
+          "dst {}\n"
+          "z_list {}\n"
+          "dst_z {}\n"
+          "mip_list {}\n"
+          "dst_mip {}\n"
+          .format(op, cv_list, dst, z_list, dst_z, mip_list, dst_mip),
+          flush=True)
+    start = time()
+    if op == 'and':
+      res = aligner.mask_conjunction_chunk(cv_list, z_list, patch_bbox, mip_list,
+                                           dst_mip)
+    elif op == 'or':
+      res = aligner.mask_disjunction_chunk(cv_list, z_list, patch_bbox, mip_list,
+                                           dst_mip)
+
+    aligner.save_image(res, dst, dst_z, patch_bbox, dst_mip, to_uint8=True)
+    end = time()
+    diff = end - start
+    print('Task: {:.3f} s'.format(diff))
 
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, 
