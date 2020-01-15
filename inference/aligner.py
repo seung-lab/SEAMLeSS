@@ -657,7 +657,8 @@ class Aligner:
         to_tensor=True,
       ).to(device=self.device)
     tgt_field = self.rel_to_abs_residual(tgt_field, mip)
-    tgt_field = torch.zeros_like(tgt_field)
+    #tgt_field = torch.zeros_like(tgt_field)
+    import pdb; pdb.set_trace()
     tgt_distance = self.profile_field(tgt_field)
     tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
     tgt_field -= tgt_distance_fine_snap.to(device=self.device)
@@ -844,6 +845,8 @@ class Aligner:
         relative=True,
         to_tensor=True,
       ).to(device=self.device)
+      #HACKS
+      tgt_field = torch.zeros_like(tgt_field)
 
       if coarse_field_cv is not None and not is_identity(tgt_field):
         # Alignment with coarse field: Need to subtract the coarse field out of
@@ -857,6 +860,9 @@ class Aligner:
           to_tensor=True,
         ).to(device=self.device)
 
+        #HACKS
+        tgt_coarse_field = torch.zeros_like(tgt_coarse_field)
+
         tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_()
         tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
 
@@ -866,6 +872,7 @@ class Aligner:
         # Alignment without coarse field: tgt_field contains only the drift
         # or prev_field is identity
         tgt_drift_field = tgt_field
+
 
       tgt_drift_field = self.rel_to_abs_residual(tgt_drift_field, mip)
       drift_distance = self.profile_field(tgt_drift_field)
@@ -879,6 +886,7 @@ class Aligner:
       tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
       tgt_field -= tgt_distance_fine_snap.to(device=self.device)
       tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
+      tgt_field = torch.zeros_like(tgt_field)
 
     print(
       "Displacement adjustment TGT: {} px".format(
@@ -952,8 +960,7 @@ class Aligner:
       mask_mip=src_mask_mip,
       mask_val=src_mask_val,
       to_tensor=True,
-      normalizer=normalizer,
-      mask_op='gte'
+      normalizer=normalizer
     )
 
     padded_tgt_bbox_fine = deepcopy(bbox)
@@ -989,7 +996,7 @@ class Aligner:
       accum_field, fine_field = model(
         src_patch,
         tgt_patch,
-        tgt_field=torch.zeros_like(tgt_field, device=tgt_field.device),
+        tgt_field=tgt_field,
         src_field=coarse_field,
       )
 
@@ -1199,7 +1206,6 @@ class Aligner:
                                src_mip=mask_mip,
                                dst_mip=image_mip, valid_val=mask_val)
           image = image.masked_fill_(mask, 0)
-        return image
       else:
         distance = self.profile_field(field)
         distance = (distance // (2 ** image_mip)) * 2 ** image_mip
@@ -1216,7 +1222,9 @@ class Aligner:
                                       mask_op=blackout_mask_op)
         image = grid_sample(image, field, padding_mode='zeros')
         image = image[:,:,pad:-pad,pad:-pad]
-        if return_mask:
+
+      if return_mask:
+        if mask_cv is not None:
             mask = self.get_mask(mask_cv, image_z, new_bbox,
                                src_mip=mask_mip,
                                dst_mip=image_mip, valid_val=mask_val, mask_op=return_mask_op)
@@ -1224,7 +1232,9 @@ class Aligner:
             cropped_warped_mask = warped_mask[:,:,pad:-pad,pad:-pad]
             return image, cropped_warped_mask
         else:
-            return image
+            return image, None
+      else:
+        return image
 
 
   def cloudsample_compose(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip,

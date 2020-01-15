@@ -3,7 +3,16 @@ import time
 import numpy as np
 
 from .loss import unsupervised_loss
-from .residuals import res_warp_img, downsample_residuals, upsample_residuals, res_warp_res
+from .residuals import res_warp_img, downsample_residuals, upsample_residuals
+from .residuals import combine_residuals
+from .blockmatch import block_match
+
+def combine_pre_post(res, pre, post):
+
+    result = combine_residuals(post,
+                               combine_residuals(res, pre, is_pix_res=True),
+                               is_pix_res=True)
+    return result
 
 def optimize_pre_post_ups(opti_loss, src, tgt, src_defects, tgt_defects, initial_res, sm, lr, num_iter, opt_mode,
                       opt_params={}, crop=2):
@@ -36,7 +45,9 @@ def optimize_pre_post_ups(opti_loss, src, tgt, src_defects, tgt_defects, initial
     prev_loss = []
 
     s = time.time()
-    loss_bundle['pred_res'] = res_warp_res(pred_res, pre_res, is_pix_res=True) + post_res
+    loss_bundle['pred_res'] = combine_residuals(post_res,
+                                   combine_residuals(pred_res, pre_res, is_pix_res=True),
+                                   is_pix_res=True)
     while loss_bundle['pred_res'].shape[-2] < src.shape[-2]:
         loss_bundle['pred_res'] = upsample_residuals(loss_bundle['pred_res'])
 
@@ -52,7 +63,7 @@ def optimize_pre_post_ups(opti_loss, src, tgt, src_defects, tgt_defects, initial
     print (loss_dict['result'].cpu().detach().numpy(), loss_dict['similarity'].detach().cpu().numpy(), loss_dict['smoothness'].detach().cpu().numpy())
     for epoch in range(num_iter):
 
-        loss_bundle['pred_res'] = res_warp_res(pred_res, pre_res, is_pix_res=True) + post_res
+        loss_bundle['pred_res'] = combine_pre_post(pred_res, pre_res, post_res)
         while loss_bundle['pred_res'].shape[-2] < src.shape[-2]:
             loss_bundle['pred_res'] = upsample_residuals(loss_bundle['pred_res'])
         loss_bundle['pred_tgt'] = res_warp_img(src, loss_bundle['pred_res'], is_pix_res=True)
@@ -113,7 +124,7 @@ def optimize_pre_post_ups(opti_loss, src, tgt, src_defects, tgt_defects, initial
                 break
 
 
-    loss_bundle['pred_res'] = res_warp_res(pred_res, prev_pre_res, is_pix_res=True) + prev_post_res
+    loss_bundle['pred_res'] = combine_pre_post(pred_res, prev_pre_res, prev_post_res)
     while loss_bundle['pred_res'].shape[-2] < src.shape[-2]:
         loss_bundle['pred_res'] = upsample_residuals(loss_bundle['pred_res'])
     loss_bundle['pred_tgt'] = res_warp_img(src, loss_bundle['pred_res'], is_pix_res=True)
@@ -129,8 +140,8 @@ def optimize_pre_post_ups(opti_loss, src, tgt, src_defects, tgt_defects, initial
     return prev_pre_res, prev_post_res
 
 def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defects, tgt_defects, mips, crop=2, bot_mip=4, max_iter=800):
-    sm_val = 250e0
-    sm_val2 = 250e0
+    sm_val = 450e0
+    sm_val2 = 450e0
     sm = {
         4: sm_val,
         5: sm_val,
@@ -248,7 +259,7 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
             pre_res_ups = upsample_residuals(pre_res_ups)
             post_res_ups = upsample_residuals(post_res_ups)
 
-        pred_res = res_warp_res(pred_res, pre_res_ups, is_pix_res=True) + post_res_ups
+        pred_res = combine_pre_post(pred_res, pre_res_ups, post_res_ups)
     return pred_res
 
 
@@ -258,6 +269,27 @@ def optimize_metric(model, src, tgt, pred_res_start, src_defects, tgt_defects, m
     src_defects = src_defects.squeeze(0)
     tgt_defects = tgt_defects.squeeze(0)
     pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defects, tgt_defects, mips, crop=0, bot_mip=5, max_iter=max_iter*2)
+
+    num_reatures = model.state['up'][str(4)]['output'].shape[1]
+    src_bm = model.state['up'][str(4)]['output'][0:1, num_reatures//2 - 1]
+    tgt_bm = model.state['up'][str(4)]['output'][0:1, num_reatures - 1]
+
+    src_bm[..., (src == 0).squeeze()] = 0
+    tgt_bm[..., (tgt == 0).squeeze()] = 0
+    do_bm = False
+    if do_bm:
+        s = time.time()
+        with torch.no_grad():
+            warped_tgt = res_warp_img(src_bm, pred_res_opt, is_pix_res=True)
+            tile_size = 128
+            tile_step = tile_size * 3 // 4
+            max_disp = 16
+            refinement_res = block_match(warped_tgt, tgt_bm, tile_size=tile_size,
+                                   tile_step=tile_step, max_disp=max_disp,
+                                   min_overlap_px=1200, filler="inf", peak_ratio_cutoff=1.2)
+            pred_res_opt = combine_residuals(pred_res_opt, refinement_res, is_pix_res=True)
+
+        print ("BM time: {}".format(time.time() - s))
 
     mips = [4]
     pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt, src_defects, tgt_defects, mips, crop=0, bot_mip=4, max_iter=max_iter)

@@ -12,6 +12,7 @@ import scipy.ndimage
 
 from pdb import set_trace as st
 from fcorr import get_fft_power2, get_hp_fcorr
+from blockmatch import block_match
 
 def get_np(pt):
     return pt.cpu().detach().numpy()
@@ -93,8 +94,11 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
     TARGET_MIP = 4
     if mip > TARGET_MIP:
         raise Exception("Misalignment detector only works for images with MIP <= 4")
-    img1 = img1.squeeze()
-    img2 = img2.squeeze()
+    if img1.max() > 10:
+        img1 /= 255.0
+        img2 /= 255.0
+        print ("DIVIDING")
+
 
     img1_downs = img1
     img2_downs = img2
@@ -105,9 +109,8 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
     for _ in range(mip, TARGET_MIP):
         img1_downs = torch.nn.functional.avg_pool2d(img1_downs, 2)
         img2_downs = torch.nn.functional.avg_pool2d(img2_downs, 2)
-
-    img1_downs_norm = normalize(img1_downs, mask=img1_downs!=0, mask_fill=-20)
-    img2_downs_norm = normalize(img2_downs, mask=img2_downs!=0, mask_fill=-20)
+    img1_downs_norm = normalize(img1_downs, mask=img1_downs.abs()>0.25, mask_fill=-20)
+    img2_downs_norm = normalize(img2_downs, mask=img2_downs.abs()>0.25, mask_fill=-20)
 
     pyramid_name = 'ncc_m4'
     encoder = create_model(
@@ -117,19 +120,34 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
     with torch.no_grad():
         img1_enc = encoder(img1_downs_norm).squeeze()
         img2_enc = encoder(img2_downs_norm).squeeze()
+        img1_enc[img1_downs.squeeze().abs() < 0.25] = 0
+        img2_enc[img2_downs.squeeze().abs() < 0.25] = 0
+        img1_enc[img1_enc.squeeze().abs() < 0.15] = 0
+        img2_enc[img2_enc.squeeze().abs() < 0.15] = 0
 
     misalignment_mask = compute_fcorr(img1_enc, img2_enc).squeeze()
-    misalignment_mask_ups = scipy.misc.imresize(misalignment_mask, get_np(img1).shape)
-    misalignment_mask_ups_var = torch.Tensor(misalignment_mask_ups).to(device=img1.device)
-    if threshold is not None:
-        return misalignment_mask_ups_var > threshold
-    else:
-        return misalignment_mask_ups_var
+    #misalignment_mask_ups = scipy.misc.imresize(misalignment_mask, get_np(img1).shape)
+    #fcorr_ups_var = torch.Tensor(fcorr_ups, device=img1.device)
+    return misalignment_mask
 
 def compute_fcorr(image1, image2):
     while len(image1.shape) < 4:
         image1 = image1.unsqueeze(0)
         image2 = image2.unsqueeze(0)
+    s = time.time()
+    tile_size = 96
+    ma_length = 5
+    bm_result = block_match(image2, image1, min_overlap_px=800, tile_step=tile_size//2,
+            tile_size=tile_size,
+            peak_ratio_cutoff=1.6, peak_distance=ma_length,  max_disp=16, filler=250)
+    nonzero_bm_mask = ((bm_result[..., 0] > ma_length) + (bm_result[..., 1].abs() > ma_length)) > 0
+    print (time.time() - s, 'Masked misalignments: ', nonzero_bm_mask.sum())
+    return nonzero_bm_mask
+    #mult = image1*image2
+    #result = (mult - mult.mean()) / torch.sqrt(mult.var())
+    #result += result.min()
+    #return get_np(result).squeeze()
+
     std1 = image1[image1!=0].std()
     std2 = image2[image2!=0].std()
     scaling = 8 * pow(std1*std2, 1/2)
@@ -157,3 +175,5 @@ def compute_fcorr(image1, image2):
 
 def get_np(pt):
     return pt.cpu().detach().numpy()
+
+

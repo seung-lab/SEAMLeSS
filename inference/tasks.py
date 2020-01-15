@@ -252,11 +252,11 @@ class RenderTask(RegisteredTask):
                                      mask_cv=mask_cv, mask_mip=mask_mip,
                                      mask_val=mask_val, affine=affine,
                                      use_cpu=self.use_cpu, pad=self.pad,
-                                     return_mask=True, blackout_mask_op='gte',
+                                     return_mask=True, blackout_mask_op='none',
                                      return_mask_op='gte')
-      seethrough = True
-      coarsen_fold = 3
-      coarsen_misalign = 40
+      seethrough = False
+      coarsen_fold = 5
+      coarsen_misalign = 80
       if seethrough:
          prev_image = aligner.get_masked_image(dst_cv, dst_z-1, patch_bbox, src_mip,
                                        mask_cv=None, mask_mip=None, mask_val=None,
@@ -268,7 +268,7 @@ class RenderTask(RegisteredTask):
              image[fold_region_coarse] = prev_image[fold_region_coarse]
              misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
                                                          threshold=80)
-             misalignment_region = torch.zeros_like(misalignment_region)
+             #misalignment_region = torch.zeros_like(misalignment_region)
              misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
              image[..., misalignment_region_coarse] = prev_image[..., misalignment_region_coarse]
              seethrough_region = (fold_region_coarse + misalignment_region_coarse) > 0
@@ -277,9 +277,8 @@ class RenderTask(RegisteredTask):
              seethrough_tissue_mask = (image > 0.05) * (seethrough_region == True)
              image[seethrough_tissue_mask] *= torch.sqrt(image[original_tissue_mask].var()) / torch.sqrt(image[seethrough_tissue_mask].var())
              image[seethrough_tissue_mask] += image[original_tissue_mask].mean() - image[seethrough_tissue_mask].mean()
-             if image[seethrough_tissue_mask].min() < 0:
-                 image[seethrough_tissue_mask] += image[seethrough_tissue_mas].min()
-      image = image.cpu().numpy()
+             image[image < 0] = 0
+             image[seethrough_tissue_mask] += 0.02
       image = image.cpu().numpy()
       # import ipdb
       # ipdb.set_trace()
