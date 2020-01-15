@@ -67,18 +67,19 @@ def defect_detect(model, image, chunk_size, overlap):
   overlap = np.array(overlap)
   bboxes = chunk_bboxes(img_size, chunk_size, 2*overlap)
 
-  pred = torch.zeros(image.shape)
+  pred = torch.zeros(image.shape).cuda()
 
   for b in bboxes:
     bs = b[0]
     be = b[1]
 
-    patch = image[0,0,bs[0]:be[0],bs[1]:be[1]]
+    xs = bs[0]; xe = be[0]; ys = bs[1]; ye = be[1];
+    patch = image[0,0,xs:xe,ys:ye]
 
     img = patch.cpu().numpy().reshape((chunk_size[0],chunk_size[1]))
 
     if np.sum(img==0):
-      pred_patch = torch.zeros((1,1,chunk_size[0],chunk_size[1]))
+      pred_patch = torch.zeros((1,1,chunk_size[0],chunk_size[1])).cuda()
 
     else:
       img_rowl = np.cumsum(np.sum(img,axis=1))
@@ -91,25 +92,24 @@ def defect_detect(model, image, chunk_size, overlap):
       idxr = np.where(img_rowr==0)[0]
       idxb = np.where(img_colb==0)[0]
 
-      xs = 0; xe = chunk_size[0]; ys = 0; ye = chunk_size[1]
       if idxl.shape[0] or idxu.shape[0] or idxr.shape[0] or idxb.shape[0]:
         if idxl.shape[0]:
-          xs = idxl[-1]
-          patch = image[0,0,bs[0]+xs:bs[0]+xs+chunk_size[0],:]
+          xs = bs[0]+idxl[-1]
+          patch = image[0,0,xs:xs+chunk_size[0],ys:ye]
         if idxu.shape[0]:
-          ys = idxu[-1]
-          patch = image[0,0,:,bs[1]+ys:bs[1]+ys+chunk_size[1]]
+          ys = bs[1]+idxu[-1]
+          patch = image[0,0,xs:xe,ys:ys+chunk_size[1]]
         if idxr.shape[0]:
-          xe = -idxr[-1]
-          patch = image[0,0,be[0]+xe-chunk_size[0]:be[0]+xe,:]
+          xe = be[0]-idxr[-1]
+          patch = image[0,0,xe-chunk_size[0]:xe,ys:ye]
         if idxb.shape[0]:
-          ye = -idxb[-1]
-          patch = image[0,0,:,be[1]+ye-chunk_size[1]:be[1]+ye]
+          ye = be[1]-idxb[-1]
+          patch = image[0,0,xs:xe,ye-chunk_size[1]:ye]
 
       patch = torch.reshape(patch,(1,1,chunk_size[0],chunk_size[1]))
       pred_patch = model(patch)
 
-    pred[0,0,bs[0]+overlap[0]:be[0]-overlap[0],bs[1]+overlap[1]:be[1]-overlap[1]] += pred_patch[0,0,overlap[0]:-overlap[0],overlap[1]:-overlap[1]]
+    pred[0,0,xs+overlap[0]:xe-overlap[0],ys+overlap[1]:ye-overlap[1]] += pred_patch[0,0,overlap[0]:-overlap[0],overlap[1]:-overlap[1]]
 
   return pred 
 
