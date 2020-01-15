@@ -95,18 +95,21 @@ def defect_detect(model, image, chunk_size, overlap):
       if idxl.shape[0] or idxu.shape[0] or idxr.shape[0] or idxb.shape[0]:
         if idxl.shape[0]:
           xs = bs[0]+idxl[-1]
-          patch = image[0,0,xs:xs+chunk_size[0],ys:ye]
-        if idxu.shape[0]:
+          # patch = image[0,0,xs:xs+chunk_size[0],ys:ye]
+        elif idxu.shape[0]:
           ys = bs[1]+idxu[-1]
-          patch = image[0,0,xs:xe,ys:ys+chunk_size[1]]
-        if idxr.shape[0]:
-          xe = be[0]-idxr[-1]
-          patch = image[0,0,xe-chunk_size[0]:xe,ys:ye]
-        if idxb.shape[0]:
-          ye = be[1]-idxb[-1]
-          patch = image[0,0,xs:xe,ye-chunk_size[1]:ye]
+          # patch = image[0,0,xs:xe,ys:ys+chunk_size[1]]
+        elif idxr.shape[0]:
+          # xe = be[0]-idxr[-1]
+          xs = be[0]-idxr[-1]-chunk_size[0]+overlap[0]
+          # patch = image[0,0,xe-chunk_size[0]:xe,ys:ye]
+        elif idxb.shape[0]:
+          # ye = be[1]-idxb[-1]
+          ys = be[1]-idxb[-1]-chunk_size[1]+overlap[1]
+          # patch = image[0,0,xs:xe,ye-chunk_size[1]:ye]
 
-      patch = torch.reshape(patch,(1,1,chunk_size[0],chunk_size[1]))
+        patch = image[0,0,xs:xs+chunk_size[0],ys:ys+chunk_size[1]]
+        patch = torch.reshape(patch,(1,1,chunk_size[0],chunk_size[1]))
       pred_patch = model(patch)
 
     pred[0,0,xs+overlap[0]:xe-overlap[0],ys+overlap[1]:ye-overlap[1]] += pred_patch[0,0,overlap[0]:-overlap[0],overlap[1]:-overlap[1]]
