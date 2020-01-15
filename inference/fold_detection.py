@@ -78,7 +78,7 @@ def defect_detect(model, image, chunk_size, overlap):
 
     img = patch.cpu().numpy().reshape((chunk_size[0],chunk_size[1]))
 
-    if np.sum(img==0):
+    if np.sum(img)==0:
       pred_patch = torch.zeros((1,1,chunk_size[0],chunk_size[1])).cuda()
 
     else:
@@ -91,24 +91,30 @@ def defect_detect(model, image, chunk_size, overlap):
       idxu = np.where(img_colu==0)[0]
       idxr = np.where(img_rowr==0)[0]
       idxb = np.where(img_colb==0)[0]
-
+      
       if idxl.shape[0] or idxu.shape[0] or idxr.shape[0] or idxb.shape[0]:
         if idxl.shape[0]:
-          xs = bs[0]+idxl[-1]
+          xs = bs[0]+idxl[-1]-overlap[1]
           # patch = image[0,0,xs:xs+chunk_size[0],ys:ye]
-        elif idxu.shape[0]:
-          ys = bs[1]+idxu[-1]
+        if idxu.shape[0]:
+          ys = bs[1]+idxu[-1]-overlap[1]
           # patch = image[0,0,xs:xe,ys:ys+chunk_size[1]]
-        elif idxr.shape[0]:
-          # xe = be[0]-idxr[-1]
+        if idxr.shape[0]:
           xs = be[0]-idxr[-1]-chunk_size[0]+overlap[0]
-          # patch = image[0,0,xe-chunk_size[0]:xe,ys:ye]
-        elif idxb.shape[0]:
-          # ye = be[1]-idxb[-1]
+        if idxb.shape[0]:
           ys = be[1]-idxb[-1]-chunk_size[1]+overlap[1]
-          # patch = image[0,0,xs:xe,ye-chunk_size[1]:ye]
-
+          
+        if (xs+chunk_size[0])>=img_size[0]:
+          xs = img_size[0]-chunk_size[0]
+        elif xs<0:
+          xs = 0
+        if (ys+chunk_size[1])>=img_size[1]:
+          ys = img_size[1]-chunk_size[1]
+        elif ys<0:
+          ys = 0
+  
         patch = image[0,0,xs:xs+chunk_size[0],ys:ys+chunk_size[1]]
+     
       patch = torch.reshape(patch,(1,1,chunk_size[0],chunk_size[1]))
       pred_patch = model(patch)
 
