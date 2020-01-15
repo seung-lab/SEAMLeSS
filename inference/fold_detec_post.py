@@ -32,6 +32,9 @@ def postprocess_length_filter(img, thr_binarize=0, w_connect=0, thr_filter=0):
 	if w_connect:
 		img = dilate_mask(img, w_connect)
 
+	# import ipdb
+	# ipdb.set_trace()
+
 	return length_filter_mask(img)
 
 
@@ -70,7 +73,16 @@ def filter_mask(img, size_thr):
 
 	return (img_relab>=size_thr).astype('uint8')
 
+# @profile
 def length_filter_mask(img):
+	print('skeletonizing...')
+	import kimimaro
+	img_temp = img[0:6001,0:6001]
+	img_temp2 = img[6000:12001,0:6001]
+	temptemp = kimimaro.skeletonize(img_temp)
+	temptemp2 = kimimaro.skeletonize(img_temp2)
+	# img_lab = measure.label(img)
+	# fold_num, fold_ind = np.unique(img_lab, return_index=True)
 	import ipdb
 	ipdb.set_trace()
 	pass
