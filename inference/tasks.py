@@ -247,12 +247,14 @@ class RenderTask(RegisteredTask):
                         field_mip, src_mip), flush=True)
     start = time()
     if not aligner.dry_run:
+      fold_mode = 'blackout'
+
       image, folds = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
                                      patch_bbox, src_mip, field_mip,
                                      mask_cv=mask_cv, mask_mip=mask_mip,
                                      mask_val=mask_val, affine=affine,
                                      use_cpu=self.use_cpu, pad=self.pad,
-                                     return_mask=True, blackout_mask_op='none',
+                                     return_mask=True, blackout_mask_op='gte',
                                      return_mask_op='gte')
       seethrough = False
       coarsen_fold = 5
