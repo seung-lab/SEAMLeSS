@@ -55,9 +55,13 @@ if __name__ == '__main__':
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
   parser.add_argument('--max_mip', type=int, default=9)
+  parser.add_argument('--chunk_size', nargs=2, type=int,
+    help='chunk size')
+  parser.add_argument('--overlap', nargs=2, type=int,
+    help='chunk overlap')
   args = parse_args(parser)
   # Only compute matches to previous sections
-  args.serial_operation = True
+  # args.serial_operation = True
   a = get_aligner(args)
   a.device = torch.device('cpu')
   bbox = get_bbox(args)
@@ -67,13 +71,15 @@ if __name__ == '__main__':
   mip = args.mip
   max_mip = args.max_mip
   pad = 0
-  chunk_size = (2048,2048)
+  # chunk_size = (2048,2048)
 #   overlap = (512,512)
 
   thr_binarize = args.thr_binarize
   w_connect = args.w_connect
   thr_filter = args.thr_filter
   w_dilate = args.w_dilate
+  chunk_size = args.chunk_size
+  overlap = args.overlap
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -97,11 +103,14 @@ if __name__ == '__main__':
     encoding="compressed_segmentation",
     resolution=cm.info['scales'][mip]['resolution'],
     voxel_offset=cm.dst_voxel_offsets[mip],
-    chunk_size=cm.dst_chunk_sizes[mip],
+    chunk_size=[*cm.dst_chunk_sizes[mip], 1],
     volume_size=cm.vec_total_sizes[mip],
   )
+  # import ipdb
+  # ipdb.set_trace()
   vol = CloudVolume(args.dst_path, info=info)
   vol.commit_info()
+  # overlap = 32
 
   def remote_upload(tasks):
     with GreenTaskQueue(queue_name=args.queue_name) as tq:
@@ -113,7 +122,7 @@ if __name__ == '__main__':
           self.brange = brange
       def __iter__(self):
           for z in self.brange:
-              t = a.calculate_fold_lengths(cm, src.path, args.dst_path, z, mip, bbox, chunk_size, thr_binarize, w_connect, 
+              t = a.calculate_fold_lengths(cm, src.path, args.dst_path, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, 
                                     thr_filter)
               yield from t
   range_list = make_range(full_range, a.threads)

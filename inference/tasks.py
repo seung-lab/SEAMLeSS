@@ -71,14 +71,29 @@ class PredictImageTask(RegisteredTask):
 
 # WARNING: Tries to fit entire slice into memory
 class FoldLengthCalcTask(RegisteredTask):
-  def __init__(self, cv, dst_cv, bbox, mip, z, chunk_size, thr_binarize, w_connect, thr_filter, voxel_offsets):
-    super(). __init__(cv, dst_cv, bbox, mip, z, chunk_size, thr_binarize, w_connect, thr_filter, voxel_offsets)
+  def __init__(self, cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter):
+    super(). __init__(cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter)
 
   def execute(self, aligner):
     cv = DCV(self.cv)
     dst_cv = DCV(self.dst_cv)
-    bbox = deserialize_bbox(self.bbox)
-    image = aligner.calculate_fold_lengths_z(cv, bbox, self.mip, self.z, self.thr_binarize, self.w_connect, self.thr_filter)
+    overlap = self.overlap
+    mip = self.mip
+    
+    overlap_bbox = np.array(overlap)*(2**mip)
+    patch_bbox_in = deserialize_bbox(self.patch_bbox)
+    patch_bbox_in.extend(overlap_bbox)
+    patch_range = patch_bbox_in.range(mip)
+    patch_bbox_out = deserialize_bbox(self.patch_bbox)
+    patch_size = patch_bbox_out.size(mip)
+    
+    temp_image = aligner.calculate_fold_lengths_chunk(cv, patch_bbox_in, mip, self.z, self.thr_binarize, self.w_connect, self.thr_filter)
+    image = temp_image[np.newaxis,np.newaxis,...]
+    min_bound = cv[mip].bounds.minpt
+    image = image[(slice(0,1),slice(0,1),)+
+                  tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),
+                    overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
+    aligner.save_image(image, dst_cv, self.z, patch_bbox_out, mip, to_uint8=False, render_mip=0)
 
 class FoldDetecPostTask(RegisteredTask):
   def __init__(self, cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter, w_dilate):

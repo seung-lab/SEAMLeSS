@@ -136,4 +136,4 @@ inference/docker/secret.yaml
 
 # isolate single modle
 models/
-!models/alex_FoldNet0106_124k/**
+# !models/alex_CrackNet0113/**

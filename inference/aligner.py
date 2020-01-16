@@ -321,13 +321,15 @@ class Aligner:
     
     return data
 
-  def save_image(self, float_patch, cv, z, bbox, mip, to_uint8=True):
+  def save_image(self, float_patch, cv, z, bbox, mip, to_uint8=True, render_mip=None):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = np.transpose(float_patch, (2,3,0,1))
     if to_uint8:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
-    cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
+    if render_mip is None:
+      render_mip = mip
+    cv[render_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
 
   def save_image_batch(self, cv, z_range, float_patch, bbox, mip, to_uint8=True):
     x_range = bbox.x_range(mip=mip)
@@ -583,10 +585,17 @@ class Aligner:
     else:
       return image
 
-  def calculate_fold_lengths(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, thr_binarize, w_connect, thr_filter):
-    return [tasks.FoldLengthCalcTask(src_cv, dst_cv, bbox, mip, z, chunk_size, thr_binarize, w_connect, thr_filter, cm.dst_voxel_offsets[mip])]
+  def calculate_fold_lengths(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, thr_filter):
+    # return [tasks.FoldLengthCalcTask(src_cv, dst_cv, bbox, mip, z, chunk_size, thr_binarize, w_connect, thr_filter, cm.dst_voxel_offsets[mip])]
+    chunks = self.break_into_chunks(bbox, chunk_size,
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.num_scales)
+    batch = []
+    for patch_bbox in chunks:
+      batch.append(tasks.FoldLengthCalcTask(src_cv, dst_cv,patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter))
+    return batch
     
-  def calculate_fold_lengths_z(self, cv, bbox, mip, z, thr_binarize, w_connect, thr_filter):
+  def calculate_fold_lengths_chunk(self, cv, bbox, mip, z, thr_binarize, w_connect, thr_filter):
     # import ipdb
     # ipdb.set_trace()
     image = self.get_image(cv, z, bbox, mip, to_tensor=False)
