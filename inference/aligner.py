@@ -167,10 +167,10 @@ class Aligner:
     print('get_mask: {:.3f}'.format(diff), flush=True) 
     return mask
 
-  def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None):
+  def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None, to_float=True):
     print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
     start = time()
-    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=True, 
+    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=mip, to_float=to_float, 
                              to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
@@ -602,6 +602,15 @@ class Aligner:
     return postprocess_length_filter(image[0,0,...],
                       thr_binarize=thr_binarize, w_connect=w_connect,
                       thr_filter=thr_filter, return_skeleys=return_skeleys)
+
+  def threshold_and_mask(self, src_cv_path, src_cv, dst_cv_path, z, mip, bbox, threshold, max_mip):
+    chunks = self.break_into_chunks(bbox, src_cv.chunk_size,
+                                    src_cv.voxel_offset, mip=mip,
+                                    max_mip=max_mip)
+    batch = []
+    for patch_bbox in chunks:
+      batch.append(tasks.ThresholdAndMaskTask(src_cv_path, dst_cv_path, patch_bbox, mip, z, threshold))
+    return batch
   
   def fold_postprocess(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, thr_filter, w_dilate):
     chunks = self.break_into_chunks(bbox, chunk_size,

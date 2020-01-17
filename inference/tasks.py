@@ -5,7 +5,7 @@ import tenacity
 import numpy as np
 from functools import partial
 from mipless_cloudvolume import deserialize_miplessCV as DCV
-from cloudvolume import Storage
+from cloudvolume import Storage, CloudVolume
 from cloudvolume.lib import scatter 
 from boundingbox import BoundingBox, deserialize_bbox
 
@@ -69,7 +69,35 @@ class PredictImageTask(RegisteredTask):
     diff = end - start
     print(':{:.3f} s'.format(diff))
 
-# WARNING: Tries to fit entire slice into memory
+class ThresholdAndMaskTask(RegisteredTask):
+  def __init__(self, src_cv_path, dst_cv_path, patch_bbox, mip, z, threshold):
+    super(). __init__(src_cv_path, dst_cv_path, patch_bbox, mip, z, threshold)
+
+  def execute(self, aligner):
+    cv = DCV(self.src_cv_path)
+    dst_cv = DCV(self.dst_cv_path)
+    mip = self.mip
+    z = self.z
+    bbox = deserialize_bbox(self.patch_bbox)
+    image = aligner.get_image(cv, z, bbox, mip, to_tensor=False, to_float=False)
+    # x_range = bbox.x_range(mip)
+    # y_range = bbox.y_range(mip)
+    # image = cv[x_range,y_range,z]
+    mask = image < self.threshold
+    # import ipdb
+    # ipdb.set_trace()
+    # import ipdb
+    # ipdb.set_trace()
+    image[mask] = 0
+    image[~mask] = 1
+    # temp_image = aligner.calculate_fold_lengths_chunk(cv, patch_bbox_in, mip, self.z, self.thr_binarize, self.w_connect, self.thr_filter, self.return_skeleys)
+    # image = temp_image[np.newaxis,np.newaxis,...]
+    # min_bound = cv[mip].bounds.minpt
+    # image = image[(slice(0,1),slice(0,1),)+
+                  # tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),
+                    # overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
+    aligner.save_image(image, dst_cv, z, bbox, mip, to_uint8=True, render_mip=0)
+
 class FoldLengthCalcTask(RegisteredTask):
   def __init__(self, cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter, return_skeleys=False):
     super(). __init__(cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter, return_skeleys)
