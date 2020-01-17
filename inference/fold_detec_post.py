@@ -24,7 +24,7 @@ def postprocess(img, thr_binarize=0, w_connect=0, thr_filter=0, w_dilate=0):
 	return img
 
 
-def postprocess_length_filter(img, thr_binarize=0, w_connect=0, thr_filter=0):
+def postprocess_length_filter(img, thr_binarize=0, w_connect=0, thr_filter=0, return_skeleys=False):
 
 	if thr_binarize:
 		img = threshold_image(img, abs(thr_binarize))
@@ -36,7 +36,7 @@ def postprocess_length_filter(img, thr_binarize=0, w_connect=0, thr_filter=0):
 	# import ipdb
 	# ipdb.set_trace()
 
-	return length_filter_mask(img)
+	return length_filter_mask(img, return_skeleys)
 
 
 def threshold_image(img, thr):
@@ -75,31 +75,39 @@ def filter_mask(img, size_thr):
 	return (img_relab>=size_thr).astype('uint8')
 
 # @profile
-def length_filter_mask(img):
+def length_filter_mask(img, return_skeleys=False):
 	print('skeletonizing...')
 	img_lab = measure.label(img).astype(np.uint32)
 	fold_num = np.unique(img_lab)
-	skels = kimimaro.skeletonize(img_lab, dust_threshold=0)
+	DEFAULT_TEASAR_PARAMS = {
+  		# 'scale': 10,
+  		'scale': 0.5,
+		'const': 1,
+  		'pdrf_scale': 100000,
+  		'pdrf_exponent': 4,
+	}
+	skels = kimimaro.skeletonize(img_lab, teasar_params=DEFAULT_TEASAR_PARAMS, dust_threshold=0)
+
 	# img_temp = img[0:6001,0:6001]
 	# img_temp2 = img[6000:12001,0:6001]
 	# temptemp = kimimaro.skeletonize(img_temp)
 	# temptemp2 = kimimaro.skeletonize(img_temp2)
 	# img_lab = measure.label(img)
 	# fold_num, fold_ind = np.unique(img_lab, return_index=True)
-	remap_dict = {}
-	return_img = np.zeros(shape=img.shape, dtype=np.uint32)	
-	if skels != {}:
-		for key in skels:
-			len = skels[key].cable_length()
-			# rows = skels[key].vertices[:,0].astype(np.int)
-			# cols = skels[key].vertices[:,1].astype(np.int)
-			# x1 = skels[key].vertices[0,0]
-			# y1 = skels[key].vertices[0,0]
-			remap_dict[skels[key].id] = np.uint32(len)
-			# import ipdb
-			# return_img[rows,cols] = np.uint32(len)
-			# ipdb.set_trace()
-	# import ipdb
-	# ipdb.set_trace()
-	fastremap.remap(img_lab, remap_dict, in_place=True, preserve_missing_labels=True)
-	return img_lab
+	if return_skeleys:
+		return_img = np.zeros(shape=img.shape, dtype=np.uint32)
+		if skels != {}:
+			for key in skels:
+				len = skels[key].cable_length()
+				rows = skels[key].vertices[:,0].astype(np.int)
+				cols = skels[key].vertices[:,1].astype(np.int)
+				return_img[rows,cols] = np.uint32(len)
+		return return_img
+	else:
+		remap_dict = {}
+		if skels != {}:
+			for key in skels:
+				len = skels[key].cable_length()
+				remap_dict[skels[key].id] = np.uint32(len)
+		fastremap.remap(img_lab, remap_dict, in_place=True, preserve_missing_labels=True)
+		return img_lab

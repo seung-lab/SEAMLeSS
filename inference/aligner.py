@@ -585,23 +585,23 @@ class Aligner:
     else:
       return image
 
-  def calculate_fold_lengths(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, thr_filter):
+  def calculate_fold_lengths(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, thr_filter, return_skeleys=False):
     # return [tasks.FoldLengthCalcTask(src_cv, dst_cv, bbox, mip, z, chunk_size, thr_binarize, w_connect, thr_filter, cm.dst_voxel_offsets[mip])]
     chunks = self.break_into_chunks(bbox, chunk_size,
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.num_scales)
     batch = []
     for patch_bbox in chunks:
-      batch.append(tasks.FoldLengthCalcTask(src_cv, dst_cv,patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter))
+      batch.append(tasks.FoldLengthCalcTask(src_cv, dst_cv,patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter, return_skeleys))
     return batch
     
-  def calculate_fold_lengths_chunk(self, cv, bbox, mip, z, thr_binarize, w_connect, thr_filter):
+  def calculate_fold_lengths_chunk(self, cv, bbox, mip, z, thr_binarize, w_connect, thr_filter, return_skeleys):
     # import ipdb
     # ipdb.set_trace()
     image = self.get_image(cv, z, bbox, mip, to_tensor=False)
     return postprocess_length_filter(image[0,0,...],
                       thr_binarize=thr_binarize, w_connect=w_connect,
-                      thr_filter=thr_filter)
+                      thr_filter=thr_filter, return_skeleys=return_skeleys)
   
   def fold_postprocess(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, thr_filter, w_dilate):
     chunks = self.break_into_chunks(bbox, chunk_size,

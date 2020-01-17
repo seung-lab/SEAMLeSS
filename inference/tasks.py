@@ -71,8 +71,8 @@ class PredictImageTask(RegisteredTask):
 
 # WARNING: Tries to fit entire slice into memory
 class FoldLengthCalcTask(RegisteredTask):
-  def __init__(self, cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter):
-    super(). __init__(cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter)
+  def __init__(self, cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter, return_skeleys=False):
+    super(). __init__(cv, dst_cv, patch_bbox, overlap, mip, z, thr_binarize, w_connect, thr_filter, return_skeleys)
 
   def execute(self, aligner):
     cv = DCV(self.cv)
@@ -87,7 +87,7 @@ class FoldLengthCalcTask(RegisteredTask):
     patch_bbox_out = deserialize_bbox(self.patch_bbox)
     patch_size = patch_bbox_out.size(mip)
     
-    temp_image = aligner.calculate_fold_lengths_chunk(cv, patch_bbox_in, mip, self.z, self.thr_binarize, self.w_connect, self.thr_filter)
+    temp_image = aligner.calculate_fold_lengths_chunk(cv, patch_bbox_in, mip, self.z, self.thr_binarize, self.w_connect, self.thr_filter, self.return_skeleys)
     image = temp_image[np.newaxis,np.newaxis,...]
     min_bound = cv[mip].bounds.minpt
     image = image[(slice(0,1),slice(0,1),)+

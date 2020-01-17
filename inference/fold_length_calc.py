@@ -59,6 +59,7 @@ if __name__ == '__main__':
     help='chunk size')
   parser.add_argument('--overlap', nargs=2, type=int,
     help='chunk overlap')
+  parser.add_argument('--return_skeleys', action='store_true')
   args = parse_args(parser)
   # Only compute matches to previous sections
   # args.serial_operation = True
@@ -123,7 +124,7 @@ if __name__ == '__main__':
       def __iter__(self):
           for z in self.brange:
               t = a.calculate_fold_lengths(cm, src.path, args.dst_path, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, 
-                                    thr_filter)
+                                    thr_filter, args.return_skeleys)
               yield from t
   range_list = make_range(full_range, a.threads)
 
