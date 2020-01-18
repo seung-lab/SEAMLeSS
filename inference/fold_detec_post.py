@@ -104,10 +104,12 @@ def length_filter_mask(img, return_skeleys=False):
 				return_img[rows,cols] = np.uint32(len)
 		return return_img
 	else:
-		remap_dict = {}
+		remap_dict = dict(zip(fold_num, np.zeros(shape=fold_num.shape, dtype=np.uint32)))
 		if skels != {}:
 			for key in skels:
 				len = skels[key].cable_length()
 				remap_dict[skels[key].id] = np.uint32(len)
+		# import ipdb
+		# ipdb.set_trace()
 		fastremap.remap(img_lab, remap_dict, in_place=True, preserve_missing_labels=True)
 		return img_lab
