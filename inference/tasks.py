@@ -69,6 +69,35 @@ class PredictImageTask(RegisteredTask):
     diff = end - start
     print(':{:.3f} s'.format(diff))
 
+class FilterMaskSizeTask(RegisteredTask):
+  def __init__(self, src_cv, dst_cv, patch_bbox, overlap, mip, z, thr_filter):
+    super(). __init__(src_cv, dst_cv, patch_bbox, overlap, mip, z, thr_filter)
+
+  def execute(self, aligner):
+    cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
+    mip = self.mip
+    overlap = self.overlap
+    # bbox = deserialize_bbox(self.patch_bbox)
+    z = self.z
+    overlap_bbox = np.array(overlap)*(2**mip)
+    patch_bbox_in = deserialize_bbox(self.patch_bbox)
+    patch_bbox_in.extend(overlap_bbox)
+    patch_range = patch_bbox_in.range(mip)
+    patch_bbox_out = deserialize_bbox(self.patch_bbox)
+    patch_size = patch_bbox_out.size(mip)
+    
+    temp_image = aligner.simple_size_filter_chunk(cv, patch_bbox_in, mip, self.z, self.thr_filter)
+    image = temp_image[np.newaxis,np.newaxis,...]
+    min_bound = cv[mip].bounds.minpt
+    image = image[(slice(0,1),slice(0,1),)+
+                  tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),
+                    overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
+    aligner.save_image(image, dst_cv, self.z, patch_bbox_out, mip, to_uint8=True)
+    # image = aligner.get_image(cv, z, bbox, mip, to_tensor=False, to_float=False)
+
+
+
 class ThresholdAndMaskTask(RegisteredTask):
   def __init__(self, src_cv_path, dst_cv_path, patch_bbox, mip, z, threshold):
     super(). __init__(src_cv_path, dst_cv_path, patch_bbox, mip, z, threshold)

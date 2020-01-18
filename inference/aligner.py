@@ -41,7 +41,7 @@ import tasks
 import tenacity
 import boto3
 from fcorr import get_fft_power2, get_hp_fcorr
-from fold_detec_post import postprocess, postprocess_length_filter
+from fold_detec_post import postprocess, postprocess_length_filter, filter_mask
 from fold_detection import defect_detect
 
 retry = tenacity.retry(
@@ -602,6 +602,19 @@ class Aligner:
     return postprocess_length_filter(image[0,0,...],
                       thr_binarize=thr_binarize, w_connect=w_connect,
                       thr_filter=thr_filter, return_skeleys=return_skeleys)
+
+  def simple_size_filter_chunk(self, cv, bbox, mip, z, thr_filter):
+    image = self.get_image(cv, z, bbox, mip, to_tensor=False, to_float=False)
+    return filter_mask(image[0,0,...], thr_filter)
+
+  def simple_size_filter(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, overlap, thr_filter):
+    chunks = self.break_into_chunks(bbox, chunk_size,
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.num_scales)
+    batch = []
+    for patch_bbox in chunks:
+      batch.append(tasks.FilterMaskSizeTask(src_cv, dst_cv, patch_bbox, overlap, mip, z, thr_filter))
+    return batch
 
   def threshold_and_mask(self, src_cv_path, src_cv, dst_cv_path, z, mip, bbox, threshold, max_mip):
     chunks = self.break_into_chunks(bbox, src_cv.chunk_size,
