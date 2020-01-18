@@ -58,6 +58,10 @@ if __name__ == '__main__':
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
+  parser.add_argument('--render_pad', 
+    help='the size of the largest displacement expected; should be 2^high_mip', 
+    type=int, default=2048)
+  parser.add_argument('--grid_sample_mode', type=str, default='bilinear')
   args = parse_args(parser)
   # only compute matches to previous sections
   a = get_aligner(args)
@@ -69,6 +73,8 @@ if __name__ == '__main__':
   field_mip = args.field_mip
   max_mip = args.max_mip
   pad = args.pad
+  render_pad = args.render_pad
+  grid_sample_mode = args.grid_sample_mode
 
   # Compile ranges
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -155,7 +161,7 @@ if __name__ == '__main__':
             src_path = src.path
           
           t = a.render(cm, src_path, field.path, dst.path, z, z, z, bbox,
-                           src_mip, field_mip, affine=affine) 
+                           src_mip, field_mip, affine=affine, pad=render_pad, grid_sample_mode=grid_sample_mode) 
           yield from t
 
   ptask = []
