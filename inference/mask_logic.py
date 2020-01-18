@@ -84,7 +84,7 @@ if __name__ == '__main__':
   # Create src CloudVolumes
   cv_list = []
   for path in args.paths:
-    cv = cm.create(path, data_type='float32', num_channels=1,
+    cv = cm.create(path, data_type='uint8', num_channels=1,
                    fill_missing=True, overwrite=False)
     cv_list.append(cv.path)
 

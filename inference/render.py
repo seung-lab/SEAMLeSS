@@ -58,6 +58,7 @@ if __name__ == '__main__':
   parser.add_argument('--pad',
     help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
+  parser.add_argument('--src_data_type', type=str, default='float32')
   args = parse_args(parser)
   # only compute matches to previous sections
   a = get_aligner(args)
@@ -69,6 +70,7 @@ if __name__ == '__main__':
   field_mip = args.field_mip
   max_mip = args.max_mip
   pad = args.pad
+  src_data_type = args.src_data_type
 
   # Compile ranges
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -97,11 +99,11 @@ if __name__ == '__main__':
                       create_info=True)
 
   # Create src CloudVolumes
-  src = cm.create(args.src_path, data_type='float32', num_channels=1,
+  src = cm.create(args.src_path, data_type=src_data_type, num_channels=1,
                      fill_missing=True, overwrite=False)
   field = cm.create(args.field_path, data_type='int16', num_channels=2,
                          fill_missing=True, overwrite=False)
-  dst = cm.create(args.dst_path, data_type='float32', num_channels=1,
+  dst = cm.create(args.dst_path, data_type=src_data_type, num_channels=1,
                      fill_missing=True, overwrite=True)
   # Source Dict
   src_path_to_cv = {args.src_path: src}

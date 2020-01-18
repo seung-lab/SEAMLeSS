@@ -191,9 +191,9 @@ class ComputeFieldTask(RegisteredTask):
 
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
-               field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False):
+               field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False, pad=256):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
-                     field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu)
+                     field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu, pad)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -228,8 +228,10 @@ class RenderTask(RegisteredTask):
                                      patch_bbox, src_mip, field_mip,
                                      mask_cv=mask_cv, mask_mip=mask_mip,
                                      mask_val=mask_val, affine=affine,
-                                     use_cpu=self.use_cpu)
+                                     use_cpu=self.use_cpu, pad=self.pad)
       image = image.cpu().numpy()
+      # import ipdb
+      # ipdb.set_trace()
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
       end = time()
       diff = end - start

@@ -172,14 +172,14 @@ class Aligner:
     return mask
 
   def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None,
-                dst_mip=None):
+                dst_mip=None,to_float=True):
     print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
     start = time()
     if dst_mip == None:
         d_mip = mip
     else:
         d_mip = dst_mip
-    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=d_mip, to_float=True,
+    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=d_mip, to_float=to_float,
                              to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
@@ -338,23 +338,23 @@ class Aligner:
 
     return data
 
-  def save_image(self, float_patch, cv, z, bbox, mip, to_uint8=True):
+  def save_image(self, float_patch, cv, z, bbox, mip, to_uint8=False):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = np.transpose(float_patch, (2,3,0,1))
     #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
-    to_uint8 = False
+    # to_uint8 = False
     if to_uint8:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
 
-  def save_image_batch(self, cv, z_range, float_patch, bbox, mip, to_uint8=True):
+  def save_image_batch(self, cv, z_range, float_patch, bbox, mip, to_uint8=False):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     print("type of float_patch", type(float_patch), "shape", float_patch.shape)
     patch = np.transpose(float_patch, (2,3,0,1))
     # patch = np.transpose(float_patch, (2,1,0))[..., np.newaxis]
-    to_uint8 = False
+    # to_uint8 = False
     if to_uint8:
         patch = (np.multiply(patch, 255)).astype(np.uint8)
     print("patch shape", patch.shape)
@@ -699,7 +699,7 @@ class Aligner:
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
                         bbox, image_mip, field_mip, mask_cv=None,
                         mask_mip=0, mask_val=0, affine=None,
-                        use_cpu=False):
+                        use_cpu=False, pad=256, to_float=True):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:
@@ -719,7 +719,8 @@ class Aligner:
       if use_cpu:
           self.device = 'cpu'
       assert(field_mip >= image_mip)
-      pad = 256
+      # pad = 256
+      # pad = 1024
       padded_bbox = deepcopy(bbox)
       padded_bbox.max_mip = max(image_mip, field_mip)
       print('Padding by {} at MIP{}'.format(pad, image_mip))
@@ -753,7 +754,7 @@ class Aligner:
 
       if is_identity(field):
         image = self.get_image(image_cv, image_z, bbox, image_mip,
-                               to_tensor=True, normalizer=None)
+                               to_tensor=True, normalizer=None, to_float=to_float)
         if mask_cv is not None:
           mask = self.get_mask(mask_cv, image_z, bbox,
                                src_mip=mask_mip,
@@ -1144,7 +1145,7 @@ class Aligner:
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z,
                    bbox, src_mip, field_mip, mask_cv=None, mask_mip=0,
                    mask_val=0, affine=None, use_cpu=False,
-             return_iterator= False):
+             return_iterator= False, pad=256):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1186,7 +1187,7 @@ class Aligner:
             chunk = self.chunklist[i]
             yield tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
                        field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                       mask_mip, mask_val, affine, use_cpu)
+                       mask_mip, mask_val, affine, use_cpu, pad)
     if return_iterator:
         return RenderTaskIterator(chunks,0, len(chunks))
     else:
@@ -1194,7 +1195,7 @@ class Aligner:
         for chunk in chunks:
           batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
                            field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                           mask_mip, mask_val, affine, use_cpu))
+                           mask_mip, mask_val, affine, use_cpu, pad))
         return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,
@@ -2083,7 +2084,7 @@ class Aligner:
         responses.append(int(response['Attributes'][a]))
       print('{}     '.format(responses[-2:]), end="\r", flush=True)
       if i < 2:
-        sleep(1)
+        sleep(2)
     return all(i == 0 for i in responses)
 
   def wait_for_sqs_empty(self):
