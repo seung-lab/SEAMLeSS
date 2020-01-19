@@ -167,7 +167,7 @@ class SelfSupervisedLoss(nn.Module):
         }
 
 @torch.no_grad()
-def gen_masks(src, tgt, threshold=10):
+def gen_masks(src, tgt, threshold=0):
     """
     Heuristic generation of masks based on simple thresholding.
     Can be expanded in the future to include more sophisticated methods.
@@ -180,7 +180,7 @@ def gen_masks(src, tgt, threshold=10):
 
 
 @torch.no_grad()
-def prepare_masks(sample, threshold=0):
+def prepare_masks(sample, threshold=127):
     """
     Returns properly formatted masks with which to weight the loss function.
     If masks is None, this calls gen_masks to generate them.
@@ -189,14 +189,14 @@ def prepare_masks(sample, threshold=0):
     tissue_coef0 = 0, 0
     tissue_radius0 = 0
     # MSE coefficient in the defect neighborhood (src, tgt) and radius:
-    tissue_coef1 = 1.0, 1.0
-    tissue_radius1 = 0
+    tissue_coef1 = 5.0, 1.0
+    tissue_radius1 = 10
     # smoothness coefficient on the defect (src, tgt) and radius:
-    field_coef0 = 0.00001, 1.0
+    field_coef0 = 0.000001, 1.0
     field_radius0 = 0
     # smoothness coefficient in the defect neighborhood (src, tgt) and radius:
-    field_coef1 = 1.0, 1.0
-    field_radius1 = 0
+    field_coef1 = 5.0, 1.0
+    field_radius1 = 10
 
     src, tgt = sample.src.image, sample.tgt.image
     src_weights, tgt_weights = torch.ones_like(src), torch.ones_like(tgt)
@@ -204,7 +204,7 @@ def prepare_masks(sample, threshold=0):
     tgt_field_weights = torch.ones_like(tgt)
 
     if sample.src.mask is None or len(sample.src.mask) == 0:
-        src_defects, tgt_defects = gen_masks(src, tgt, threshold)
+        assert False
     else:
         src_defects = sample.src.mask > threshold
         tgt_defects = sample.tgt.mask > threshold
@@ -231,6 +231,8 @@ def prepare_masks(sample, threshold=0):
     src_field_weights[src_field_mask_1], tgt_field_weights[tgt_field_mask_1] = field_coef1
     # coefficient on the defect:
     src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
+    # less strict field outside src tissue (to extend folds)
+    src_field_weights[(src*255.0).to(torch.uint8) < 1] = 0.0001
 
     src_aug_masks = ([1.0 - m.float() for m in sample.src.aug_masks]
                      if sample.src.aug_masks else [])

@@ -196,7 +196,7 @@ class Aligner(nn.Module):
     to be agnostic to the size of the input images.
     """
 
-    def __init__(self, channels=1, k=5):
+    def __init__(self, channels=1, k=7):
         super().__init__()
         p = (k-1)//2
         self.channels = channels
@@ -262,7 +262,7 @@ class AligningPyramid(nn.Module):
         ):
 
         assert _index.step is None
-        _index = slice(max(0, _index.start or 0), _index.stop)  # Skip the lowest two aligner level (speedup)
+        _index = slice(max(0, _index.start or 0), _index.stop)
 
         if src_field is not None:
             prev_level = 5
