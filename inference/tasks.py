@@ -254,7 +254,7 @@ class RenderTask(RegisteredTask):
                                      use_cpu=self.use_cpu, pad=self.pad,
                                      return_mask=True, blackout_mask_op='none',
                                      return_mask_op='gte')
-      seethrough = False
+      seethrough = True
       coarsen_fold = 3
       coarsen_misalign = 80
       if seethrough:
@@ -262,16 +262,20 @@ class RenderTask(RegisteredTask):
                                        mask_cv=None, mask_mip=None, mask_val=None,
                                        to_tensor=True, normalizer=None)
          if (prev_image != 0).sum() > 0:
+             black_region = image < 0.05
+
              fold_region = folds > 0
              fold_region_coarse = coarsen_mask(fold_region, coarsen_fold).byte()
 
              image[fold_region_coarse] = prev_image[fold_region_coarse]
+             image[black_region] = prev_image[black_region]
+
              misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
                                                          threshold=80)
              #misalignment_region = torch.zeros_like(misalignment_region)
              misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
              image[..., misalignment_region_coarse] = prev_image[..., misalignment_region_coarse]
-             seethrough_region = (fold_region_coarse + misalignment_region_coarse) > 0
+             seethrough_region = (fold_region_coarse + misalignment_region_coarse + black_region) > 0
 
              original_tissue_mask = (image > 0.05) * (seethrough_region == False)
              seethrough_tissue_mask = (image > 0.05) * (seethrough_region == True)

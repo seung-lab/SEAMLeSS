@@ -288,8 +288,7 @@ def get_mse_and_smoothness_masks2(bundle, **kwargs):
         'src': [
             {'name': 'src_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(2, 2), (50, 0.2)],
-             "mask_value": 1e-4},
+             "mask_value": 0e-4},
             {'name': 'src',
                 'fm': 0,
              'binarization': {'strat': 'gt', 'value': -5.0},

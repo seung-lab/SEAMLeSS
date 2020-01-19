@@ -89,7 +89,7 @@ class Model(nn.Module):
                 opt_enc(stack, **model_run_params)
 
             pred_res = optimize_metric(opt_enc, src, tgt, accum_field, src_defects.float(),
-                                    tgt_defects.float(), max_iter=50
+                                    tgt_defects.float(), max_iter=600
                                     )
             #sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
             #pred_res[sm_mask[0]] = 0
