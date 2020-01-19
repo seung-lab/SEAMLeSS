@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np
 import six
-from .masks import get_mse_and_smoothness_masks, get_mse_and_smoothness_masks2
+from .masks import get_mse_and_smoothness_masks
 from .residuals import combine_residuals
 
 from pdb import set_trace as st
@@ -300,7 +300,17 @@ def unsupervised_loss(smoothness_factor, smoothness_type='rig', use_defect_mask=
     def compute_loss(bundle, smoothness_mult=1.0, crop=32):
         loss_dict = {}
         if use_defect_mask:
-            mse_mask, smoothness_mask = get_mse_and_smoothness_masks2(bundle)
+            mse_mask, smoothness_mask = get_mse_and_smoothness_masks(bundle,
+                                                                     white_threshold,
+                                                                     coarsen_mse,
+                                                                     coarsen_smooth,
+                                                                     coarsen_positive_mse,
+                                                             positive_mse_mult=positive_mse_mult,
+                                                             tgt_defects_mse=tgt_defects_mse,
+                                                             tgt_defects_sm=tgt_defects_sm,
+                                                             sm_mask_factor=sm_mask_factor,
+                                                             sm_decay_length=sm_decay_length,
+                                                             sm_decay_factor=sm_decay_factor)
         else:
             mse_mask = None
             smoothness_mask = None

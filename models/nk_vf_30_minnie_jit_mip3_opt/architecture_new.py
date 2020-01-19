@@ -5,7 +5,7 @@ from utilities.helpers import grid_sample, downsample, downsample_field, load_mo
 import artificery
 import os
 
-from .optimizer import optimize_metric
+from .optimizer2_old import optimize_metric
 from .residuals import res_warp_img, combine_residuals
 
 
@@ -89,7 +89,7 @@ class Model(nn.Module):
                 opt_enc(stack, **model_run_params)
 
             pred_res = optimize_metric(opt_enc, src, tgt, accum_field, src_defects.float(),
-                                    tgt_defects.float(), max_iter=50
+                                    tgt_defects.float(), max_iter=150
                                     )
             #sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
             #pred_res[sm_mask[0]] = 0
@@ -97,7 +97,6 @@ class Model(nn.Module):
         else:
             print ("Not optimizing black chunk")
             final_res  = accum_field
-
         return final_res, fine_field
 
     def load(self, path):

@@ -30,7 +30,7 @@ from training.loss import lap
 from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               np_downsample, invert, compose_fields, upsample_field, downsample_field, \
                               is_identity, cpc, vector_vote, get_affine_field, is_blank, \
-                              identity_grid, percentile
+                              identity_grid, percentile, coarsen_mask
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -160,7 +160,7 @@ class Aligner:
   #######################
 
   def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True,
-               mask_op='none'):
+               mask_op='none', coarsen_count=0):
     start = time()
     data = self.get_data(cv, z, bbox, src_mip=src_mip, dst_mip=dst_mip,
                              to_float=False, to_tensor=to_tensor, normalizer=None)
@@ -180,7 +180,7 @@ class Aligner:
         mask = data != data
     else:
         raise Exception("Mask op {} unsupported".format(mask_op))
-
+    mask = coarsen_mask(mask, count=coarsen_count)
     end = time()
     diff = end - start
     print('get_mask: {:.3f}'.format(diff), flush=True)
@@ -202,7 +202,8 @@ class Aligner:
     return image
 
   def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
-                             to_tensor=True, normalizer=None, mask_op='none'):
+                             to_tensor=True, normalizer=None, mask_op='none',
+                             coarsen_mask_count=0):
     """Get image with mask applied
     """
     start = time()
@@ -211,7 +212,8 @@ class Aligner:
     if mask_cv is not None:
       mask = self.get_mask(mask_cv, z, bbox,
                            src_mip=mask_mip,
-                           dst_mip=image_mip, valid_val=mask_val, mask_op=mask_op)
+                           dst_mip=image_mip, valid_val=mask_val, mask_op=mask_op,
+                           coarsen_count=coarsen_mask_count)
       image = image.masked_fill_(mask, 0)
     if not to_tensor:
       image = image.cpu().numpy()
@@ -222,7 +224,8 @@ class Aligner:
 
   def get_composite_image(self, image_cv, z_list, bbox, image_mip,
                                 mask_cv, mask_mip, mask_val,
-                                to_tensor=True, normalizer=None):
+                                to_tensor=True, normalizer=None, coarsen_mask_count=0,
+                                mask_op='none'):
     """Collapse a stack of 2D image into a single 2D image, by consecutively
         replacing black pixels (0) in the image of the first z_list entry with
         non-black pixels from of the consecutive z_list entries images.
@@ -246,11 +249,13 @@ class Aligner:
 
     combined = self.get_masked_image(image_cv, z_list[0], bbox, image_mip,
                                      mask_cv, mask_mip, mask_val,
-                                     to_tensor=to_tensor, normalizer=normalizer)
+                                     to_tensor=to_tensor, normalizer=normalizer,
+                                     coarsen_mask_count=coarsen_mask_count, mask_op=mask_op)
     for z in z_list[1:]:
       tmp = self.get_masked_image(image_cv, z, bbox, image_mip,
                                   mask_cv, mask_mip, mask_val,
-                                  to_tensor=to_tensor, normalizer=normalizer)
+                                  to_tensor=to_tensor, normalizer=normalizer,
+                                  coarsen_mask_count=coarsen_mask_count, mask_op=mask_op)
       black_mask = combined == 0
       combined[black_mask] = tmp[black_mask]
 
@@ -658,7 +663,6 @@ class Aligner:
       ).to(device=self.device)
     tgt_field = self.rel_to_abs_residual(tgt_field, mip)
     #tgt_field = torch.zeros_like(tgt_field)
-    import pdb; pdb.set_trace()
     tgt_distance = self.profile_field(tgt_field)
     tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
     tgt_field -= tgt_distance_fine_snap.to(device=self.device)
@@ -960,7 +964,9 @@ class Aligner:
       mask_mip=src_mask_mip,
       mask_val=src_mask_val,
       to_tensor=True,
-      normalizer=normalizer
+      normalizer=normalizer,
+      coarsen_mask_count=0,
+      mask_op='gte'
     )
 
     padded_tgt_bbox_fine = deepcopy(bbox)
@@ -975,6 +981,7 @@ class Aligner:
       mask_val=tgt_mask_val,
       to_tensor=True,
       normalizer=normalizer,
+      mask_op='none'
     )
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
@@ -1023,7 +1030,6 @@ class Aligner:
       if self.gpu_lock is not None:
         print("Process {} releasing GPU lock".format(os.getpid()))
         self.gpu_lock.release()
-
     return accum_field
 
   def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
@@ -1206,6 +1212,7 @@ class Aligner:
                                src_mip=mask_mip,
                                dst_mip=image_mip, valid_val=mask_val)
           image = image.masked_fill_(mask, 0)
+        new_bbox = padded_bbox
       else:
         distance = self.profile_field(field)
         distance = (distance // (2 ** image_mip)) * 2 ** image_mip

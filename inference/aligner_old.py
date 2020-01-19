@@ -159,11 +159,28 @@ class Aligner:
   # Image IO + handlers #
   #######################
 
-  def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True):
+  def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True,
+               mask_op='none'):
     start = time()
     data = self.get_data(cv, z, bbox, src_mip=src_mip, dst_mip=dst_mip,
                              to_float=False, to_tensor=to_tensor, normalizer=None)
-    mask = data == valid_val
+    if mask_op == 'eq':
+        mask = data == valid_val
+    elif mask_op == 'lt':
+        mask = data < valid_val
+    elif mask_op == 'gt':
+        mask = data > valid_val
+    elif mask_op == 'lte':
+        mask = data <= valid_val
+    elif mask_op == 'gte':
+        mask = data >= valid_val
+    elif mask_op == 'ne':
+        mask = data != valid_val
+    elif mask_op == 'none':
+        mask = data != data
+    else:
+        raise Exception("Mask op {} unsupported".format(mask_op))
+
     end = time()
     diff = end - start
     print('get_mask: {:.3f}'.format(diff), flush=True)
@@ -185,7 +202,7 @@ class Aligner:
     return image
 
   def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
-                             to_tensor=True, normalizer=None):
+                             to_tensor=True, normalizer=None, mask_op='none'):
     """Get image with mask applied
     """
     start = time()
@@ -194,7 +211,7 @@ class Aligner:
     if mask_cv is not None:
       mask = self.get_mask(mask_cv, z, bbox,
                            src_mip=mask_mip,
-                           dst_mip=image_mip, valid_val=mask_val)
+                           dst_mip=image_mip, valid_val=mask_val, mask_op=mask_op)
       image = image.masked_fill_(mask, 0)
     if not to_tensor:
       image = image.cpu().numpy()
@@ -600,7 +617,7 @@ class Aligner:
     src_mask_val=0,
     tgt_mask_cv=None,
     tgt_mask_mip=0,
-    tgt_mask_val=0
+    tgt_mask_val=0,
   ):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
     Args:
@@ -640,6 +657,8 @@ class Aligner:
         to_tensor=True,
       ).to(device=self.device)
     tgt_field = self.rel_to_abs_residual(tgt_field, mip)
+    #tgt_field = torch.zeros_like(tgt_field)
+    import pdb; pdb.set_trace()
     tgt_distance = self.profile_field(tgt_field)
     tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
     tgt_field -= tgt_distance_fine_snap.to(device=self.device)
@@ -826,6 +845,8 @@ class Aligner:
         relative=True,
         to_tensor=True,
       ).to(device=self.device)
+      #HACKS
+      tgt_field = torch.zeros_like(tgt_field)
 
       if coarse_field_cv is not None and not is_identity(tgt_field):
         # Alignment with coarse field: Need to subtract the coarse field out of
@@ -839,6 +860,9 @@ class Aligner:
           to_tensor=True,
         ).to(device=self.device)
 
+        #HACKS
+        tgt_coarse_field = torch.zeros_like(tgt_coarse_field)
+
         tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_()
         tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
 
@@ -848,6 +872,7 @@ class Aligner:
         # Alignment without coarse field: tgt_field contains only the drift
         # or prev_field is identity
         tgt_drift_field = tgt_field
+
 
       tgt_drift_field = self.rel_to_abs_residual(tgt_drift_field, mip)
       drift_distance = self.profile_field(tgt_drift_field)
@@ -861,6 +886,7 @@ class Aligner:
       tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
       tgt_field -= tgt_distance_fine_snap.to(device=self.device)
       tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
+      tgt_field = torch.zeros_like(tgt_field)
 
     print(
       "Displacement adjustment TGT: {} px".format(
@@ -934,10 +960,13 @@ class Aligner:
       mask_mip=src_mask_mip,
       mask_val=src_mask_val,
       to_tensor=True,
-      normalizer=normalizer,
+      normalizer=normalizer
     )
+
+    padded_tgt_bbox_fine = deepcopy(bbox)
+    padded_tgt_bbox_fine.uncrop(pad, mip)
     tgt_patch = self.get_composite_image(
-      src_cv,
+      tgt_cv,
       tgt_z,
       padded_tgt_bbox_fine,
       mip,
@@ -1116,7 +1145,8 @@ class Aligner:
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
                         bbox, image_mip, field_mip, mask_cv=None,
                         mask_mip=0, mask_val=0, affine=None,
-                        use_cpu=False, pad=256):
+                        use_cpu=False, pad=256, return_mask=False,
+                        blackout_mask_op='eq', return_mask_op='eq'):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:
@@ -1176,7 +1206,6 @@ class Aligner:
                                src_mip=mask_mip,
                                dst_mip=image_mip, valid_val=mask_val)
           image = image.masked_fill_(mask, 0)
-        return image
       else:
         distance = self.profile_field(field)
         distance = (distance // (2 ** image_mip)) * 2 ** image_mip
@@ -1189,9 +1218,22 @@ class Aligner:
         image = self.get_masked_image(image_cv, image_z, new_bbox, image_mip,
                                       mask_cv=mask_cv, mask_mip=mask_mip,
                                       mask_val=mask_val,
-                                      to_tensor=True, normalizer=None)
+                                      to_tensor=True, normalizer=None,
+                                      mask_op=blackout_mask_op)
         image = grid_sample(image, field, padding_mode='zeros')
         image = image[:,:,pad:-pad,pad:-pad]
+
+      if return_mask:
+        if mask_cv is not None:
+            mask = self.get_mask(mask_cv, image_z, new_bbox,
+                               src_mip=mask_mip,
+                               dst_mip=image_mip, valid_val=mask_val, mask_op=return_mask_op)
+            warped_mask = grid_sample(mask.float(), field, padding_mode='zeros')
+            cropped_warped_mask = warped_mask[:,:,pad:-pad,pad:-pad]
+            return image, cropped_warped_mask
+        else:
+            return image, None
+      else:
         return image
 
 

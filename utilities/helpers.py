@@ -47,7 +47,7 @@ def coarsen_mask(mask_in, count, flip=False):
             mask = 1 - mask
         while len(mask.shape) > len(mask_in.shape):
             mask = mask.squeeze(0)
-    return mask
+    return mask > 0
 
 
 def compose_functions(fseq):

@@ -139,14 +139,14 @@ def optimize_pre_post_ups(opti_loss, src, tgt, src_defects, tgt_defects, initial
 
     return prev_pre_res, prev_post_res
 
-def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defects, tgt_defects, mips, crop=2, bot_mip=4, max_iter=800, img_mip=4):
+def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defects, tgt_defects, mips, crop=2, bot_mip=4, max_iter=800):
     sm_val = 450e0
     sm_val2 = 450e0
     sm = {
         4: sm_val,
         5: sm_val,
-        6: sm_val+450e0,
-        7: sm_val+450e0,
+        6: sm_val,
+        7: sm_val,
         8: sm_val,
         9: sm_val
     }
@@ -154,8 +154,8 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
     lr = {
         4: 20e-2,
         5: 15e-2,
-        6: 15e-2,
-        7: 15e-2,
+        6: 4e-2,
+        7: 3e-2,
         8: 2e-3,
         9: 1e-3
     }
@@ -170,7 +170,7 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
 
     opt_params = {}
     opt_mode = 'adam'
-    sm_mask_factor = 1.0E-4
+    sm_mask_factor = 0.00
     opti_losses = {
         4: unsupervised_loss(smoothness_factor=sm[4], use_defect_mask=True,
                                       white_threshold=-10, reverse=True,
@@ -178,32 +178,28 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
                                       coarsen_positive_mse=0,
                                       positive_mse_mult=0,
                                       sm_mask_factor=sm_mask_factor,
-                                      sm_decay_length=1,
-                                      sm_decay_factor=2.0),
+                                      sm_decay_length=100,
+                                      sm_decay_factor=0.2),
         5: unsupervised_loss(smoothness_factor=sm[5], use_defect_mask=True,
                                       white_threshold=-10, reverse=True,
                                       coarsen_mse=0,coarsen_smooth=0,
                                       coarsen_positive_mse=0,
                                       positive_mse_mult=0,
                                       sm_mask_factor=sm_mask_factor,
-                                      sm_decay_length=1,
-                                      sm_decay_factor=2.0),
+                                      sm_decay_length=100,
+                                      sm_decay_factor=0.2),
         6: unsupervised_loss(smoothness_factor=sm[6], use_defect_mask=True,
                                       white_threshold=-10, reverse=True,
-                                      coarsen_mse=25,coarsen_smooth=25,
+                                      coarsen_mse=0,coarsen_smooth=0,
                                       coarsen_positive_mse=0,
                                       positive_mse_mult=0,
-                                      sm_mask_factor=sm_mask_factor,
-                                      sm_decay_length=100,
-                                      sm_decay_factor=0.1),
+                                      sm_mask_factor=sm_mask_factor),
         7: unsupervised_loss(smoothness_factor=sm[7], use_defect_mask=True,
                                       white_threshold=-10, reverse=True,
                                       coarsen_mse=0,coarsen_smooth=0,
                                       coarsen_positive_mse=0,
                                       positive_mse_mult=0,
-                                      sm_mask_factor=sm_mask_factor,
-                                      sm_decay_length=100,
-                                      sm_decay_factor=0.1),
+                                      sm_mask_factor=sm_mask_factor),
         8: unsupervised_loss(smoothness_factor=sm[8], use_defect_mask=True,
                                       white_threshold=-10, reverse=True,
                                       coarsen_mse=0,coarsen_smooth=0,
@@ -226,7 +222,7 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
         pred_res_downs = pred_res
         src_defects_downs = src_defects
         tgt_defects_downs = tgt_defects
-        for i in range (bot_mip - img_mip):
+        for i in range (bot_mip - 4):
             pred_res_downs = downsample_residuals(pred_res_downs)
 
             src_defects_downs = torch.nn.functional.max_pool2d(src_defects_downs, 2)
@@ -256,16 +252,14 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
                                               tgt_defects_downs,
                                               pred_res_downs, sm[m], lr[m], num_iter[m],
                                               crop=crop, opt_mode=opt_mode, opt_params=opt_params)
+
         pre_res_ups = pre_res.detach()
         post_res_ups = post_res.detach()
-        pred_res = combine_pre_post(pred_res_downs, pre_res_ups, post_res_ups)
+        for i in range(m - 4):
+            pre_res_ups = upsample_residuals(pre_res_ups)
+            post_res_ups = upsample_residuals(post_res_ups)
 
-        for i in range(m - img_mip):
-            pred_res = upsample_residuals(pred_res)
-        #for i in range(m - img_mip):
-        #    pre_res_ups = upsample_residuals(pre_res_ups)
-        #    post_res_ups = upsample_residuals(post_res_ups)
-
+        pred_res = combine_pre_post(pred_res, pre_res_ups, post_res_ups)
     return pred_res
 
 
@@ -298,8 +292,5 @@ def optimize_metric(model, src, tgt, pred_res_start, src_defects, tgt_defects, m
         print ("BM time: {}".format(time.time() - s))
 
     mips = [4]
-    pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt, src_defects, tgt_defects, mips, crop=0, bot_mip=4, max_iter=max_iter, img_mip=4)
+    pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt, src_defects, tgt_defects, mips, crop=0, bot_mip=4, max_iter=max_iter)
     return pred_res_opt
-
-
-

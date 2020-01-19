@@ -255,7 +255,7 @@ class RenderTask(RegisteredTask):
                                      return_mask=True, blackout_mask_op='none',
                                      return_mask_op='gte')
       seethrough = False
-      coarsen_fold = 3
+      coarsen_fold = 5
       coarsen_misalign = 80
       if seethrough:
          prev_image = aligner.get_masked_image(dst_cv, dst_z-1, patch_bbox, src_mip,
@@ -278,7 +278,7 @@ class RenderTask(RegisteredTask):
              image[seethrough_tissue_mask] *= torch.sqrt(image[original_tissue_mask].var()) / torch.sqrt(image[seethrough_tissue_mask].var())
              image[seethrough_tissue_mask] += image[original_tissue_mask].mean() - image[seethrough_tissue_mask].mean()
              image[image < 0] = 0
-             image[seethrough_tissue_mask] += 0.01
+             image[seethrough_tissue_mask] += 0.02
       image = image.cpu().numpy()
       # import ipdb
       # ipdb.set_trace()
