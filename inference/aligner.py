@@ -284,7 +284,8 @@ class Aligner:
     data = cv[src_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     data = np.transpose(data, (2,3,0,1))
     if to_float:
-      data = np.divide(data, float(255.0), dtype=np.float32)
+      if data.dtype == np.uint8:
+        data = np.divide(data, float(255.0), dtype=np.float32)
     if (normalizer is not None) and (not is_blank(data)):
       print('Normalizing image')
       start = time()
@@ -989,8 +990,10 @@ class Aligner:
     # Running the model is the only part that will increase memory consumption
     # significantly - only incrementing the GPU lock here should be sufficient.
     if self.gpu_lock is not None:
+      start = time.time()
       self.gpu_lock.acquire()
-      print("Process {} acquired GPU lock".format(os.getpid()))
+      end = time.time()
+      print("Process {} acquired GPU lock. Locked time: {0:.2f} sec".format(os.getpid(), end - start))
 
     try:
       print(

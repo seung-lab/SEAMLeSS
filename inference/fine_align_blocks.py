@@ -36,7 +36,6 @@ def make_range(block_range, part_num):
     range_list.append(block_range[(part - 1) * srange :])
     return range_list
 
-
 def ranges_overlap(a_pair, b_pair):
     a_start, a_stop = a_pair
     b_start, b_stop = b_pair
@@ -57,6 +56,7 @@ if __name__ == "__main__":
     # parser.add_argument('--z_range_path', type=str,
     #   help='path to csv file with list of z indices to use')
     parser.add_argument("--src_path", type=str)
+    parser.add_argument("--img_dtype", type=str, default='uint8')
     parser.add_argument(
         "--src_mask_path",
         type=str,
@@ -146,7 +146,7 @@ if __name__ == "__main__":
     print("Create src & align image CloudVolumes")
     src = cmr.create(
         args.src_path,
-        data_type="uint8",
+        data_type=args.img_dtype,
         num_channels=1,
         fill_missing=True,
         overwrite=False,
@@ -178,7 +178,7 @@ if __name__ == "__main__":
     for i, block_type in enumerate(block_types):
         block_dst = cmr.create(
             join(args.dst_path, "image_blocks", block_type),
-            data_type="uint8",
+            data_type=args.img_dtype,
             num_channels=1,
             fill_missing=True,
             # overwrite=True,
@@ -372,7 +372,7 @@ if __name__ == "__main__":
     ).path
     overlap_image = cm.create(
         join(args.dst_path, "field", "stitch", "vvote", "image"),
-        data_type="uint8",
+        data_type=args.img_dtype,
         num_channels=1,
         fill_missing=True,
         overwrite=True,

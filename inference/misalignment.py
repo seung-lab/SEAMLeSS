@@ -9,6 +9,7 @@ import copy
 import os
 import sys
 import scipy.ndimage
+import pathlib
 
 from pdb import set_trace as st
 from fcorr import get_fft_power2, get_hp_fcorr
@@ -112,10 +113,13 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
     img1_downs_norm = normalize(img1_downs, mask=img1_downs.abs()>0.25, mask_fill=-20)
     img2_downs_norm = normalize(img2_downs, mask=img2_downs.abs()>0.25, mask_fill=-20)
 
+    mypath = str(pathlib.Path(__file__).parent.absolute())
     pyramid_name = 'ncc_m4'
+    ncc_model_path = os.path.join(mypath, "models/{}".format('ncc_m4'))
     encoder = create_model(
-        "model", checkpoint_folder="./models/{}".format(pyramid_name)
+        "model", checkpoint_folder=ncc_model_path
     )
+
 
     with torch.no_grad():
         img1_enc = encoder(img1_downs_norm).squeeze()

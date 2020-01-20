@@ -77,6 +77,7 @@ if __name__ == "__main__":
     parser.add_argument("--z_start", type=int)
     parser.add_argument("--z_stop", type=int)
     parser.add_argument("--max_mip", type=int, default=9)
+    parser.add_argument("--img_dtype", type=str, default='uint8')
     parser.add_argument(
         "--pad",
         help="the size of the largest displacement expected; should be 2^high_mip",
@@ -159,7 +160,7 @@ if __name__ == "__main__":
     print("Create src & align image CloudVolumes")
     src = cmr.create(
         args.src_path,
-        data_type="uint8",
+        data_type=args.img_dtype,
         num_channels=1,
         fill_missing=True,
         overwrite=False,
@@ -195,7 +196,7 @@ if __name__ == "__main__":
     for i, block_type in enumerate(block_types):
         block_dst = cmr.create(
             join(render_dst, "image_blocks", block_type),
-            data_type="uint8",
+            data_type=args.img_dtype,
             num_channels=1,
             fill_missing=True,
             overwrite=do_render,
@@ -396,7 +397,7 @@ if __name__ == "__main__":
     ).path
     overlap_image = cm.create(
         join(args.dst_path, "field", "stitchtemp", "vvote", "image"),
-        data_type="uint8",
+        data_type=args.img_dtype,
         num_channels=1,
         fill_missing=True,
         overwrite=do_render,

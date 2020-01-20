@@ -265,6 +265,7 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
 
 #pred_res_start = torch.zeros_like(pred_res, device=pred_res.device)
 def optimize_metric(model, src, tgt, pred_res_start, src_defects, tgt_defects, max_iter=400):
+    start = time.time()
     mips = [6, 5]
     src_defects = src_defects.squeeze(0)
     tgt_defects = tgt_defects.squeeze(0)
@@ -293,4 +294,6 @@ def optimize_metric(model, src, tgt, pred_res_start, src_defects, tgt_defects, m
 
     mips = [4]
     pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt, src_defects, tgt_defects, mips, crop=32, bot_mip=4, max_iter=max_iter)
+    end = time.time()
+    print ("OPTIMIZATION FINISHED. Optimizing time: {0:.2f} sec".format(end - start))
     return pred_res_opt
