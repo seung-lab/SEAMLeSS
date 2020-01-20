@@ -61,44 +61,50 @@ class Model(nn.Module):
 
 
     def forward(self, src, tgt, src_field=None, tgt_field=None, **kwargs):
-        if self.encode:
-            src_enc, tgt_enc = self.encode(src, tgt, tgt_field=tgt_field, **kwargs)
-        else:
-            src_enc, tgt_enc = src, tgt
         with torch.no_grad():
-            accum_field, fine_field = self.align(src_enc, tgt_enc, src_field=src_field, **kwargs)
-        accum_field = accum_field.permute(0, 2, 3, 1)
-        if src.var() > 1e-4:
-            print ("Optimizing")
-            accum_field = accum_field * src.shape[-2] / 2
-            fine_field = fine_field.permute(0, 2, 3, 1)
-
-            src = res_warp_img(src, src_field, is_pix_res=True)
-            tgt = tgt
-
-            src_defects = (src == 0).float()
-            tgt_defects = (tgt == 0).float()
-
-            src_norm = normalize(src, bad_mask=src_defects)
-            tgt_norm = normalize(tgt, bad_mask=tgt_defects)
-
-            opt_enc = self.opt_enc[0]
-            model_run_params = {'level_in': 4}
-            stack = torch.cat((src_norm, tgt_norm), 1)
+            if self.encode:
+                src_enc, tgt_enc = self.encode(src, tgt, tgt_field=tgt_field, **kwargs)
+            else:
+                src_enc, tgt_enc = src, tgt
             with torch.no_grad():
-                opt_enc(stack, **model_run_params)
+                accum_field, fine_field = self.align(src_enc, tgt_enc, src_field=src_field, **kwargs)
+            torch.cuda.empty_cache()
 
-            pred_res = optimize_metric(opt_enc, src, tgt, accum_field, src_defects.float(),
-                                    tgt_defects.float(), max_iter=600
-                                    )
-            #sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
-            #pred_res[sm_mask[0]] = 0
-            final_res = pred_res * 2 / src.shape[-2]
-        else:
-            print ("Not optimizing black chunk")
-            final_res  = accum_field
+            accum_field = accum_field.permute(0, 2, 3, 1)
+            if src.var() > 1e-4:
+                print ("Optimizing")
+                accum_field = accum_field * src.shape[-2] / 2
+                fine_field = fine_field.permute(0, 2, 3, 1)
 
-        return final_res, fine_field
+                src = res_warp_img(src, src_field, is_pix_res=True)
+                tgt = tgt
+
+                src_defects = (src == 0).float()
+                tgt_defects = (tgt == 0).float()
+
+                src_norm = normalize(src, bad_mask=src_defects)
+                tgt_norm = normalize(tgt, bad_mask=tgt_defects)
+
+                opt_enc = self.opt_enc[0]
+                model_run_params = {'level_in': 4}
+                stack = torch.cat((src_norm, tgt_norm), 1)
+                with torch.no_grad():
+                    opt_enc(stack, **model_run_params)
+
+                del opt_enc.state['down']
+                torch.cuda.empty_cache()
+
+                pred_res = optimize_metric(opt_enc, src, tgt, accum_field, src_defects.float(),
+                                        tgt_defects.float(), max_iter=300
+                                        )
+                #sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
+                #pred_res[sm_mask[0]] = 0
+                final_res = pred_res * 2 / src.shape[-2]
+            else:
+                print ("Not optimizing black chunk")
+                final_res  = accum_field
+
+            return final_res, fine_field
 
     def load(self, path):
         """

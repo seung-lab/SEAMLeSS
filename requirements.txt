@@ -1,4 +1,6 @@
 torch>=1.3.0 # for out of date CUDA versions, go to https://pytorch.org/ to install torch
+scalenet
+artificery
 torchvision
 torchfields
 numpy>=1.16.2
