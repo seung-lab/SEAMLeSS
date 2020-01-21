@@ -25,6 +25,9 @@ def deserialize_miplessCV_old2(s, cache={}):
       return mcv
 
 def deserialize_miplessCV(s, cache={}):
+    if s is None:
+        return None
+
     cv_kwargs = {'bounded': False, 'progress': False,
               'autocrop': False, 'non_aligned_writes': False,
               'cdn_cache': False}
@@ -41,7 +44,7 @@ class MiplessCloudVolume():
   """
   def __init__(self, path, mkdir, **kwargs):
     self.path = path
-    self.mkdir = mkdir 
+    self.mkdir = mkdir
     self.kwargs = kwargs
     self.cvs = {}
     if self.mkdir:
@@ -49,7 +52,7 @@ class MiplessCloudVolume():
 
   # def exists(self):
   #   s = Storage(self.path)
-  #   return s.exists('info') 
+  #   return s.exists('info')
 
   def serialize(self):
       contents = {
@@ -76,7 +79,7 @@ class MiplessCloudVolume():
     if mip not in self.cvs:
       self.create(mip)
     return self.cvs[mip]
- 
+
   def __repr__(self):
     return self.path
 

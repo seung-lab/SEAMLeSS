@@ -362,7 +362,7 @@ class Aligner:
     y_range = bbox.y_range(mip=mip)
     patch = np.transpose(float_patch, (2,3,0,1))
     #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
-    if to_uint8:
+    if to_uint8 and cv[mip].dtype != np.float32:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
     # try:
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
@@ -584,7 +584,7 @@ class Aligner:
       zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
 
       # model produces field in relative coordinates
-      field, fine_field = model(
+      field = model(
         src_patch,
         tgt_patch,
         tgt_field=zero_fieldC,
@@ -829,7 +829,7 @@ class Aligner:
     print("pad: {}".format(pad))
 
     if coarse_field_mip is None:
-      coarse_field_mip = bbox.mip
+      coarse_field_mip = bbox.max_mip
 
     # Find the target patch (Coarse+Fine vector field)
     coarse_field = None
@@ -840,6 +840,7 @@ class Aligner:
     tgt_field = None
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
+    tgt_field = None
     if tgt_field_cv is not None:
       # Fetch vector field of target section
       tgt_field = self.get_field(
@@ -1003,7 +1004,7 @@ class Aligner:
       )
 
       # model produces field in relative coordinates
-      accum_field, fine_field = model(
+      accum_field = model(
         src_patch,
         tgt_patch,
         tgt_field=tgt_field,
@@ -1174,7 +1175,6 @@ class Aligner:
       """
       if use_cpu:
           self.device = 'cpu'
-      assert(field_mip >= image_mip)
       # pad = 256
       # pad = 2048
       padded_bbox = deepcopy(bbox)
@@ -1182,10 +1182,19 @@ class Aligner:
       padded_bbox.uncrop(pad, mip=image_mip)
 
       # Load initial vector field
-      field = self.get_field(field_cv, field_z, padded_bbox, field_mip,
-                             relative=False, to_tensor=True)
-      if field_mip > image_mip:
-        field = upsample_field(field, field_mip, image_mip)
+
+      if field_cv is not None:
+        assert(field_mip >= image_mip)
+        field = self.get_field(field_cv, field_z, padded_bbox, field_mip,
+                                 relative=False, to_tensor=True)
+        if field_mip > image_mip:
+          field = upsample_field(field, field_mip, image_mip)
+      else:
+        #this is a bit slow
+        image = self.get_image(image_cv, image_z, padded_bbox, image_mip,
+                               to_tensor=True, normalizer=None)
+        field = torch.zeros((image.shape[1], image.shape[2], image.shape[3], 2),
+                device=image.device)
 
       if affine is not None:
         # PyTorch conventions are column, row order (y, then x) so flip

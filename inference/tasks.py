@@ -214,9 +214,11 @@ class ComputeFieldTask(RegisteredTask):
 
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
-               field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False, pad=256):
+               field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False, pad=256,
+               seethrough=False, coarsen_folds=3, coarsen_misalign=80):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
-                     field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu, pad)
+                     field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu, pad, seethrough,
+                     coarsen_folds, coarsen_misalign)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -233,9 +235,19 @@ class RenderTask(RegisteredTask):
       mask_cv = DCV(self.mask_cv)
     mask_mip = self.mask_mip
     mask_val = self.mask_val
+    seethrough = self.seethrough
+    coarsen_folds = self.coarsen_folds
+    coarsen_misalign = self.coarsen_misalign
     affine = None
     if self.affine:
       affine = np.array(self.affine)
+
+
+    field_cv_path = ""
+    field_mip_print = ""
+    if field_cv is not None:
+        field_cv_path = field_cv.path
+        field_mip_print = field_mip_print
 
     print("\nRendering\n"
           "src {}\n"
@@ -243,8 +255,8 @@ class RenderTask(RegisteredTask):
           "dst {}\n"
           "z={} to z={}\n"
           "MIP{} to MIP{}\n"
-          "\n".format(src_cv.path, field_cv.path, dst_cv.path, src_z, dst_z,
-                        field_mip, src_mip), flush=True)
+          "\n".format(src_cv.path, field_cv_path, dst_cv.path, src_z, dst_z,
+                        field_mip_print, src_mip), flush=True)
     start = time()
     if not aligner.dry_run:
       image, folds = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
@@ -254,17 +266,16 @@ class RenderTask(RegisteredTask):
                                      use_cpu=self.use_cpu, pad=self.pad,
                                      return_mask=True, blackout_mask_op='none',
                                      return_mask_op='gte')
-      seethrough = True
-      coarsen_fold = 3
-      coarsen_misalign = 80
       if seethrough:
          prev_image = aligner.get_masked_image(dst_cv, dst_z-1, patch_bbox, src_mip,
                                        mask_cv=None, mask_mip=None, mask_val=None,
                                        to_tensor=True, normalizer=None)
          if (prev_image != 0).sum() > 0:
              black_region = image < 0.05
-
-             fold_region = folds > 0
+             if folds is not None:
+                 fold_region = folds > 0
+             else:
+                 fold_region = torch.zeros_like(image)
              fold_region_coarse = coarsen_mask(fold_region, coarsen_fold).byte()
 
              image[fold_region_coarse] = prev_image[fold_region_coarse]
@@ -431,7 +442,7 @@ class CloudUpsampleFieldTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     src_mip = self.src_mip
     dst_mip = self.dst_mip
-
+    import pdb; pdb.set_trace()
     print("\nUpsample Field\n"
           "src: {}\n"
           "dst: {}\n"

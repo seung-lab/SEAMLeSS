@@ -1,0 +1,23 @@
+{
+    "type": "ScaleNet",
+    "upmodules": {
+        "0": {"path": "block_3convs_fms2to32_kyle.json"}, 
+        "1": {"path": "block_3convs_fms32to32_kyle.json"}
+    },
+    "downmodules": {
+        "1": {"path": "block_3convs_fms32to32_kyle.json"},
+        "0": {"path": "block_3convs_fms32to32_kyle.json"}
+    },
+    "uplinks": {
+       "all": {"path": "average_pool.json"} 
+    },
+    "downlinks": {
+       "all": {"path": "interpolate.json"}
+    },
+    "skiplinks": {
+       "all": {"path": "identity.json"}
+    },
+    "combiners": {
+       "all": {"path": "add.json"}
+    }
+}
