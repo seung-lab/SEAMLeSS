@@ -23,7 +23,7 @@ def get_argparser():
      help='no. of tasks to group together for a single worker')
   parser.add_argument('--lease_seconds', type=int, default=30,
      help='no. of seconds that polling will lease a task before it becomes visible again')
-  parser.add_argument('--dry_run', 
+  parser.add_argument('--dry_run',
      help='prevent task executes, but allow task print outs',
      action='store_true')
   return parser
