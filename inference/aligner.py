@@ -22,6 +22,7 @@ from skimage.morphology import rectangle, dilation, closing, opening
 from taskqueue import TaskQueue, LocalTaskQueue
 from torch.nn.functional import interpolate, max_pool2d, conv2d
 import torch.nn as nn
+import torchfields
 
 from normalizer import Normalizer
 from scipy.special import binom
