@@ -28,6 +28,37 @@ import matplotlib.pyplot as plt  # noqa: 402
 plt.switch_backend('agg')
 import matplotlib.cm as cm  # noqa: 402
 
+def print_run(diff, n_tasks):
+    if n_tasks > 0:
+        print(
+            ": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks)
+        )
+
+
+def make_range(block_range, part_num):
+    rangelen = len(block_range)
+    if rangelen < part_num:
+        srange = 1
+        part = rangelen
+    else:
+        part = part_num
+        srange = rangelen // part
+    range_list = []
+    for i in range(part - 1):
+        range_list.append(block_range[i * srange : (i + 1) * srange])
+    range_list.append(block_range[(part - 1) * srange :])
+    return range_list
+
+def ranges_overlap(a_pair, b_pair):
+    a_start, a_stop = a_pair
+    b_start, b_stop = b_pair
+    return (
+        (b_start <= a_start and b_stop >= a_start)
+        or (b_start >= a_start and b_stop <= a_stop)
+        or (b_start <= a_stop and b_stop >= a_stop)
+    )
+
+
 
 def coarsen_mask(mask_in, count, flip=False):
     with torch.no_grad():

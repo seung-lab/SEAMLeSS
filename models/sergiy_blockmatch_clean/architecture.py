@@ -32,13 +32,13 @@ class Model(nn.Module):
         if pred_res.shape[1] == 2:
             pred_res = pred_res.permute(0, 2, 3, 1)
 
-        if src.var() > 1e-4:
+        '''if src.var() > 1e-4:
             pred_res = optimize(src, tgt, pred_res, torch.zeros_like(src),
                                     torch.zeros_like(tgt), max_iter=100)
             pass
         else:
             print ("skipping fucking shit")
-        '''warped_tgt = res_warp_img(src, pred_res, is_pix_res=True)
+        warped_tgt = res_warp_img(src, pred_res, is_pix_res=True)
         with torch.no_grad():
             refinement_res = block_match(warped_tgt, tgt, tile_size=self.tile_size,
                                    tile_step=self.tile_step, max_disp=self.max_disp,
@@ -49,7 +49,7 @@ class Model(nn.Module):
             pass
         final_res = combine_residuals(pred_res, refinement_res, is_pix_res=True)'''
         final_res = pred_res
-        final_res = filter_black_field(final_res, tgt, 0.05)
+        #final_res = filter_black_field(final_res, tgt, 0.05)
         final_res = final_res * 2 / src.shape[-2]
         return final_res
 
