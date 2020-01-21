@@ -6,7 +6,7 @@ metadata:
     run: seamless-manuel-100
   name: seamless-manuel-100
 spec:
-  replicas: 1 
+  replicas: 250
   selector:
     matchLabels:
       run: seamless-manuel-100
@@ -22,11 +22,11 @@ spec:
         run: seamless-manuel-100
     spec:
       containers:
-      - image: seunglab/seamless:jit-100-test-p
+      - image: seunglab/seamless:manuel-sergiy-opt-mip4-fixed
         name: seamless-manuel-100
         imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/worker.py --processes 8 --device cpu --queue_name manuel-seamless --lease_seconds 40"]
+        args: ["-c", "python inference/worker.py --processes 3 --gpu_processes 2 --queue_name manuel-igneous --lease_seconds 40"]
         resources: 
           limits:
             nvidia.com/gpu: 1

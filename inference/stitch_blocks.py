@@ -202,7 +202,7 @@ if __name__ == '__main__':
   #                                'compose'),
   #                         data_type='int16', num_channels=2,
   #                         fill_missing=True, overwrite=do_stitching).path
-  final_dst = cmr.create(join(args.dst_path, 'image_stitchtempmip1{}'.format(args.suffix)), 
+  final_dst = cmr.create(join(args.dst_path, 'image_stitchtemp{}'.format(args.suffix)), 
                         data_type='uint8', num_channels=1, fill_missing=True, 
                         overwrite=do_render).path
 
