@@ -131,18 +131,18 @@ def optimize_pre_post_multiscale_ups(pred_res_start, src, tgt, src_defects, tgt_
         4:  sm_val,
         5:  sm_val,
         6:  sm_val,
-        7: 1650e0,
-        8: 1650e0,
-        9: 1650e0
+        7: 2650e0,
+        8: 2650e0,
+        9: 2650e0
     }
 
     lr = {
         4: 8e-2,
         5: 8e-2,
         6: 25e-2,
-        7: 25e-2,
-        8: 25e-2,
-        9: 25e-2
+        7: 10e-2,
+        8: 10e-2,
+        9: 10e-2
     }
     num_iter = {
         4: max_iter,
