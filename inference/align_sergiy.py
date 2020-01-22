@@ -997,7 +997,7 @@ if __name__ == "__main__":
                 yield from t
 
     # # Serial alignment with block stitching
-    print("START BLOCK ALIGNMENT")
+    '''print("START BLOCK ALIGNMENT")
     if do_render:
         print("COPY STARTING SECTION OF ALL BLOCKS")
         execute(StarterCopy, copy_range)
@@ -1008,14 +1008,14 @@ if __name__ == "__main__":
         print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
         execute(StarterComputeField, starter_range)
     if do_render:
-        execute(StarterRender, starter_range)
+        execute(StarterRender, starter_range)'''
     for z_offset in sorted(block_offset_to_z_range.keys()):
         z_range = list(block_offset_to_z_range[z_offset])
         if do_alignment:
             print("ALIGN BLOCK OFFSET {}".format(z_offset))
-            execute(BlockAlignComputeField, z_range)
+            #execute(BlockAlignComputeField, z_range)
             print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-            execute(BlockAlignVectorVote, z_range)
+            #execute(BlockAlignVectorVote, z_range)
         if do_render:
             print("RENDER BLOCK OFFSET {}".format(z_offset))
             execute(BlockAlignRender, z_range)
