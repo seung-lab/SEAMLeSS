@@ -118,6 +118,16 @@ if __name__ == "__main__":
         "--render_mip",
         type=int
     )
+    parser.add_argument(
+        "--seethrough",
+        type=bool,
+        default=False
+    )
+    parser.add_argument(
+        "--seethrough_misalign",
+        type=bool,
+        default=False
+    )
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -135,7 +145,6 @@ if __name__ == "__main__":
     do_alignment = not args.skip_alignment
     do_render = not args.skip_render
     render_mip = args.render_mip or args.mip
-
     # Create CloudVolume Manager
     cm = CloudManager(
         args.src_path,
@@ -504,6 +513,8 @@ if __name__ == "__main__":
                     mask_cv=src_mask_cv,
                     mask_val=src_mask_val,
                     mask_mip=src_mask_mip,
+                    seethrough=args.seethrough,
+                    seethrough_misalign=args.seethrough_misalign
                 )
                 yield from t
 
@@ -591,6 +602,8 @@ if __name__ == "__main__":
                     mask_cv=src_mask_cv,
                     mask_val=src_mask_val,
                     mask_mip=src_mask_mip,
+                    seethrough=args.seethrough,
+                    seethrough_misalign=args.seethrough_misalign
                 )
                 yield from t
 
@@ -683,6 +696,8 @@ if __name__ == "__main__":
                     mask_cv=src_mask_cv,
                     mask_val=src_mask_val,
                     mask_mip=src_mask_mip,
+                    seethrough=args.seethrough,
+                    seethrough_misalign=args.seethrough_misalign
                 )
                 yield from t
 
@@ -930,6 +945,8 @@ if __name__ == "__main__":
                     mask_cv=src_mask_cv,
                     mask_val=src_mask_val,
                     mask_mip=src_mask_mip,
+                    seethrough=args.seethrough,
+                    seethrough_misalign=args.seethrough_misalign
                 )
                 yield from t
 

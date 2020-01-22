@@ -1682,7 +1682,8 @@ class Aligner:
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z,
                    bbox, src_mip, field_mip, mask_cv=None, mask_mip=0,
                    mask_val=0, affine=None, use_cpu=False,
-             return_iterator= False, pad=256):
+             return_iterator= False, pad=256, seethrough=False,
+             seethrough_misalign=False):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1724,7 +1725,9 @@ class Aligner:
             chunk = self.chunklist[i]
             yield tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
                        field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                       mask_mip, mask_val, affine, use_cpu, pad)
+                       mask_mip, mask_val, affine, use_cpu, pad,
+                       seethrough=seethrough,
+                       seethrough_misalign=seethrough_misalign)
     if return_iterator:
         return RenderTaskIterator(chunks,0, len(chunks))
     else:
@@ -1732,7 +1735,9 @@ class Aligner:
         for chunk in chunks:
           batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
                            field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                           mask_mip, mask_val, affine, use_cpu, pad))
+                           mask_mip, mask_val, affine, use_cpu, pad,
+                           seethrough=seethrough,
+                           seethrough_misalign=seethrough_misalign))
         return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,

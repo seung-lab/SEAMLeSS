@@ -124,10 +124,10 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
     with torch.no_grad():
         img1_enc = encoder(img1_downs_norm).squeeze()
         img2_enc = encoder(img2_downs_norm).squeeze()
-        img1_enc[img1_downs.squeeze().abs() < 0.25] = 0
-        img2_enc[img2_downs.squeeze().abs() < 0.25] = 0
-        img1_enc[img1_enc.squeeze().abs() < 0.15] = 0
-        img2_enc[img2_enc.squeeze().abs() < 0.15] = 0
+        img1_enc[img1_downs.squeeze().abs() < 0.05] = 0
+        img2_enc[img2_downs.squeeze().abs() < 0.05] = 0
+        #img1_enc[img1_enc.squeeze().abs() < 0.15] = 0
+        #img2_enc[img2_enc.squeeze().abs() < 0.15] = 0
 
     misalignment_mask = compute_fcorr(img1_enc, img2_enc).squeeze()
     #misalignment_mask_ups = scipy.misc.imresize(misalignment_mask, get_np(img1).shape)
@@ -139,11 +139,11 @@ def compute_fcorr(image1, image2):
         image1 = image1.unsqueeze(0)
         image2 = image2.unsqueeze(0)
     s = time.time()
-    tile_size = 96
-    ma_length = 5
+    tile_size = 128 * 3
+    ma_length = 8
     bm_result = block_match(image2, image1, min_overlap_px=800, tile_step=tile_size//2,
             tile_size=tile_size,
-            peak_ratio_cutoff=1.6, peak_distance=ma_length,  max_disp=16, filler=250)
+            peak_ratio_cutoff=4.0, peak_distance=ma_length,  max_disp=32, filler=250)
     nonzero_bm_mask = ((bm_result[..., 0] > ma_length) + (bm_result[..., 1].abs() > ma_length)) > 0
     print (time.time() - s, 'Masked misalignments: ', nonzero_bm_mask.sum())
     return nonzero_bm_mask
