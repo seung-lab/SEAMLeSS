@@ -37,12 +37,18 @@ if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--downsample_shift', type=int, default=0,
     help='temporary hack to account for half pixel shifts caused by downsampling')
-  parser.add_argument('--section_lookup', type=str, 
+  parser.add_argument('--section_lookup', 
+    type=str, 
+    default=None,
     help='path to json file with section specific settings')
-  parser.add_argument('--z_range_path', type=str, 
+  parser.add_argument('--z_range_path', 
+    type=str, 
+    default=None,
     help='path to csv file with list of z indices to use')
   parser.add_argument('--src_path', type=str)
-  parser.add_argument('--info_path', type=str,
+  parser.add_argument('--info_path', 
+    type=str,
+    default=None,
     help='path to CloudVolume to use as template info file')
   parser.add_argument('--field_path', type=str)
   parser.add_argument('--field_mip', type=int)
@@ -99,7 +105,7 @@ if __name__ == '__main__':
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False)
-  field = cm.create(args.field_path, data_type='int16', num_channels=2,
+  field = cm.create(args.field_path, data_type='float32', num_channels=2,
                          fill_missing=True, overwrite=False)
   dst = cm.create(args.dst_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=True)
@@ -154,8 +160,17 @@ if __name__ == '__main__':
           except KeyError:
             src_path = src.path
           
-          t = a.render(cm, src_path, field.path, dst.path, z, z, z, bbox,
-                           src_mip, field_mip, affine=affine) 
+          t = a.render(cm=cm, 
+                       src_cv=src_path, 
+                       field_cv=field.path, 
+                       dst_cv=dst.path, 
+                       src_z=z, 
+                       field_z=z, 
+                       dst_z=z, 
+                       bbox=bbox,
+                       src_mip=src_mip, 
+                       field_mip=field_mip, 
+                       affine=affine) 
           yield from t
 
   ptask = []
