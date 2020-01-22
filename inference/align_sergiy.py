@@ -57,6 +57,8 @@ if __name__ == "__main__":
     # parser.add_argument('--z_range_path', type=str,
     #   help='path to csv file with list of z indices to use')
     parser.add_argument("--src_path", type=str)
+    parser.add_argument("--seethrough_stitch_path", type=str)
+    parser.add_argument("--chunk_size", type=int, default=1024)
     parser.add_argument(
         "--src_mask_path",
         type=str,
@@ -122,8 +124,7 @@ if __name__ == "__main__":
     args.serial_operation = True
     a = get_aligner(args)
     provenance = get_provenance(args)
-    chunk_size = 1024 * 2
-
+    chunk_size = args.chunk_size
     # Simplify var names
     mip = args.mip
     max_mip = args.max_mip
@@ -208,6 +209,14 @@ if __name__ == "__main__":
         )
         block_dsts[i] = block_dst.path
 
+    if args.seethrough_stitch_path is not None:
+        seethrough_stitch_dst = cmr.create(
+            args.seethrough_stitch_path,
+            data_type=args.img_dtype,
+            num_channels=1,
+            fill_missing=True,
+            overwrite=do_render,
+        ).path
     # import ipdb
     # ipdb.set_trace
 
@@ -677,6 +686,33 @@ if __name__ == "__main__":
                 )
                 yield from t
 
+    seethrough_offset = 5
+
+    class SeethroughStitchRender(object):
+        def __init__(self, z_range):
+            self.z_range = z_range
+
+        def __iter__(self):
+            for z in self.z_range:
+                z_start = z
+                z_end = z + seethrough_offset
+
+                src = block_dst_lookup[z]
+                dst = seethrough_stitch_dst
+                bbox = bbox_lookup[z]
+                t = a.seethrough_stitch_render(
+                    cm,
+                    src,
+                    dst,
+                    z_start=z_start,
+                    z_end=z_end,
+                    bbox=bbox,
+                    mip=mip
+                )
+
+                yield from t
+
+
     class StitchOverlapCopy:
         def __init__(self, z_range):
             self.z_range = z_range
@@ -966,10 +1002,13 @@ if __name__ == "__main__":
         if do_render:
             print("RENDER BLOCK OFFSET {}".format(z_offset))
             execute(BlockAlignRender, z_range)
-
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
     print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
+    #for z_offset in sorted(stitch_offset_to_z_range.keys()):
+    #    z_range = list(stitch_offset_to_z_range[z_offset])
+    #    execute(SeethroughStitchRender, z_range=z_range)
+
     if do_render:
         execute(StitchOverlapCopy, overlap_copy_range)
     for z_offset in sorted(stitch_offset_to_z_range.keys()):
@@ -988,4 +1027,3 @@ if __name__ == "__main__":
         execute(StitchBroadcastCopy, stitch_range)
         print("VECTOR VOTE STITCHING FIELDS")
         execute(StitchBroadcastVectorVote, block_starts[1:])
-

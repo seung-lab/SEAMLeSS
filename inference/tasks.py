@@ -212,13 +212,70 @@ class ComputeFieldTask(RegisteredTask):
       diff = end - start
       print('ComputeFieldTask: {:.3f} s'.format(diff))
 
+class SeethroughStitchRenderTask(RegisteredTask):
+  def __init__(self, src_cv, dst_cv, z_start, z_end, patch_bbox, mip, use_cpu=False):
+    assert(z_end > z_start)
+    super(). __init__(src_cv, dst_cv, z_start, z_end, patch_bbox, mip, use_cpu)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
+    z_start = self.z_start
+    z_end = self.z_end
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    mip = self.mip
+
+    print("\nSeethrough Stitch Rendering\n"
+          "src {}\n"
+          "dst {}\n"
+          "z={} to z={}\n"
+          "MIP{}\n"
+          "\n".format(src_cv.path, dst_cv.path, z_start, z_end, mip), flush=True)
+
+    start = time()
+    if not aligner.dry_run:
+      for z in range(z_end, z_start -1, -1):
+        image = aligner.get_masked_image(src_cv, z,
+                                         patch_bbox, mip,
+                                         mask_cv=None, mask_mip=None, mask_val=None,
+                                         to_tensor=True, normalizer=None)
+
+        prev_image = aligner.get_masked_image(dst_cv, z + 1,
+                                              patch_bbox, mip,
+                                              mask_cv=None, mask_mip=None, mask_val=None,
+                                              to_tensor=True, normalizer=None)
+
+        black_region = image < 0.05
+        image[black_region] = prev_image[black_region]
+
+        if black_region.sum() > 2 and ((prev_image[black_region] > 0.05).sum()) > 2:
+             original_tissue_mask = black_region == False
+             seethrough_tissue_mask = (prev_image > 0.05) * black_region
+
+             image[seethrough_tissue_mask] *= torch.sqrt(image[original_tissue_mask].var()) / torch.sqrt(image[seethrough_tissue_mask].var())
+             image[seethrough_tissue_mask] += image[original_tissue_mask].mean() - image[seethrough_tissue_mask].mean()
+             image[image < 0] = 0
+             image[seethrough_tissue_mask] += 0.01
+
+        image = image.cpu().numpy()
+
+        aligner.save_image(image, dst_cv, z, patch_bbox, mip)
+
+      end = time()
+      diff = end - start
+      print('RenderTask: {:.3f} s'.format(diff))
+
+
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False, pad=256,
-               seethrough=False, coarsen_folds=3, coarsen_misalign=80):
+               seethrough=False, coarsen_folds=3, coarsen_misalign=80, seethrough_cv=None,
+               seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
+               seethrough_black=True):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                      field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu, pad, seethrough,
-                     coarsen_folds, coarsen_misalign)
+                     coarsen_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
+                      seethrough_folds, seethrough_misalign, seethrough_black)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -239,9 +296,11 @@ class RenderTask(RegisteredTask):
     coarsen_folds = self.coarsen_folds
     coarsen_misalign = self.coarsen_misalign
     affine = None
+    if self.seethrough_cv is None:
+        seethrough_cv = dst_cv
+
     if self.affine:
       affine = np.array(self.affine)
-
 
     field_cv_path = ""
     field_mip_print = ""
@@ -267,33 +326,41 @@ class RenderTask(RegisteredTask):
                                      return_mask=True, blackout_mask_op='none',
                                      return_mask_op='gte')
       if seethrough:
-         prev_image = aligner.get_masked_image(dst_cv, dst_z-1, patch_bbox, src_mip,
+         prev_image = aligner.get_masked_image(seethrough_cv, dst_z + seethrough_offset,
+                                       patch_bbox, src_mip,
                                        mask_cv=None, mask_mip=None, mask_val=None,
                                        to_tensor=True, normalizer=None)
          if (prev_image != 0).sum() > 0:
-             black_region = image < 0.05
-             if folds is not None:
-                 fold_region = folds > 0
-             else:
-                 fold_region = torch.zeros_like(image)
-             fold_region_coarse = coarsen_mask(fold_region, coarsen_fold).byte()
+             seethrough_region = torch.zeros_like(image).uint8()
+             if self.seethrough_black:
+                 black_region = image < 0.05
+                 image[black_region] = prev_image[black_region]
+                 seethrough_region[black_region] = True
+             if self.seethrough_folds:
+                 if folds is not None:
+                     fold_region = folds > 0
+                 else:
+                     fold_region = torch.zeros_like(image)
+                 fold_region_coarse = coarsen_mask(fold_region, coarsen_fold).byte()
 
-             image[fold_region_coarse] = prev_image[fold_region_coarse]
-             image[black_region] = prev_image[black_region]
-
-             misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
-                                                         threshold=80)
+                 image[fold_region_coarse] = prev_image[fold_region_coarse]
+                 seethrough_region[fold_region_coarse] = True
+             if self.seethrough_misalign:
+                 misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
+                                                             threshold=80)
              #misalignment_region = torch.zeros_like(misalignment_region)
-             misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
-             image[..., misalignment_region_coarse] = prev_image[..., misalignment_region_coarse]
-             seethrough_region = (fold_region_coarse + misalignment_region_coarse + black_region) > 0
+                 misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
+                 image[..., misalignment_region_coarse] = prev_image[..., misalignment_region_coarse]
+                 seethrough_region[..., misalignment_region_coarse] = True
 
-             original_tissue_mask = (image > 0.05) * (seethrough_region == False)
-             seethrough_tissue_mask = (image > 0.05) * (seethrough_region == True)
-             image[seethrough_tissue_mask] *= torch.sqrt(image[original_tissue_mask].var()) / torch.sqrt(image[seethrough_tissue_mask].var())
-             image[seethrough_tissue_mask] += image[original_tissue_mask].mean() - image[seethrough_tissue_mask].mean()
-             image[image < 0] = 0
-             image[seethrough_tissue_mask] += 0.01
+             if seethrough_tissue_mask.sum() > 2:
+                 original_tissue_mask = (image > 0.05) * (seethrough_region == False)
+                 seethrough_tissue_mask = (prev_image > 0.05) * (seethrough_region == True)
+                 image[seethrough_tissue_mask] *= torch.sqrt(image[original_tissue_mask].var()) / torch.sqrt(image[seethrough_tissue_mask].var())
+                 image[seethrough_tissue_mask] += image[original_tissue_mask].mean() - image[seethrough_tissue_mask].mean()
+                 image[image < 0] = 0
+                 image[seethrough_tissue_mask] += 0.01
+
       image = image.cpu().numpy()
       # import ipdb
       # ipdb.set_trace()
@@ -442,7 +509,6 @@ class CloudUpsampleFieldTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     src_mip = self.src_mip
     dst_mip = self.dst_mip
-    import pdb; pdb.set_trace()
     print("\nUpsample Field\n"
           "src: {}\n"
           "dst: {}\n"
