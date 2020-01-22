@@ -139,12 +139,19 @@ def compute_fcorr(image1, image2):
         image1 = image1.unsqueeze(0)
         image2 = image2.unsqueeze(0)
     s = time.time()
-    tile_size = 128 * 3
-    ma_length = 8
-    bm_result = block_match(image2, image1, min_overlap_px=800, tile_step=tile_size//2,
+    s = time.time()
+    tile_size = 128 * 2
+    ma_length = 6
+    bm_result = block_match(image2, image1, min_overlap_px=40000, tile_step=tile_size//2,
             tile_size=tile_size,
-            peak_ratio_cutoff=4.0, peak_distance=ma_length,  max_disp=32, filler=250)
-    nonzero_bm_mask = ((bm_result[..., 0] > ma_length) + (bm_result[..., 1].abs() > ma_length)) > 0
+            peak_ratio_cutoff=4.5, peak_distance=ma_length,  max_disp=48, filler=250)
+    nonzero_bm_mask1 = ((bm_result[..., 0].abs() > ma_length) + (bm_result[..., 1].abs() > ma_length)) > 0
+    bm_result = block_match(image1, image2, min_overlap_px=40000, tile_step=tile_size//2,
+            tile_size=tile_size,
+            peak_ratio_cutoff=4.0, peak_distance=ma_length,  max_disp=48, filler=250)
+    nonzero_bm_mask2 = ((bm_result[..., 0].abs() > ma_length) + (bm_result[..., 1].abs() > ma_length)) > 0
+    nonzero_bm_mask = (nonzero_bm_mask1 + nonzero_bm_mask2) > 0
+
     print (time.time() - s, 'Masked misalignments: ', nonzero_bm_mask.sum())
     return nonzero_bm_mask
     #mult = image1*image2

@@ -179,6 +179,8 @@ class Aligner:
         mask = data != valid_val
     elif mask_op == 'none':
         mask = data != data
+    elif mask_op == 'data':
+        mask = data
     else:
         raise Exception("Mask op {} unsupported".format(mask_op))
     mask = coarsen_mask(mask, count=coarsen_count)

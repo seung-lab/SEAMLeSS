@@ -269,13 +269,14 @@ class SeethroughStitchRenderTask(RegisteredTask):
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False, pad=256,
-               seethrough=False, coarsen_folds=3, coarsen_misalign=128, seethrough_cv=None,
+               seethrough=False, coarsen_small_folds=1, coarsen_big_folds=15, coarsen_misalign=128, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
-               seethrough_black=True):
+               seethrough_black=True, big_fold_threshold=800):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                      field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu, pad, seethrough,
                      coarsen_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
-                      seethrough_folds, seethrough_misalign, seethrough_black)
+                      seethrough_folds, seethrough_misalign, seethrough_black,
+                      big_fold_threshold)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -296,6 +297,8 @@ class RenderTask(RegisteredTask):
     coarsen_folds = self.coarsen_folds
     coarsen_misalign = self.coarsen_misalign
     affine = None
+    big_fold_threshold = self.big_fold_threshold
+
     if self.seethrough_cv is None:
         seethrough_cv = dst_cv
 
@@ -322,8 +325,9 @@ class RenderTask(RegisteredTask):
                                      mask_cv=mask_cv, mask_mip=mask_mip,
                                      mask_val=mask_val, affine=affine,
                                      use_cpu=self.use_cpu, pad=self.pad,
-                                     return_mask=True, blackout_mask_op='none',
-                                     return_mask_op='gte')
+                                     return_mask=True,
+                                     blackout_mask_op='none',
+                                     return_mask_op='data')
       if seethrough:
          prev_image = aligner.get_masked_image(seethrough_cv, dst_z-1,
                                        patch_bbox, src_mip,
@@ -340,12 +344,12 @@ class RenderTask(RegisteredTask):
              if self.seethrough_folds:
                  if folds is not None:
                      fold_region = folds > 0
-                 else:
-                     fold_region = torch.zeros_like(image)
-                 fold_region_coarse = coarsen_mask(fold_region, coarsen_folds).byte()
+                     big_fold_region = folds > big_fold_threshold
 
-                 seethrough_region[fold_region_coarse * prev_image_not_black] = True
-                 image[seethrough_region] = prev_image[seethrough_region]
+                     fold_region_coarse = coarsen_mask(fold_region, coarsen_folds).byte()
+
+                     seethrough_region[fold_region_coarse * prev_image_not_black] = True
+                     image[seethrough_region] = prev_image[seethrough_region]
              if self.seethrough_misalign:
                  misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
                                                              threshold=80)
