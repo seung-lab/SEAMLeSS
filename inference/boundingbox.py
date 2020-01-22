@@ -151,6 +151,17 @@ class BoundingBox:
   
   def __repr__(self):
     return self.__str__(mip=0)
+  
+  @classmethod
+  def from_bbox(cls, bbox, mip, max_mip):
+    """Create BoundingBox from CloudVolume.lib Bbox
+    """
+    return cls(xs=bbox.minpt[0], 
+               xe=bbox.maxpt[0], 
+               ys=bbox.minpt[1], 
+               ye=bbox.maxpt[1], 
+               mip=mip,
+               max_mip=max_mip)
 
   def stringify(self, z_start, z_stop=None, mip=0):
     x_start = self.x_range(mip)[0]    
