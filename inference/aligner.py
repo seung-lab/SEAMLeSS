@@ -376,7 +376,7 @@ class Aligner:
   #######################
   # Field IO + handlers #
   #######################
-  def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True, as_int16=True):
+  def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True, as_int16=False):
     """Retrieve vector field from CloudVolume.
 
     Args
