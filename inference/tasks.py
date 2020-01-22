@@ -353,6 +353,8 @@ class RenderTask(RegisteredTask):
                  image[..., misalignment_region_coarse] = prev_image[..., misalignment_region_coarse]
                  seethrough_region[..., misalignment_region_coarse] = True
 
+             seethrough_region[prev_image < 0.05] = False
+
              if seethrough_region.sum() > 2:
                  original_tissue_mask = (image > 0.05) * (seethrough_region == False)
                  seethrough_tissue_mask = (prev_image > 0.05) * (seethrough_region == True)
