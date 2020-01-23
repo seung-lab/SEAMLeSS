@@ -467,8 +467,8 @@ class Aligner:
     if len(nonzero) == 0:
       return torch.Tensor([0, 0])
 
-    low_l = percentile(nonzero, 0)
-    high_l = percentile(nonzero, 100)
+    low_l = percentile(nonzero, 25)
+    high_l = percentile(nonzero, 75)
     mid = 0.5*(low_l + high_l)
 
     print("MID:", mid[0].item(), mid[1].item())
