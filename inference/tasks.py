@@ -271,7 +271,7 @@ class RenderTask(RegisteredTask):
                field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False, pad=256,
                seethrough=False, coarsen_small_folds=1, coarsen_big_folds=20, coarsen_misalign=128, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
-               seethrough_black=True):
+               seethrough_black=True, big_fold_threshold=800):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                      field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu, pad, seethrough,
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
