@@ -59,21 +59,10 @@ if __name__ == "__main__":
     parser.add_argument("--src_path", type=str)
     parser.add_argument("--seethrough_stitch_path", type=str)
     parser.add_argument("--chunk_size", type=int, default=1024)
-    parser.add_argument(
-        "--src_mask_path",
-        type=str,
-        default="",
-        help="CloudVolume path of mask to use with src images; default None",
-    )
-    parser.add_argument(
-        "--src_mask_mip", type=int, default=8, help="MIP of source mask"
-    )
-    parser.add_argument(
-        "--src_mask_val",
-        type=int,
-        default=1,
-        help="Value of of mask that indicates DO NOT mask",
-    )
+    parser.add_argument('--src_mask', action='append',
+            help='Pass string that contains a JSON dict. Fields: "cv", "mip", "val", "op"')
+    parser.add_argument('--tgt_mask', action='append',
+            help='Pass string that contains a JSON dict. Fields: "cv", "mip", "val", "op"')
     parser.add_argument("--dst_path", type=str)
     parser.add_argument("--mip", type=int)
     parser.add_argument("--z_start", type=int)
@@ -141,6 +130,7 @@ if __name__ == "__main__":
     pad = args.pad
     src_mask_val = args.src_mask_val
     src_mask_mip = args.src_mask_mip
+
     block_size = args.block_size
     do_alignment = not args.skip_alignment
     do_render = not args.skip_render
