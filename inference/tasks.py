@@ -344,7 +344,7 @@ class RenderTask(RegisteredTask):
              if self.seethrough_folds:
                  if folds is not None:
                      small_fold_region = folds > 5
-                     big_fold_region = folds > big_fold_threshold
+                     big_fold_region = folds > self.big_fold_threshold
                      small_fold_region_coarse = coarsen_mask(small_fold_region, coarsen_small_folds).byte()
                      big_fold_region_coarse = coarsen_mask(big_fold_region, coarsen_big_folds).byte()
                      fold_region_coarse = (big_fold_region_coarse + small_fold_region_coarse) > 0
@@ -365,7 +365,7 @@ class RenderTask(RegisteredTask):
                  image[seethrough_tissue_mask] *= torch.sqrt(image[original_tissue_mask].var()) / torch.sqrt(image[seethrough_tissue_mask].var())
                  image[seethrough_tissue_mask] += image[original_tissue_mask].mean() - image[seethrough_tissue_mask].mean()
                  image[image < 0] = 0
-                 image[seethrough_tissue_mask] += 0.05
+                 #image[seethrough_tissue_mask] += 0.05
 
       image = image.cpu().numpy()
       # import ipdb
