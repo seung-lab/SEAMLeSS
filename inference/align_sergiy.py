@@ -180,7 +180,7 @@ if __name__ == "__main__":
     if args.src_mask_path:
         src_mask_cv = cm.create(
             args.src_mask_path,
-            data_type="uint8",
+            data_type="uint32",
             num_channels=1,
             fill_missing=True,
             overwrite=False,
