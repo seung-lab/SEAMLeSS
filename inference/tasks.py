@@ -269,12 +269,12 @@ class SeethroughStitchRenderTask(RegisteredTask):
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False, pad=256,
-               seethrough=False, coarsen_small_folds=1, coarsen_big_folds=15, coarsen_misalign=128, seethrough_cv=None,
+               seethrough=False, coarsen_small_folds=1, coarsen_big_folds=20, coarsen_misalign=128, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                      field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu, pad, seethrough,
-                     coarsen_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
+                     coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
                       seethrough_folds, seethrough_misalign, seethrough_black,
                       big_fold_threshold)
 
@@ -294,7 +294,8 @@ class RenderTask(RegisteredTask):
     mask_mip = self.mask_mip
     mask_val = self.mask_val
     seethrough = self.seethrough
-    coarsen_folds = self.coarsen_folds
+    coarsen_big_folds = self.coarsen_big_folds
+    coarsen_small_folds = self.coarsen_small_folds
     coarsen_misalign = self.coarsen_misalign
     affine = None
     big_fold_threshold = self.big_fold_threshold
@@ -343,11 +344,12 @@ class RenderTask(RegisteredTask):
 
              if self.seethrough_folds:
                  if folds is not None:
-                     fold_region = folds > 0
+                     small_fold_region = folds > 5
                      big_fold_region = folds > big_fold_threshold
-
-                     fold_region_coarse = coarsen_mask(fold_region, coarsen_folds).byte()
-
+                     print (small_fold_region.sum(), big_fold_region.sum())
+                     small_fold_region_coarse = coarsen_mask(small_fold_region, coarsen_small_folds).byte()
+                     big_fold_region_coarse = coarsen_mask(big_fold_region, coarsen_big_folds).byte()
+                     fold_region_coarse = (big_fold_region_coarse + small_fold_region_coarse) > 0
                      seethrough_region[fold_region_coarse * prev_image_not_black] = True
                      image[seethrough_region] = prev_image[seethrough_region]
              if self.seethrough_misalign:
@@ -365,7 +367,7 @@ class RenderTask(RegisteredTask):
                  image[seethrough_tissue_mask] *= torch.sqrt(image[original_tissue_mask].var()) / torch.sqrt(image[seethrough_tissue_mask].var())
                  image[seethrough_tissue_mask] += image[original_tissue_mask].mean() - image[seethrough_tissue_mask].mean()
                  image[image < 0] = 0
-                 #image[seethrough_tissue_mask] += 0.01
+                 image[seethrough_tissue_mask] += 0.05
 
       image = image.cpu().numpy()
       # import ipdb

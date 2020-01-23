@@ -183,7 +183,8 @@ class Aligner:
         mask = data
     else:
         raise Exception("Mask op {} unsupported".format(mask_op))
-    mask = coarsen_mask(mask, count=coarsen_count)
+    if coarsen_count > 0:
+        mask = coarsen_mask(mask, count=coarsen_count)
     end = time()
     diff = end - start
     print('get_mask: {:.3f}'.format(diff), flush=True)
@@ -301,6 +302,9 @@ class Aligner:
     # convert to tensor if requested, or if up/downsampling required
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
+        if (data.dtype == np.uint32):
+          print ("ALFHAKFJA")
+          data = data.astype(np.int64)
         data = torch.from_numpy(data)
       if self.device.type == 'cuda':
         data = data.to(device=self.device)
