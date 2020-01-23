@@ -13,7 +13,7 @@ class Preprocessor(nn.Module):
     desired.
     """
 
-    def __init__(self, clipLimit=40, tileGridSize=(8, 8), *args, **kwargs):
+    def __init__(self, clipLimit=40, tileGridSize=(32, 32), *args, **kwargs):
         super().__init__()
         self.clahe = cv2.createCLAHE(clipLimit=clipLimit,
                                      tileGridSize=tileGridSize)
