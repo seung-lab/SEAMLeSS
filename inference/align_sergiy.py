@@ -14,6 +14,8 @@ from args import get_aligner, get_argparser, get_provenance, parse_args
 from boundingbox import BoundingBox
 from cloudmanager import CloudManager
 
+import json
+from mask import Mask
 
 def print_run(diff, n_tasks):
     if n_tasks > 0:
@@ -60,7 +62,8 @@ if __name__ == "__main__":
     parser.add_argument("--seethrough_stitch_path", type=str)
     parser.add_argument("--chunk_size", type=int, default=1024)
     parser.add_argument('--src_mask', action='append',
-            help='Pass string that contains a JSON dict. Fields: "cv", "mip", "val", "op"')
+            help='Pass string that contains a JSON dict. Fields: "cv", "mip", "val", "op"',
+            type=json.loads, dest='src_masks')
     parser.add_argument('--tgt_mask', action='append',
             help='Pass string that contains a JSON dict. Fields: "cv", "mip", "val", "op"')
     parser.add_argument("--dst_path", type=str)
@@ -128,8 +131,8 @@ if __name__ == "__main__":
     mip = args.mip
     max_mip = args.max_mip
     pad = args.pad
-    src_mask_val = args.src_mask_val
-    src_mask_mip = args.src_mask_mip
+    src_masks = [Mask(**m) for m in args.src_masks]
+    tgt_masks = [Mask(**m) for m in args.tgt_masks]
 
     block_size = args.block_size
     do_alignment = not args.skip_alignment
@@ -165,17 +168,16 @@ if __name__ == "__main__":
         fill_missing=True,
         overwrite=False,
     ).path
-    src_mask_cv = None
-    tgt_mask_cv = None
-    if args.src_mask_path:
-        src_mask_cv = cm.create(
-            args.src_mask_path,
-            data_type="uint32",
+
+    for mask in (src_masks + tgt_masks):
+        cm.create(
+            mask.cv_path,
+            data_type=mask.dtype,
             num_channels=1,
             fill_missing=True,
             overwrite=False,
-        ).path
-        tgt_mask_cv = src_mask_cv
+        )
+
 
     coarse_field_cv = cm.create(
         args.coarse_field_path,
@@ -500,9 +502,7 @@ if __name__ == "__main__":
                     bbox=bbox,
                     src_mip=render_mip,
                     field_mip=coarse_field_mip,
-                    mask_cv=src_mask_cv,
-                    mask_val=src_mask_val,
-                    mask_mip=src_mask_mip,
+                    masks=src_masks,
                     seethrough=args.seethrough,
                     seethrough_misalign=args.seethrough_misalign
                 )
@@ -554,12 +554,8 @@ if __name__ == "__main__":
                     bbox,
                     mip,
                     pad,
-                    src_mask_cv=src_mask_cv,
-                    src_mask_mip=src_mask_mip,
-                    src_mask_val=src_mask_val,
-                    tgt_mask_cv=src_mask_cv,
-                    tgt_mask_mip=src_mask_mip,
-                    tgt_mask_val=src_mask_val,
+                    src_masks=src_masks,
+                    tgt_masks=tgt_masks,
                     prev_field_cv=None,
                     prev_field_z=None,
                     coarse_field_cv=coarse_field_cv,
@@ -589,9 +585,7 @@ if __name__ == "__main__":
                     bbox=bbox,
                     src_mip=render_mip,
                     field_mip=mip,
-                    mask_cv=src_mask_cv,
-                    mask_val=src_mask_val,
-                    mask_mip=src_mask_mip,
+                    masks=src_masks,
                     seethrough=args.seethrough,
                     seethrough_misalign=args.seethrough_misalign
                 )
@@ -627,12 +621,8 @@ if __name__ == "__main__":
                         bbox,
                         mip,
                         pad,
-                        src_mask_cv=src_mask_cv,
-                        src_mask_mip=src_mask_mip,
-                        src_mask_val=src_mask_val,
-                        tgt_mask_cv=src_mask_cv,
-                        tgt_mask_mip=src_mask_mip,
-                        tgt_mask_val=src_mask_val,
+                        src_masks=src_masks,
+                        tgt_masks=tgt_masks,
                         prev_field_cv=tgt_field,
                         prev_field_z=tgt_z,
                         coarse_field_cv=coarse_field_cv,
@@ -683,9 +673,7 @@ if __name__ == "__main__":
                     bbox=bbox,
                     src_mip=render_mip,
                     field_mip=mip,
-                    mask_cv=src_mask_cv,
-                    mask_val=src_mask_val,
-                    mask_mip=src_mask_mip,
+                    masks=src_masks
                     seethrough=args.seethrough,
                     seethrough_misalign=args.seethrough_misalign
                 )
@@ -795,10 +783,9 @@ if __name__ == "__main__":
                     tgt_z = z + tgt_offset
                     field = stitch_pair_fields[tgt_offset]
                     t = a.compute_field(cm, model_path, block_dst, overlap_image, field,
-                                        z, tgt_z, bbox, mip, pad, src_mask_cv=src_mask_cv,
-                                        src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                                        tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip,
-                                        tgt_mask_val=src_mask_val,
+                                        z, tgt_z, bbox, mip, pad,
+                                        src_masks=src_masks,
+                                        tgt_masks=tgt_masks,
                                         prev_field_cv=overlap_vvote_field,
                                         # prev_field_cv=None,
                                         prev_field_z=tgt_z,stitch=True)
@@ -932,9 +919,7 @@ if __name__ == "__main__":
                     bbox=bbox,
                     src_mip=render_mip,
                     field_mip=mip,
-                    mask_cv=src_mask_cv,
-                    mask_val=src_mask_val,
-                    mask_mip=src_mask_mip,
+                    mask=src_masks,
                     seethrough=args.seethrough,
                     seethrough_misalign=args.seethrough_misalign
                 )

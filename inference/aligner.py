@@ -159,6 +159,24 @@ class Aligner:
   #######################
   # Image IO + handlers #
   #######################
+    def get_masks(self, masks, z, bbox, dst_mip, valid_val, to_tensor=True,
+               mask_op='none'):
+        start = time()
+        result = None
+        for mask in masks:
+            mask_data = get_mask(mask.cv_path, z, bbox, mask.mip, dst_mip, valid_val,
+                                to_tensor=to_tensor, mask_op=mask_op,
+                                coarsen_count=mask.coarsen_count)
+            if result is None:
+                result = mask_data
+            else:
+                result[mask_data != 0] = mask_data[mask_data != 0]
+
+        end = time()
+        diff = end - start
+        print('get_masks: {:.3f}'.format(diff), flush=True)
+        return mask_data
+
 
   def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True,
                mask_op='none', coarsen_count=0):
@@ -205,19 +223,17 @@ class Aligner:
     print('get_image: {:.3f}'.format(diff), flush=True)
     return image
 
-  def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
-                             to_tensor=True, normalizer=None, mask_op='none',
-                             coarsen_mask_count=0):
+  def get_masked_image(self, image_cv, z, bbox, image_mip, masks,
+                             to_tensor=True, normalizer=None, mask_op='none'):
     """Get image with mask applied
     """
     start = time()
     image = self.get_image(image_cv, z, bbox, image_mip,
                            to_tensor=True, normalizer=normalizer)
     if mask_cv is not None:
-      mask = self.get_mask(mask_cv, z, bbox,
-                           src_mip=mask_mip,
-                           dst_mip=image_mip, valid_val=mask_val, mask_op=mask_op,
-                           coarsen_count=coarsen_mask_count)
+      mask = self.get_masks(masks, z, bbox,
+                           dst_mip=image_mip, mask_op=mask_op
+                           )
       image = image.masked_fill_(mask, 0)
     if not to_tensor:
       image = image.cpu().numpy()
@@ -227,8 +243,8 @@ class Aligner:
     return image
 
   def get_composite_image(self, image_cv, z_list, bbox, image_mip,
-                                mask_cv, mask_mip, mask_val,
-                                to_tensor=True, normalizer=None, coarsen_mask_count=0,
+                                masks=[],
+                                to_tensor=True, normalizer=None,
                                 mask_op='none'):
     """Collapse a stack of 2D image into a single 2D image, by consecutively
         replacing black pixels (0) in the image of the first z_list entry with
@@ -252,14 +268,14 @@ class Aligner:
     assert len(z_list) > 0
 
     combined = self.get_masked_image(image_cv, z_list[0], bbox, image_mip,
-                                     mask_cv, mask_mip, mask_val,
+                                     masks,
                                      to_tensor=to_tensor, normalizer=normalizer,
-                                     coarsen_mask_count=coarsen_mask_count, mask_op=mask_op)
+                                     mask_op=mask_op)
     for z in z_list[1:]:
       tmp = self.get_masked_image(image_cv, z, bbox, image_mip,
-                                  mask_cv, mask_mip, mask_val,
+                                  masks,
                                   to_tensor=to_tensor, normalizer=normalizer,
-                                  coarsen_mask_count=coarsen_mask_count, mask_op=mask_op)
+                                  mask_op=mask_op)
       black_mask = combined == 0
       combined[black_mask] = tmp[black_mask]
 
@@ -512,109 +528,6 @@ class Aligner:
   # CloudVolume chunk methods #
   #############################
 
-  def compute_field_chunk_stitch_old(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
-                          src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
-                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
-                          tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
-                          prev_field_inverse=False):
-    """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
-    Args:
-      model_path: str for relative path to model directory
-      src_z: int of section to be warped
-      src_cv: MiplessCloudVolume with source image
-      tgt_z: int of section to be warped to
-      tgt_cv: MiplessCloudVolume with target image
-      bbox: BoundingBox for region of both sections to process
-      mip: int of MIP level to use for bbox
-      pad: int for amount of padding to add to the bbox before processing
-      mask_cv: MiplessCloudVolume with mask to be used for both src & tgt image
-      prev_field_cv: if specified, a MiplessCloudVolume containing the
-                     previously predicted field to be profile and displace
-                     the src chunk
-    Returns:
-      field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
-    """
-    archive = self.get_model_archive(model_path)
-    model = archive.model
-    normalizer = archive.preprocessor
-    print('compute_field for {0} to {1}'.format(bbox.stringify(src_z),
-                                                bbox.stringify(tgt_z)))
-    print('pad: {}'.format(pad))
-    padded_bbox = deepcopy(bbox)
-    padded_bbox.max_mip = mip
-    padded_bbox.uncrop(pad, mip=mip)
-
-    if prev_field_cv is not None:
-        field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
-                           relative=False, to_tensor=True)
-        if prev_field_inverse:
-          field = -field
-        distance = self.profile_field(field)
-        print('Displacement adjustment: {} px'.format(distance))
-        distance = (distance // (2 ** mip)) * 2 ** mip
-        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
-    else:
-        distance = torch.Tensor([0, 0])
-        new_bbox = padded_bbox
-
-    tgt_z = [tgt_z]
-    if tgt_alt_z is not None:
-      try:
-        tgt_z.extend(tgt_alt_z)
-      except TypeError:
-        tgt_z.append(tgt_alt_z)
-      print('alternative target slices:', tgt_alt_z)
-
-    src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
-                                mask_cv=src_mask_cv, mask_mip=src_mask_mip,
-                                mask_val=src_mask_val,
-                                to_tensor=True, normalizer=normalizer)
-    tgt_patch = self.get_composite_image(tgt_cv, tgt_z, padded_bbox, mip,
-                                mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
-                                mask_val=tgt_mask_val,
-                                to_tensor=True, normalizer=normalizer)
-    # import ipdb
-    # ipdb.set_trace()
-    print('src_patch.shape {}'.format(src_patch.shape))
-    print('tgt_patch.shape {}'.format(tgt_patch.shape))
-
-    # Running the model is the only part that will increase memory consumption
-    # significantly - only incrementing the GPU lock here should be sufficient.
-    if self.gpu_lock is not None:
-      self.gpu_lock.acquire()
-      print("Process {} acquired GPU lock".format(os.getpid()))
-
-    try:
-      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
-
-      zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,2048,2048])))
-      zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
-
-      # model produces field in relative coordinates
-      field = model(
-        src_patch,
-        tgt_patch,
-        tgt_field=zero_fieldC,
-        src_field=zero_fieldC,
-      )
-      # import ipdb
-      # ipdb.set_trace()
-      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
-      field = self.rel_to_abs_residual(field, mip)
-      field = field[:,pad:-pad,pad:-pad,:]
-      field += distance.to(device=self.device)
-      field = field.data.cpu().numpy()
-      # clear unused, cached memory so that other processes can allocate it
-      torch.cuda.empty_cache()
-
-      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
-    finally:
-      if self.gpu_lock is not None:
-        print("Process {} releasing GPU lock".format(os.getpid()))
-        self.gpu_lock.release()
-
-    return field
-
   def compute_field_chunk_stitch(
     self,
     model_path,
@@ -625,12 +538,8 @@ class Aligner:
     field_cv,
     tgt_z,
     mip,
-    src_mask_cv=None,
-    src_mask_mip=0,
-    src_mask_val=0,
-    tgt_mask_cv=None,
-    tgt_mask_mip=0,
-    tgt_mask_val=0,
+    src_masks=src_masks,
+    tgt_masks=tgt_masks,
   ):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
     Args:
@@ -793,12 +702,8 @@ class Aligner:
     tgt_cv,
     tgt_z,
     mip,
-    src_mask_cv=None,
-    src_mask_mip=0,
-    src_mask_val=0,
-    tgt_mask_cv=None,
-    tgt_mask_mip=0,
-    tgt_mask_val=0,
+    src_masks=[],
+    tgt_masks=[],
     tgt_alt_z=None,
     prev_field_cv=None,
     prev_field_z=None,
@@ -969,13 +874,9 @@ class Aligner:
       src_z,
       padded_src_bbox_fine,
       mip,
-      mask_cv=src_mask_cv,
-      mask_mip=src_mask_mip,
-      mask_val=src_mask_val,
+      masks=src_masks,
       to_tensor=True,
       normalizer=normalizer,
-      coarsen_mask_count=0,
-      mask_op='gte'
     )
 
     padded_tgt_bbox_fine = deepcopy(bbox)
@@ -985,12 +886,9 @@ class Aligner:
       tgt_z,
       padded_tgt_bbox_fine,
       mip,
-      mask_cv=tgt_mask_cv,
-      mask_mip=tgt_mask_mip,
-      mask_val=tgt_mask_val,
+      masks=[],
       to_tensor=True,
       normalizer=normalizer,
-      mask_op='none'
     )
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
@@ -1163,8 +1061,8 @@ class Aligner:
     self.save_field(dst_cv, z, invf, bbox, mip, relative=True, as_int16=as_int16)
 
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
-                        bbox, image_mip, field_mip, mask_cv=None,
-                        mask_mip=0, mask_val=0, affine=None,
+                        bbox, image_mip, field_mip,
+                        masks=[], affine=None,
                         use_cpu=False, pad=256, return_mask=False,
                         blackout_mask_op='eq', return_mask_op='eq'):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
@@ -1229,11 +1127,9 @@ class Aligner:
       if is_identity(field):
         image = self.get_image(image_cv, image_z, bbox, image_mip,
                                to_tensor=True, normalizer=None)
-        if mask_cv is not None:
-          mask = self.get_mask(mask_cv, image_z, bbox,
-                               src_mip=mask_mip,
-                               dst_mip=image_mip, valid_val=mask_val)
-          image = image.masked_fill_(mask, 0)
+        mask = self.get_masks(masks, image_z, bbox,
+                               dst_mip=image_mip)
+        image = image.masked_fill_(mask, 0)
         new_bbox = padded_bbox
       else:
         distance = self.profile_field(field)
@@ -1245,23 +1141,21 @@ class Aligner:
         field = field.to(device = self.device)
 
         image = self.get_masked_image(image_cv, image_z, new_bbox, image_mip,
-                                      mask_cv=mask_cv, mask_mip=mask_mip,
-                                      mask_val=mask_val,
+                                      masks=masks,
                                       to_tensor=True, normalizer=None,
                                       mask_op=blackout_mask_op)
         image = grid_sample(image, field, padding_mode='zeros')
         image = image[:,:,pad:-pad,pad:-pad]
 
       if return_mask:
-        if mask_cv is not None:
-            mask = self.get_mask(mask_cv, image_z, new_bbox,
-                               src_mip=mask_mip,
-                               dst_mip=image_mip, valid_val=mask_val, mask_op=return_mask_op)
-            warped_mask = grid_sample(mask.float(), field, padding_mode='zeros')
-            cropped_warped_mask = warped_mask[:,:,pad:-pad,pad:-pad]
-            return image, cropped_warped_mask
-        else:
-            return image, None
+          mask = self.get_masks(masks, image_z, new_bbox,
+                                dst_mip=image_mip, mask_op=return_mask_op)
+
+          warped_mask = grid_sample(mask.float(), field, padding_mode='zeros')
+          cropped_warped_mask = warped_mask[:,:,pad:-pad,pad:-pad]
+          return image, cropped_warped_mask
+      else:
+          return image, None
       else:
         return image
 
@@ -1444,7 +1338,7 @@ class Aligner:
 
   def cloudsample_image_batch(self, z_range, image_cv, field_cv,
                               bbox, image_mip, field_mip,
-                              mask_cv=None, mask_mip=0, mask_val=0,
+                              masks=[],
                               as_int16=True):
     """Warp a batch of sections using the cloudsampler
 
@@ -1465,7 +1359,7 @@ class Aligner:
     for z in z_range:
       image = self.cloudsample_image(z, z, image_cv, field_cv, bbox,
                                   image_mip, field_mip,
-                                  mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val,
+                                  masks=masks,
                                   as_int16=as_int16)
       batch.append(image)
     return torch.cat(batch, axis=0)
@@ -1509,7 +1403,7 @@ class Aligner:
   # Dataset operations #
   ######################
   def copy(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, is_field=False,
-           to_uint8=False, mask_cv=None, mask_mip=0, mask_val=0,
+           to_uint8=False, masks,
            return_iterator=False):
     """Copy one CloudVolume to another
 
@@ -1548,7 +1442,7 @@ class Aligner:
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
             yield tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, chunk, mip,
-                                 is_field, to_uint8, mask_cv, mask_mip, mask_val)
+                                 is_field, to_uint8, masks)
 
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip,
@@ -1561,13 +1455,13 @@ class Aligner:
         batch = []
         for chunk in chunks:
           batch.append(tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, chunk, mip,
-                                      is_field, to_uint8, mask_cv, mask_mip, mask_val))
+                                      is_field, to_uint8, masks))
         return batch
 
   def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv,
-                    src_z, tgt_z, bbox, mip, pad=2048, src_mask_cv=None,
-                    src_mask_mip=0, src_mask_val=0, tgt_mask_cv=None,
-                    tgt_mask_mip=0, tgt_mask_val=0,
+                    src_z, tgt_z, bbox, mip, pad=2048,
+                    src_masks=[],
+                    tgt_masks=[],
                     return_iterator=False, prev_field_cv=None, prev_field_z=None,
                     prev_field_inverse=False, coarse_field_cv=None,
                     coarse_field_mip=0,tgt_field_cv=None,stitch=False):
@@ -1614,8 +1508,8 @@ class Aligner:
             chunk = self.chunklist[i]
             yield tasks.ComputeFieldTask(model_path, src_cv, tgt_cv, field_cv,
                                           src_z, tgt_z, chunk, mip, pad,
-                                          src_mask_cv, src_mask_val, src_mask_mip,
-                                          tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
+                                          src_mask,
+                                          tgt_mask,
                                           prev_field_cv, prev_field_z, prev_field_inverse,
                                           coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch)
     if return_iterator:
@@ -1625,8 +1519,8 @@ class Aligner:
         for chunk in chunks:
           batch.append(tasks.ComputeFieldTask(model_path, src_cv, tgt_cv, field_cv,
                                               src_z, tgt_z, chunk, mip, pad,
-                                              src_mask_cv, src_mask_val, src_mask_mip,
-                                              tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
+                                              src_masks,
+                                              tgt_masks,
                                               prev_field_cv, prev_field_z, prev_field_inverse,
                                               coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch))
         return batch
@@ -1686,8 +1580,9 @@ class Aligner:
 
 
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z,
-                   bbox, src_mip, field_mip, mask_cv=None, mask_mip=0,
-                   mask_val=0, affine=None, use_cpu=False,
+                   bbox, src_mip, field_mip,
+                   masks=[],
+                   affine=None, use_cpu=False,
              return_iterator= False, pad=256, seethrough=False,
              seethrough_misalign=False):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
@@ -1730,8 +1625,9 @@ class Aligner:
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
             yield tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
-                       field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                       mask_mip, mask_val, affine, use_cpu, pad,
+                       field_z, dst_z, chunk, src_mip, field_mip,
+                       masks,
+                       affine, use_cpu, pad,
                        seethrough=seethrough,
                        seethrough_misalign=seethrough_misalign)
     if return_iterator:
@@ -1740,8 +1636,9 @@ class Aligner:
         batch = []
         for chunk in chunks:
           batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
-                           field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                           mask_mip, mask_val, affine, use_cpu, pad,
+                           field_z, dst_z, chunk, src_mip, field_mip,
+                           masks,
+                           affine, use_cpu, pad,
                            seethrough=seethrough,
                            seethrough_misalign=seethrough_misalign))
         return batch
