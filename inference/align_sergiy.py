@@ -73,6 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("--z_stop", type=int)
     parser.add_argument("--max_mip", type=int, default=9)
     parser.add_argument("--img_dtype", type=str, default='uint8')
+    parser.add_argument("--render_pad", type=int, default=2048)
     parser.add_argument(
         "--pad",
         help="the size of the largest displacement expected; should be 2^high_mip",
@@ -103,9 +104,19 @@ if __name__ == "__main__":
         help="If True, skip compute field and vector voting"
     )
     parser.add_argument(
+        "--skip_final_render",
+        action='store_true',
+        help="If True, skip final render"
+    )
+    parser.add_argument(
         "--skip_stitching",
         action='store_true',
         help="If True, skip stitching"
+    )
+    parser.add_argument(
+        "--skip_compose",
+        action='store_true',
+        help="If True, skip composition"
     )
     parser.add_argument(
         "--skip_render",
@@ -114,7 +125,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--render_mip",
-        type=int
+        type=int,
+        default=None
+    )
+    parser.add_argument(
+        "--decay_dist",
+        type=int,
+        default=None
     )
     parser.add_argument(
         "--seethrough",
@@ -131,11 +148,6 @@ if __name__ == "__main__":
         type=str,
         default='none'
     )
-    parser.add_argument(
-        "--final_render",
-        type=bool,
-        default=True
-    )
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
 
     args = parse_args(parser)
@@ -148,6 +160,7 @@ if __name__ == "__main__":
     mip = args.mip
     max_mip = args.max_mip
     pad = args.pad
+    render_pad = args.pad
     src_masks = []
     tgt_masks = []
     if args.src_masks is not None:
@@ -159,7 +172,8 @@ if __name__ == "__main__":
     do_alignment = not args.skip_alignment
     do_render = not args.skip_render
     do_stitching = not args.skip_stitching
-    do_final_render = args.final_render
+    do_compose = not args.skip_compose
+    do_final_render = not args.skip_final_render
     blackout_op = args.blackout_op
     stitch_suffix = args.stitch_suffix
 
@@ -401,6 +415,19 @@ if __name__ == "__main__":
     for b, v in block_start_to_stitch_offsets.items():
         print(b)
         assert len(v) % 2 == 1
+# Compile ranges
+
+
+    compose_range = range(args.z_start, args.z_stop)
+    render_range = range(args.z_start+1, args.z_stop)
+    if do_compose:
+        decay_dist = args.decay_dist
+        influencing_blocks_lookup = {z: [] for z in compose_range}
+        for b_start in block_starts:
+            for z in range(b_start+1, b_start+decay_dist+1):
+              if z < args.z_stop:
+                  influencing_blocks_lookup[z].append(b_start)
+
 
     # Create field CloudVolumes
     print("Creating field & overlap CloudVolumes")
@@ -459,13 +486,15 @@ if __name__ == "__main__":
         fill_missing=True,
         overwrite=do_alignment,
     ).path
-    compose_field = cm.create(join(args.dst_path, 'field', 'stitchtemp{}'.format(args.suffix),
-                                'compose'),
+
+    compose_field = cm.create(join(args.dst_path, 'field',
+                        'stitchtemp{}'.format(args.stitch_suffix), 'compose'),
                         data_type='int16', num_channels=2,
-                        fill_missing=True, overwrite=do_stitching).path
-    final_dst = cmr.create(join(args.dst_path, 'image_stitchtemp{}'.format(args.suffix)),
-                        data_type='uint8', num_channels=1, fill_missing=True,
-                        overwrite=do_render).path
+                        fill_missing=True, overwrite=do_compose).path
+    if do_final_render:
+        final_dst = cmr.create(join(args.dst_path, 'image_stitchtemp{}_x2'.format(args.stitch_suffix)),
+                            data_type='uint8', num_channels=1, fill_missing=True,
+                            overwrite=do_final_render).path
 
     # import ipdb
     # ipdb.set_trace()
@@ -707,6 +736,7 @@ if __name__ == "__main__":
                     src_mip=render_mip,
                     field_mip=mip,
                     masks=src_masks,
+                    pad=render_pad,
                     seethrough=args.seethrough,
                     seethrough_misalign=args.seethrough_misalign
                 )
@@ -733,7 +763,8 @@ if __name__ == "__main__":
                     z_start=z_start,
                     z_end=z_end,
                     bbox=bbox,
-                    mip=mip
+                    mip=mip,
+                    pad=render_pad
                 )
 
                 yield from t
@@ -951,6 +982,7 @@ if __name__ == "__main__":
                     dst_z=z,
                     bbox=bbox,
                     src_mip=render_mip,
+                    pad=render_pad,
                     field_mip=mip,
                     mask=src_masks,
                     seethrough=args.seethrough,
@@ -998,7 +1030,7 @@ if __name__ == "__main__":
                                 mip, mip, factors, pad)
             yield from t
 
-     class StitchRender(object):
+    class StitchRender(object):
         def __init__(self, z_range):
           self.z_range = z_range
 
@@ -1037,7 +1069,7 @@ if __name__ == "__main__":
                 yield from t
 
     # # Serial alignment with block stitching
-    print("START BLOCK ALIGNMENT")
+    '''print("START BLOCK ALIGNMENT")
     if do_render:
         print("COPY STARTING SECTION OF ALL BLOCKS")
         execute(StarterCopy, copy_range)
@@ -1085,8 +1117,8 @@ if __name__ == "__main__":
         print("VECTOR VOTE STITCHING FIELDS")
         execute(StitchBroadcastVectorVote, block_starts[1:])
 
-    if do_stitching:
+    if do_compose:
         execute(StitchCompose, compose_range)
-
+    '''
     if do_final_render:
         execute(StitchRender, compose_range)

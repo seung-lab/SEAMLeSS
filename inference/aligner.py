@@ -170,12 +170,12 @@ class Aligner:
             if result is None:
                 result = mask_data
             else:
-                result[mask_data != 0] = mask_data[mask_data != 0]
+                result[mask_data > 0] = mask_data[mask_data > 0]
 
         end = time()
         diff = end - start
         print('get_masks: {:.3f}'.format(diff), flush=True)
-        return mask_data
+        return result
 
 
   def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True,
@@ -319,7 +319,6 @@ class Aligner:
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
         if (data.dtype == np.uint32):
-          print ("ALFHAKFJA")
           data = data.astype(np.int64)
         data = torch.from_numpy(data)
       if self.device.type == 'cuda':
@@ -327,7 +326,7 @@ class Aligner:
         if src_mip != dst_mip:
           # k = 2**(src_mip - dst_mip)
           size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
-          if not isinstance(data, torch.cuda.ByteTensor):
+          if not isinstance(data, torch.cuda.ByteTensor) and not isinstance(data, torch.cuda.LongTensor):
             data = interpolate(data, size=size, mode='bilinear')
           else:
             data = data.type('torch.cuda.DoubleTensor')
@@ -1470,7 +1469,7 @@ class Aligner:
         return batch
 
   def seethrough_stitch_render(self, cm, src_cv, dst_cv, z_start, z_end,
-                   bbox, mip, use_cpu=False, return_iterator=False):
+                   bbox, mip, use_cpu=False, return_iterator=False, blackout_op='none'):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1511,14 +1510,14 @@ class Aligner:
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
             yield tasks.SeethroughStitchRenderTask(src_cv,  dst_cv, z_start,
-                       z_end, chunk, mip, use_cpu)
+                       z_end, chunk, mip, use_cpu, blackout_op=blackout_op)
     if return_iterator:
         return SeethroughStitchRenderTaskIterator(chunks,0, len(chunks))
     else:
         batch = []
         for chunk in chunks:
           batch.append(tasks.SeethroughStitchRenderTask(src_cv,  dst_cv, z_start,
-                       z_end, chunk, mip, use_cpu))
+                       z_end, chunk, mip, use_cpu, blackout_op=blackout_op))
 
         return batch
 
@@ -1528,7 +1527,8 @@ class Aligner:
                    masks=[],
                    affine=None, use_cpu=False,
              return_iterator= False, pad=256, seethrough=False,
-             seethrough_misalign=False):
+             seethrough_misalign=False,
+             blackout_op='none'):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1573,7 +1573,8 @@ class Aligner:
                        masks,
                        affine, use_cpu, pad,
                        seethrough=seethrough,
-                       seethrough_misalign=seethrough_misalign)
+                       seethrough_misalign=seethrough_misalign,
+                       blackout_op=blackout_op)
     if return_iterator:
         return RenderTaskIterator(chunks,0, len(chunks))
     else:
@@ -1584,7 +1585,8 @@ class Aligner:
                            masks,
                            affine, use_cpu, pad,
                            seethrough=seethrough,
-                           seethrough_misalign=seethrough_misalign))
+                           seethrough_misalign=seethrough_misalign,
+                           blackout_op=blackout_op))
         return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,
