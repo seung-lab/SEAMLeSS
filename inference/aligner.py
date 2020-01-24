@@ -612,6 +612,10 @@ class Aligner:
         tgt_field=zero_fieldC,
         src_field=zero_fieldC,
       )
+
+      if not isinstance(field, torch.Tensor):
+          field = field[0]
+
       # import ipdb
       # ipdb.set_trace()
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))

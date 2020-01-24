@@ -79,7 +79,7 @@ class Model(nn.Module):
             src = res_warp_img(src, src_field, is_pix_res=True)
             tgt = tgt
 
-            src_defects = (src == 0).float()
+            src_defects = (src < 0.02).float()
             tgt_defects = (tgt == 0).float()
 
             src_norm = normalize(src, bad_mask=src_defects)
@@ -95,7 +95,7 @@ class Model(nn.Module):
             torch.cuda.empty_cache()
 
             pred_res = optimize_metric(opt_enc, src, tgt, accum_field, src_defects.float(),
-                                    tgt_defects.float(), max_iter=300
+                                    tgt_defects.float(), max_iter=350
                                     )
             #sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
             #pred_res[sm_mask[0]] = 0
