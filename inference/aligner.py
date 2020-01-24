@@ -159,14 +159,14 @@ class Aligner:
   #######################
   # Image IO + handlers #
   #######################
-    def get_masks(self, masks, z, bbox, dst_mip, valid_val, to_tensor=True,
+  def get_masks(self, masks, z, bbox, dst_mip, to_tensor=True,
                mask_op='none'):
         start = time()
         result = None
         for mask in masks:
-            mask_data = get_mask(mask.cv_path, z, bbox, mask.mip, dst_mip, valid_val,
+            mask_data = self.get_mask(mask.cv, z, bbox, mask.mip, dst_mip, mask.val,
                                 to_tensor=to_tensor, mask_op=mask_op,
-                                coarsen_count=mask.coarsen_count)
+                                coarsen_count=mask.coarsen_count).long()
             if result is None:
                 result = mask_data
             else:
@@ -230,11 +230,11 @@ class Aligner:
     start = time()
     image = self.get_image(image_cv, z, bbox, image_mip,
                            to_tensor=True, normalizer=normalizer)
-    if mask_cv is not None:
+    if len(masks) > 0:
       mask = self.get_masks(masks, z, bbox,
                            dst_mip=image_mip, mask_op=mask_op
                            )
-      image = image.masked_fill_(mask, 0)
+      image = image.masked_fill_(mask > 0, 0)
     if not to_tensor:
       image = image.cpu().numpy()
     end = time()
@@ -275,7 +275,7 @@ class Aligner:
       tmp = self.get_masked_image(image_cv, z, bbox, image_mip,
                                   masks,
                                   to_tensor=to_tensor, normalizer=normalizer,
-                                  mask_op=mask_op)
+                                   mask_op=mask_op)
       black_mask = combined == 0
       combined[black_mask] = tmp[black_mask]
 
@@ -334,7 +334,7 @@ class Aligner:
             data = interpolate(data, size=size, mode='nearest')
             data = data.type('torch.cuda.ByteTensor')
       else:
-        data = data.type(torch.float32)
+        data = data.float()
         if src_mip > dst_mip:
           size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
           data = interpolate(data, size=size, mode='nearest')
@@ -517,8 +517,8 @@ class Aligner:
     if len(nonzero) == 0:
       return torch.Tensor([0, 0])
 
-    low_l = percentile(nonzero, 0)
-    high_l = percentile(nonzero, 100)
+    low_l = percentile(nonzero, 10)
+    high_l = percentile(nonzero, 90)
     mid = 0.5*(low_l + high_l)
 
     print("MID:", mid[0].item(), mid[1].item())
@@ -528,19 +528,10 @@ class Aligner:
   # CloudVolume chunk methods #
   #############################
 
-  def compute_field_chunk_stitch(
-    self,
-    model_path,
-    bbox,
-    pad,
-    image_cv,
-    src_z,
-    field_cv,
-    tgt_z,
-    mip,
-    src_masks=src_masks,
-    tgt_masks=tgt_masks,
-  ):
+  def compute_field_chunk_stitch_old(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
+                          src_mask=[], tgt_mask=[],
+                          tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
+                          prev_field_inverse=False):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
     Args:
       model_path: str for relative path to model directory
@@ -564,90 +555,41 @@ class Aligner:
     print('compute_field for {0} to {1}'.format(bbox.stringify(src_z),
                                                 bbox.stringify(tgt_z)))
     print('pad: {}'.format(pad))
-    # padded_bbox = deepcopy(bbox)
-    # padded_bbox.max_mip = mip
-    # padded_bbox.uncrop(pad, mip=mip)
+    padded_bbox = deepcopy(bbox)
+    padded_bbox.max_mip = mip
+    padded_bbox.uncrop(pad, mip=mip)
 
-    padded_tgt_bbox_fine = deepcopy(bbox)
-    padded_tgt_bbox_fine.uncrop(pad, mip)
-    tgt_field = self.get_field(
-        field_cv,
-        tgt_z,
-        padded_tgt_bbox_fine,
-        mip,
-        relative=True,
-        to_tensor=True,
-      ).to(device=self.device)
-    tgt_field = self.rel_to_abs_residual(tgt_field, mip)
-    #tgt_field = torch.zeros_like(tgt_field)
-    tgt_distance = self.profile_field(tgt_field)
-    tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
-    tgt_field -= tgt_distance_fine_snap.to(device=self.device)
-    tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
-    padded_tgt_bbox_fine = self.adjust_bbox(padded_tgt_bbox_fine, tgt_distance_fine_snap.flip(0))
-    # padded_tgt_bbox_fine.uncrop(pad, mip)
-
-    padded_src_bbox_fine = deepcopy(bbox)
-    padded_src_bbox_fine.uncrop(pad, mip)
-    src_field = self.get_field(
-        field_cv,
-        src_z,
-        padded_src_bbox_fine,
-        mip,
-        relative=True,
-        to_tensor=True,
-      ).to(device=self.device)
-    src_field = self.rel_to_abs_residual(src_field, mip)
-    src_distance = self.profile_field(src_field)
-    src_distance_fine_snap = (src_distance // (2 ** mip)) * 2 ** mip
-    src_field -= src_distance_fine_snap.to(device=self.device)
-    src_field = self.abs_to_rel_residual(src_field, padded_src_bbox_fine, mip)
-    padded_src_bbox_fine = self.adjust_bbox(bbox, src_distance_fine_snap.flip(0))
-    padded_src_bbox_fine.uncrop(pad, mip)
-
-    # if prev_field_cv is not None:
-    #     field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
-    #                        relative=False, to_tensor=True)
-    #     if prev_field_inverse:
-    #       field = -field
-    #     distance = self.profile_field(field)
-    #     print('Displacement adjustment: {} px'.format(distance))
-    #     distance = (distance // (2 ** mip)) * 2 ** mip
-    #     new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
-    # else:
-    #     distance = torch.Tensor([0, 0])
-    #     new_bbox = padded_bbox
+    if prev_field_cv is not None:
+        field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
+                           relative=False, to_tensor=True)
+        if prev_field_inverse:
+          field = -field
+        distance = self.profile_field(field)
+        print('Displacement adjustment: {} px'.format(distance))
+        distance = (distance // (2 ** mip)) * 2 ** mip
+        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+    else:
+        distance = torch.Tensor([0, 0])
+        new_bbox = padded_bbox
 
     tgt_z = [tgt_z]
-    # if tgt_alt_z is not None:
-    #   try:
-    #     tgt_z.extend(tgt_alt_z)
-    #   except TypeError:
-    #     tgt_z.append(tgt_alt_z)
-    #   print('alternative target slices:', tgt_alt_z)
+    if tgt_alt_z is not None:
+      try:
+        tgt_z.extend(tgt_alt_z)
+      except TypeError:
+        tgt_z.append(tgt_alt_z)
+      print('alternative target slices:', tgt_alt_z)
 
-    src_patch = self.get_masked_image(
-      image_cv,
-      src_z,
-      padded_src_bbox_fine,
-      mip,
-      mask_cv=src_mask_cv,
-      mask_mip=src_mask_mip,
-      mask_val=src_mask_val,
-      to_tensor=True,
-      normalizer=normalizer,
-    )
-    tgt_patch = self.get_composite_image(
-      image_cv,
-      tgt_z,
-      padded_tgt_bbox_fine,
-      mip,
-      mask_cv=tgt_mask_cv,
-      mask_mip=tgt_mask_mip,
-      mask_val=tgt_mask_val,
-      to_tensor=True,
-      normalizer=normalizer,
-    )
+    src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
+                                mask_cv=src_mask_cv, mask_mip=src_mask_mip,
+                                mask_val=src_mask_val,
+                                to_tensor=True, normalizer=normalizer)
+    tgt_patch = self.get_composite_image(tgt_cv, tgt_z, padded_bbox, mip,
+                                mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
+                                mask_val=tgt_mask_val,
+                                to_tensor=True, normalizer=normalizer)
+    # import ipdb
+    # ipdb.set_trace()
     print('src_patch.shape {}'.format(src_patch.shape))
     print('tgt_patch.shape {}'.format(tgt_patch.shape))
 
@@ -660,26 +602,23 @@ class Aligner:
     try:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
 
+      zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,2048,2048])))
+      zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
+
       # model produces field in relative coordinates
-      # import ipdb
-      # ipdb.set_trace()
-      accum_field, fine_field = model(
+      field = model(
         src_patch,
         tgt_patch,
-        tgt_field=tgt_field,
-        src_field=src_field,
+        tgt_field=zero_fieldC,
+        src_field=zero_fieldC,
       )
-
-      print(
-        "GPU memory allocated: {}, cached: {}".format(
-          torch.cuda.memory_allocated(), torch.cuda.memory_cached()
-        )
-      )
-
-      fine_field = self.rel_to_abs_residual(fine_field, mip)
-      fine_field = fine_field[:, pad:-pad, pad:-pad, :]
-      fine_field += src_distance_fine_snap.to(device=self.device)
-      fine_field = fine_field.data.cpu().numpy()
+      # import ipdb
+      # ipdb.set_trace()
+      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+      field = self.rel_to_abs_residual(field, mip)
+      field = field[:,pad:-pad,pad:-pad,:]
+      field += distance.to(device=self.device)
+      field = field.data.cpu().numpy()
       # clear unused, cached memory so that other processes can allocate it
       torch.cuda.empty_cache()
 
@@ -689,7 +628,7 @@ class Aligner:
         print("Process {} releasing GPU lock".format(os.getpid()))
         self.gpu_lock.release()
 
-    return fine_field
+    return field
 
   def compute_field_chunk(
     self,
@@ -877,6 +816,7 @@ class Aligner:
       masks=src_masks,
       to_tensor=True,
       normalizer=normalizer,
+      mask_op='gte'
     )
 
     padded_tgt_bbox_fine = deepcopy(bbox)
@@ -1150,14 +1090,14 @@ class Aligner:
       if return_mask:
           mask = self.get_masks(masks, image_z, new_bbox,
                                 dst_mip=image_mip, mask_op=return_mask_op)
-
-          warped_mask = grid_sample(mask.float(), field, padding_mode='zeros')
-          cropped_warped_mask = warped_mask[:,:,pad:-pad,pad:-pad]
+          if mask is not None:
+              warped_mask = grid_sample(mask.float(), field, padding_mode='zeros')
+              cropped_warped_mask = warped_mask[:,:,pad:-pad,pad:-pad]
+          else:
+              cropped_warped_mask = None
           return image, cropped_warped_mask
       else:
-          return image, None
-      else:
-        return image
+          return image
 
 
   def cloudsample_compose(self, f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip,
@@ -1403,7 +1343,7 @@ class Aligner:
   # Dataset operations #
   ######################
   def copy(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, is_field=False,
-           to_uint8=False, masks,
+           to_uint8=False, masks=[],
            return_iterator=False):
     """Copy one CloudVolume to another
 

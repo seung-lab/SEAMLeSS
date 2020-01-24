@@ -65,7 +65,8 @@ if __name__ == "__main__":
             help='Pass string that contains a JSON dict. Fields: "cv", "mip", "val", "op"',
             type=json.loads, dest='src_masks')
     parser.add_argument('--tgt_mask', action='append',
-            help='Pass string that contains a JSON dict. Fields: "cv", "mip", "val", "op"')
+            help='Pass string that contains a JSON dict. Fields: "cv", "mip", "val", "op"',
+            type=json.loads, dest='tgt_masks')
     parser.add_argument("--dst_path", type=str)
     parser.add_argument("--mip", type=int)
     parser.add_argument("--z_start", type=int)
@@ -131,8 +132,12 @@ if __name__ == "__main__":
     mip = args.mip
     max_mip = args.max_mip
     pad = args.pad
-    src_masks = [Mask(**m) for m in args.src_masks]
-    tgt_masks = [Mask(**m) for m in args.tgt_masks]
+    src_masks = []
+    tgt_masks = []
+    if args.src_masks is not None:
+        src_masks = [Mask(**m) for m in args.src_masks]
+    if args.tgt_masks is not None:
+        tgt_masks = [Mask(**m) for m in args.tgt_masks]
 
     block_size = args.block_size
     do_alignment = not args.skip_alignment
@@ -673,7 +678,7 @@ if __name__ == "__main__":
                     bbox=bbox,
                     src_mip=render_mip,
                     field_mip=mip,
-                    masks=src_masks
+                    masks=src_masks,
                     seethrough=args.seethrough,
                     seethrough_misalign=args.seethrough_misalign
                 )

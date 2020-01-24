@@ -79,9 +79,9 @@ class PredictImageTask(RegisteredTask):
 
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip,
-               is_field, to_uint8, mask_cv, mask_mip, mask_val):
+          is_field, to_uint8, masks=[]):
     super().__init__(src_cv, dst_cv, src_z, dst_z, patch_bbox, mip,
-                     is_field, to_uint8, mask_cv, mask_mip, mask_val)
+                     is_field, to_uint8, masks)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -92,18 +92,16 @@ class CopyTask(RegisteredTask):
     mip = self.mip
     is_field = self.is_field
     to_uint8 = self.to_uint8
-    mask_cv = None
-    if self.mask_cv:
-      mask_cv = DCV(self.mask_cv)
-    mask_mip = self.mask_mip
-    mask_val = self.mask_val
+    masks = self.masks
+    for mask in masks:
+        mask.cv = DCV(mask.cv_path)
 
     print("\nCopy\n"
           "src {}\n"
           "dst {}\n"
           "mask {}, val {}, MIP{}\n"
           "z={} to z={}\n"
-          "MIP{}\n".format(src_cv, dst_cv, mask_cv, mask_val, mask_mip,
+          "MIP{}\n".format(src_cv, dst_cv, mask.cv_path, mask.val, mask.mip,
                             src_z, dst_z, mip), flush=True)
     start = time()
     if not aligner.dry_run:
@@ -113,8 +111,7 @@ class CopyTask(RegisteredTask):
         aligner.save_field(field, dst_cv, dst_z, patch_bbox, mip, relative=False)
       elif to_uint8:
         image = aligner.get_masked_image(src_cv, src_z, patch_bbox, mip,
-                                mask_cv=mask_cv, mask_mip=mask_mip,
-                                mask_val=mask_val,
+                                masks=masks,
                                 to_tensor=False, normalizer=None)
         aligner.save_image(image, dst_cv, dst_z, patch_bbox, mip, to_uint8=True)
       else:
@@ -127,13 +124,11 @@ class CopyTask(RegisteredTask):
 
 class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
-                     patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip,
-                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
+                     patch_bbox, mip, pad, src_masks, tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
                      coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False):
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
-                     patch_bbox, mip, pad, src_mask_cv, src_mask_val, src_mask_mip,
-                     tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
+                     patch_bbox, mip, pad, src_masks, tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
                      coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch)
 
@@ -153,16 +148,16 @@ class ComputeFieldTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
     pad = self.pad
-    src_mask_cv = None
-    if self.src_mask_cv:
-      src_mask_cv = DCV(self.src_mask_cv)
-    src_mask_mip = self.src_mask_mip
-    src_mask_val = self.src_mask_val
-    tgt_mask_cv = None
-    if self.tgt_mask_cv:
-      tgt_mask_cv = DCV(self.tgt_mask_cv)
-    tgt_mask_mip = self.tgt_mask_mip
-    tgt_mask_val = self.tgt_mask_val
+
+
+    tgt_masks = self.tgt_masks
+    for tgt_mask in tgt_masks:
+        tgt_mask.cv = DCV(tgt_mask.cv_path)
+
+    src_masks = self.src_masks
+    for src_mask in src_masks:
+        src_mask.cv = DCV(src_mask.cv_path)
+
     if self.coarse_field_cv:
       coarse_field_cv = DCV(self.coarse_field_cv)
     else:
@@ -180,31 +175,22 @@ class ComputeFieldTask(RegisteredTask):
           "tgt {}\n"
           "field {}\n"
           "coarse field {}, MIP{}\n"
-          "src_mask {}, val {}, MIP{}\n"
-          "tgt_mask {}, val {}, MIP{}\n"
           "z={} to z={}\n"
           "MIP{}\n".format(model_path, src_cv, tgt_cv, field_cv, coarse_field_cv,
-                           coarse_field_mip, src_mask_cv, src_mask_val,
-                           src_mask_mip, tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
+                           coarse_field_mip,
                            src_z, tgt_z, mip), flush=True)
     start = time()
     if not aligner.dry_run:
       if stitch:
-        # field = aligner.compute_field_chunk_stitch_old(model_path, field_cv=tgt_field_cv, image_cv=src_cv, src_z=src_z, tgt_z=tgt_z,
-        #                                     bbox=patch_bbox, mip=mip, pad=pad,
-        #                                     src_mask_cv=src_mask_cv, src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-        #                                     tgt_mask_cv=tgt_mask_cv, tgt_mask_mip=tgt_mask_mip, tgt_mask_val=tgt_mask_val)
         field = aligner.compute_field_chunk_stitch_old(model_path, src_cv, tgt_cv, src_z, tgt_z,
                                             patch_bbox, mip, pad,
-                                            src_mask_cv, src_mask_mip, src_mask_val,
-                                            tgt_mask_cv, tgt_mask_mip, tgt_mask_val,
+                                            src_masks, tgt_masks,
                                             None, prev_field_cv, prev_field_z,
                                             prev_field_inverse)
       else:
         field = aligner.compute_field_chunk(model_path, src_cv=src_cv, tgt_cv=tgt_cv, src_z=src_z, tgt_z=tgt_z,
                                             bbox=patch_bbox, mip=mip, pad=pad,
-                                            src_mask_cv=src_mask_cv, src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                                            tgt_mask_cv=tgt_mask_cv, tgt_mask_mip=tgt_mask_mip, tgt_mask_val=tgt_mask_val,
+                                            src_masks=src_masks, tgt_masks=tgt_masks,
                                             tgt_alt_z=None, prev_field_cv=prev_field_cv, prev_field_z=prev_field_z,
                                             coarse_field_cv=coarse_field_cv, coarse_field_mip=coarse_field_mip, tgt_field_cv=tgt_field_cv)
       aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
@@ -236,13 +222,11 @@ class SeethroughStitchRenderTask(RegisteredTask):
     if not aligner.dry_run:
       for z in range(z_end, z_start -1, -1):
         image = aligner.get_masked_image(src_cv, z,
-                                         patch_bbox, mip,
-                                         mask_cv=None, mask_mip=None, mask_val=None,
+                                         patch_bbox, mip, masks=[],
                                          to_tensor=True, normalizer=None)
 
         prev_image = aligner.get_masked_image(dst_cv, z + 1,
-                                              patch_bbox, mip,
-                                              mask_cv=None, mask_mip=None, mask_val=None,
+                                              patch_bbox, mip, masks=[],
                                               to_tensor=True, normalizer=None)
 
         black_region = image < 0.05
@@ -268,13 +252,15 @@ class SeethroughStitchRenderTask(RegisteredTask):
 
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
-               field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False, pad=256,
+               field_mip,
+               masks=[],
+               affine=None, use_cpu=False, pad=256,
                seethrough=False, coarsen_small_folds=1, coarsen_big_folds=20,
                coarsen_misalign=128, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
-               seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=False):
+               seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=True):
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
-                     field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu, pad, seethrough,
+                     field_mip, masks, affine, use_cpu, pad, seethrough,
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
                       seethrough_folds, seethrough_misalign, seethrough_black,
                       big_fold_threshold, seethrough_renormalize)
@@ -289,11 +275,10 @@ class RenderTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     src_mip = self.src_mip
     field_mip = self.field_mip
-    mask_cv = None
-    if self.mask_cv:
-      mask_cv = DCV(self.mask_cv)
-    mask_mip = self.mask_mip
-    mask_val = self.mask_val
+    masks = self.masks
+    for mask in masks:
+      mask.cv = DCV(mask.cv_path)
+
     seethrough = self.seethrough
     coarsen_big_folds = self.coarsen_big_folds
     coarsen_small_folds = self.coarsen_small_folds
@@ -324,8 +309,8 @@ class RenderTask(RegisteredTask):
     if not aligner.dry_run:
       image, folds = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
                                      patch_bbox, src_mip, field_mip,
-                                     mask_cv=mask_cv, mask_mip=mask_mip,
-                                     mask_val=mask_val, affine=affine,
+                                     masks=masks,
+                                     affine=affine,
                                      use_cpu=self.use_cpu, pad=self.pad,
                                      return_mask=True,
                                      blackout_mask_op='none',
@@ -333,7 +318,7 @@ class RenderTask(RegisteredTask):
       if seethrough:
          prev_image = aligner.get_masked_image(seethrough_cv, dst_z-1,
                                        patch_bbox, src_mip,
-                                       mask_cv=None, mask_mip=None, mask_val=None,
+                                       masks=[],
                                        to_tensor=True, normalizer=None)
          if (prev_image != 0).sum() > 0:
              seethrough_region = torch.zeros_like(image).byte()
@@ -345,7 +330,7 @@ class RenderTask(RegisteredTask):
 
              if self.seethrough_folds:
                  if folds is not None:
-                     small_fold_region = folds > 5
+                     small_fold_region = folds > 0
                      big_fold_region = folds > self.big_fold_threshold
                      small_fold_region_coarse = coarsen_mask(small_fold_region, coarsen_small_folds).byte()
                      big_fold_region_coarse = coarsen_mask(big_fold_region, coarsen_big_folds).byte()
