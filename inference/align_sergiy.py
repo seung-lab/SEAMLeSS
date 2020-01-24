@@ -1066,4 +1066,6 @@ if __name__ == "__main__":
 
     if do_stitching:
         execute(StitchCompose, compose_range)
+
+    if do_render:
         ecute(StitchRender, compose_range)
