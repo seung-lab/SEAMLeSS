@@ -273,14 +273,14 @@ class RenderTask(RegisteredTask):
                seethrough=False, coarsen_small_folds=1, coarsen_big_folds=20,
                coarsen_misalign=128, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
-               seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=True):
+               seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=True, blackout_op='none'):
     if isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                      field_mip, masks, affine, use_cpu, pad, seethrough,
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
                       seethrough_folds, seethrough_misalign, seethrough_black,
-                      big_fold_threshold, seethrough_renormalize)
+                      big_fold_threshold, seethrough_renormalize, blackout_op)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -330,7 +330,7 @@ class RenderTask(RegisteredTask):
                                      affine=affine,
                                      use_cpu=self.use_cpu, pad=self.pad,
                                      return_mask=True,
-                                     blackout_mask_op='none',
+                                     blackout_mask_op=self.blackout_op,
                                      return_mask_op='data')
       if seethrough:
          prev_image = aligner.get_masked_image(seethrough_cv, dst_z-1,

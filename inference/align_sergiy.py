@@ -126,6 +126,17 @@ if __name__ == "__main__":
         type=bool,
         default=False
     )
+    parser.add_argument(
+        "--blackout_op",
+        type=str,
+        default='none'
+    )
+    parser.add_argument(
+        "--final_render",
+        type=bool,
+        default=True
+    )
+    parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -148,6 +159,9 @@ if __name__ == "__main__":
     do_alignment = not args.skip_alignment
     do_render = not args.skip_render
     do_stitching = not args.skip_stitching
+    do_final_render = args.final_render
+    blackout_op = args.blackout_op
+    stitch_suffix = args.stitch_suffix
 
     render_mip = args.render_mip or args.mip
     # Create CloudVolume Manager
@@ -445,6 +459,13 @@ if __name__ == "__main__":
         fill_missing=True,
         overwrite=do_alignment,
     ).path
+    compose_field = cm.create(join(args.dst_path, 'field', 'stitchtemp{}'.format(args.suffix),
+                                'compose'),
+                        data_type='int16', num_channels=2,
+                        fill_missing=True, overwrite=do_stitching).path
+    final_dst = cmr.create(join(args.dst_path, 'image_stitchtemp{}'.format(args.suffix)),
+                        data_type='uint8', num_channels=1, fill_missing=True,
+                        overwrite=do_render).path
 
     # import ipdb
     # ipdb.set_trace()
@@ -987,7 +1008,7 @@ if __name__ == "__main__":
             t = a.render(cm, src, compose_field, final_dst, src_z=z,
                          field_z=z, dst_z=z, bbox=bbox,
                          src_mip=render_mip, field_mip=mip, pad=render_pad,
-                         masks=src_masks)
+                         masks=src_masks, blackout_op=blackout_op)
             yield from t
 
 
@@ -1067,5 +1088,5 @@ if __name__ == "__main__":
     if do_stitching:
         execute(StitchCompose, compose_range)
 
-    if do_render:
-        ecute(StitchRender, compose_range)
+    if do_final_render:
+        execute(StitchRender, compose_range)
