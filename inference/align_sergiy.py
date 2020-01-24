@@ -1069,7 +1069,7 @@ if __name__ == "__main__":
                 yield from t
 
     # # Serial alignment with block stitching
-    '''print("START BLOCK ALIGNMENT")
+    print("START BLOCK ALIGNMENT")
     if do_render:
         print("COPY STARTING SECTION OF ALL BLOCKS")
         execute(StarterCopy, copy_range)
@@ -1119,6 +1119,5 @@ if __name__ == "__main__":
 
     if do_compose:
         execute(StitchCompose, compose_range)
-    '''
     if do_final_render:
         execute(StitchRender, compose_range)
