@@ -103,6 +103,11 @@ if __name__ == "__main__":
         help="If True, skip compute field and vector voting"
     )
     parser.add_argument(
+        "--skip_stitching",
+        action='store_true',
+        help="If True, skip stitching"
+    )
+    parser.add_argument(
         "--skip_render",
         action='store_true',
         help="If True, skip rendering"
@@ -142,6 +147,8 @@ if __name__ == "__main__":
     block_size = args.block_size
     do_alignment = not args.skip_alignment
     do_render = not args.skip_render
+    do_stitching = not args.skip_stitching
+
     render_mip = args.render_mip or args.mip
     # Create CloudVolume Manager
     cm = CloudManager(
@@ -952,6 +959,38 @@ if __name__ == "__main__":
                 )
                 yield from t
 
+    class StitchCompose(object):
+        def __init__(self, z_range):
+          self.z_range = z_range
+
+        def __iter__(self):
+          for z in self.z_range:
+            influencing_blocks = influencing_blocks_lookup[z]
+            factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
+            factors += [1.]
+            print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
+                                                                   factors))
+            bbox = bbox_lookup[z]
+            cv_list = [broadcasting_field]*len(influencing_blocks) + [block_field]
+            z_list = list(influencing_blocks) + [z]
+            t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
+                                mip, mip, factors, pad)
+            yield from t
+
+     class StitchRender(object):
+        def __init__(self, z_range):
+          self.z_range = z_range
+
+        def __iter__(self):
+          for z in self.z_range:
+            bbox = bbox_lookup[z]
+            t = a.render(cm, src, compose_field, final_dst, src_z=z,
+                         field_z=z, dst_z=z, bbox=bbox,
+                         src_mip=render_mip, field_mip=mip, pad=render_pad,
+                         masks=src_masks)
+            yield from t
+
+
     class StitchBroadcastVectorVote(object):
         def __init__(self, z_range):
             self.z_range = z_range
@@ -1024,3 +1063,7 @@ if __name__ == "__main__":
         execute(StitchBroadcastCopy, stitch_range)
         print("VECTOR VOTE STITCHING FIELDS")
         execute(StitchBroadcastVectorVote, block_starts[1:])
+
+    if do_stitching:
+        execute(StitchCompose, compose_range)
+        ecute(StitchRender, compose_range)

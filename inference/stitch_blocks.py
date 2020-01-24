@@ -24,7 +24,7 @@ from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenanc
 from os.path import join
 from cloudmanager import CloudManager
 from itertools import compress
-from tasks import run 
+from tasks import run
 from boundingbox import BoundingBox
 
 def print_run(diff, n_tasks):
@@ -58,18 +58,18 @@ def interpolate(x, start, stop_dist):
   Args
      x: int location
      start: location corresponding to 1
-     stop_dist: distance from start corresponding to 0 
+     stop_dist: distance from start corresponding to 0
   """
   assert(stop_dist != 0)
   stop = start + stop_dist
-  d = (stop - x) / (stop - start) 
+  d = (stop - x) / (stop - start)
   return min(max(d, 0.), 1.)
 
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--param_lookup', type=str,
     help='relative path to CSV file identifying params to use per z range')
-  # parser.add_argument('--z_range_path', type=str, 
+  # parser.add_argument('--z_range_path', type=str,
   #   help='path to csv file with list of z indices to use')
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--dst_path', type=str)
@@ -77,8 +77,8 @@ if __name__ == '__main__':
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--pad', 
-    help='the size of the largest displacement expected; should be 2^high_mip', 
+  parser.add_argument('--pad',
+    help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
   parser.add_argument('--render_pad', type=int, default=256)
   parser.add_argument('--block_size', type=int, default=10)
@@ -130,10 +130,10 @@ if __name__ == '__main__':
     size_chunk=chunk_size,
     batch_mip=render_mip,
   )
-  
+
   # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
   bbox_lookup = {}
-  skip_list = [] 
+  skip_list = []
   with open(args.param_lookup) as f:
     reader = csv.reader(f, delimiter=',')
     for k, r in enumerate(reader):
@@ -153,7 +153,7 @@ if __name__ == '__main__':
          for z in range(z_start, z_stop):
            if skip:
              skip_list.append(z)
-           bbox_lookup[z] = bbox 
+           bbox_lookup[z] = bbox
 
   # Adjust block starts so they don't start on a skipped section
   initial_block_starts = list(range(args.z_start, args.z_stop, block_size))
@@ -186,7 +186,7 @@ if __name__ == '__main__':
   src_mask_cv = None
   tgt_mask_cv = None
 
-  broadcasting_field = cm.create(join(args.dst_path, 'field', 
+  broadcasting_field = cm.create(join(args.dst_path, 'field',
                                       'stitchtemp', 'broadcasting'),
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=False).path
@@ -194,22 +194,22 @@ if __name__ == '__main__':
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=False).path
 
-  compose_field = cm.create(join(args.dst_path, 'field', 'stitchtemp{}'.format(args.suffix), 
+  compose_field = cm.create(join(args.dst_path, 'field', 'stitchtemp{}'.format(args.suffix),
                                  'compose'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=do_stitching).path
-  # compose_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format('decay1000'), 
+  # compose_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format('decay1000'),
   #                                'compose'),
   #                         data_type='int16', num_channels=2,
   #                         fill_missing=True, overwrite=do_stitching).path
-  final_dst = cmr.create(join(args.dst_path, 'image_stitchtempmip1{}'.format(args.suffix)), 
-                        data_type='uint8', num_channels=1, fill_missing=True, 
+  final_dst = cmr.create(join(args.dst_path, 'image_stitchtempmip1{}'.format(args.suffix)),
+                        data_type='uint8', num_channels=1, fill_missing=True,
                         overwrite=do_render).path
 
   # Task scheduling functions
   def remote_upload(tasks):
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
-          tq.insert_all(tasks)  
+          tq.insert_all(tasks)
 
   def execute(task_iterator, z_range):
     if len(z_range) > 0:
@@ -231,7 +231,7 @@ if __name__ == '__main__':
           for t in ptask:
            tq = LocalTaskQueue(parallel=1)
            tq.insert_all(t, args=[a])
- 
+
       end = time()
       diff = end - start
       print('Sending {} use time: {}'.format(task_iterator, diff))
@@ -255,12 +255,12 @@ if __name__ == '__main__':
         influencing_blocks = influencing_blocks_lookup[z]
         factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
         factors += [1.]
-        print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks, 
+        print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
                                                                factors))
         bbox = bbox_lookup[z]
         cv_list = [broadcasting_field]*len(influencing_blocks) + [block_field]
         z_list = list(influencing_blocks) + [z]
-        t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox, 
+        t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
                             mip, mip, factors, pad)
         yield from t
 
@@ -268,10 +268,10 @@ if __name__ == '__main__':
     def __init__(self, z_range):
       self.z_range = z_range
 
-    def __iter__(self): 
+    def __iter__(self):
       for z in self.z_range:
         bbox = bbox_lookup[z]
-        t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z, 
+        t = a.render(cm, src, compose_field, final_dst, src_z=z, field_z=z, dst_z=z,
                      bbox=bbox, src_mip=render_mip, field_mip=mip, pad=render_pad)
         yield from t
 
