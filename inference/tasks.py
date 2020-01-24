@@ -20,6 +20,7 @@ from utilities.helpers import upsample_field, coarsen_mask
 from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue, GreenTaskQueue
 from concurrent.futures import ProcessPoolExecutor
 
+from mask import Mask
 from misalignment import misalignment_detector
 # from taskqueue.taskqueue import _scatter as scatter
 
@@ -80,6 +81,9 @@ class PredictImageTask(RegisteredTask):
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip,
           is_field, to_uint8, masks=[]):
+    #serialized_masks = [m.to_dict() for m in masks]
+    if isinstance(masks[0], Mask):
+        masks = [m.to_dict() for m in masks]
     super().__init__(src_cv, dst_cv, src_z, dst_z, patch_bbox, mip,
                      is_field, to_uint8, masks)
 
@@ -92,7 +96,8 @@ class CopyTask(RegisteredTask):
     mip = self.mip
     is_field = self.is_field
     to_uint8 = self.to_uint8
-    masks = self.masks
+    masks = [Mask(**m) for m in self.masks]
+
     for mask in masks:
         mask.cv = DCV(mask.cv_path)
 
@@ -127,8 +132,18 @@ class ComputeFieldTask(RegisteredTask):
                      patch_bbox, mip, pad, src_masks, tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
                      coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False):
+    #src_serialized_masks = [m.to_dict() for m in src_masks]
+    #tgt_serialized_masks = [m.to_dict() for m in tgt_masks]
+
+    if isinstance(src_masks, list) and len(src_masks) > 0 \
+            and isinstance(src_masks[0], Mask):
+        src_masks = [m.to_dict() for m in src_masks]
+    if isinstance(tgt_masks, list) and len(tgt_masks) > 0 \
+            and isinstance(tgt_masks[0], Mask):
+        tgt_masks = [m.to_dict() for m in tgt_masks]
     super().__init__(model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
-                     patch_bbox, mip, pad, src_masks, tgt_masks,
+                     patch_bbox, mip, pad, src_masks,
+                     tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
                      coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch)
 
@@ -150,11 +165,11 @@ class ComputeFieldTask(RegisteredTask):
     pad = self.pad
 
 
-    tgt_masks = self.tgt_masks
+    tgt_masks = [Mask(**m) for m in self.tgt_masks]
     for tgt_mask in tgt_masks:
         tgt_mask.cv = DCV(tgt_mask.cv_path)
 
-    src_masks = self.src_masks
+    src_masks = [Mask(**m) for m in self.src_masks]
     for src_mask in src_masks:
         src_mask.cv = DCV(src_mask.cv_path)
 
@@ -259,6 +274,8 @@ class RenderTask(RegisteredTask):
                coarsen_misalign=128, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=True):
+    if isinstance(masks[0], Mask):
+        masks = [m.to_dict() for m in masks]
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                      field_mip, masks, affine, use_cpu, pad, seethrough,
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
@@ -275,7 +292,7 @@ class RenderTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
     src_mip = self.src_mip
     field_mip = self.field_mip
-    masks = self.masks
+    masks = [Mask(**m) for m in self.masks]
     for mask in masks:
       mask.cv = DCV(mask.cv_path)
 
