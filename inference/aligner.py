@@ -451,7 +451,8 @@ class Aligner:
                                  z=z, mip=mip, path=cv.path))
     field = cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     field = np.transpose(field, (2,0,1,3))
-    if as_int16:
+    # if as_int16:
+    if cv.dtype == 'int16':
       field = np.float32(field) / 4
     if relative:
       field = self.abs_to_rel_residual(field, bbox, mip)
@@ -484,7 +485,8 @@ class Aligner:
     field = np.transpose(field, (1,2,0,3))
     print('save_field for {0} at MIP{1} to {2}'.format(bbox.stringify(z),
                                                        mip, cv.path))
-    if as_int16:
+    # if as_int16:
+    if field.dtype == 'int16':
       if(np.max(field) > 8192 or np.min(field) < -8191):
         print('Value in field is out of range of int16 max: {}, min: {}'.format(
                                                np.max(field),np.min(field)), flush=True)
@@ -527,7 +529,7 @@ class Aligner:
   # CloudVolume chunk methods #
   #############################
 
-  def compute_field_chunk_stitch_old(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
+  def compute_field_chunk_stitch(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
                           src_mask=[], tgt_mask=[],
                           tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
                           prev_field_inverse=False):
@@ -587,8 +589,6 @@ class Aligner:
                                 mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
                                 mask_val=tgt_mask_val,
                                 to_tensor=True, normalizer=normalizer)
-    # import ipdb
-    # ipdb.set_trace()
     print('src_patch.shape {}'.format(src_patch.shape))
     print('tgt_patch.shape {}'.format(tgt_patch.shape))
 
@@ -600,9 +600,10 @@ class Aligner:
 
     try:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+      zero_fieldC = torch.zeros_like(src_patch, device=self.device)
 
-      zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,2048,2048])))
-      zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
+      # zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,2048,2048])))
+      # zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
 
       # model produces field in relative coordinates
       field = model(
@@ -615,8 +616,6 @@ class Aligner:
       if not isinstance(field, torch.Tensor):
           field = field[0]
 
-      # import ipdb
-      # ipdb.set_trace()
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       field = self.rel_to_abs_residual(field, mip)
       field = field[:,pad:-pad,pad:-pad,:]
@@ -1007,7 +1006,7 @@ class Aligner:
                         bbox, image_mip, field_mip,
                         masks=[], affine=None,
                         use_cpu=False, pad=256, return_mask=False,
-                        blackout_mask_op='eq', return_mask_op='eq'):
+                        blackout_mask_op='eq', return_mask_op='eq', as_int16=True):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:

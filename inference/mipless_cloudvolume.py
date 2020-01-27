@@ -75,6 +75,10 @@ class MiplessCloudVolume():
     #  self.cvs[mip].commit_info()
     #  self.cvs[mip].commit_provenance()
 
+  @property
+  def dtype(self):
+    return self.cvs[0].dtype
+
   def __getitem__(self, mip):
     if mip not in self.cvs:
       self.create(mip)

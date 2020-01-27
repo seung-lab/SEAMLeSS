@@ -73,7 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("--z_stop", type=int)
     parser.add_argument("--max_mip", type=int, default=9)
     parser.add_argument("--img_dtype", type=str, default='uint8')
-    parser.add_argument("--render_pad", type=int, default=2048)
+    parser.add_argument("--final_render_pad", type=int, default=2048)
     parser.add_argument(
         "--pad",
         help="the size of the largest displacement expected; should be 2^high_mip",
@@ -91,6 +91,18 @@ if __name__ == "__main__":
         "--coarse_field_mip",
         type=int,
         help="MIP level of the primer. E.g. the MIP of a coarse alignment",
+    )
+    parser.add_argument(
+        "--coarse_field_dtype",
+        type=str,
+        help="Data type of coarse vector field (typically int16 or float32)",
+        default='int16'
+    )
+    parser.add_argument(
+        "--output_field_dtype",
+        type=str,
+        help="Data type of output vector fields (typically int16 or float32)",
+        default='int16'
     )
     parser.add_argument(
         "--render_dst",
@@ -124,7 +136,12 @@ if __name__ == "__main__":
         help="If True, skip rendering"
     )
     parser.add_argument(
-        "--render_mip",
+        "--skip_vv",
+        action='store_true',
+        help="If True, skip vv"
+    )
+    parser.add_argument(
+        "--final_render_mip",
         type=int,
         default=None
     )
@@ -160,7 +177,7 @@ if __name__ == "__main__":
     mip = args.mip
     max_mip = args.max_mip
     pad = args.pad
-    render_pad = args.pad
+    final_render_pad = args.final_render_pad or args.pad
     src_masks = []
     tgt_masks = []
     if args.src_masks is not None:
@@ -176,8 +193,10 @@ if __name__ == "__main__":
     do_final_render = not args.skip_final_render
     blackout_op = args.blackout_op
     stitch_suffix = args.stitch_suffix
+    skip_vv = args.skip_vv
+    output_field_dtype = args.output_field_dtype
 
-    render_mip = args.render_mip or args.mip
+    final_render_mip = args.final_render_mip or args.mip
     # Create CloudVolume Manager
     cm = CloudManager(
         args.src_path,
@@ -188,20 +207,10 @@ if __name__ == "__main__":
         size_chunk=chunk_size,
         batch_mip=mip,
     )
-    # Create CloudVolume Manager
-    cmr = CloudManager(
-        args.src_path,
-        max_mip,
-        pad,
-        provenance,
-        batch_size=1,
-        size_chunk=chunk_size,
-        batch_mip=render_mip,
-    )
 
     # Create src CloudVolumes
     print("Create src & align image CloudVolumes")
-    src = cmr.create(
+    src = cm.create(
         args.src_path,
         data_type=args.img_dtype,
         num_channels=1,
@@ -221,7 +230,7 @@ if __name__ == "__main__":
 
     coarse_field_cv = cm.create(
         args.coarse_field_path,
-        data_type="int16",
+        data_type=args.coarse_field_dtype,
         num_channels=2,
         fill_missing=True,
         overwrite=False,
@@ -241,7 +250,7 @@ if __name__ == "__main__":
     block_dsts = {}
     block_types = ["even", "odd"]
     for i, block_type in enumerate(block_types):
-        block_dst = cmr.create(
+        block_dst = cm.create(
             join(render_dst, "image_blocks", block_type),
             data_type=args.img_dtype,
             num_channels=1,
@@ -251,7 +260,7 @@ if __name__ == "__main__":
         block_dsts[i] = block_dst.path
 
     if args.seethrough_stitch_path is not None:
-        seethrough_stitch_dst = cmr.create(
+        seethrough_stitch_dst = cm.create(
             args.seethrough_stitch_path,
             data_type=args.img_dtype,
             num_channels=1,
@@ -281,6 +290,8 @@ if __name__ == "__main__":
                 bbox_mip = int(r[6])
                 model_path = join("..", "models", r[7])
                 tgt_radius = int(r[8])
+                if tgt_radius > 1 and skip_vv:
+                    raise ValueError('Cannot have both a tgt_radius greater than 1 and skip vv.')
                 skip = bool(int(r[9]))
                 bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
                 # print('{},{}'.format(z_start, z_stop))
@@ -317,16 +328,9 @@ if __name__ == "__main__":
     block_stops = block_starts[1:]
     if block_starts[-1] != args.z_stop:
         block_stops.append(args.z_stop)
-    section_to_block_start = {}
-    for z in range(args.z_start, args.z_stop):
-        # try:
-        section_to_block_start[z] = max(filter(lambda x: (x <= z), block_starts))
-        # except:
-            # import ipdb
-            # ipdb.set_trace()
-    # print('initial_block_starts {}'.format(list(initial_block_starts)))
-    # print('block_starts {}'.format(block_starts))
-    # print('block_stops {}'.format(block_stops))
+    # section_to_block_start = {}
+    # for z in range(args.z_start, args.z_stop):
+    #     section_to_block_start[z] = max(filter(lambda x: (x <= z), block_starts))
     # Assign even/odd to each block start so results are stored in appropriate CloudVolume
     # Create lookup dicts based on offset in the canonical block
     # BLOCK ALIGNMENT
@@ -373,11 +377,6 @@ if __name__ == "__main__":
     if args.restart <= 0:
         starter_restart = args.restart
 
-    original_copy_range = [z for z_range in copy_offset_to_z_range.values() for z in z_range]
-    original_starter_range = [
-        z for z_range in starter_offset_to_z_range.values() for z in z_range
-    ]
-
     copy_offset_to_z_range = {
         k: v for k, v in copy_offset_to_z_range.items() if k == args.restart
     }
@@ -387,16 +386,11 @@ if __name__ == "__main__":
     block_offset_to_z_range = {
         k: v for k, v in block_offset_to_z_range.items() if k >= args.restart
     }
-    # print('copy_offset_to_z_range {}'.format(copy_offset_to_z_range))
-    # print('starter_offset_to_z_range {}'.format(starter_offset_to_z_range))
-    # print('block_offset_to_z_range {}'.format(block_offset_to_z_range))
-    # print('offset_range {}'.format(offset_range))
     copy_range = [z for z_range in copy_offset_to_z_range.values() for z in z_range]
     starter_range = [
         z for z_range in starter_offset_to_z_range.values() for z in z_range
     ]
     overlap_copy_range = list(overlap_copy_range)
-    # print('overlap_copy_range {}'.format(overlap_copy_range))
 
     # Determine the number of sections needed to stitch (no stitching for block 0)
     stitch_offset_to_z_range = {i: [] for i in range(1, block_size + 1)}
@@ -415,7 +409,6 @@ if __name__ == "__main__":
     for b, v in block_start_to_stitch_offsets.items():
         print(b)
         assert len(v) % 2 == 1
-# Compile ranges
 
 
     compose_range = range(args.z_start, args.z_stop)
@@ -435,14 +428,14 @@ if __name__ == "__main__":
     for z_offset in offset_range:
         block_pair_fields[z_offset] = cm.create(
             join(args.dst_path, "field", "block", str(z_offset)),
-            data_type="int16",
+            data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
             overwrite=do_alignment,
         ).path
     block_vvote_field = cm.create(
         join(args.dst_path, "field", "vvote"),
-        data_type="int16",
+        data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
         overwrite=do_alignment,
@@ -450,21 +443,21 @@ if __name__ == "__main__":
     stitch_pair_fields = {}
     for z_offset in offset_range:
         stitch_pair_fields[z_offset] = cm.create(
-            join(args.dst_path, "field", "stitchtemp", str(z_offset)),
-            data_type="int16",
+            join(args.dst_path, "field", "stitch", str(z_offset)),
+            data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
             overwrite=do_alignment,
         ).path
     overlap_vvote_field = cm.create(
-        join(args.dst_path, "field", "stitchtemp", "vvote", "field"),
-        data_type="int16",
+        join(args.dst_path, "field", "stitch", "vvote", "field"),
+        data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
         overwrite=do_alignment,
     ).path
     overlap_image = cm.create(
-        join(args.dst_path, "field", "stitchtemp", "vvote", "image"),
+        join(args.dst_path, "field", "stitch", "vvote", "image"),
         data_type=args.img_dtype,
         num_channels=1,
         fill_missing=True,
@@ -473,26 +466,36 @@ if __name__ == "__main__":
     stitch_fields = {}
     for z_offset in offset_range:
         stitch_fields[z_offset] = cm.create(
-            join(args.dst_path, "field", "stitchtemp", "vvote", str(z_offset)),
-            data_type="int16",
+            join(args.dst_path, "field", "stitch", "vvote", str(z_offset)),
+            data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
             overwrite=do_alignment,
         ).path
     broadcasting_field = cm.create(
-        join(args.dst_path, "field", "stitchtemp", "broadcasting"),
-        data_type="int16",
+        join(args.dst_path, "field", "stitch", "broadcasting"),
+        data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
         overwrite=do_alignment,
     ).path
 
     compose_field = cm.create(join(args.dst_path, 'field',
-                        'stitchtemp{}'.format(args.stitch_suffix), 'compose'),
-                        data_type='int16', num_channels=2,
+                        'stitch{}'.format(args.stitch_suffix), 'compose'),
+                        data_type=output_field_dtype, num_channels=2,
                         fill_missing=True, overwrite=do_compose).path
     if do_final_render:
-        final_dst = cmr.create(join(args.dst_path, 'image_stitchtemp{}_x2'.format(args.stitch_suffix)),
+        # Create CloudVolume Manager
+        cmr = CloudManager(
+            args.src_path,
+            max_mip,
+            pad,
+            provenance,
+            batch_size=1,
+            size_chunk=chunk_size,
+            batch_mip=final_render_mip,
+        )
+        final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.stitch_suffix)),
                             data_type='uint8', num_channels=1, fill_missing=True,
                             overwrite=do_final_render).path
 
@@ -550,9 +553,6 @@ if __name__ == "__main__":
             for z in self.z_range:
                 block_dst = starter_dst_lookup[z]
                 bbox = bbox_lookup[z]
-                # t =  a.copy(cm, src, block_dst, z, z, bbox, mip, is_field=False,
-                #             mask_cv=src_mask_cv, mask_mip=src_mask_mip, mask_val=src_mask_val)
-
                 t = a.render(
                     cm,
                     src,
@@ -562,11 +562,11 @@ if __name__ == "__main__":
                     field_z=z,
                     dst_z=z,
                     bbox=bbox,
-                    src_mip=render_mip,
+                    src_mip=mip,
                     field_mip=coarse_field_mip,
                     masks=src_masks,
-                    seethrough=args.seethrough,
-                    seethrough_misalign=args.seethrough_misalign
+                    # seethrough=args.seethrough,
+                    # seethrough_misalign=args.seethrough_misalign
                 )
                 yield from t
 
@@ -645,7 +645,8 @@ if __name__ == "__main__":
                     field_z=z,
                     dst_z=z,
                     bbox=bbox,
-                    src_mip=render_mip,
+                    # src_mip=render_mip,
+                    src_mip=mip,
                     field_mip=mip,
                     masks=src_masks,
                     seethrough=args.seethrough,
@@ -665,10 +666,13 @@ if __name__ == "__main__":
                 tgt_offsets = vvote_lookup[src_z]
                 for tgt_offset in tgt_offsets:
                     tgt_z = src_z + tgt_offset
-                    fine_field = block_pair_fields[tgt_offset]
-                    if tgt_z in original_copy_range:
+                    if skip_vv:
+                        fine_field = block_vvote_field
+                    else:
+                        fine_field = block_pair_fields[tgt_offset]
+                    if tgt_z in copy_range:
                         tgt_field = block_pair_fields[0]
-                    elif tgt_z in original_starter_range and src_z > section_to_block_start[src_z] and section_to_block_start[src_z] > tgt_z:
+                    elif tgt_z in starter_range and src_z > block_start_lookup[src_z] and block_start_lookup[src_z] > tgt_z:
                         tgt_field = block_pair_fields[starter_z_to_offset[tgt_z]]
                     else:
                         tgt_field = block_vvote_field
@@ -733,10 +737,10 @@ if __name__ == "__main__":
                     field_z=z,
                     dst_z=z,
                     bbox=bbox,
-                    src_mip=render_mip,
+                    src_mip=mip,
                     field_mip=mip,
                     masks=src_masks,
-                    pad=render_pad,
+                    pad=pad,
                     seethrough=args.seethrough,
                     seethrough_misalign=args.seethrough_misalign
                 )
@@ -764,7 +768,7 @@ if __name__ == "__main__":
                     z_end=z_end,
                     bbox=bbox,
                     mip=mip,
-                    pad=render_pad
+                    pad=pad
                 )
 
                 yield from t
@@ -792,47 +796,6 @@ if __name__ == "__main__":
                 t = ti + tf
                 yield from t
 
-    # class StitchAlignComputeField(object):
-    #     def __init__(self, z_range):
-    #         self.z_range = z_range
-
-    #     def __iter__(self):
-    #         for z in self.z_range:
-    #             block_dst = block_dst_lookup[z]
-    #             bbox = bbox_lookup[z]
-    #             model_path = model_lookup[z]
-    #             tgt_offsets = vvote_lookup[z]
-    #             last_tgt_offset = tgt_offsets[0] + 1 # HACK
-    #             for tgt_offset in tgt_offsets:
-    #                 tgt_z = z + tgt_offset
-    #                 fine_field = stitch_pair_fields[tgt_offset]
-    #                 if last_tgt_offset > 0:
-    #                     tgt_field = overlap_vvote_field
-    #                 else:
-    #                     tgt_field = stitch_pair_fields[last_tgt_offset]
-    #                 last_tgt_offset = tgt_offset
-    #                 t = a.compute_field(
-    #                     cm,
-    #                     model_path,
-    #                     src,
-    #                     overlap_image,
-    #                     fine_field,
-    #                     z,
-    #                     tgt_z,
-    #                     bbox,
-    #                     mip,
-    #                     pad,
-    #                     src_mask_cv=src_mask_cv,
-    #                     src_mask_mip=src_mask_mip,
-    #                     src_mask_val=src_mask_val,
-    #                     tgt_mask_cv=src_mask_cv,
-    #                     tgt_mask_mip=src_mask_mip,
-    #                     tgt_mask_val=src_mask_val,
-    #                     tgt_field_cv=block_vvote_field,
-    #                     stitch=True
-    #                 )
-    #                 yield from t
-
     class StitchAlignComputeField(object):
         def __init__(self, z_range):
             self.z_range = z_range
@@ -845,100 +808,19 @@ if __name__ == "__main__":
                 tgt_offsets = vvote_lookup[z]
                 for tgt_offset in tgt_offsets:
                     tgt_z = z + tgt_offset
-                    field = stitch_pair_fields[tgt_offset]
+                    if skip_vv:
+                        # field = overlap_vvote_field
+                        fields = broadcasting_field
+                        z = block_start_lookup[z]
+                    else:
+                        field = stitch_pair_fields[tgt_offset]
                     t = a.compute_field(cm, model_path, block_dst, overlap_image, field,
                                         z, tgt_z, bbox, mip, pad,
                                         src_masks=src_masks,
                                         tgt_masks=tgt_masks,
-                                        prev_field_cv=overlap_vvote_field,
-                                        # prev_field_cv=None,
+                                        prev_field_cv=None,
                                         prev_field_z=tgt_z,stitch=True)
                     yield from t
-
-    # class StitchAlignComputeField(object):
-    #     def __init__(self, z_range):
-    #         self.z_range = z_range
-
-    #     def __iter__(self):
-    #         for z in self.z_range:
-    #             block_dst = block_dst_lookup[z]
-    #             bbox = bbox_lookup[z]
-    #             model_path = model_lookup[z]
-    #             tgt_offsets = vvote_lookup[z]
-    #             last_tgt_offset = tgt_offsets[0] + 1 # HACK
-    #             for tgt_offset in tgt_offsets:
-    #                 tgt_z = z + tgt_offset
-    #                 fine_field = stitch_pair_fields[tgt_offset]
-    #                 if last_tgt_offset > 0:
-    #                     tgt_field = overlap_vvote_field
-    #                 else:
-    #                     tgt_field = stitch_pair_fields[last_tgt_offset]
-    #                 last_tgt_offset = tgt_offset
-    #                 t = a.compute_field(
-    #                     cm,
-    #                     model_path,
-    #                     block_dst,
-    #                     overlap_image,
-    #                     fine_field,
-    #                     z,
-    #                     tgt_z,
-    #                     bbox,
-    #                     mip,
-    #                     pad,
-    #                     src_mask_cv=src_mask_cv,
-    #                     src_mask_mip=src_mask_mip,
-    #                     src_mask_val=src_mask_val,
-    #                     tgt_mask_cv=src_mask_cv,
-    #                     tgt_mask_mip=src_mask_mip,
-    #                     tgt_mask_val=src_mask_val,
-    #                     prev_field_cv=overlap_vvote_field,
-    #                     prev_field_z=tgt_z,
-    #                     coarse_field_cv=coarse_field_cv,
-    #                     coarse_field_mip=coarse_field_mip,
-    #                     tgt_field_cv=tgt_field,
-    #                 )
-    #                 yield from t
-
-    # class StitchAlignComputeField(object):
-    #     def __init__(self, z_range):
-    #         self.z_range = z_range
-
-    #     def __iter__(self):
-    #         for z in self.z_range:
-    #             block_dst = block_dst_lookup[z]
-    #             bbox = bbox_lookup[z]
-    #             model_path = model_lookup[z]
-    #             tgt_offsets = vvote_lookup[z]
-    #             last_tgt_offset = tgt_offsets[0] + 1 # HACK
-    #             for tgt_offset in tgt_offsets:
-    #                 tgt_z = z + tgt_offset
-    #                 fine_field = stitch_pair_fields[tgt_offset]
-    #                 if last_tgt_offset > 0:
-    #                     tgt_field = overlap_vvote_field
-    #                 else:
-    #                     tgt_field = stitch_pair_fields[last_tgt_offset]
-    #                 last_tgt_offset = tgt_offset
-    #                 t = a.compute_field(
-    #                     cm,
-    #                     model_path,
-    #                     src,
-    #                     overlap_image,
-    #                     fine_field,
-    #                     z,
-    #                     tgt_z,
-    #                     bbox,
-    #                     mip,
-    #                     pad,
-    #                     src_mask_cv=src_mask_cv,
-    #                     src_mask_mip=src_mask_mip,
-    #                     src_mask_val=src_mask_val,
-    #                     tgt_mask_cv=src_mask_cv,
-    #                     tgt_mask_mip=src_mask_mip,
-    #                     tgt_mask_val=src_mask_val,
-    #                     tgt_field_cv=block_vvote_field,
-    #                     stitch=True
-    #                 )
-    #                 yield from t
 
     class StitchAlignVectorVote(object):
         def __init__(self, z_range):
@@ -958,7 +840,6 @@ if __name__ == "__main__":
                     mip,
                     inverse=False,
                     serial=True,
-                    # softmin_temp=(2 ** coarse_field_mip) / 6.0,
                     softmin_temp=(2 ** mip) / 6.0,
                     blur_sigma=1,
                 )
@@ -981,8 +862,8 @@ if __name__ == "__main__":
                     field_z=z,
                     dst_z=z,
                     bbox=bbox,
-                    src_mip=render_mip,
-                    pad=render_pad,
+                    src_mip=mip,
+                    pad=pad,
                     field_mip=mip,
                     mask=src_masks,
                     seethrough=args.seethrough,
@@ -1012,38 +893,6 @@ if __name__ == "__main__":
                 )
                 yield from t
 
-    class StitchCompose(object):
-        def __init__(self, z_range):
-          self.z_range = z_range
-
-        def __iter__(self):
-          for z in self.z_range:
-            influencing_blocks = influencing_blocks_lookup[z]
-            factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
-            factors += [1.]
-            print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
-                                                                   factors))
-            bbox = bbox_lookup[z]
-            cv_list = [broadcasting_field]*len(influencing_blocks) + [block_field]
-            z_list = list(influencing_blocks) + [z]
-            t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
-                                mip, mip, factors, pad)
-            yield from t
-
-    class StitchRender(object):
-        def __init__(self, z_range):
-          self.z_range = z_range
-
-        def __iter__(self):
-          for z in self.z_range:
-            bbox = bbox_lookup[z]
-            t = a.render(cm, src, compose_field, final_dst, src_z=z,
-                         field_z=z, dst_z=z, bbox=bbox,
-                         src_mip=render_mip, field_mip=mip, pad=render_pad,
-                         masks=src_masks, blackout_op=blackout_op)
-            yield from t
-
-
     class StitchBroadcastVectorVote(object):
         def __init__(self, z_range):
             self.z_range = z_range
@@ -1062,14 +911,44 @@ if __name__ == "__main__":
                     mip,
                     inverse=False,
                     serial=True,
-                    # softmin_temp=(2 ** coarse_field_mip) / 6.0,
                     softmin_temp=(2 ** mip) / 6.0,
                     blur_sigma=1,
                 )
                 yield from t
 
+    class StitchCompose(object):
+        def __init__(self, z_range):
+          self.z_range = z_range
+
+        def __iter__(self):
+          for z in self.z_range:
+            influencing_blocks = influencing_blocks_lookup[z]
+            factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
+            factors += [1.]
+            print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
+                                                                   factors))
+            bbox = bbox_lookup[z]
+            cv_list = [broadcasting_field]*len(influencing_blocks) + [block_field]
+            z_list = list(influencing_blocks) + [z]
+            t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
+                                mip, mip, factors, pad)
+            yield from t
+
+    class StitchFinalRender(object):    
+        def __init__(self, z_range):
+          self.z_range = z_range
+
+        def __iter__(self):
+          for z in self.z_range:
+            bbox = bbox_lookup[z]
+            t = a.render(cm, src, compose_field, final_dst, src_z=z,
+                         field_z=z, dst_z=z, bbox=bbox,
+                         src_mip=final_render_mip, field_mip=mip, pad=final_render_pad,
+                         masks=src_masks, blackout_op=blackout_op)
+            yield from t
+
     # # Serial alignment with block stitching
-    '''print("START BLOCK ALIGNMENT")
+    print("START BLOCK ALIGNMENT")
     if do_render:
         print("COPY STARTING SECTION OF ALL BLOCKS")
         execute(StarterCopy, copy_range)
@@ -1086,8 +965,9 @@ if __name__ == "__main__":
         if do_alignment:
             print("ALIGN BLOCK OFFSET {}".format(z_offset))
             execute(BlockAlignComputeField, z_range)
-            print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-            execute(BlockAlignVectorVote, z_range)
+            if not skip_vv:
+                print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
+                execute(BlockAlignVectorVote, z_range)
         if do_render:
             print("RENDER BLOCK OFFSET {}".format(z_offset))
             execute(BlockAlignRender, z_range)
@@ -1105,13 +985,14 @@ if __name__ == "__main__":
         if do_alignment:
             print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
             execute(StitchAlignComputeField, z_range)
-            print("VECTOR VOTE OVERLAPPING OFFSET {}".format(z_offset))
-            execute(StitchAlignVectorVote, z_range)
-        if do_render:
+            if not skip_vv:
+                print("VECTOR VOTE OVERLAPPING OFFSET {}".format(z_offset))
+                execute(StitchAlignVectorVote, z_range)
+        if do_render and not skip_vv:
             print("RENDER OVERLAPPING OFFSET {}".format(z_offset))
             execute(StitchAlignRender, z_range)
 
-    if do_alignment:
+    if do_alignment and not skip_vv:
         print("COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING")
         execute(StitchBroadcastCopy, stitch_range)
         print("VECTOR VOTE STITCHING FIELDS")
@@ -1119,6 +1000,5 @@ if __name__ == "__main__":
 
     if do_compose:
         execute(StitchCompose, compose_range)
-    '''
     if do_final_render:
-        execute(StitchRender, compose_range)
+        execute(StitchFinalRender, compose_range)
