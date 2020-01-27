@@ -2,9 +2,11 @@ import torch
 import torch.nn as nn
 import torchfields  # noqa: unused
 from utilities.helpers import grid_sample, downsample, downsample_field, load_model_from_dict
+
 import artificery
 import os
 
+from .clahe_preprocessor import CLAHEPreprocessor
 from .optimizer import optimize_metric
 from .residuals import res_warp_img, combine_residuals
 
@@ -24,6 +26,7 @@ def normalize(img, bad_mask=None, bad_fill=0):
 
     return img
 
+
 class Model(nn.Module):
     """
     Defines an aligner network.
@@ -41,6 +44,7 @@ class Model(nn.Module):
         self.align = AligningPyramid(self.feature_maps if encodings
                                      else [1]*len(feature_maps), **kwargs)
         self.opt_enc = [self.load_opt_encoder()]
+        self.clahe = CLAHEPreprocessor()
 
     def load_opt_encoder(self):
         a = artificery.Artificery()
@@ -58,18 +62,23 @@ class Model(nn.Module):
         my_p.name = name
         return my_p
 
+
+
     def forward(self, src, tgt, src_field=None, tgt_field=None, **kwargs):
         with torch.no_grad():
+            src_clahe = self.clahe(src)
+            tgt_clahe = self.clahe(tgt)
             if self.encode:
-                src_enc, tgt_enc = self.encode(src, tgt, tgt_field=tgt_field, **kwargs)
+                src_enc, tgt_enc = self.encode(src_clahe,
+                        tgt_clahe, tgt_field=tgt_field, **kwargs)
             else:
-                src_enc, tgt_enc = src, tgt
+                src_enc, tgt_enc = src_clahe, tgt_clahe
             with torch.no_grad():
                 accum_field, fine_field = self.align(src_enc, tgt_enc, src_field=src_field, **kwargs)
         torch.cuda.empty_cache()
 
         accum_field = accum_field.permute(0, 2, 3, 1)
-        final_res = accum_field
+
         if src.var() > 1e-4:
             print ("Optimizing")
             accum_field = accum_field * src.shape[-2] / 2
@@ -78,8 +87,18 @@ class Model(nn.Module):
             src = res_warp_img(src, src_field, is_pix_res=True)
             tgt = tgt
 
-            src_defects = (src < 0.02).float()
-            tgt_defects = (tgt == 0).float()
+            if False and 'src_mask' in kwargs:
+                large_defect_threshold = 1
+                src_large_defects = (kwargs['src_mask'] >= large_defect_threshold).float()
+                src_small_defects = ((kwargs['src_mask'] > 0) * (kwargs['src_mask'] < large_defect_threshold)).float()
+                tgt_defects = torch.zeros_like(src)
+                src_defects = torch.zeros_like(src)
+            else:
+                src_large_defects = torch.zeros_like(src)
+                src_small_defects = torch.zeros_like(src)
+
+                tgt_defects = (tgt < 0.02).float()
+                src_defects = (src < 0.02).float()
 
             src_norm = normalize(src, bad_mask=src_defects)
             tgt_norm = normalize(tgt, bad_mask=tgt_defects)
@@ -93,8 +112,10 @@ class Model(nn.Module):
             del opt_enc.state['down']
             torch.cuda.empty_cache()
             pred_res = accum_field
-            pred_res = optimize_metric(opt_enc, src, tgt, accum_field, src_defects.float(),
-                                    tgt_defects.float(), max_iter=20
+            pred_res = optimize_metric(opt_enc, src, tgt, accum_field, src_small_defects=src_small_defects.float(),
+                    src_large_defects=src_large_defects.float(),
+                    tgt_defects=tgt_defects.float(),
+                    max_iter=100
                                     )
             #sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
             #pred_res[sm_mask[0]] = 0
@@ -102,7 +123,6 @@ class Model(nn.Module):
         else:
             print ("Not optimizing black chunk")
             final_res  = accum_field
-
         return final_res, fine_field
 
     def load(self, path):
@@ -274,7 +294,7 @@ class Aligner(nn.Module):
     to be agnostic to the size of the input images.
     """
 
-    def __init__(self, channels=1, k=5):
+    def __init__(self, channels=1, k=7):
         super().__init__()
         p = (k-1)//2
         self.channels = channels
@@ -340,7 +360,7 @@ class AligningPyramid(nn.Module):
         ):
 
         assert _index.step is None
-        _index = slice(max(0, _index.start or 0), _index.stop)  # Skip the lowest two aligner level (speedup)
+        _index = slice(max(0, _index.start or 0), _index.stop)
 
         if src_field is not None:
             prev_level = 5

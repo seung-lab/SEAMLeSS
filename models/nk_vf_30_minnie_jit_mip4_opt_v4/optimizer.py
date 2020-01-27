@@ -14,7 +14,11 @@ def combine_pre_post(res, pre, post):
                                is_pix_res=True)
     return result
 
-def optimize_pre_post_ups(opti_loss, src, tgt, src_defects, tgt_defects, initial_res, sm, lr, num_iter, opt_mode,
+def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, opt_mode,
+                      src_defects,
+                      tgt_defects,
+                      src_large_defects,
+                      src_small_defects,
                       opt_params={}, crop=2):
     wd = 1e-3
     pred_res = initial_res.clone()
@@ -34,14 +38,15 @@ def optimize_pre_post_ups(opti_loss, src, tgt, src_defects, tgt_defects, initial
     loss_bundle = {
         'src': src,
         'tgt': tgt,
-        'src_defects': src_defects,
         'tgt_defects': tgt_defects,
         'src_plastic': torch.zeros_like(src_defects, device=tgt_defects.device),
         'tgt_plastic': torch.zeros_like(src_defects, device=tgt_defects.device),
         'src_edges': torch.zeros_like(src_defects, device=tgt_defects.device),
         'tgt_edges': torch.zeros_like(src_defects, device=tgt_defects.device)
     }
-
+    loss_bundle['src_defects'] = src_defects
+    loss_bundle['src_small_defects'] = src_small_defects
+    loss_bundle['src_large_defects'] = src_large_defects
     prev_loss = []
 
     s = time.time()
@@ -139,7 +144,9 @@ def optimize_pre_post_ups(opti_loss, src, tgt, src_defects, tgt_defects, initial
 
     return prev_pre_res, prev_post_res
 
-def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defects, tgt_defects, mips, crop=2, bot_mip=4, max_iter=800):
+def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_defects, src_defects,
+        src_large_defects, src_small_defects,
+        crop=2, bot_mip=4, max_iter=800):
     sm_val = 450e0
     sm_val2 = 450e0
     sm = {
@@ -222,11 +229,15 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
         pred_res_downs = pred_res
         src_defects_downs = src_defects
         tgt_defects_downs = tgt_defects
+        src_small_defects_downs = src_small_defects
+        src_large_defects_downs = src_large_defects
         for i in range (bot_mip - 4):
             pred_res_downs = downsample_residuals(pred_res_downs)
 
             src_defects_downs = torch.nn.functional.max_pool2d(src_defects_downs, 2)
             tgt_defects_downs = torch.nn.functional.max_pool2d(tgt_defects_downs, 2)
+            src_small_defects_downs = torch.nn.functional.max_pool2d(src_small_defects_downs, 2)
+            src_large_defects_downs = torch.nn.functional.max_pool2d(src_large_defects_downs, 2)
 
         for i in range(m - bot_mip):
             pred_res_downs = downsample_residuals(pred_res_downs)
@@ -248,10 +259,17 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
         tgt_downs = normer(tgt_downs)
 
         #print (src_downs.shape, tgt_downs.shape, pred_res_downs.shape, src_defects_downs.shape, tgt_defects_downs.shape)
-        pre_res, post_res = optimize_pre_post_ups(opti_losses[m], src_downs, tgt_downs, src_defects_downs,
-                                              tgt_defects_downs,
-                                              pred_res_downs, sm[m], lr[m], num_iter[m],
-                                              crop=crop, opt_mode=opt_mode, opt_params=opt_params)
+        pre_res, post_res = optimize_pre_post_ups(opti_losses[m], src_downs,
+                tgt_downs,
+                pred_res_downs,
+                sm[m], lr[m],
+                num_iter=num_iter[m],
+                src_defects=src_defects_downs,
+                src_small_defects=src_small_defects_downs,
+                src_large_defects=src_large_defects_downs,
+                tgt_defects=tgt_defects_downs,
+                crop=crop, opt_mode=opt_mode,
+                opt_params=opt_params)
 
         pre_res_ups = pre_res.detach()
         post_res_ups = post_res.detach()
@@ -264,12 +282,35 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defect
 
 
 #pred_res_start = torch.zeros_like(pred_res, device=pred_res.device)
-def optimize_metric(model, src, tgt, pred_res_start, src_defects, tgt_defects, max_iter=400):
+def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defects=None, src_small_defects=None,
+        src_large_defects=None, max_iter=400):
     start = time.time()
     mips = [6, 5]
-    src_defects = src_defects.squeeze(0)
-    tgt_defects = tgt_defects.squeeze(0)
-    pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, src_defects, tgt_defects, mips, crop=16, bot_mip=5, max_iter=max_iter*2)
+
+    if src_defects is not None:
+        src_defects = src_defects.squeeze(0)
+    else:
+        src_defects = torch.zeros_like(src)
+    if src_small_defects is not None:
+        src_small_defects = src_small_defects.squeeze(0)
+    else:
+        src_small_defects = torch.zeros_like(src)
+    if src_large_defects is not None:
+        src_large_defects = src_large_defects.squeeze(0)
+    else:
+        src_large_defects = torch.zeros_like(src)
+
+    if tgt_defects is not None:
+        tgt_defects = tgt_defects.squeeze(0)
+    else:
+        tgt_defects = torch.zeros_like(tgt)
+
+    pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips,
+            src_defects=src_defects,
+            tgt_defects=tgt_defects,
+            src_small_defects=src_small_defects,
+            src_large_defects=src_large_defects,
+            crop=16, bot_mip=5, max_iter=max_iter*2)
 
     num_reatures = model.state['up'][str(4)]['output'].shape[1]
     src_bm = model.state['up'][str(4)]['output'][0:1, num_reatures//2 - 1]
@@ -293,7 +334,12 @@ def optimize_metric(model, src, tgt, pred_res_start, src_defects, tgt_defects, m
         print ("BM time: {}".format(time.time() - s))
 
     mips = [4]
-    pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt, src_defects, tgt_defects, mips, crop=32, bot_mip=4, max_iter=max_iter)
+    pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt,
+            src_defects=src_defects,
+            tgt_defects=tgt_defects,
+            src_small_defects=src_small_defects,
+            src_large_defects=src_large_defects,
+            mips=mips, crop=32, bot_mip=4, max_iter=max_iter)
     end = time.time()
     print ("OPTIMIZATION FINISHED. Optimizing time: {0:.2f} sec".format(end - start))
     return pred_res_opt

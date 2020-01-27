@@ -12,7 +12,10 @@ class Preprocessor(nn.Module):
     from nn.Module to make it easier to parallelize with DataParallel if
     desired.
     """
+    def forward(self, X, *args, **kwargs):
+        return X
 
+class CLAHEPreprocessor(nn.Module):
     def __init__(self, clipLimit=40, tileGridSize=(32, 32), *args, **kwargs):
         super().__init__()
         self.clahe = cv2.createCLAHE(clipLimit=clipLimit,
@@ -20,6 +23,11 @@ class Preprocessor(nn.Module):
 
 
     def forward(self, X, *args, **kwargs):
+        for i in range(X.shape[-3]):
+            mask = self.gen_mask(X[..., i, :, :])
+            X[..., i, :, :] = self.normalize(X[..., i, :, :], mask=mask)
+            X[..., i, :, :] = self.contrast(X[..., i, :, :])
+            X[..., i, :, :] = self.normalize(X[..., i, :, :], mask=mask, min=1.0/255.0)
         return X
 
     def contrast(self, X, mask=...):

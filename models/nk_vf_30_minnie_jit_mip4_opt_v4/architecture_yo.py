@@ -2,7 +2,27 @@ import torch
 import torch.nn as nn
 import torchfields  # noqa: unused
 from utilities.helpers import grid_sample, downsample, downsample_field, load_model_from_dict
+import artificery
+import os
 
+from .optimizer import optimize_metric
+from .residuals import res_warp_img, combine_residuals
+
+
+def normalize(img, bad_mask=None, bad_fill=0):
+    if bad_mask is None:
+        mask = torch.zeros_like(img, device=img.device)
+    else:
+        mask = bad_mask.byte()
+
+    mean = img[mask == False].mean()
+    var = img[mask == False].var()
+    img[mask == False] -= mean
+    img[mask == False] /= torch.sqrt(var)
+    if bad_mask is not None:
+        img[mask] = bad_fill
+
+    return img
 
 class Model(nn.Module):
     """
@@ -20,12 +40,70 @@ class Model(nn.Module):
                        if encodings else None)
         self.align = AligningPyramid(self.feature_maps if encodings
                                      else [1]*len(feature_maps), **kwargs)
+        self.opt_enc = [self.load_opt_encoder()]
+
+    def load_opt_encoder(self):
+        a = artificery.Artificery()
+        path = os.path.dirname(os.path.abspath(__file__))
+        checkpoint_folder_path = os.path.join(path, 'opt_enc_chkpt')
+        spec_path = os.path.join(checkpoint_folder_path, "model_spec.json")
+        my_p = a.parse(spec_path).cuda()
+        name = 'model'
+        checkpoint_path = os.path.join(checkpoint_folder_path, "{}.state.pth.tar".format(name))
+        if os.path.isfile(checkpoint_path):
+            checkpoint_params = torch.load(checkpoint_path)
+            my_p.load_state_dict(checkpoint_params)
+        else:
+            raise Exception("Weights are missing")
+        my_p.name = name
+        return my_p
 
     def forward(self, src, tgt, src_field=None, tgt_field=None, **kwargs):
-        if self.encode:
-            src, tgt = self.encode(src, tgt, tgt_field=tgt_field, **kwargs)
-        accum_field, fine_field = self.align(src, tgt, src_field=src_field, **kwargs)
-        return accum_field.permute(0, 2, 3, 1), fine_field.permute(0, 2, 3, 1)
+        with torch.no_grad():
+            if self.encode:
+                src_enc, tgt_enc = self.encode(src, tgt, tgt_field=tgt_field, **kwargs)
+            else:
+                src_enc, tgt_enc = src, tgt
+            with torch.no_grad():
+                accum_field, fine_field = self.align(src_enc, tgt_enc, src_field=src_field, **kwargs)
+        torch.cuda.empty_cache()
+
+        accum_field = accum_field.permute(0, 2, 3, 1)
+        final_res = accum_field
+        '''if src.var() > 1e-4:
+            print ("Optimizing")
+            accum_field = accum_field * src.shape[-2] / 2
+            fine_field = fine_field.permute(0, 2, 3, 1)
+
+            src = res_warp_img(src, src_field, is_pix_res=True)
+            tgt = tgt
+
+            src_defects = (src < 0.02).float()
+            tgt_defects = (tgt == 0).float()
+
+            src_norm = normalize(src, bad_mask=src_defects)
+            tgt_norm = normalize(tgt, bad_mask=tgt_defects)
+
+            opt_enc = self.opt_enc[0]
+            model_run_params = {'level_in': 4}
+            stack = torch.cat((src_norm, tgt_norm), 1)
+            with torch.no_grad():
+                opt_enc(stack, **model_run_params)
+
+            del opt_enc.state['down']
+            torch.cuda.empty_cache()
+            pred_res = accum_field
+            pred_res = optimize_metric(opt_enc, src, tgt, accum_field, src_defects.float(),
+                                    tgt_defects.float(), max_iter=1
+                                    )
+            #sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
+            #pred_res[sm_mask[0]] = 0
+            final_res = pred_res * 2 / src.shape[-2]
+        else:
+            print ("Not optimizing black chunk")
+            final_res  = accum_field
+        '''
+        return final_res, fine_field
 
     def load(self, path):
         """
@@ -196,7 +274,7 @@ class Aligner(nn.Module):
     to be agnostic to the size of the input images.
     """
 
-    def __init__(self, channels=1, k=7):
+    def __init__(self, channels=1, k=5):
         super().__init__()
         p = (k-1)//2
         self.channels = channels
@@ -262,7 +340,7 @@ class AligningPyramid(nn.Module):
         ):
 
         assert _index.step is None
-        _index = slice(max(0, _index.start or 0), _index.stop)
+        _index = slice(max(0, _index.start or 0), _index.stop)  # Skip the lowest two aligner level (speedup)
 
         if src_field is not None:
             prev_level = 5

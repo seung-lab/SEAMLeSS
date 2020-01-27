@@ -224,7 +224,8 @@ class Aligner:
     return image
 
   def get_masked_image(self, image_cv, z, bbox, image_mip, masks,
-                             to_tensor=True, normalizer=None, mask_op='none'):
+                             to_tensor=True, normalizer=None, mask_op='none',
+                             return_mask=False, blackout=True):
     """Get image with mask applied
     """
     start = time()
@@ -234,13 +235,20 @@ class Aligner:
       mask = self.get_masks(masks, z, bbox,
                            dst_mip=image_mip, mask_op=mask_op
                            )
-      image = image.masked_fill_(mask > 0, 0)
+      if blackout:
+          image = image.masked_fill_(mask > 0, 0)
+
     if not to_tensor:
       image = image.cpu().numpy()
+      mask  = mask.cpu().numpy()
+
     end = time()
     diff = end - start
     print('get_masked_image: {:.3f}'.format(diff), flush=True)
-    return image
+    if return_mask:
+        return image, mask
+    else:
+        return image
 
   def get_composite_image(self, image_cv, z_list, bbox, image_mip,
                                 masks=[],
@@ -516,8 +524,8 @@ class Aligner:
     if len(nonzero) == 0:
       return torch.Tensor([0, 0])
 
-    low_l = percentile(nonzero, 10)
-    high_l = percentile(nonzero, 90)
+    low_l = percentile(nonzero, 25)
+    high_l = percentile(nonzero, 75)
     mid = 0.5*(low_l + high_l)
 
     print("MID:", mid[0].item(), mid[1].item())
@@ -811,7 +819,7 @@ class Aligner:
         tgt_z.append(tgt_alt_z)
       print("alternative target slices:", tgt_alt_z)
 
-    src_patch = self.get_masked_image(
+    src_patch, src_mask = self.get_masked_image(
       src_cv,
       src_z,
       padded_src_bbox_fine,
@@ -819,8 +827,11 @@ class Aligner:
       masks=src_masks,
       to_tensor=True,
       normalizer=normalizer,
-      mask_op='gte'
+      mask_op='gte',
+      return_mask=True,
+      blackout=True
     )
+
 
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
@@ -857,6 +868,7 @@ class Aligner:
         tgt_patch,
         tgt_field=tgt_field,
         src_field=coarse_field,
+        src_mask=src_mask
       )
 
       if not isinstance(accum_field, torch.Tensor):
