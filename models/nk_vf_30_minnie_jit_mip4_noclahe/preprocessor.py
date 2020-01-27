@@ -13,12 +13,13 @@ class Preprocessor(nn.Module):
     desired.
     """
 
-    def __init__(self, clipLimit=40, tileGridSize=(32, 32), *args, **kwargs):
+    def __init__(self, clipLimit=40, tileGridSize=(8, 8), *args, **kwargs):
         super().__init__()
         self.clahe = cv2.createCLAHE(clipLimit=clipLimit,
                                      tileGridSize=tileGridSize)
 
     def forward(self, X, *args, **kwargs):
+        return X
         for i in range(X.shape[-3]):
             mask = self.gen_mask(X[..., i, :, :])
             X[..., i, :, :] = self.normalize(X[..., i, :, :], mask=mask)

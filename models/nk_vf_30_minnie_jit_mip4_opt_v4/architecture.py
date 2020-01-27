@@ -69,6 +69,7 @@ class Model(nn.Module):
         torch.cuda.empty_cache()
 
         accum_field = accum_field.permute(0, 2, 3, 1)
+        final_res = accum_field
         if src.var() > 1e-4:
             print ("Optimizing")
             accum_field = accum_field * src.shape[-2] / 2
@@ -92,9 +93,9 @@ class Model(nn.Module):
             del opt_enc.state['down']
             torch.cuda.empty_cache()
             pred_res = accum_field
-            '''pred_res = optimize_metric(opt_enc, src, tgt, accum_field, src_defects.float(),
-                                    tgt_defects.float(), max_iter=1
-                                    )'''
+            pred_res = optimize_metric(opt_enc, src, tgt, accum_field, src_defects.float(),
+                                    tgt_defects.float(), max_iter=20
+                                    )
             #sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
             #pred_res[sm_mask[0]] = 0
             final_res = pred_res * 2 / src.shape[-2]
