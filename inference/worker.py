@@ -14,6 +14,10 @@ processes = {}
 
 def run_aligner(args, stop_fn=None):
   ppid = os.getppid() # Save parent process ID
+  current_task = None
+
+  def before_fn(task):
+    current_task = task
 
   def stop_fn_with_parent_health_check():
     if callable(stop_fn) and stop_fn():
@@ -37,8 +41,8 @@ def create_process(process_id, args):
   # Child process inherits signal handlers from parent, but we want the parent
   # to initiate the cleanup, thus we temporarily replace the signal handlers.
   # NOTE: SIGKILL cannot be ignored, which is fine
-  signal.signal(signal.SIGINT, signal.SIG_IGN)
-  signal.signal(signal.SIGTERM, signal.SIG_IGN)
+  signal.signal(signal.SIGINT, requeue_task)
+  signal.signal(signal.SIGTERM, requeue_task)
   p.start()
   signal.signal(signal.SIGINT, cleanup_processes)
   signal.signal(signal.SIGTERM, cleanup_processes)
@@ -75,6 +79,14 @@ def cleanup_processes(*args):
   print("Parent process received shutdown signal.")
   delete_processes(list(processes.keys()))
   sys.exit(0)
+
+
+@atexit.register
+def requeue_task(*args):
+  """
+  Check if the task failed.
+  If failed, put it back on SQS.
+  """
 
 
 if __name__ == '__main__':
