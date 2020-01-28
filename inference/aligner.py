@@ -827,9 +827,9 @@ class Aligner:
       masks=src_masks,
       to_tensor=True,
       normalizer=normalizer,
-      mask_op='gte',
+      mask_op='data',
       return_mask=True,
-      blackout=True
+      blackout=False
     )
 
 

@@ -188,6 +188,25 @@ def find_image_edge_np(img):
     return coarsen_mask(edges1)
 
 def coarsen_mask(mask, n=1, flip=True):
+    kernel = np.ones([n, n])
+
+    if isinstance(mask, np.ndarray):
+        mask = convolve(mask, kernel) > 0
+        mask = mask.astype(np.int16) > 1
+    else:
+        mask = mask.type(torch.cuda.FloatTensor)
+        kernel_var = torch.cuda.FloatTensor(kernel).unsqueeze(0).unsqueeze(0)
+        k = torch.nn.Parameter(data=kernel_var, requires_grad=False)
+        if flip:
+            mask = 1 - mask
+        mask =  (torch.nn.functional.conv2d(mask.unsqueeze(0),
+            kernel_var, padding=n//2) > 1).squeeze(0).type(torch.cuda.FloatTensor)
+        if flip:
+            mask = 1 - mask
+    return mask
+
+
+def coarsen_mask_old(mask, n=1, flip=True):
     kernel = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
     for _ in range(n):
         if isinstance(mask, np.ndarray):
@@ -298,11 +317,11 @@ def get_mse_and_smoothness_masks2(bundle, **kwargs):
              "mask_value": 0e-5},
             {'name': 'src_large_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0), (3, 2), (7, 0.3)],
+             "coarsen_ranges": [(1, 0), (3, 2), (51, 0.3)],
              "mask_value": 0e-5},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0), (3, 2), (7, 0.3)],
+             "coarsen_ranges": [(1, 0), (2, 2), (5, 0.3)],
              "mask_value": 0e-5},
             {'name': 'src',
                 'fm': 0,

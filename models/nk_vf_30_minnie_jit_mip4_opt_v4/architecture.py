@@ -87,8 +87,8 @@ class Model(nn.Module):
             src = res_warp_img(src, src_field, is_pix_res=True)
             tgt = tgt
 
-            if False and 'src_mask' in kwargs:
-                large_defect_threshold = 1
+            if 'src_mask' in kwargs:
+                large_defect_threshold = 800
                 src_large_defects = (kwargs['src_mask'] >= large_defect_threshold).float()
                 src_small_defects = ((kwargs['src_mask'] > 0) * (kwargs['src_mask'] < large_defect_threshold)).float()
                 tgt_defects = torch.zeros_like(src)
@@ -112,10 +112,12 @@ class Model(nn.Module):
             del opt_enc.state['down']
             torch.cuda.empty_cache()
             pred_res = accum_field
-            pred_res = optimize_metric(opt_enc, src, tgt, accum_field, src_small_defects=src_small_defects.float(),
+            pred_res = optimize_metric(opt_enc, src, tgt, accum_field,
+                    src_small_defects=src_small_defects.float(),
                     src_large_defects=src_large_defects.float(),
+                    src_defects=src_defects.float(),
                     tgt_defects=tgt_defects.float(),
-                    max_iter=100
+                    max_iter=300
                                     )
             #sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
             #pred_res[sm_mask[0]] = 0

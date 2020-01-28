@@ -285,7 +285,7 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
 def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defects=None, src_small_defects=None,
         src_large_defects=None, max_iter=400):
     start = time.time()
-    mips = [6, 5]
+    mips = []#6, 5]
 
     if src_defects is not None:
         src_defects = src_defects.squeeze(0)
