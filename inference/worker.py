@@ -16,7 +16,6 @@ def run_aligner(args, stop_fn=None):
   ppid = os.getppid() # Save parent process ID
   current_task = None
 
-  @atexit.register
   def requeue_task(*args, **kwargs):
     """
     Check if the task failed.
@@ -25,13 +24,17 @@ def run_aligner(args, stop_fn=None):
     with TaskQueue(queue_name=aligner.queue_name, queue_server='sqs', n_threads=0) as tq:
       try:
         tq.insert(current_task)
+        tq.delete(current_task)
+        print("requeued")
       except Exception as err:
         print(err)
 
   def before_fn(task):
+    nonlocal current_task
     current_task = task
 
   def after_fn(task):
+    nonlocal current_task
     current_task = None
 
   signal.signal(signal.SIGINT, requeue_task)
@@ -49,7 +52,7 @@ def run_aligner(args, stop_fn=None):
   aligner = get_aligner(args)
   with TaskQueue(queue_name=aligner.queue_name, queue_server='sqs', n_threads=0) as tq:
     tq.poll(execute_args=[aligner], stop_fn=stop_fn_with_parent_health_check, 
-            lease_seconds=args.lease_seconds)
+            lease_seconds=args.lease_seconds, before_fn=before_fn, after_fn=after_fn)
 
 def create_process(process_id, args):
   stop = Event()
