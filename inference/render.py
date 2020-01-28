@@ -17,6 +17,7 @@ from cloudmanager import CloudManager
 from tasks import run
 from boundingbox import BoundingBox
 import numpy as np
+from cloudvolume import CloudVolume
 
 def make_range(block_range, part_num):
     rangelen = len(block_range)
@@ -58,6 +59,9 @@ if __name__ == '__main__':
   parser.add_argument('--pad',
     help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
+  parser.add_argument('--render_pad',
+    help='the size of the largest displacement expected; should be 2^high_mip',
+    type=int, default=256)
   args = parse_args(parser)
   # only compute matches to previous sections
   a = get_aligner(args)
@@ -69,6 +73,7 @@ if __name__ == '__main__':
   field_mip = args.field_mip
   max_mip = args.max_mip
   pad = args.pad
+  render_pad = args.render_pad
 
   # Compile ranges
   z_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -97,11 +102,13 @@ if __name__ == '__main__':
                       create_info=True)
 
   # Create src CloudVolumes
-  src = cm.create(args.src_path, data_type='uint8', num_channels=1,
+  src_cv = CloudVolume(args.src_path)
+  field_cv = CloudVolume(args.field_path)
+  src = cm.create(args.src_path, data_type=str(src_cv.dtype), num_channels=1,
                      fill_missing=True, overwrite=False)
-  field = cm.create(args.field_path, data_type='int16', num_channels=2,
+  field = cm.create(args.field_path, data_type=str(field_cv.dtype), num_channels=2,
                          fill_missing=True, overwrite=False)
-  dst = cm.create(args.dst_path, data_type='uint8', num_channels=1,
+  dst = cm.create(args.dst_path, data_type=str(src_cv.dtype), num_channels=1,
                      fill_missing=True, overwrite=True)
 
   # Source Dict
@@ -126,7 +133,7 @@ if __name__ == '__main__':
 
         if src_path not in src_path_to_cv:
           src_path_to_cv[src_path] = cm.create(src_path,
-              data_type='uint8', num_channels=1, fill_missing=True,
+              data_type=str(src_cv.dtype), num_channels=1, fill_missing=True,
               overwrite=False)
         source_lookup[z] = src_path_to_cv[src_path]
 
@@ -155,7 +162,7 @@ if __name__ == '__main__':
             src_path = src.path
 
           t = a.render(cm, src_path, field.path, dst.path, z, z, z, bbox,
-                           src_mip, field_mip, affine=affine)
+                           src_mip, field_mip, affine=affine, pad=render_pad)
           yield from t
 
   ptask = []

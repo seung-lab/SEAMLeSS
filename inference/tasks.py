@@ -197,7 +197,7 @@ class ComputeFieldTask(RegisteredTask):
     start = time()
     if not aligner.dry_run:
       if stitch:
-        field = aligner.compute_field_chunk_stitch_old(model_path, src_cv, tgt_cv, src_z, tgt_z,
+        field = aligner.compute_field_chunk_stitch(model_path, src_cv, tgt_cv, src_z, tgt_z,
                                             patch_bbox, mip, pad,
                                             src_masks, tgt_masks,
                                             None, prev_field_cv, prev_field_z,

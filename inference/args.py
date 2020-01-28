@@ -26,6 +26,7 @@ def get_argparser():
   parser.add_argument('--dry_run',
      help='prevent task executes, but allow task print outs',
      action='store_true')
+  parser.add_argument('--completed_queue_name', type=str, default=None)
   return parser
 
 def parse_args(parser, arg_string=''):

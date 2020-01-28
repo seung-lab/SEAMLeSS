@@ -54,7 +54,7 @@ retry = tenacity.retry(
 
 class Aligner:
   def __init__(self, threads=1, queue_name=None, task_batch_size=1,
-               device='cuda', dry_run=False, **kwargs):
+               device='cuda', dry_run=False, completed_queue_name=None, **kwargs):
     print('Creating Aligner object')
 
     self.distributed = (queue_name != None)
@@ -64,6 +64,11 @@ class Aligner:
     self.queue_url = None
     if queue_name:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
+
+    if completed_queue_name is None:
+      self.completed_task_queue = None
+    else:
+      self.completed_task_queue = TaskQueue(queue_name=completed_queue_name, n_threads=0)
 
     # self.chunk_size = (1024, 1024)
     self.chunk_size = (4096, 4096)
@@ -459,7 +464,8 @@ class Aligner:
                                  z=z, mip=mip, path=cv.path))
     field = cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z]
     field = np.transpose(field, (2,0,1,3))
-    if as_int16:
+    # if as_int16:
+    if cv.dtype == 'int16':
       field = np.float32(field) / 4
     if relative:
       field = self.abs_to_rel_residual(field, bbox, mip)
@@ -492,7 +498,8 @@ class Aligner:
     field = np.transpose(field, (1,2,0,3))
     print('save_field for {0} at MIP{1} to {2}'.format(bbox.stringify(z),
                                                        mip, cv.path))
-    if as_int16:
+    # if as_int16:
+    if cv.dtype == 'int16':
       if(np.max(field) > 8192 or np.min(field) < -8191):
         print('Value in field is out of range of int16 max: {}, min: {}'.format(
                                                np.max(field),np.min(field)), flush=True)
@@ -535,7 +542,7 @@ class Aligner:
   # CloudVolume chunk methods #
   #############################
 
-  def compute_field_chunk_stitch_old(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
+  def compute_field_chunk_stitch(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
                           src_mask=[], tgt_mask=[],
                           tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
                           prev_field_inverse=False):
@@ -595,8 +602,6 @@ class Aligner:
                                 mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
                                 mask_val=tgt_mask_val,
                                 to_tensor=True, normalizer=normalizer)
-    # import ipdb
-    # ipdb.set_trace()
     print('src_patch.shape {}'.format(src_patch.shape))
     print('tgt_patch.shape {}'.format(tgt_patch.shape))
 
@@ -608,9 +613,10 @@ class Aligner:
 
     try:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+      zero_fieldC = torch.zeros_like(src_patch, device=self.device)
 
-      zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,2048,2048])))
-      zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
+      # zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,2048,2048])))
+      # zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
 
       # model produces field in relative coordinates
       field = model(
@@ -623,8 +629,6 @@ class Aligner:
       if not isinstance(field, torch.Tensor):
           field = field[0]
 
-      # import ipdb
-      # ipdb.set_trace()
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       field = self.rel_to_abs_residual(field, mip)
       field = field[:,pad:-pad,pad:-pad,:]
@@ -1019,7 +1023,7 @@ class Aligner:
                         bbox, image_mip, field_mip,
                         masks=[], affine=None,
                         use_cpu=False, pad=256, return_mask=False,
-                        blackout_mask_op='eq', return_mask_op='eq'):
+                        blackout_mask_op='eq', return_mask_op='eq', as_int16=True):
       """Wrapper for torch.nn.functional.gridsample for CloudVolume image objects
 
       Args:
@@ -1047,11 +1051,13 @@ class Aligner:
       # Load initial vector field
 
       if field_cv is not None:
-        assert(field_mip >= image_mip)
+        # assert(field_mip >= image_mip)
         field = self.get_field(field_cv, field_z, padded_bbox, field_mip,
                                  relative=False, to_tensor=True)
         if field_mip > image_mip:
           field = upsample_field(field, field_mip, image_mip)
+        elif field_mip < image_mip:
+          field = downsample_field(field, field_mip, image_mip)
       else:
         #this is a bit slow
         image = self.get_image(image_cv, image_z, padded_bbox, image_mip,
@@ -2396,10 +2402,11 @@ class Aligner:
       tgt = self.get_data(cv, tgt_z, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True).float()
 
-      # std1 = image1[image1!=0].std()
-      # std2 = image2[image2!=0].std()
-      # scaling = 8 * pow(std1*std2, 1/2)
-      scaling = 240 # Fixed threshold
+      std1 = src[src!=0].std()
+      std2 = tgt[tgt!=0].std()
+      scaling = 8 * pow(std1*std2, 1/2)
+      # scaling = 240 # Fixed threshold
+      # scaling = 2000
 
       new_image1 = self.rechunck_image(chunk_size, src)
       new_image2 = self.rechunck_image(chunk_size, tgt)
@@ -2407,7 +2414,7 @@ class Aligner:
       f2, p2 = get_fft_power2(new_image2)
       tmp_image = get_hp_fcorr(f1, p1, f2, p2, scaling=scaling, fill_value=fill_value)
       tmp_image = tmp_image.permute(2,3,0,1)
-      tmp_image = tmp_image.numpy()
+      tmp_image = tmp_image.cpu().numpy()
       tmp = deepcopy(tmp_image)
       tmp[tmp==2]=1
       std = 1.
