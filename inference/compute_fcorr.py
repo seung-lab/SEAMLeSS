@@ -11,6 +11,7 @@ import json
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
 from cloudmanager import CloudManager
+from cloudvolume import CloudVolume
 from time import time
 from tasks import run 
 
@@ -80,7 +81,8 @@ if __name__ == '__main__':
                     size_chunk=chunk_size, batch_mip=dst_mip)
 
   # Create src CloudVolumes
-  src = cm.create(args.src_path, data_type='uint8', num_channels=1,
+  src_cv = CloudVolume(args.src_path)
+  src = cm.create(args.src_path, data_type=str(src_cv.dtype), num_channels=1,
                      fill_missing=True, overwrite=False)
 
   fcorr_dir = 'fcorr/{}_{}/{}'.format(src_mip, dst_mip, z_offset)
@@ -101,7 +103,7 @@ if __name__ == '__main__':
             #print("Fcorr for z={} and z={}".format(z, z+1))
             t = a.compute_fcorr(cm, src.path, dst_pre.path, dst_post.path, bbox, 
                                 src_mip, dst_mip, z, z+args.z_offset, z, 
-                                fcorr_chunk_size, fill_value=fill_value, prefix=prefix)
+                                fcorr_chunk_size, fill_value=fill_value)
             yield from t
 
   range_list = make_range(full_range, a.threads)

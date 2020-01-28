@@ -275,7 +275,7 @@ class RenderTask(RegisteredTask):
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=True,
                blackout_op='none'):
-    if isinstance(masks[0], Mask):
+    if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                      field_mip, masks, affine, use_cpu, pad, seethrough,

@@ -54,7 +54,7 @@ retry = tenacity.retry(
 
 class Aligner:
   def __init__(self, threads=1, queue_name=None, task_batch_size=1,
-               device='cuda', dry_run=False, **kwargs):
+               device='cuda', dry_run=False, completed_queue_name=None, **kwargs):
     print('Creating Aligner object')
 
     self.distributed = (queue_name != None)
@@ -64,6 +64,11 @@ class Aligner:
     self.queue_url = None
     if queue_name:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
+
+    if completed_queue_name is None:
+      self.completed_task_queue = None
+    else:
+      self.completed_task_queue = TaskQueue(queue_name=completed_queue_name, n_threads=0)
 
     # self.chunk_size = (1024, 1024)
     self.chunk_size = (4096, 4096)
@@ -486,7 +491,7 @@ class Aligner:
     print('save_field for {0} at MIP{1} to {2}'.format(bbox.stringify(z),
                                                        mip, cv.path))
     # if as_int16:
-    if field.dtype == 'int16':
+    if cv.dtype == 'int16':
       if(np.max(field) > 8192 or np.min(field) < -8191):
         print('Value in field is out of range of int16 max: {}, min: {}'.format(
                                                np.max(field),np.min(field)), flush=True)
@@ -1034,11 +1039,13 @@ class Aligner:
       # Load initial vector field
 
       if field_cv is not None:
-        assert(field_mip >= image_mip)
+        # assert(field_mip >= image_mip)
         field = self.get_field(field_cv, field_z, padded_bbox, field_mip,
                                  relative=False, to_tensor=True)
         if field_mip > image_mip:
           field = upsample_field(field, field_mip, image_mip)
+        elif field_mip < image_mip:
+          field = downsample_field(field, field_mip, image_mip)
       else:
         #this is a bit slow
         image = self.get_image(image_cv, image_z, padded_bbox, image_mip,
@@ -2383,10 +2390,11 @@ class Aligner:
       tgt = self.get_data(cv, tgt_z, bbox, src_mip=mip, dst_mip=mip,
                              to_float=False, to_tensor=True).float()
 
-      # std1 = image1[image1!=0].std()
-      # std2 = image2[image2!=0].std()
-      # scaling = 8 * pow(std1*std2, 1/2)
-      scaling = 240 # Fixed threshold
+      std1 = src[src!=0].std()
+      std2 = tgt[tgt!=0].std()
+      scaling = 8 * pow(std1*std2, 1/2)
+      # scaling = 240 # Fixed threshold
+      # scaling = 2000
 
       new_image1 = self.rechunck_image(chunk_size, src)
       new_image2 = self.rechunck_image(chunk_size, tgt)
@@ -2394,7 +2402,7 @@ class Aligner:
       f2, p2 = get_fft_power2(new_image2)
       tmp_image = get_hp_fcorr(f1, p1, f2, p2, scaling=scaling, fill_value=fill_value)
       tmp_image = tmp_image.permute(2,3,0,1)
-      tmp_image = tmp_image.numpy()
+      tmp_image = tmp_image.cpu().numpy()
       tmp = deepcopy(tmp_image)
       tmp[tmp==2]=1
       std = 1.

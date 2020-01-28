@@ -77,7 +77,7 @@ class MiplessCloudVolume():
 
   @property
   def dtype(self):
-    return self.cvs[0].dtype
+    return self[0].dtype
 
   def __getitem__(self, mip):
     if mip not in self.cvs:
