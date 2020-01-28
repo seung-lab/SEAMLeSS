@@ -188,25 +188,6 @@ def find_image_edge_np(img):
     return coarsen_mask(edges1)
 
 def coarsen_mask(mask, n=1, flip=True):
-    kernel = np.ones([n, n])
-
-    if isinstance(mask, np.ndarray):
-        mask = convolve(mask, kernel) > 0
-        mask = mask.astype(np.int16) > 1
-    else:
-        mask = mask.type(torch.cuda.FloatTensor)
-        kernel_var = torch.cuda.FloatTensor(kernel).unsqueeze(0).unsqueeze(0)
-        k = torch.nn.Parameter(data=kernel_var, requires_grad=False)
-        if flip:
-            mask = 1 - mask
-        mask =  (torch.nn.functional.conv2d(mask.unsqueeze(0),
-            kernel_var, padding=n//2) > 1).squeeze(0).type(torch.cuda.FloatTensor)
-        if flip:
-            mask = 1 - mask
-    return mask
-
-
-def coarsen_mask_old(mask, n=1, flip=True):
     kernel = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
     for _ in range(n):
         if isinstance(mask, np.ndarray):
@@ -227,15 +208,15 @@ def coarsen_mask_old(mask, n=1, flip=True):
 def get_warped_srctgt_mask(bundle, mse_keys_to_apply, sm_keys_to_apply):
     result = torch.ones_like(bundle['src'], device=bundle['src'].device)
     pred_res = bundle['pred_res']
-    src_mask_mse = get_warped_mask_set(bundle, pred_res,
+    src_mask_mse = get_warped_mask_set_old(bundle, pred_res,
                                    mse_keys_to_apply['src'])
-    tgt_mask_mse = get_warped_mask_set(bundle, torch.zeros_like(pred_res),
+    tgt_mask_mse = get_warped_mask_set_old(bundle, torch.zeros_like(pred_res),
                                    mse_keys_to_apply['tgt'])
     mask_mse = src_mask_mse * tgt_mask_mse
 
-    src_mask_sm = get_warped_mask_set(bundle, pred_res,
+    src_mask_sm = get_warped_mask_set_old(bundle, pred_res,
                                    sm_keys_to_apply['src'])
-    tgt_mask_sm = get_warped_mask_set(bundle, torch.zeros_like(pred_res),
+    tgt_mask_sm = get_warped_mask_set_old(bundle, torch.zeros_like(pred_res),
                                    sm_keys_to_apply['tgt'])
     mask_sm = src_mask_sm * tgt_mask_sm
 
@@ -254,7 +235,7 @@ def binarize(img, bin_setting):
         result = ((img < bin_setting['range'][0]) + (img > bin_setting['range'][0])) > 0
     return result.float()
 
-def get_warped_mask_set(bundle, res, keys_to_apply):
+def get_warped_mask_set_old(bundle, res, keys_to_apply):
     result = torch.ones((1, bundle['src'].shape[-2], bundle['src'].shape[-1]),
                         device=bundle['src'].device)
     res = res.squeeze()
@@ -281,6 +262,37 @@ def get_warped_mask_set(bundle, res, keys_to_apply):
             for length, weight in settings['coarsen_ranges']:
                 around_the_mask = coarsen_mask(around_the_mask, length)
                 result[(around_the_mask == 0) * (result == 1)] = weight
+    return result
+
+
+def get_warped_mask_set(bundle, res, keys_to_apply):
+    prewarp_result = torch.ones((1, bundle['src'].shape[-2], bundle['src'].shape[-1]),
+                        device=bundle['src'].device)
+    res = res.squeeze()
+
+    for settings in keys_to_apply:
+        name = settings['name']
+        mask = bundle[name].squeeze()
+        if 'fm' in settings:
+            mask = mask[settings['fm']]
+        mask = mask.unsqueeze(0)
+        if 'binarization' in settings:
+            mask = binarize(mask, settings['binarization'])
+        if 'mask_value' in settings:
+            prewarp_result[mask != 1.0] = settings['mask_value']
+        else:
+            prewarp_result[mask != 1.0] = 0.0
+
+        around_the_mask = mask
+        if 'coarsen_ranges' in settings:
+            for length, weight in settings['coarsen_ranges']:
+                around_the_mask = coarsen_mask(around_the_mask, length)
+                prewarp_result[(around_the_mask != 1.0) * (prewarp_result == 1)] = weight
+
+    if (res != 0).sum() > 0:
+        result = res_warp_img(prewarp_result.float(), res, is_pix_res=True)
+    else:
+        result = prewarp_result
     return result
 
 def get_mse_and_smoothness_masks2(bundle, **kwargs):
@@ -317,11 +329,11 @@ def get_mse_and_smoothness_masks2(bundle, **kwargs):
              "mask_value": 0e-5},
             {'name': 'src_large_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0), (3, 2), (51, 0.3)],
+             "coarsen_ranges": [(1, 0), (3, 2), (15, 0.1)],
              "mask_value": 0e-5},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0), (2, 2), (5, 0.3)],
+             "coarsen_ranges": [(1, 0), (2, 2), (4, 0.3)],
              "mask_value": 0e-5},
             {'name': 'src',
                 'fm': 0,
@@ -333,7 +345,7 @@ def get_mse_and_smoothness_masks2(bundle, **kwargs):
     }
     #mse_keys_to_apply['src'] = []
     #mse_keys_to_apply['tgt'] = []
-    #sm_keys_to_apply['tgt'] = []
+    #sm_keys_to_apply['src'] = []
     #sm_keys_to_apply['tgt'] = []
     return get_warped_srctgt_mask(bundle, mse_keys_to_apply, sm_keys_to_apply)
 
