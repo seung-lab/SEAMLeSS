@@ -227,7 +227,7 @@ def binarize(img, bin_setting):
         result = (img == bin_setting['value'])
     elif bin_setting['strat']== 'lt':
         result = (img < bin_setting['value'])
-    elif bin_setting['strat']== 'gt':
+    elif bin_setting['strat'] == 'gt':
         result = (img > bin_setting['value'])
     elif bin_setting['strat']== 'between':
         result = ((img > bin_setting['range'][0]) * (img < bin_setting['range'][0]))
@@ -295,46 +295,98 @@ def get_warped_mask_set(bundle, res, keys_to_apply):
         result = prewarp_result
     return result
 
+def get_mse_and_smoothness_masks3(bundle, **kwargs):
+    mse_keys_to_apply = {
+        'src': [
+            {'name': 'src_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0)]}
+        ],
+        'tgt':[
+            {"name": "tgt_defects",
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0)]}
+        ]
+    }
+    if True:
+        mse_keys_to_apply['src'] += [
+            {'name': 'src_large_defects',
+                 'binarization': {'strat': 'value', 'value': 0},
+                 "coarsen_ranges": [(1, 0)]},
+                {'name': 'src_small_defects',
+                 'binarization': {'strat': 'value', 'value': 0},
+                 "coarsen_ranges": [(1, 0)]},
+                {'name': 'src',
+                 'fm': 0,
+                 'binarization': {'strat': 'gt', 'value': -5.0}}
+        ]
+        mse_keys_to_apply['tgt'] += [
+            {'name': 'tgt',
+                 'fm': 0,
+                 'binarization': {'strat': 'gt', 'value': -5.0}
+                 }
+        ]
+
+    sm_keys_to_apply = {
+        'src': [
+            {'name': 'src_large_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0), (3, 2), (50, 0.3)],
+             "mask_value": 0e-5},
+            {'name': 'src_small_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0), (2, 2), (4, 0.3)],
+             "mask_value": 0e-5},
+            {'name': 'src',
+             'fm': 0,
+             'binarization': {'strat': 'gt', 'value': -5.0},
+             'mask_value': 0
+            }
+            ],
+        'tgt':[
+        ]
+    }
+    if True:
+        sm_keys_to_apply['src'] += [
+            {'name': 'src_defects',
+                 'binarization': {'strat': 'value', 'value': 0},
+                 "coarsen_ranges": [(1, 0), (3, 2), (7, 0.3)],
+                 "mask_value": 0e-5}
+        ]
+    #mse_keys_to_apply['src'] = []
+    #mse_keys_to_apply['tgt'] = []
+    #sm_keys_to_apply['src'] = []
+    #sm_keys_to_apply['tgt'] = []
+    return get_warped_srctgt_mask(bundle, mse_keys_to_apply, sm_keys_to_apply)
+
+
 def get_mse_and_smoothness_masks2(bundle, **kwargs):
     mse_keys_to_apply = {
         'src': [
             {'name': 'src_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0)]},
-            {'name': 'src_large_defects',
-             'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0)]},
-            {'name': 'src_small_defects',
-             'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0)]},
-            {'name': 'src',
-             'fm': 0,
-             'binarization': {'strat': 'gt', 'value': -5.0}}
+             "coarsen_ranges": [(1, 0)]}
             ],
         'tgt':[
-            {"name": "tgt_defects",
+            {'name': 'tgt_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0)]},
-            {'name': 'tgt',
-             'fm': 0,
-             'binarization': {'strat': 'gt', 'value': -5.0}}
-
+             "coarsen_ranges": [(1, 0)]}
         ]
     }
     sm_keys_to_apply = {
         'src': [
             {'name': 'src_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0), (3, 2), (7, 0.3)],
-             "mask_value": 0e-5},
+             "coarsen_ranges": [(1, 0)],
+             "mask_value": 0e-6},
             {'name': 'src_large_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0), (3, 2), (15, 0.1)],
-             "mask_value": 0e-5},
+             "coarsen_ranges": [(3, 2), (54, 0.3)],
+             "mask_value": 1e-6},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0), (2, 2), (4, 0.3)],
-             "mask_value": 0e-5},
+             "coarsen_ranges": [(8, 0.6)],
+             "mask_value": 0e-6},
             {'name': 'src',
                 'fm': 0,
              'binarization': {'strat': 'gt', 'value': -5.0},

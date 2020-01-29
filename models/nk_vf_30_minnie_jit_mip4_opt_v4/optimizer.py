@@ -19,7 +19,7 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
                       tgt_defects,
                       src_large_defects,
                       src_small_defects,
-                      opt_params={}, crop=2):
+                      opt_params={}, crop=32):
     wd = 1e-3
     pred_res = initial_res.clone()
     pred_res.requires_grad = False
@@ -146,9 +146,9 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
 
 def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_defects, src_defects,
         src_large_defects, src_small_defects,
-        crop=2, bot_mip=4, max_iter=800):
-    sm_val = 450e0
-    sm_val2 = 450e0
+        crop=32, bot_mip=4, max_iter=800):
+    sm_val = 250e0
+    sm_val2 = 250e0
     sm = {
         4: sm_val,
         5: sm_val,
@@ -159,10 +159,10 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
     }
 
     lr = {
-        4: 10e-2,
-        5: 10e-2,
-        6: 10e-2,
-        7: 3e-2,
+        4: 5e-2,
+        5: 5e-2,
+        6: 5e-2,
+        7: 1e-2,
         8: 2e-3,
         9: 1e-3
     }
@@ -285,7 +285,7 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
 def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defects=None, src_small_defects=None,
         src_large_defects=None, max_iter=400):
     start = time.time()
-    mips = [6, 5]
+    mips = [6, 5]#[6, 5]
 
     if src_defects is not None:
         src_defects = src_defects.squeeze(0)
@@ -310,7 +310,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             tgt_defects=tgt_defects,
             src_small_defects=src_small_defects,
             src_large_defects=src_large_defects,
-            crop=16, bot_mip=5, max_iter=max_iter*2)
+            crop=32, bot_mip=5, max_iter=max_iter*2)
 
     num_reatures = model.state['up'][str(4)]['output'].shape[1]
     src_bm = model.state['up'][str(4)]['output'][0:1, num_reatures//2 - 1]

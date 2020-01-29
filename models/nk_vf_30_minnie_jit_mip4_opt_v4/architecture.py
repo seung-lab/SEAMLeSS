@@ -12,6 +12,7 @@ from .residuals import res_warp_img, combine_residuals
 
 
 def normalize(img, bad_mask=None, bad_fill=0):
+    img_out = img.clone()
     if bad_mask is None:
         mask = torch.zeros_like(img, device=img.device)
     else:
@@ -19,12 +20,12 @@ def normalize(img, bad_mask=None, bad_fill=0):
 
     mean = img[mask == False].mean()
     var = img[mask == False].var()
-    img[mask == False] -= mean
-    img[mask == False] /= torch.sqrt(var)
+    img_out[mask == False] -= mean
+    img_out[mask == False] /= torch.sqrt(var)
     if bad_mask is not None:
-        img[mask] = bad_fill
+        img_out[mask] = bad_fill
 
-    return img
+    return img_out
 
 
 class Model(nn.Module):
@@ -89,19 +90,26 @@ class Model(nn.Module):
 
             if 'src_mask' in kwargs:
                 large_defect_threshold = 800
+                small_defect_threshold = 3
                 src_large_defects = (kwargs['src_mask'] >= large_defect_threshold).float()
-                src_small_defects = ((kwargs['src_mask'] > 0) * (kwargs['src_mask'] < large_defect_threshold)).float()
-                tgt_defects = torch.zeros_like(src)
-                src_defects = torch.zeros_like(src)
+                src_small_defects = (kwargs['src_mask'] >= small_defect_threshold).float()
+
+                tgt_defects = (tgt < 0.004).float()
+                src_defects = (src < 0.004).float() + src_large_defects + src_small_defects
+                #tgt_defects = torch.zeros_like(tgt)
+                #src_defects = torch.zeros_like(tgt)
+
             else:
                 src_large_defects = torch.zeros_like(src)
                 src_small_defects = torch.zeros_like(src)
 
-                tgt_defects = (tgt < 0.02).float()
-                src_defects = (src < 0.02).float()
+                tgt_defects = (tgt < 0.004).float()
+                src_defects = (src < 0.004).float()
 
-            src_norm = normalize(src, bad_mask=src_defects)
-            tgt_norm = normalize(tgt, bad_mask=tgt_defects)
+            #src_norm = normalize(src, bad_mask=src_defects)
+            #tgt_norm = normalize(tgt, bad_mask=tgt_defects)
+            src_norm = normalize(src, bad_mask=src_defects>0)
+            tgt_norm = normalize(tgt, bad_mask=tgt_defects>0)
 
             opt_enc = self.opt_enc[0]
             model_run_params = {'level_in': 4}

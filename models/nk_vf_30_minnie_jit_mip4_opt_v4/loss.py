@@ -253,6 +253,7 @@ def similarity_score(bundle,
             weights = weights[..., crop:-crop, crop:-crop]
         total_mse = torch.sum(mse * weights)
         mask_sum  = torch.sum(weights)
+        return total_mse / torch.ones_like(mse).sum()
         if mask_sum == 0:
             return total_mse * 0
         else:
