@@ -1425,7 +1425,7 @@ class Aligner:
                     tgt_masks=[],
                     return_iterator=False, prev_field_cv=None, prev_field_z=None,
                     prev_field_inverse=False, coarse_field_cv=None,
-                    coarse_field_mip=0,tgt_field_cv=None,stitch=False):
+                    coarse_field_mip=0,tgt_field_cv=None,stitch=False,report=False):
     """Compute field to warp src section to tgt section
 
     Args:
@@ -1472,7 +1472,7 @@ class Aligner:
                                           src_mask,
                                           tgt_mask,
                                           prev_field_cv, prev_field_z, prev_field_inverse,
-                                          coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch)
+                                          coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report)
     if return_iterator:
         return ComputeFieldTaskIterator(chunks,0, len(chunks))
     else:
@@ -1483,7 +1483,7 @@ class Aligner:
                                               src_masks,
                                               tgt_masks,
                                               prev_field_cv, prev_field_z, prev_field_inverse,
-                                              coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch))
+                                              coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report))
         return batch
 
   def seethrough_stitch_render(self, cm, src_cv, dst_cv, z_start, z_end,
@@ -1546,7 +1546,7 @@ class Aligner:
                    affine=None, use_cpu=False,
              return_iterator= False, pad=256, seethrough=False,
              seethrough_misalign=False,
-             blackout_op='none'):
+             blackout_op='none', report=False):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1592,7 +1592,8 @@ class Aligner:
                        affine, use_cpu, pad,
                        seethrough=seethrough,
                        seethrough_misalign=seethrough_misalign,
-                       blackout_op=blackout_op)
+                       blackout_op=blackout_op,
+                       report=report)
     if return_iterator:
         return RenderTaskIterator(chunks,0, len(chunks))
     else:
@@ -1604,7 +1605,8 @@ class Aligner:
                            affine, use_cpu, pad,
                            seethrough=seethrough,
                            seethrough_misalign=seethrough_misalign,
-                           blackout_op=blackout_op))
+                           blackout_op=blackout_op,
+                           report=report))
         return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,
