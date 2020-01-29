@@ -208,15 +208,15 @@ def coarsen_mask(mask, n=1, flip=True):
 def get_warped_srctgt_mask(bundle, mse_keys_to_apply, sm_keys_to_apply):
     result = torch.ones_like(bundle['src'], device=bundle['src'].device)
     pred_res = bundle['pred_res']
-    src_mask_mse = get_warped_mask_set_old(bundle, pred_res,
+    src_mask_mse = get_warped_mask_set(bundle, pred_res,
                                    mse_keys_to_apply['src'])
-    tgt_mask_mse = get_warped_mask_set_old(bundle, torch.zeros_like(pred_res),
+    tgt_mask_mse = get_warped_mask_set(bundle, torch.zeros_like(pred_res),
                                    mse_keys_to_apply['tgt'])
     mask_mse = src_mask_mse * tgt_mask_mse
 
-    src_mask_sm = get_warped_mask_set_old(bundle, pred_res,
+    src_mask_sm = get_warped_mask_set(bundle, pred_res,
                                    sm_keys_to_apply['src'])
-    tgt_mask_sm = get_warped_mask_set_old(bundle, torch.zeros_like(pred_res),
+    tgt_mask_sm = get_warped_mask_set(bundle, torch.zeros_like(pred_res),
                                    sm_keys_to_apply['tgt'])
     mask_sm = src_mask_sm * tgt_mask_sm
 
@@ -331,7 +331,7 @@ def get_mse_and_smoothness_masks3(bundle, **kwargs):
         'src': [
             {'name': 'src_large_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0), (3, 2), (50, 0.3)],
+             "coarsen_ranges": [(1, 0), (3, 2), (30, 0.3)],
              "mask_value": 0e-5},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
