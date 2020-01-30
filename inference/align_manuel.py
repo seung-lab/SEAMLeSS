@@ -276,8 +276,8 @@ if __name__ == "__main__":
     model_lookup = {}
     tgt_radius_lookup = {}
     vvote_lookup = {}
-    # skip_list = []
-    skip_list = [17491, 17891]
+    skip_list = []
+    # skip_list = [17491, 17891]
     with open(args.param_lookup) as f:
         reader = csv.reader(f, delimiter=",")
         for k, r in enumerate(reader):
@@ -1013,6 +1013,9 @@ if __name__ == "__main__":
     # z_to_chunks_processed = dict(zip(block_z_list, [0] * len(block_z_list)))
     z_to_compute_released = dict(zip(block_z_list, [False] * len(block_z_list)))
     z_to_render_released = dict(zip(block_z_list, [False] * len(block_z_list)))
+
+    # import ipdb
+    # ipdb.set_trace()
 
     def executeNew(task_iterator, z_range):
         if len(z_range) == 1:
