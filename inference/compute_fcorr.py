@@ -50,6 +50,8 @@ if __name__ == '__main__':
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
+  parser.add_argument('--preprocessor_path', type=str, default='',
+    help='Optional preprocessor to apply to image cutouts')
   # parser.add_argument('--save_intermediary', action='store_true')
   args = parse_args(parser)
   args.max_mip = args.dst_mip
@@ -67,11 +69,13 @@ if __name__ == '__main__':
   pad = args.pad
   z_offset = args.z_offset
   fill_value = args.fill_value
+  preprocessor_path = args.preprocessor_path
   print('src_mip {}'.format(src_mip))
   print('dst_mip {}'.format(dst_mip))
   print('fcorr_chunk_size {}'.format(fcorr_chunk_size))
   # print('chunk_size {}'.format(chunk_size))
   print('z_offset {}'.format(z_offset))
+  print('preprocessor {}'.format(preprocessor_path))
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -101,7 +105,8 @@ if __name__ == '__main__':
             #print("Fcorr for z={} and z={}".format(z, z+1))
             t = a.compute_fcorr(cm, src.path, dst_pre.path, dst_post.path, bbox, 
                                 src_mip, dst_mip, z, z+args.z_offset, z, 
-                                fcorr_chunk_size, fill_value=fill_value, prefix=prefix)
+                                fcorr_chunk_size, fill_value=fill_value,
+                                preprocessor_path=preprocessor_path)
             yield from t
 
   range_list = make_range(full_range, a.threads)

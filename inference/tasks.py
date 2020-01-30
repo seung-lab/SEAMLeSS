@@ -697,9 +697,9 @@ class MaskOutTask(RegisteredTask):
 
 class ComputeFcorrTask(RegisteredTask):
   def __init__(self, src_cv, dst_pre_cv, dst_post_cv, patch_bbox, src_mip, dst_mip,
-               src_z, tgt_z, dst_z, chunk_size, fill_value):
+               src_z, tgt_z, dst_z, chunk_size, fill_value, preprocessor_path):
     super(). __init__(src_cv, dst_pre_cv, dst_post_cv, patch_bbox, src_mip, dst_mip,
-                      src_z, tgt_z, dst_z, chunk_size, fill_value)
+                      src_z, tgt_z, dst_z, chunk_size, fill_value, preprocessor_path)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -713,6 +713,7 @@ class ComputeFcorrTask(RegisteredTask):
     dst_mip = self.dst_mip
     chunk_size = self.chunk_size
     fill_value = self.fill_value
+    preprocessor_path = self.preprocessor_path
     print("\nFCorr"
           "src_cv {}\n"
           "dst_pre_cv {}\n"
@@ -721,12 +722,13 @@ class ComputeFcorrTask(RegisteredTask):
           "dst_z={}\n"
           "src_mip={}, dst_mip={}\n"
           "chunk_size={}\n"
-          "fill_value={}"
+          "fill_value={}\n"
+          "preprocessor={}"
           "\n".format(src_cv, dst_pre_cv, dst_post_cv, src_z, tgt_z, dst_z, src_mip, 
-                      dst_mip, chunk_size, fill_value), flush=True)
+                      dst_mip, chunk_size, fill_value, preprocessor_path), flush=True)
     start = time()
     post_image, pre_image = aligner.get_fcorr(src_cv, src_z, tgt_z, patch_bbox, src_mip,
-                                              chunk_size, fill_value)
+                                              chunk_size, fill_value, preprocessor_path)
     aligner.save_image(pre_image, dst_pre_cv, dst_z, patch_bbox, dst_mip, to_uint8=False)
     aligner.save_image(post_image, dst_post_cv, dst_z, patch_bbox, dst_mip, 
                        to_uint8=False)

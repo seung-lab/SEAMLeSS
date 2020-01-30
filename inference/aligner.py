@@ -272,7 +272,7 @@ class Aligner:
       diff = end - start
       print('normalizer: {:.3f}'.format(diff), flush=True) 
     # convert to tensor if requested, or if up/downsampling required
-    if to_tensor | (src_mip != dst_mip):
+    if to_tensor or (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
       if self.device.type == 'cuda':
@@ -1908,7 +1908,7 @@ class Aligner:
       return lap([field], device=self.device).unsqueeze(0)
 
   def compute_fcorr(self, cm, src_cv, dst_pre_cv, dst_post_cv, bbox, src_mip, 
-                    dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0):
+                    dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0, preprocessor_path=''):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[dst_mip], mip=dst_mip,
                                       max_mip=cm.max_mip)
@@ -1916,16 +1916,26 @@ class Aligner:
       for chunk in chunks:
         batch.append(tasks.ComputeFcorrTask(src_cv, dst_pre_cv, dst_post_cv, chunk, 
                                             src_mip, dst_mip, src_z, tgt_z, dst_z, 
-                                            fcorr_chunk_size, fill_value))
+                                            fcorr_chunk_size, fill_value, preprocessor_path))
       return batch
 
-  def get_fcorr(self, cv, src_z, tgt_z, bbox, mip, chunk_size=16, fill_value=0):
+  def get_fcorr(self, cv, src_z, tgt_z, bbox, mip, chunk_size=16, fill_value=0, preprocessor_path=''):
       """Perform fcorr for two images
       """
-      src = self.get_data(cv, src_z, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True).float()
-      tgt = self.get_data(cv, tgt_z, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True).float()
+      pad = 8
+
+      if not preprocessor_path:
+        normalizer = None
+      else:
+        archive = self.get_model_archive(preprocessor_path)
+        normalizer = archive.preprocessor
+
+      padded_bbox = deepcopy(bbox)
+      padded_bbox.uncrop(pad*chunk_size, mip=mip)
+      src = self.get_data(cv, src_z, padded_bbox, src_mip=mip, dst_mip=mip,
+                             to_float=True, to_tensor=True, normalizer=normalizer) * 255.0
+      tgt = self.get_data(cv, tgt_z, padded_bbox, src_mip=mip, dst_mip=mip,
+                             to_float=True, to_tensor=True, normalizer=normalizer) * 255.0
 
       # std1 = image1[image1!=0].std()
       # std2 = image2[image2!=0].std()
@@ -1938,16 +1948,20 @@ class Aligner:
       f2, p2 = get_fft_power2(new_image2)
       tmp_image = get_hp_fcorr(f1, p1, f2, p2, scaling=scaling, fill_value=fill_value)
       tmp_image = tmp_image.permute(2,3,0,1)
-      tmp_image = tmp_image.numpy()
+      tmp_image = tmp_image.cpu().numpy()
       tmp = deepcopy(tmp_image)
       tmp[tmp==2]=1
-      std = 1.
+      std = 2.0
       blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp, sigma=(0, 0, std, std))
       s = scipy.ndimage.generate_binary_structure(2, 1)[None, None, :, :]
       closed = scipy.ndimage.morphology.grey_closing(blurred, footprint=s)
       closed = 2*closed
       closed[closed>1] = 1
       closed = 1-closed
+
+      closed = closed[:, :, pad:-pad, pad:-pad]
+      tmp_image = tmp_image[:, :, pad:-pad, pad:-pad]
+
       #print("++++closed shape",closed.shape)
       return closed, tmp_image
 

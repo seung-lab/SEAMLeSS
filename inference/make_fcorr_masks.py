@@ -107,7 +107,7 @@ if __name__ == '__main__':
             z_list = [z+zo for zo in z_offsets]
             t = a.make_fcorr_masks(cm, cv_list, dst_pre.path, dst_post.path, z_list,
                                    z+dst_offset, bbox, mip, operators, 
-                                   threshold, dilate_radius, prefix=prefix)
+                                   threshold, dilate_radius)
             yield from t
 
   range_list = make_range(full_range, a.threads)
