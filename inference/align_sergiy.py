@@ -249,6 +249,7 @@ if __name__ == "__main__":
     # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius
     block_dsts = {}
     block_types = ["even", "odd"]
+    # block_types = ["odd", "even"]
     for i, block_type in enumerate(block_types):
         block_dst = cm.create(
             join(render_dst, "image_blocks", block_type),
@@ -275,8 +276,8 @@ if __name__ == "__main__":
     model_lookup = {}
     tgt_radius_lookup = {}
     vvote_lookup = {}
-    # skip_list = []
-    skip_list = [17491, 17891]
+    skip_list = []
+    # skip_list = [17491, 17891]
     with open(args.param_lookup) as f:
         reader = csv.reader(f, delimiter=",")
         for k, r in enumerate(reader):

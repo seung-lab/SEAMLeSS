@@ -223,7 +223,19 @@ class ComputeFieldTask(RegisteredTask):
           
           # import ipdb
           # ipdb.set_trace()
-          tstz = sqs_obj.send_message(QueueUrl = api_obj._qurl, MessageBody=json.dumps(message))
+          msg_ack = sqs_obj.send_message_batch([QueueUrl = api_obj._qurl, MessageBody=json.dumps(message)])
+          if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
+            success = False
+            for i in range(20):
+              sleep(1 + random.randrange(4))
+              msg_ack = sqs_obj.send_message_batch([QueueUrl = api_obj._qurl, MessageBody=json.dumps(message)])
+              if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
+                pass
+              else:
+                success = True
+                break
+            if success == False:
+              raise ValueError('Failed to send task ack')
           # tstz = sqs_obj.send_message(QueueUrl='helloworld.com', MessageBody=json.dumps(message))
           print(tstz)
           # import ipdb
@@ -425,7 +437,19 @@ class RenderTask(RegisteredTask):
           #   "task": "RT"
           # }
           print('Reporting to completed queue...')
-          testz = sqs_obj.send_message(QueueUrl = api_obj._qurl, MessageBody=json.dumps(message))
+          msg_ack = sqs_obj.send_message_batch([QueueUrl = api_obj._qurl, MessageBody=json.dumps(message)])
+          if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
+            success = False
+            for i in range(10):
+              sleep(1 + random.randrange(3))
+              msg_ack = sqs_obj.send_message_batch([QueueUrl = api_obj._qurl, MessageBody=json.dumps(message)])
+              if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
+                pass
+              else:
+                success = True
+                break
+            if success == False:
+              raise ValueError('Failed to send task ack')
           # sqs_obj.send_message(QueueUrl = api_obj._qurl, MessageAttributes={'bbox': { 'DataType': 'String', 'StringValue': self.patch_bbox }, 'task': {'DataType': 'String', 'StringValue': 'RT'}})
       end = time()
       diff = end - start
