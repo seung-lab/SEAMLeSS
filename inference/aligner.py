@@ -543,7 +543,7 @@ class Aligner:
   #############################
 
   def compute_field_chunk_stitch(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
-                          src_mask=[], tgt_mask=[],
+                          src_masks=[], tgt_masks=[],
                           tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
                           prev_field_inverse=False):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
@@ -595,12 +595,10 @@ class Aligner:
       print('alternative target slices:', tgt_alt_z)
 
     src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
-                                mask_cv=src_mask_cv, mask_mip=src_mask_mip,
-                                mask_val=src_mask_val,
+                                masks=src_masks,
                                 to_tensor=True, normalizer=normalizer)
     tgt_patch = self.get_composite_image(tgt_cv, tgt_z, padded_bbox, mip,
-                                mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
-                                mask_val=tgt_mask_val,
+                                masks=[],
                                 to_tensor=True, normalizer=normalizer)
     print('src_patch.shape {}'.format(src_patch.shape))
     print('tgt_patch.shape {}'.format(tgt_patch.shape))
@@ -613,7 +611,9 @@ class Aligner:
 
     try:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
-      zero_fieldC = torch.zeros_like(src_patch, device=self.device)
+      zero_fieldC = torch.zeros([1, src_patch.size()[2], src_patch.size()[3], 2], dtype=torch.float32, device=self.device)
+      # import ipdb
+      # ipdb.set_trace()
 
       # zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,2048,2048])))
       # zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)

@@ -82,7 +82,7 @@ class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip,
           is_field, to_uint8, masks=[]):
     #serialized_masks = [m.to_dict() for m in masks]
-    if isinstance(masks[0], Mask):
+    if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super().__init__(src_cv, dst_cv, src_z, dst_z, patch_bbox, mip,
                      is_field, to_uint8, masks)
@@ -104,10 +104,9 @@ class CopyTask(RegisteredTask):
     print("\nCopy\n"
           "src {}\n"
           "dst {}\n"
-          "mask {}, val {}, MIP{}\n"
+          # "mask {}, val {}, MIP{}\n"
           "z={} to z={}\n"
-          "MIP{}\n".format(src_cv, dst_cv, mask.cv_path, mask.val, mask.mip,
-                            src_z, dst_z, mip), flush=True)
+          "MIP{}\n".format(src_cv, dst_cv, src_z, dst_z, mip), flush=True)
     start = time()
     if not aligner.dry_run:
       if is_field:

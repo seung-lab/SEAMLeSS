@@ -23,6 +23,19 @@ def print_run(diff, n_tasks):
             ": {:.3f} s, {} tasks, {:.3f} s/tasks".format(diff, n_tasks, diff / n_tasks)
         )
 
+def interpolate(x, start, stop_dist):
+  """Return interpolation value of x for range(start, stop)
+
+  Args
+     x: int location
+     start: location corresponding to 1
+     stop_dist: distance from start corresponding to 0
+  """
+  assert(stop_dist != 0)
+  stop = start + stop_dist
+  d = (stop - x) / (stop - start)
+  return min(max(d, 0.), 1.)
+
 
 def make_range(block_range, part_num):
     rangelen = len(block_range)
@@ -929,7 +942,7 @@ if __name__ == "__main__":
             print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
                                                                    factors))
             bbox = bbox_lookup[z]
-            cv_list = [broadcasting_field]*len(influencing_blocks) + [block_field]
+            cv_list = [broadcasting_field]*len(influencing_blocks) + [block_vvote_field]
             z_list = list(influencing_blocks) + [z]
             t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
                                 mip, mip, factors, pad)
