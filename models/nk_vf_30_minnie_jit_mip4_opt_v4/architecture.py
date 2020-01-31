@@ -90,7 +90,7 @@ class Model(nn.Module):
 
             if 'src_mask' in kwargs:
                 large_defect_threshold = 600
-                small_defect_threshold = 3
+                small_defect_threshold = 1
                 src_large_defects = (kwargs['src_mask'] >= large_defect_threshold).float()
                 src_small_defects = (kwargs['src_mask'] >= small_defect_threshold).float()
 

@@ -355,13 +355,21 @@ class RenderTask(RegisteredTask):
                      fold_region_coarse = (big_fold_region_coarse + small_fold_region_coarse) > 0
                      seethrough_region[fold_region_coarse * prev_image_not_black] = True
                      image[seethrough_region] = prev_image[seethrough_region]
+
              if seethrough_renormalize:
                  original_tissue_mask = (image > 0.05) * (seethrough_region == False)
                  seethrough_tissue_mask = seethrough_region == True
-
                  if seethrough_region.sum() > 1e4 and original_tissue_mask.sum() > 1e4:
-                     image[seethrough_tissue_mask] *= torch.sqrt(image[original_tissue_mask].var()) / torch.sqrt(image[seethrough_tissue_mask].var())
-                     image[seethrough_tissue_mask] += image[original_tissue_mask].mean() - image[seethrough_tissue_mask].mean()
+                     prev_stdev = torch.sqrt(prev_image[prev_image_not_black].var())
+                     prev_mean = prev_image[prev_image_not_black].mean()
+                     #prev_stdev = torch.sqrt(prev_image[seethrough_tissue_mask].var())
+                     #prev_mean = image[seethrough_tissue_mask].mean()
+                     this_stdev = torch.sqrt(image[original_tissue_mask].var())
+                     this_mean = image[original_tissue_mask].mean()
+                     image[seethrough_tissue_mask] -= prev_mean
+
+                     image[seethrough_tissue_mask] *= this_stdev / prev_stdev
+                     image[seethrough_tissue_mask] += this_mean
                      image[image < 0] = 0
                      #image[seethrough_tissue_mask] += 0.05
 
@@ -370,8 +378,9 @@ class RenderTask(RegisteredTask):
                                                              threshold=80)
              #misalignment_region = torch.zeros_like(misalignment_region)
                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
-                 seethrough_region[..., misalignment_region_coarse * prev_image_not_black] = True
-                 image[seethrough_region] = prev_image[seethrough_region]
+                 misalignment_fill_in = misalignment_region_coarse * prev_image_not_black
+                 seethrough_region[..., misalignment_fill_in] = True
+                 image[..., misalignment_fill_in] = prev_image[..., misalignment_fill_in]
 
 
 
