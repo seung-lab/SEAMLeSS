@@ -216,7 +216,7 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
                     #print ('skipping: {} {}'.format(get_black_fraction(src_tile, 0), get_black_fraction(tgt_tile, 0)))
                     pass
             else:
-                ncc = get_ncc(tgt_tile, src_tile, div_by_overlap=False,
+                ncc = get_ncc(tgt_tile, src_tile, div_by_overlap=True,
                         min_overlap_count=min_overlap_px)
                 ncc_np = ncc.squeeze().cpu().numpy()
 
@@ -268,7 +268,7 @@ def get_ncc(tgt, tmpl, div_by_overlap=False, min_overlap_ratio=0.2,
     tmpl = tmpl.unsqueeze(0).unsqueeze(0)
     #import pdb; pdb.set_trace()
 
-    mask_val = 0.05
+    mask_val = 0.02
     tgt_mask = tgt.abs() > mask_val
     tmpl_mask = tmpl.abs() > mask_val
 
@@ -280,7 +280,7 @@ def get_ncc(tgt, tmpl, div_by_overlap=False, min_overlap_ratio=0.2,
 
     if div_by_overlap:
         overlap_ratio = overlap_count / (tmpl_mask != 0).sum()
-        adjusted_ncc = ncc / (overlap_count + 1e-5)
+        adjusted_ncc = ncc / (overlap_count + 1e-14)
         ncc[overlap_count != 0] = adjusted_ncc[overlap_count != 0]
         ncc[overlap_count < min_overlap_count] = ncc.min()
         ncc[overlap_ratio < min_overlap_ratio] = ncc.min()

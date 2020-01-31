@@ -565,7 +565,7 @@ if __name__ == "__main__":
                     src_mip=mip,
                     field_mip=coarse_field_mip,
                     masks=src_masks,
-                    # seethrough=args.seethrough,
+                    seethrough=args.seethrough,
                     # seethrough_misalign=args.seethrough_misalign
                 )
                 yield from t
@@ -934,7 +934,7 @@ if __name__ == "__main__":
                                 mip, mip, factors, pad)
             yield from t
 
-    class StitchFinalRender(object):    
+    class StitchFinalRender(object):
         def __init__(self, z_range):
           self.z_range = z_range
 

@@ -19,7 +19,8 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
                       tgt_defects,
                       src_large_defects,
                       src_small_defects,
-                      opt_params={}, crop=32):
+                      opt_params={},
+                      crop=128):
     wd = 1e-3
     pred_res = initial_res.clone()
     pred_res.requires_grad = False
@@ -146,7 +147,7 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
 
 def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_defects, src_defects,
         src_large_defects, src_small_defects,
-        crop=32, bot_mip=4, max_iter=800):
+        crop=128, bot_mip=4, max_iter=800):
     sm_val = 250e0
     sm_val2 = 250e0
     sm = {
@@ -159,7 +160,7 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
     }
 
     lr = {
-        4: 25e-2,
+        4: 15e-2,
         5: 25e-2,
         6: 25e-2,
         7: 1e-2,
@@ -310,7 +311,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             tgt_defects=tgt_defects,
             src_small_defects=src_small_defects,
             src_large_defects=src_large_defects,
-            crop=32, bot_mip=5, max_iter=max_iter*2)
+            crop=128, bot_mip=5, max_iter=max_iter*2)
 
     num_reatures = model.state['up'][str(4)]['output'].shape[1]
     src_bm = model.state['up'][str(4)]['output'][0:1, num_reatures//2 - 1]
@@ -339,7 +340,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             tgt_defects=tgt_defects,
             src_small_defects=src_small_defects,
             src_large_defects=src_large_defects,
-            mips=mips, crop=32, bot_mip=4, max_iter=max_iter)
+            mips=mips, crop=128, bot_mip=4, max_iter=max_iter)
     end = time.time()
     print ("OPTIMIZATION FINISHED. Optimizing time: {0:.2f} sec".format(end - start))
     return pred_res_opt

@@ -270,10 +270,10 @@ class RenderTask(RegisteredTask):
                field_mip,
                masks=[],
                affine=None, use_cpu=False, pad=256,
-               seethrough=False, coarsen_small_folds=1, coarsen_big_folds=20,
-               coarsen_misalign=128, seethrough_cv=None,
+               seethrough=False, coarsen_small_folds=1, coarsen_big_folds=15,
+               coarsen_misalign=96, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
-               seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=True,
+               seethrough_black=True, big_fold_threshold=600, seethrough_renormalize=True,
                blackout_op='none'):
     if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
@@ -338,8 +338,8 @@ class RenderTask(RegisteredTask):
                                        patch_bbox, src_mip,
                                        masks=[],
                                        to_tensor=True, normalizer=None)
+         seethrough_region = torch.zeros_like(image).byte()
          if (prev_image != 0).sum() > 0:
-             seethrough_region = torch.zeros_like(image).byte()
              prev_image_not_black = prev_image > 0.05
              if self.seethrough_black:
                  black_region = image < 0.05
@@ -355,14 +355,6 @@ class RenderTask(RegisteredTask):
                      fold_region_coarse = (big_fold_region_coarse + small_fold_region_coarse) > 0
                      seethrough_region[fold_region_coarse * prev_image_not_black] = True
                      image[seethrough_region] = prev_image[seethrough_region]
-             if self.seethrough_misalign:
-                 misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
-                                                             threshold=80)
-             #misalignment_region = torch.zeros_like(misalignment_region)
-                 misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
-                 seethrough_region[..., misalignment_region_coarse * prev_image_not_black] = True
-                 image[seethrough_region] = prev_image[seethrough_region]
-
              if seethrough_renormalize:
                  original_tissue_mask = (image > 0.05) * (seethrough_region == False)
                  seethrough_tissue_mask = seethrough_region == True
@@ -372,6 +364,28 @@ class RenderTask(RegisteredTask):
                      image[seethrough_tissue_mask] += image[original_tissue_mask].mean() - image[seethrough_tissue_mask].mean()
                      image[image < 0] = 0
                      #image[seethrough_tissue_mask] += 0.05
+
+             if self.seethrough_misalign:
+                 misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
+                                                             threshold=80)
+             #misalignment_region = torch.zeros_like(misalignment_region)
+                 misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
+                 seethrough_region[..., misalignment_region_coarse * prev_image_not_black] = True
+                 image[seethrough_region] = prev_image[seethrough_region]
+
+
+
+         if self.seethrough_folds:
+             if folds is not None:
+                 small_fold_region = folds > 0
+                 big_fold_region = folds > self.big_fold_threshold
+                 small_fold_region_coarse = coarsen_mask(small_fold_region, coarsen_small_folds).byte()
+                 big_fold_region_coarse = coarsen_mask(big_fold_region, coarsen_big_folds).byte()
+                 fold_region_coarse = (big_fold_region_coarse + small_fold_region_coarse) > 0
+                 fold_blackout_region = (seethrough_region == False) * fold_region_coarse
+                 if fold_blackout_region.sum() > 0:
+                    print ("BLACK FOLDS")
+                 image[fold_blackout_region] = 0
 
       image = image.cpu().numpy()
       # import ipdb

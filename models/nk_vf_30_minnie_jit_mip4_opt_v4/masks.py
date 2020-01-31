@@ -187,6 +187,18 @@ def find_image_edge_np(img):
     edges[:, -5:-1] = False
     return coarsen_mask(edges1)
 
+def coarsen_mask_pool(mask, n=1, flip=True):
+    mask = mask.type(torch.cuda.FloatTensor)
+    if flip:
+        mask = 1 - mask
+
+    mask_down = torch.nn.functional.max_pool2d(mask, n)
+    mask_up   = torch.nn.functional.interpolate(mask_down.unsqueeze(0), scale_factor=n).squeeze(0)
+    if flip:
+        mask_up = 1 - mask_up
+    return mask_up
+
+
 def coarsen_mask(mask, n=1, flip=True):
     kernel = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
     for _ in range(n):
@@ -286,7 +298,10 @@ def get_warped_mask_set(bundle, res, keys_to_apply):
         around_the_mask = mask
         if 'coarsen_ranges' in settings:
             for length, weight in settings['coarsen_ranges']:
-                around_the_mask = coarsen_mask(around_the_mask, length)
+                if length > 10:
+                    around_the_mask = coarsen_mask_pool(around_the_mask, length)
+                else:
+                    around_the_mask = coarsen_mask(around_the_mask, length)
                 prewarp_result[(around_the_mask != 1.0) * (prewarp_result == 1)] = weight
 
     if (res != 0).sum() > 0:
@@ -359,8 +374,8 @@ def get_mse_and_smoothness_masks3(bundle, **kwargs):
     #sm_keys_to_apply['tgt'] = []
     return get_warped_srctgt_mask(bundle, mse_keys_to_apply, sm_keys_to_apply)
 
-
 def get_mse_and_smoothness_masks2(bundle, **kwargs):
+    #yoman
     mse_keys_to_apply = {
         'src': [
             {'name': 'src_defects',
@@ -381,7 +396,49 @@ def get_mse_and_smoothness_masks2(bundle, **kwargs):
              "mask_value": 0e-6},
             {'name': 'src_large_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(3, 2), (54, 0.3)],
+             "coarsen_ranges": [(3, 2), (64, 0.3)],
+             "mask_value": 1e-6},
+            {'name': 'src_small_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(8, 0.4)],
+             "mask_value": 0e-6},
+            {'name': 'src',
+                'fm': 0,
+             'binarization': {'strat': 'gt', 'value': -5.0},
+            'mask_value': 0}
+            ],
+        'tgt':[
+        ]
+    }
+    #mse_keys_to_apply['src'] = []
+    #mse_keys_to_apply['tgt'] = []
+    #sm_keys_to_apply['src'] = []
+    #sm_keys_to_apply['tgt'] = []
+    return get_warped_srctgt_mask(bundle, mse_keys_to_apply, sm_keys_to_apply)
+
+
+def get_mse_and_smoothness_masks2_poolmask(bundle, **kwargs):
+    mse_keys_to_apply = {
+        'src': [
+            {'name': 'src_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(4, 0)]}
+            ],
+        'tgt':[
+            {'name': 'tgt_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(4, 0)]}
+        ]
+    }
+    sm_keys_to_apply = {
+        'src': [
+            {'name': 'src_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(4, 0)],
+             "mask_value": 0e-6},
+            {'name': 'src_large_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(8, 2), (64, 0.3)],
              "mask_value": 1e-6},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
