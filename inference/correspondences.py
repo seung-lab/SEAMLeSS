@@ -5,6 +5,76 @@ import numpy as np
 import pandas as pd
 import sys
 
+def parse_df(df):
+    """Given CSV from neuroglancer export, extract and clean points
+    """
+    c1 = 'Coordinate 1'
+    c2 = 'Coordinate 2'
+    coord_cols = ['x0','y0','z0','x1','y1','z1']
+    exported = True
+    exported = c1 in df.columns
+    if c2 not in df.columns:
+        c2 = 'Coordinate 2 (if applicable)'
+    exported = exported and c2 in df.columns
+    if exported:
+        df[['x0','y0','z0']] = df[c1].str.replace('(','') \
+                                     .str.replace(')','') \
+                                     .str.split(', ', expand=True) \
+                                     .astype(int) 
+        df[['x1','y1','z1']] = df[c2].str.replace('(','') \
+                                     .str.replace(')','') \
+                                     .str.split(', ', expand=True) \
+                                     .astype(int) 
+    for coord_col in coord_cols:
+        assert(coord_col in df.columns)
+    return df[coord_cols]
+
+def filter_df(df, src_z, tgt_z):
+    return df[df['z0'].isin([src_z, tgt_z]) & df['z1'].isin([src_z, tgt_z])]
+
+def determine_tgt(df, src_z):
+    """Given df with x,y,z pairs, determine most frequent tgt_z
+    """
+    values, counts = np.unique(df[['z0','z1']], return_counts=True)
+    tgt_values, tgt_counts = values[values != src_z], counts[values != src_z]
+    return tgt_values[np.argmax(tgt_counts)]
+
+def sort_df(df, src_z):
+    """Given df with x,y,z pairs, sort columns by z
+    """
+    swap = df['z0'] != src_z
+    df.loc[swap, ['x0','y0','z0',
+                  'x1','y1','z1']] = df.loc[swap, ['x1','y1','z1',
+                                                   'x0','y0','z0']].values
+
+def load_points(path, src_z):
+    """Given filepath to points CSV, return pd.DataFrame with clean x,y,z pairs
+    """
+    df = pd.read_csv(path)
+    df = parse_df(df)
+    tgt_z = determine_tgt(df, src_z)
+    df = filter_df(df, src_z, tgt_z)
+    sort_df(df, src_z)
+    return df
+
+def save_points(df, path):
+    columns=['Coordinate 1',
+             'Coordinate 2',
+             'Ellipsoid Dimensions',
+             'Tags',
+             'Description',
+             'Segment IDs',
+             'Parent ID',
+             'Type',
+             'ID']
+    ngdf = pd.DataFrame(columns=columns)
+    coord_map = lambda x: '({:.0f}, {:.0f}, {:.0f})'.format(*x)
+    ngdf['Coordinate 1'] = df[['x0','y0','z0']].apply(coord_map, axis=1) 
+    ngdf['Coordinate 2'] = df[['x1','y1','z1']].apply(coord_map, axis=1) 
+    ngdf['Type'] = 'Line'
+    ngdf.to_csv(path, header=True, index=False)
+
+
 class CorrespondencesController:
     """Simple class to set & get point-pairs from neuroglancer
     """
@@ -24,6 +94,8 @@ class CorrespondencesController:
         if coords:
             with self.viewer.txn() as state:
                 state.voxel_coordinates = coords
+                state.navigation.zoom_factor = 1800
+
 
 
     def get(self):
