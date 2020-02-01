@@ -6,6 +6,7 @@ from getpass import getuser
 from args import get_bbox
 from aligner import Aligner
 from cloudmanager import CloudManager
+from correspondences import load_points, save_points
 from mipless_cloudvolume import MiplessCloudVolume
 from boundingbox import BoundingBox
 
@@ -16,25 +17,25 @@ class SubsampledField():
 
     def compute_delta(self):
         for i in ['x','y']:
-            self.v['d{}'.format(i)] = self.v['{}1'.format(i)] - self.v['{}0'.format(i)]
+            self.v['d{}'.format(i)] = self.v['{}0'.format(i)] - self.v['{}1'.format(i)]
 
-    def interpolate(self, grid_x, grid_y, mip=0, method='cubic'):
+    def interpolate(self, grid_x, grid_y, mip=0, method='linear'):
         scale = 2**mip
         df = self.v / scale
-        x_interp = griddata(points=df[['x0','y0']].to_numpy(),
+        x_interp = griddata(points=df[['x1','y1']].to_numpy(),
                             values=df['dx'].to_numpy(),
                             xi=(grid_x, grid_y),
                             method=method)
-        y_interp = griddata(points=df[['x0','y0']].to_numpy(),
+        y_interp = griddata(points=df[['x1','y1']].to_numpy(),
                             values=df['dy'].to_numpy(),
                             xi=(grid_x, grid_y),
                             method=method)
         if method != 'nearest':
-            x_near = griddata(points=df[['x0','y0']].to_numpy(),
+            x_near = griddata(points=df[['x1','y1']].to_numpy(),
                                 values=df['dx'].to_numpy(),
                                 xi=(grid_x, grid_y),
                                 method='nearest')
-            y_near = griddata(points=df[['x0','y0']].to_numpy(),
+            y_near = griddata(points=df[['x1','y1']].to_numpy(),
                                 values=df['dy'].to_numpy(),
                                 xi=(grid_x, grid_y),
                                 method='nearest')
@@ -67,6 +68,26 @@ def make_grid(x_start, x_stop, y_start, y_stop):
 def add_z(points, z0, z1):
     return [[*p, z0, z1] for p in points] 
 
+def sample_field(points_df, bbox, mip, method):
+    """Given list of correspondences, sample grid in bbox at mip using method
+
+    Args:
+        points_df: pd.DataFrame with x0,y0,z0,x1,y1,z1 (0:src, 1:tgt)
+        bbox: BoundingBox of region of sampling 
+        mip: int for MIP level of sampling 
+        method: str for interpolation method
+    
+    Returns:
+        field: 1xWxHx2 np.array of np.float32 vectors 
+    """
+    f = SubsampledField(points_df)
+    f.compute_delta()
+    grid_x, grid_y = make_grid(*bbox.x_range(mip=mip), 
+                               *bbox.y_range(mip=mip))
+    grid_v = f.interpolate(grid_x, grid_y, mip=mip, method=method)
+    field = grid_v.astype(np.float32) * 2**mip
+    return np.expand_dims(field, axis=0)[:,:,:,::-1]
+
 def test_subsample():
     df = pd.DataFrame(data=np.array([[0,0,2,0],
                                      [2,0,2,2],
@@ -95,10 +116,6 @@ if __name__ == '__main__':
         type=str,
         help='path to subsampled points')
     parser.add_argument(
-        '--dst_path',
-        type=str,
-        help='path of where to save interpolated grid') 
-    parser.add_argument(
         '--info_path',
         type=str,
         help='path to CloudVolume to use as template for field CloudVolume') 
@@ -109,7 +126,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--method',
         type=str,
-        default='cubic',
+        default='linear',
         help='interpolation option')
     parser.add_argument(
         '--mip',
@@ -119,12 +136,8 @@ if __name__ == '__main__':
         '--src_z',
         type=int,
         help='z index of source section')
-    parser.add_argument(
-        '--tgt_z',
-        type=int,
-        help='z index of target section')
     args = parser.parse_args()
-    src_df = pd.read_csv(args.src_path, index_col=0)
+    points_df = load_points(path=args.src_path, src_z=args.src_z)
     provenance = {'description': 'Field created from manual correspondences & interpolation',
                   'sources': [args.info_path],
                   'owners': [getuser()],
@@ -140,13 +153,10 @@ if __name__ == '__main__':
                       fill_missing=True, 
                       overwrite=True)
     bbox = BoundingBox.from_bbox(dst[args.mip].bounds, mip=args.mip, max_mip=args.mip)
-    f = SubsampledField(src_df)
-    f.compute_delta()
-    grid_x, grid_y = make_grid(*bbox.x_range(mip=args.mip), 
-                               *bbox.y_range(mip=args.mip))
-    grid_v = f.interpolate(grid_x, grid_y, mip=args.mip, method=args.method)
-    field = grid_v.astype(np.float32) * 2**args.mip
-    field = -np.expand_dims(field, axis=0)[:,:,:,::-1]
+    field = sample_field(points_df=points_df,
+                         bbox=bbox,
+                         mip=args.mip,
+                         method=args.method)
     a = Aligner()
     a.save_field(field=field,
                  cv=dst,
@@ -155,9 +165,10 @@ if __name__ == '__main__':
                  mip=args.mip,
                  relative=False,
                  as_int16=False)
-    points = grid_to_points(grid_v, grid_x, grid_y)
-    df = pd.DataFrame(data=np.array(points)*2**args.mip,
-                       columns=['x0','y0','x1','y1'])
-    df['z0'] = args.src_z
-    df['z1'] = args.tgt_z
-    df.to_csv(args.dst_path, header=True, index=True)
+    # Save field as points to pd.DataFrame
+    # points = grid_to_points(grid_v, grid_x, grid_y)
+    # df = pd.DataFrame(data=np.array(points)*2**args.mip,
+    #                    columns=['x0','y0','x1','y1'])
+    # df['z0'] = args.src_z
+    # df['z1'] = args.tgt_z
+    # df.to_csv(args.dst_path, header=True, index=True)
