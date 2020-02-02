@@ -1,0 +1,2 @@
+x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
+0,0,15000,491520,491520,16100,0,sergiy_blockmatch_clean,5,0,nkem_testing

@@ -236,6 +236,7 @@ class Aligner:
     start = time()
     image = self.get_image(image_cv, z, bbox, image_mip,
                            to_tensor=True, normalizer=normalizer)
+    mask = None
     if len(masks) > 0:
       mask = self.get_masks(masks, z, bbox,
                            dst_mip=image_mip, mask_op=mask_op
@@ -745,7 +746,6 @@ class Aligner:
         # or prev_field is identity
         tgt_drift_field = tgt_field
 
-
       tgt_drift_field = self.rel_to_abs_residual(tgt_drift_field, mip)
       drift_distance = self.profile_field(tgt_drift_field)
       drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
@@ -760,13 +760,14 @@ class Aligner:
       tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
       tgt_field = torch.zeros_like(tgt_field)
 
-    print(
-      "Displacement adjustment TGT: {} px".format(
-        drift_distance_fine_snap,
+      print(
+        "Displacement adjustment TGT: {} px".format(
+          drift_distance_fine_snap,
+        )
       )
-    )
 
-    padded_tgt_bbox_fine = self.adjust_bbox(padded_tgt_bbox_fine, tgt_distance_fine_snap.flip(0))
+
+      padded_tgt_bbox_fine = self.adjust_bbox(padded_tgt_bbox_fine, tgt_distance_fine_snap.flip(0))
     # padded_tgt_bbox_fine.uncrop(pad, mip)
 
     if coarse_field_cv is not None:

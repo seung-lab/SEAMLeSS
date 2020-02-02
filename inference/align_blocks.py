@@ -36,7 +36,7 @@ def make_range(block_range, part_num):
         range_list.append(block_range[i*srange:(i+1)*srange])
     range_list.append(block_range[(part-1)*srange:])
     return range_list
- 
+
 def ranges_overlap(a_pair, b_pair):
   a_start, a_stop = a_pair
   b_start, b_stop = b_pair
@@ -49,7 +49,7 @@ if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--param_lookup', type=str,
     help='relative path to CSV file identifying params to use per z range')
-  # parser.add_argument('--z_range_path', type=str, 
+  # parser.add_argument('--z_range_path', type=str,
   #   help='path to csv file with list of z indices to use')
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--src_mask_path', type=str, default='',
@@ -63,11 +63,12 @@ if __name__ == '__main__':
   parser.add_argument('--dst_dtype', type=str, default='uint8')
   parser.add_argument('--dst_field_dtype', type=str, default='int16')
   parser.add_argument('--mip', type=int)
+  parser.add_argument('--chunk_size', type=int, default=1024)
   parser.add_argument('--z_start', type=int)
   parser.add_argument('--z_stop', type=int)
   parser.add_argument('--max_mip', type=int, default=9)
-  parser.add_argument('--pad', 
-    help='the size of the largest displacement expected; should be 2^high_mip', 
+  parser.add_argument('--pad',
+    help='the size of the largest displacement expected; should be 2^high_mip',
     type=int, default=2048)
   parser.add_argument('--block_size', type=int, default=10)
   parser.add_argument('--restart', type=int, default=0)
@@ -95,7 +96,7 @@ if __name__ == '__main__':
   args.serial_operation = True
   a = get_aligner(args)
   provenance = get_provenance(args)
-  chunk_size = 1024
+  chunk_size = args.chunk_size
 
   # Simplify var names
   mip = args.mip
@@ -129,12 +130,12 @@ if __name__ == '__main__':
   if tgt_mask_cv != None:
       tgt_mask_cv = tgt_mask_cv.path
 
-  # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius 
+  # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius
   block_dsts = {}
   block_types = ['even', 'odd']
   for i, block_type in enumerate(block_types):
-    block_dst = cm.create(join(args.dst_path, 'image_blocks', block_type), 
-                    data_type=args.dst_dtype, num_channels=1, fill_missing=True, 
+    block_dst = cm.create(join(args.dst_path, 'image_blocks', block_type),
+                    data_type=args.dst_dtype, num_channels=1, fill_missing=True,
                     overwrite=True)
     block_dsts[i] = block_dst.path
 
@@ -145,8 +146,8 @@ if __name__ == '__main__':
       while line:
         skip_ind = int(line)
         secret_skip_list.append(skip_ind)
-        line = f.readline() 
-  
+        line = f.readline()
+
   # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
   bbox_lookup = {}
   model_lookup = {}
@@ -177,7 +178,7 @@ if __name__ == '__main__':
           alignment_z_starts.append(z_start)
         bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
         for z in range(z_start, z_stop):
-          bbox_lookup[z] = bbox 
+          bbox_lookup[z] = bbox
           model_lookup[z] = model_path
           tgt_radius_lookup[z] = tgt_radius
           vvote_lookup[z] = [-i for i in range(1, tgt_radius+1)]
@@ -195,7 +196,7 @@ if __name__ == '__main__':
         offset -= 1
       tgt_radius[i] = r + offset
     min_offset = min(min_offset, r + offset)
-    offset = 0 
+    offset = 0
     vvote_lookup[z] = tgt_radius
 
   # Adjust block starts so they don't start on a skipped section
@@ -219,10 +220,10 @@ if __name__ == '__main__':
   # Assign even/odd to each block start so results are stored in appropriate CloudVolume
   # Create lookup dicts based on offset in the canonical block
   # BLOCK ALIGNMENT
-  # Copy sections with block offsets of 0 
+  # Copy sections with block offsets of 0
   # Align without vector voting sections with block offsets < 0 (starter sections)
   # Align with vector voting sections with block offsets > 0 (block sections)
-  # This lookup makes it easy for restarting based on block offset, though isn't 
+  # This lookup makes it easy for restarting based on block offset, though isn't
   #  strictly necessary for the copy & starter sections
   # BLOCK STITCHING
   # Stitch blocks using the aligned block sections that have tgt_z in the starter sections
@@ -234,7 +235,7 @@ if __name__ == '__main__':
   starter_offset_to_z_range = {i: set() for i in range(min_offset, 0)}
   block_offset_to_z_range = {i: set() for i in range(1, block_size+10)} #TODO: Set the padding based on max(be-bs)
   # Reverse lookup to easily identify tgt_z for each starter z
-  starter_z_to_offset = {} 
+  starter_z_to_offset = {}
   for k, (bs, be) in enumerate(zip(block_starts, block_stops)):
     even_odd = k % 2
     for i, z in enumerate(range(bs, be+1)):
@@ -256,14 +257,14 @@ if __name__ == '__main__':
   offset_range = [i for i in range(min_offset, abs(min_offset)+1)]
   # check for restart
   print('Align starting from OFFSET {}'.format(args.restart))
-  starter_restart = -100 
+  starter_restart = -100
   if args.restart <= 0:
-    starter_restart = args.restart 
-  copy_offset_to_z_range = {k:v for k,v in copy_offset_to_z_range.items() 
+    starter_restart = args.restart
+  copy_offset_to_z_range = {k:v for k,v in copy_offset_to_z_range.items()
                                               if k == args.restart}
-  starter_offset_to_z_range = {k:v for k,v in starter_offset_to_z_range.items() 
+  starter_offset_to_z_range = {k:v for k,v in starter_offset_to_z_range.items()
                                               if k <= starter_restart}
-  block_offset_to_z_range = {k:v for k,v in block_offset_to_z_range.items() 
+  block_offset_to_z_range = {k:v for k,v in block_offset_to_z_range.items()
                                               if k >= args.restart}
   # print('copy_offset_to_z_range {}'.format(copy_offset_to_z_range))
   # print('starter_offset_to_z_range {}'.format(starter_offset_to_z_range))
@@ -286,18 +287,18 @@ if __name__ == '__main__':
           stitch_offset_to_z_range[i].append(z)
           block_start_to_stitch_offsets[bs].append(bs - z)
         else:
-          break 
+          break
   stitch_range = [z for z_range in stitch_offset_to_z_range.values() for z in z_range]
   for b,v in block_start_to_stitch_offsets.items():
     print(b)
-    assert(len(v) % 2 == 1)
+    #assert(len(v) % 2 == 1)
 
   # Create field CloudVolumes
   print('Creating field & overlap CloudVolumes')
   block_pair_fields = {}
   for z_offset in offset_range:
-    block_pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', 'block', 
-                                                 str(z_offset)), 
+    block_pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', 'block',
+                                                 str(z_offset)),
                                       data_type=args.dst_field_dtype, num_channels=2,
                                       fill_missing=True, overwrite=True).path
   block_vvote_field = cm.create(join(args.dst_path, 'field', 'vvote'),
@@ -305,25 +306,25 @@ if __name__ == '__main__':
                           fill_missing=True, overwrite=True).path
   stitch_pair_fields = {}
   for z_offset in offset_range:
-    stitch_pair_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
-                                                  'stitch', str(z_offset)), 
+    stitch_pair_fields[z_offset] = cm.create(join(args.dst_path, 'field',
+                                                  'stitch', str(z_offset)),
                                       data_type=args.dst_field_dtype, num_channels=2,
                                       fill_missing=True, overwrite=True).path
   overlap_vvote_field = cm.create(join(args.dst_path, 'field', 'stitch',
-                                    'vvote', 'field'), 
+                                    'vvote', 'field'),
                                  data_type=args.dst_field_dtype, num_channels=2,
                                  fill_missing=True, overwrite=True).path
   overlap_image = cm.create(join(args.dst_path, 'field', 'stitch',
-                                    'vvote', 'image'), 
-                    data_type=args.dst_dtype, num_channels=1, fill_missing=True, 
+                                    'vvote', 'image'),
+                    data_type=args.dst_dtype, num_channels=1, fill_missing=True,
                     overwrite=True).path
   stitch_fields = {}
   for z_offset in offset_range:
-    stitch_fields[z_offset] = cm.create(join(args.dst_path, 'field', 
-                                             'stitch', 'vvote', str(z_offset)), 
+    stitch_fields[z_offset] = cm.create(join(args.dst_path, 'field',
+                                             'stitch', 'vvote', str(z_offset)),
                                       data_type=args.dst_field_dtype, num_channels=2,
                                       fill_missing=True, overwrite=True).path
-  broadcasting_field = cm.create(join(args.dst_path, 'field', 
+  broadcasting_field = cm.create(join(args.dst_path, 'field',
                                       'stitch', 'broadcasting'),
                                  data_type=args.dst_field_dtype, num_channels=2,
                                  fill_missing=True, overwrite=True).path
@@ -332,7 +333,7 @@ if __name__ == '__main__':
                                  'compose'),
                           data_type=args.dst_field_dtype, num_channels=2,
                           fill_missing=True, overwrite=do_compose).path
-  final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.compose_suffix)),
+  final_dst = cm.create(join(args.dst_path, 'image_stitch{}'.format(args.compose_suffix)),
                         data_type=args.dst_dtype, num_channels=1, fill_missing=True,
                         overwrite=do_final_render).path
 
@@ -342,7 +343,7 @@ if __name__ == '__main__':
   # Task scheduling functions
   def remote_upload(tasks):
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
-          tq.insert_all(tasks)  
+          tq.insert_all(tasks)
 
   def execute(task_iterator, z_range):
     if len(z_range) > 0:
@@ -364,7 +365,7 @@ if __name__ == '__main__':
           for t in ptask:
            tq = LocalTaskQueue(parallel=1)
            tq.insert_all(t, args=[a])
- 
+
       end = time()
       diff = end - start
       print('Sending {} use time: {}'.format(task_iterator, diff))
@@ -389,8 +390,8 @@ if __name__ == '__main__':
         block_dst = starter_dst_lookup[z]
         bbox = bbox_lookup[z]
         t =  a.copy(cm, src, block_dst, z, z, bbox, mip, is_field=False,
-                    mask_cv=src_mask_cv, mask_mip=src_mask_mip, mask_val=src_mask_val)
-        yield from t 
+                    masks=[])
+        yield from t
 
   class StarterComputeField(object):
     def __init__(self, z_range):
@@ -404,11 +405,9 @@ if __name__ == '__main__':
         z_offset = starter_z_to_offset[z]
         field = block_pair_fields[z_offset]
         tgt_z = z + z_offset
-        t = a.compute_field(cm, model_path, src, dst, field, 
-                            z, tgt_z, bbox, mip, pad, src_mask_cv=src_mask_cv,
-                            src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                            tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                            tgt_mask_val=src_mask_val, prev_field_cv=None, 
+        t = a.compute_field(cm, model_path, src, dst, field,
+                            z, tgt_z, bbox, mip, pad,
+                            prev_field_cv=None,
                             prev_field_z=None)
         yield from t
 
@@ -423,8 +422,7 @@ if __name__ == '__main__':
         field = block_pair_fields[z_offset]
         bbox = bbox_lookup[z]
         t = a.render(cm, src, field, dst, src_z=z, field_z=z, dst_z=z,
-                     bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
-                     mask_val=src_mask_val, mask_mip=src_mask_mip)
+                     bbox=bbox, src_mip=mip, field_mip=mip)
         yield from t
 
   class BlockAlignComputeField(object):
@@ -440,11 +438,8 @@ if __name__ == '__main__':
         for tgt_offset in tgt_offsets:
           tgt_z = src_z + tgt_offset
           field = block_pair_fields[tgt_offset]
-          t = a.compute_field(cm, model_path, src, dst, field, 
-                              src_z, tgt_z, bbox, mip, pad, src_mask_cv=src_mask_cv,
-                              src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                              tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                              tgt_mask_val=src_mask_val, prev_field_cv=block_vvote_field, 
+          t = a.compute_field(cm, model_path, src, dst, field,
+                              src_z, tgt_z, bbox, mip, pad,
                               prev_field_z=tgt_z)
           yield from t
 
@@ -457,7 +452,7 @@ if __name__ == '__main__':
         bbox = bbox_lookup[z]
         tgt_offsets = vvote_lookup[z]
         fields = {i: block_pair_fields[i] for i in tgt_offsets if z + i not in secret_skip_list}
-        t = a.vector_vote(cm, fields, block_vvote_field, z, bbox, mip, 
+        t = a.vector_vote(cm, fields, block_vvote_field, z, bbox, mip,
                           inverse=False, serial=True, softmin_temp=(2**mip)/6.0, blur_sigma=1)
         yield from t
 
@@ -470,8 +465,7 @@ if __name__ == '__main__':
         dst = block_dst_lookup[z]
         bbox = bbox_lookup[z]
         t = a.render(cm, src, block_vvote_field, dst, src_z=z, field_z=z, dst_z=z,
-                     bbox=bbox, src_mip=mip, field_mip=mip, mask_cv=src_mask_cv,
-                     mask_val=src_mask_val, mask_mip=src_mask_mip)
+                     bbox=bbox, src_mip=mip, field_mip=mip)
         yield from t
 
   class StitchOverlapCopy():
@@ -480,11 +474,11 @@ if __name__ == '__main__':
 
     def __iter__(self):
       for z in self.z_range:
-        dst = block_dst_lookup[z] 
+        dst = block_dst_lookup[z]
         bbox = bbox_lookup[z]
-        ti = a.copy(cm, dst, overlap_image, z, z, bbox, mip, 
+        ti = a.copy(cm, dst, overlap_image, z, z, bbox, mip,
                     is_field=False)
-        tf = a.copy(cm, block_vvote_field, overlap_vvote_field, z, z, bbox, mip, 
+        tf = a.copy(cm, block_vvote_field, overlap_vvote_field, z, z, bbox, mip,
                     is_field=True)
         t = ti + tf
         yield from t
@@ -495,18 +489,15 @@ if __name__ == '__main__':
 
     def __iter__(self):
       for z in self.z_range:
-        block_dst = block_dst_lookup[z] 
+        block_dst = block_dst_lookup[z]
         bbox = bbox_lookup[z]
         model_path = model_lookup[z]
         tgt_offsets = vvote_lookup[z]
         for tgt_offset in tgt_offsets:
           tgt_z = z + tgt_offset
           field = stitch_pair_fields[tgt_offset]
-          t = a.compute_field(cm, model_path, block_dst, overlap_image, field, 
-                              z, tgt_z, bbox, mip, pad, src_mask_cv=src_mask_cv,
-                              src_mask_mip=src_mask_mip, src_mask_val=src_mask_val,
-                              tgt_mask_cv=src_mask_cv, tgt_mask_mip=src_mask_mip, 
-                              tgt_mask_val=src_mask_val, 
+          t = a.compute_field(cm, model_path, block_dst, overlap_image, field,
+                              z, tgt_z, bbox, mip, pad,
                               # prev_field_cv=overlap_vvote_field,
                               prev_field_cv=None,
                               prev_field_z=tgt_z)
@@ -515,13 +506,13 @@ if __name__ == '__main__':
   class StitchAlignVectorVote(object):
     def __init__(self, z_range):
       self.z_range = z_range
-    
+
     def __iter__(self):
       for z in self.z_range:
         bbox = bbox_lookup[z]
         tgt_offsets = vvote_lookup[z]
         fields = {i: stitch_pair_fields[i] for i in tgt_offsets if z + i not in secret_skip_list}
-        t = a.vector_vote(cm, fields, overlap_vvote_field, z, bbox, mip, 
+        t = a.vector_vote(cm, fields, overlap_vvote_field, z, bbox, mip,
                           inverse=False, serial=True, softmin_temp=(2**mip)/6.0, blur_sigma=1)
         yield from t
 
@@ -531,11 +522,11 @@ if __name__ == '__main__':
 
     def __iter__(self):
       for z in self.z_range:
-        block_dst = block_dst_lookup[z] 
+        block_dst = block_dst_lookup[z]
         bbox = bbox_lookup[z]
-        t = a.render(cm, block_dst, overlap_vvote_field, overlap_image, 
-                     src_z=z, field_z=z, dst_z=z, bbox=bbox, src_mip=mip, field_mip=mip, 
-                     mask_cv=src_mask_cv, mask_val=src_mask_val, mask_mip=src_mask_mip)
+        t = a.render(cm, block_dst, overlap_vvote_field, overlap_image,
+                     src_z=z, field_z=z, dst_z=z, bbox=bbox, src_mip=mip, field_mip=mip)
+
         yield from t
 
   class StitchBroadcastCopy():
@@ -548,7 +539,7 @@ if __name__ == '__main__':
         z_offset = bs - z
         stitch_field = stitch_fields[z_offset]
         bbox = bbox_lookup[z]
-        t = a.copy(cm, overlap_vvote_field, stitch_field, z, bs, bbox, mip, 
+        t = a.copy(cm, overlap_vvote_field, stitch_field, z, bs, bbox, mip,
                    is_field=True)
         yield from t
 
@@ -561,11 +552,11 @@ if __name__ == '__main__':
         bbox = bbox_lookup[z]
         offsets = block_start_to_stitch_offsets[z]
         fields = {i: stitch_fields[i] for i in offsets}
-        t = a.vector_vote(cm, fields, broadcasting_field, z, bbox, mip, 
+        t = a.vector_vote(cm, fields, broadcasting_field, z, bbox, mip,
                           inverse=False, serial=True, softmin_temp=(2**mip)/6.0, blur_sigma=1)
         yield from t
 
-  
+
   class StitchCompose(object):
     def __init__(self, z_range):
       self.z_range = z_range
@@ -595,7 +586,7 @@ if __name__ == '__main__':
                      bbox=bbox, src_mip=final_render_mip, field_mip=mip, pad=final_render_pad)
         yield from t
 
-  # Serial alignment with block stitching 
+  # Serial alignment with block stitching
   print('START BLOCK ALIGNMENT')
   print('COPY STARTING SECTION OF ALL BLOCKS')
   execute(StarterCopy, copy_range)
