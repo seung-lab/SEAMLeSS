@@ -82,7 +82,7 @@ class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip,
           is_field, to_uint8, masks=[]):
     #serialized_masks = [m.to_dict() for m in masks]
-    if isinstance(masks[0], Mask):
+    if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super().__init__(src_cv, dst_cv, src_z, dst_z, patch_bbox, mip,
                      is_field, to_uint8, masks)
@@ -104,10 +104,9 @@ class CopyTask(RegisteredTask):
     print("\nCopy\n"
           "src {}\n"
           "dst {}\n"
-          "mask {}, val {}, MIP{}\n"
+          # "mask {}, val {}, MIP{}\n"
           "z={} to z={}\n"
-          "MIP{}\n".format(src_cv, dst_cv, mask.cv_path, mask.val, mask.mip,
-                            src_z, dst_z, mip), flush=True)
+          "MIP{}\n".format(src_cv, dst_cv, src_z, dst_z, mip), flush=True)
     start = time()
     if not aligner.dry_run:
       if is_field:
@@ -131,7 +130,7 @@ class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
                      patch_bbox, mip, pad, src_masks, tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False):
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False, report=False):
     #src_serialized_masks = [m.to_dict() for m in src_masks]
     #tgt_serialized_masks = [m.to_dict() for m in tgt_masks]
 
@@ -145,7 +144,7 @@ class ComputeFieldTask(RegisteredTask):
                      patch_bbox, mip, pad, src_masks,
                      tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch)
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -161,6 +160,12 @@ class ComputeFieldTask(RegisteredTask):
     prev_field_z = self.prev_field_z
     prev_field_inverse = self.prev_field_inverse
     patch_bbox = deserialize_bbox(self.patch_bbox)
+    message = {
+      "x": patch_bbox.x_range(mip=self.mip)[0],
+      "y": patch_bbox.y_range(mip=self.mip)[0],
+      "z": src_z,
+      "task": "CF"
+    }
     mip = self.mip
     pad = self.pad
 
@@ -202,13 +207,39 @@ class ComputeFieldTask(RegisteredTask):
                                             src_masks, tgt_masks,
                                             None, prev_field_cv, prev_field_z,
                                             prev_field_inverse)
+        aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       else:
         field = aligner.compute_field_chunk(model_path, src_cv=src_cv, tgt_cv=tgt_cv, src_z=src_z, tgt_z=tgt_z,
                                             bbox=patch_bbox, mip=mip, pad=pad,
                                             src_masks=src_masks, tgt_masks=tgt_masks,
                                             tgt_alt_z=None, prev_field_cv=prev_field_cv, prev_field_z=prev_field_z,
                                             coarse_field_cv=coarse_field_cv, coarse_field_mip=coarse_field_mip, tgt_field_cv=tgt_field_cv)
-      aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
+        aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)        
+        if self.report and aligner.completed_task_queue is not None:
+          print('Reporting to completed queue...')        
+          api_obj = aligner.completed_task_queue._api
+          sqs_obj = aligner.completed_task_queue._api._sqs
+          
+          # import ipdb
+          # ipdb.set_trace()
+          msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'MessageBody':json.dumps(message)}])    
+          if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
+            success = False
+            for i in range(20):
+              sleep(1 + random.randrange(4))
+              msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'MessageBody':json.dumps(message)}])
+              if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
+                pass
+              else:
+                success = True
+                break
+            if success == False:
+              raise ValueError('Failed to send task ack')
+          # tstz = sqs_obj.send_message(QueueUrl='helloworld.com', MessageBody=json.dumps(message))
+          print(tstz)
+          # import ipdb
+          # ipdb.set_trace()
+      # aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       end = time()
       diff = end - start
       print('ComputeFieldTask: {:.3f} s'.format(diff))
@@ -273,15 +304,15 @@ class RenderTask(RegisteredTask):
                seethrough=False, coarsen_small_folds=1, coarsen_big_folds=15,
                coarsen_misalign=96, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
-               seethrough_black=True, big_fold_threshold=600, seethrough_renormalize=True,
-               blackout_op='none'):
+               seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=True,
+               blackout_op='none', report=False):
     if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                      field_mip, masks, affine, use_cpu, pad, seethrough,
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
                       seethrough_folds, seethrough_misalign, seethrough_black,
-                      big_fold_threshold, seethrough_renormalize, blackout_op)
+                      big_fold_threshold, seethrough_renormalize, blackout_op, report)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -291,6 +322,12 @@ class RenderTask(RegisteredTask):
     field_z = self.field_z
     dst_z = self.dst_z
     patch_bbox = deserialize_bbox(self.patch_bbox)
+    message = {
+      "x": patch_bbox.x_range(mip=self.src_mip)[0],
+      "y": patch_bbox.y_range(mip=self.src_mip)[0],
+      "z": src_z,
+      "task": "RT"
+    }
     src_mip = self.src_mip
     field_mip = self.field_mip
     masks = [Mask(**m) for m in self.masks]
@@ -408,6 +445,34 @@ class RenderTask(RegisteredTask):
       #   ipdb.set_trace()
       #   b = 100
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
+      if self.report and aligner.completed_task_queue is not None:
+          api_obj = aligner.completed_task_queue._api
+          sqs_obj = aligner.completed_task_queue._api._sqs
+          # message = {
+            # "bbox": self.patch_bbox,
+            # "task": "CF"
+          # }
+          # message = {
+          #   "x": patch_bbox.m0_x[0],
+          #   "y": patch_bbox.m0_y[0],
+          #   "z": src_z,
+          #   "task": "RT"
+          # }
+          print('Reporting to completed queue...')
+          msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'MessageBody':json.dumps(message)}])
+          if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
+            success = False
+            for i in range(10):
+              sleep(1 + random.randrange(3))
+              msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'MessageBody':json.dumps(message)}])
+              if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
+                pass
+              else:
+                success = True
+                break
+            if success == False:
+              raise ValueError('Failed to send task ack')
+          # sqs_obj.send_message(QueueUrl = api_obj._qurl, MessageAttributes={'bbox': { 'DataType': 'String', 'StringValue': self.patch_bbox }, 'task': {'DataType': 'String', 'StringValue': 'RT'}})
       end = time()
       diff = end - start
       print('RenderTask: {:.3f} s'.format(diff))
