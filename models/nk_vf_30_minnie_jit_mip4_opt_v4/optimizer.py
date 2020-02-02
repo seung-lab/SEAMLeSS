@@ -148,8 +148,8 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
 def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_defects, src_defects,
         src_large_defects, src_small_defects,
         crop=128, bot_mip=4, max_iter=800):
-    sm_val = 250e0
-    sm_val2 = 250e0
+    sm_val = 210e0
+    sm_val2 = 210e0
     sm = {
         4: sm_val,
         5: sm_val,

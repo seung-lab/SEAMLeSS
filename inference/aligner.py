@@ -236,6 +236,7 @@ class Aligner:
     start = time()
     image = self.get_image(image_cv, z, bbox, image_mip,
                            to_tensor=True, normalizer=normalizer)
+    mask = None
     if len(masks) > 0:
       mask = self.get_masks(masks, z, bbox,
                            dst_mip=image_mip, mask_op=mask_op
