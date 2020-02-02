@@ -222,12 +222,12 @@ class ComputeFieldTask(RegisteredTask):
           
           # import ipdb
           # ipdb.set_trace()
-          msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'MessageBody':json.dumps(message)}])    
+          msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'Id': 'id', 'MessageBody':json.dumps(message)}])    
           if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
             success = False
             for i in range(20):
               sleep(1 + random.randrange(4))
-              msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'MessageBody':json.dumps(message)}])
+              msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'Id': 'id', 'MessageBody':json.dumps(message)}])
               if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
                 pass
               else:
@@ -236,7 +236,7 @@ class ComputeFieldTask(RegisteredTask):
             if success == False:
               raise ValueError('Failed to send task ack')
           # tstz = sqs_obj.send_message(QueueUrl='helloworld.com', MessageBody=json.dumps(message))
-          print(tstz)
+          # print(tstz)
           # import ipdb
           # ipdb.set_trace()
       # aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
@@ -459,12 +459,12 @@ class RenderTask(RegisteredTask):
           #   "task": "RT"
           # }
           print('Reporting to completed queue...')
-          msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'MessageBody':json.dumps(message)}])
+          msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'Id': 'id', 'MessageBody':json.dumps(message)}])
           if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
             success = False
             for i in range(10):
               sleep(1 + random.randrange(3))
-              msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'MessageBody':json.dumps(message)}])
+              msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'Id': 'id', 'MessageBody':json.dumps(message)}])
               if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
                 pass
               else:
