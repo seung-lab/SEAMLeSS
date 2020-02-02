@@ -1125,7 +1125,7 @@ if __name__ == "__main__":
                                         else:
                                             print('CF done for z={}, releasing render for z={}'.format(z, z))
                                             z_to_render_released[z] = True
-                                            status_file.write('cf {}'.format(z))
+                                            status_file.write('cf {}\n'.format(z))
                                             executeNew(BlockAlignRender, [z])
                                 elif z_to_computes_processed[z] > z_to_number_of_chunks[z]:
                                     # import ipdb
@@ -1149,7 +1149,7 @@ if __name__ == "__main__":
                                         else:
                                             print('Render done for z={}, releasing cf for z={}'.format(z, z+1))
                                             z_to_compute_released[z+1] = True
-                                            status_file.write('rt {}'.format(z))
+                                            status_file.write('rt {}\n'.format(z))
                                             executeNew(BlockAlignComputeField, [z+1])
                                 elif z_to_renders_processed[z] > z_to_number_of_chunks[z]:
                                     raise ValueError('More render chunks processed than exist for z = {}'.format(z))
