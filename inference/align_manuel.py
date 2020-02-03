@@ -6,13 +6,15 @@ import csv
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from os.path import join
-from time import time
+from time import time, sleep
+from math import floor
 
-from taskqueue import GreenTaskQueue, LocalTaskQueue, MockTaskQueue
+from taskqueue import GreenTaskQueue, LocalTaskQueue, MockTaskQueue, TaskQueue
 
 from args import get_aligner, get_argparser, get_provenance, parse_args
 from boundingbox import BoundingBox
 from cloudmanager import CloudManager
+import numpy as np
 
 import json
 from mask import Mask
@@ -35,6 +37,7 @@ def interpolate(x, start, stop_dist):
   stop = start + stop_dist
   d = (stop - x) / (stop - start)
   return min(max(d, 0.), 1.)
+
 
 
 def make_range(block_range, part_num):
@@ -179,6 +182,8 @@ if __name__ == "__main__":
         default='none'
     )
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
+    parser.add_argument('--status_output_file', type=str, default=None)
+    parser.add_argument('--recover_status_from_file', type=str, default=None)
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -262,7 +267,6 @@ if __name__ == "__main__":
     # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius
     block_dsts = {}
     block_types = ["even", "odd"]
-    # block_types = ["odd", "even"]
     for i, block_type in enumerate(block_types):
         block_dst = cm.create(
             join(render_dst, "image_blocks", block_type),
@@ -425,15 +429,15 @@ if __name__ == "__main__":
         assert len(v) % 2 == 1
 
 
-    compose_range = range(args.z_start, args.z_stop)
-    render_range = range(args.z_start+1, args.z_stop)
-    if do_compose:
-        decay_dist = args.decay_dist
-        influencing_blocks_lookup = {z: [] for z in compose_range}
-        for b_start in block_starts:
-            for z in range(b_start+1, b_start+decay_dist+1):
-              if z < args.z_stop:
-                  influencing_blocks_lookup[z].append(b_start)
+    # compose_range = range(args.z_start, args.z_stop)
+    # render_range = range(args.z_start+1, args.z_stop)
+    # if do_compose:
+    #     decay_dist = args.decay_dist
+    #     influencing_blocks_lookup = {z: [] for z in compose_range}
+    #     for b_start in block_starts:
+    #         for z in range(b_start+1, b_start+decay_dist+1):
+    #           if z < args.z_stop:
+    #               influencing_blocks_lookup[z].append(b_start)
 
 
     # Create field CloudVolumes
@@ -549,8 +553,7 @@ if __name__ == "__main__":
                 print("Run {}".format(task_iterator))
                 # wait
                 start = time()
-                if do_alignment:
-                    a.wait_for_sqs_empty()
+                a.wait_for_sqs_empty()
                 end = time()
                 diff = end - start
                 print("Executing {} use time: {}\n".format(task_iterator, diff))
@@ -579,7 +582,7 @@ if __name__ == "__main__":
                     src_mip=mip,
                     field_mip=coarse_field_mip,
                     masks=src_masks,
-                    seethrough=args.seethrough,
+                    # seethrough=args.seethrough,
                     # seethrough_misalign=args.seethrough_misalign
                 )
                 yield from t
@@ -708,6 +711,7 @@ if __name__ == "__main__":
                         coarse_field_cv=coarse_field_cv,
                         coarse_field_mip=coarse_field_mip,
                         tgt_field_cv=tgt_field,
+                        report=True
                     )
                     yield from t
 
@@ -756,7 +760,8 @@ if __name__ == "__main__":
                     masks=src_masks,
                     pad=pad,
                     seethrough=args.seethrough,
-                    seethrough_misalign=args.seethrough_misalign
+                    seethrough_misalign=args.seethrough_misalign,
+                    report=True
                 )
                 yield from t
 
@@ -948,7 +953,7 @@ if __name__ == "__main__":
                                 mip, mip, factors, pad)
             yield from t
 
-    class StitchFinalRender(object):
+    class StitchFinalRender(object):    
         def __init__(self, z_range):
           self.z_range = z_range
 
@@ -961,30 +966,230 @@ if __name__ == "__main__":
                          masks=src_masks, blackout_op=blackout_op)
             yield from t
 
+    # compute_field_map = {}
+    # render_map = {}
+    max_dist = 1
+    block_z_list = []
+    first_z_release = None
+    for z_offset in sorted(block_offset_to_z_range.keys()):
+        if first_z_release is None:
+            first_z_release = list(block_offset_to_z_range[z_offset])
+        block_z_list.append(list(block_offset_to_z_range[z_offset]))
+    block_z_list = np.concatenate(block_z_list)
+
+    def break_into_chunks(chunk_size, offset, mip, max_mip=12):
+        """Break bbox into list of chunks with chunk_size, given offset for all data
+
+        Args:
+        bbox: BoundingBox for region to be broken into chunks
+        chunk_size: tuple for dimensions of chunk that bbox will be broken into;
+            will be set to min(chunk_size, self.chunk_size)
+        offset: tuple for x,y origin for the entire dataset, from which chunks
+            will be aligned
+        mip: int for MIP level at which bbox is defined
+        max_mip: int for the maximum MIP level at which the bbox is valid
+        """
+        chunks = []
+        z_to_number_of_chunks = {}
+        for z in block_z_list:
+            bbox = bbox_lookup[z]
+            raw_x_range = bbox.x_range(mip=mip)
+            raw_y_range = bbox.y_range(mip=mip)
+
+            x_chunk = chunk_size[0]
+            y_chunk = chunk_size[1]
+
+            x_offset = offset[0]
+            y_offset = offset[1]
+            x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
+            y_remainder = ((raw_y_range[0] - y_offset) % y_chunk)
+
+            calign_x_range = [raw_x_range[0] - x_remainder, raw_x_range[1]]
+            calign_y_range = [raw_y_range[0] - y_remainder, raw_y_range[1]]
+
+            x_size = len(range(calign_x_range[0], calign_x_range[1], chunk_size[0]))
+            y_size = len(range(calign_y_range[0], calign_y_range[1], chunk_size[0]))
+
+            z_to_number_of_chunks[z] = x_size * y_size
+
+            for xs in range(calign_x_range[0], calign_x_range[1], chunk_size[0]):
+                for ys in range(calign_y_range[0], calign_y_range[1], chunk_size[1]):
+                    chunks.append((xs, ys, int(z)))
+                    # chunks.append(BoundingBox(xs, xs + chunk_size[0],
+                                            #  ys, ys + chunk_size[1],
+                                            #  mip=mip, max_mip=max_mip))
+        return chunks, z_to_number_of_chunks
+
+    chunks, z_to_number_of_chunks = break_into_chunks(cm.dst_chunk_sizes[mip],
+                                    cm.dst_voxel_offsets[mip], mip=mip, max_mip=cm.max_mip)
+    chunk_to_compute_processed = dict(zip(chunks, [False] * len(chunks)))
+    chunk_to_render_processed = dict(zip(chunks, [False] * len(chunks)))
+    z_to_computes_processed = dict(zip(block_z_list, [0] * len(chunks)))
+    z_to_renders_processed = dict(zip(block_z_list, [0] * len(chunks)))
+    # z_to_chunks_processed = dict(zip(block_z_list, [0] * len(block_z_list)))
+    z_to_compute_released = dict(zip(block_z_list, [False] * len(block_z_list)))
+    z_to_render_released = dict(zip(block_z_list, [False] * len(block_z_list)))
+    renders_complete = 0
+
+    def recover_status_from_file(filename):
+        global renders_complete
+        with open(filename, 'r') as recover_file:
+            line = recover_file.readline()
+            while line:
+                z = int(line[3:])
+                if line[0:2] == 'cf':
+                    z_to_compute_released[z] = True
+                elif line[0:2] == 'rt':
+                    z_to_render_released[z] = True
+                    renders_complete = renders_complete + 1
+                line = recover_file.readline()
+        new_cf_list = []
+        new_rt_list = []
+        for z in first_z_release:
+            # import ipdb
+            # ipdb.set_trace()
+            while z in z_to_compute_released:
+                if not z_to_compute_released[z]:
+                    new_cf_list.append(z)
+                    break
+                if not z_to_render_released[z]:
+                    new_rt_list.append(z)
+                    break
+                z = z + 1
+        return new_cf_list, new_rt_list
+
+    # import ipdb
+    # ipdb.set_trace()
+
+    def executeNew(task_iterator, z_range):
+        if len(z_range) == 1:
+            ptask = []
+            # ptask.append(task_iterator(z_range[0]))
+            remote_upload(task_iterator(z_range))
+        elif len(z_range) > 0:
+            ptask = []
+            range_list = make_range(z_range, a.threads)
+            start = time()
+
+            for irange in range_list:
+                ptask.append(task_iterator(irange))
+            with ProcessPoolExecutor(max_workers=a.threads) as executor:
+                executor.map(remote_upload, ptask)
+
+    status_filename = args.status_output_file
+    if status_filename is None:
+        status_filename = 'align_block_status_{}.txt'.format(floor(time()))
+
+    def executionLoop(compute_field_z_release, render_z_release=[]):
+        with open(status_filename, 'w') as status_file:
+            if len(compute_field_z_release) > 0:            
+                for z in compute_field_z_release:
+                    executeNew(BlockAlignComputeField, compute_field_z_release)
+                    z_to_compute_released[z] = True
+            if len(render_z_release) > 0:
+                executeNew(BlockAlignRender, render_z_release)
+                for z in render_z_release:
+                    z_to_render_released[z] = True
+            with TaskQueue(queue_name=args.completed_queue_name, n_threads=0) as ctq:
+                sqs_obj = ctq._api._sqs
+                global renders_complete
+                while renders_complete < len(block_z_list):
+                    msgs = sqs_obj.receive_message(QueueUrl=ctq._api._qurl, MaxNumberOfMessages=10)
+                    if 'Messages' not in msgs:
+                        sleep(1)
+                        continue
+                    entriesT = []
+                    parsed_msgs = []
+                    for i in range(len(msgs['Messages'])):
+                        entriesT.append({
+                            'ReceiptHandle': msgs['Messages'][i]['ReceiptHandle'],
+                            'Id': str(i)
+                        })
+                        parsed_msgs.append(json.loads(msgs['Messages'][i]['Body']))
+                    sqs_obj.delete_message_batch(QueueUrl=ctq._api._qurl, Entries=entriesT)
+                    for parsed_msg in parsed_msgs:
+                        pos_tuple = (parsed_msg['x'], parsed_msg['y'], parsed_msg['z'])
+                        z = pos_tuple[2]
+                        if parsed_msg['task'] == 'CF':
+                            # import ipdb
+                            # ipdb.set_trace()
+                            already_processed = chunk_to_compute_processed[pos_tuple]
+                            if not already_processed:
+                                chunk_to_compute_processed[pos_tuple] = True
+                                z_to_computes_processed[z] = z_to_computes_processed[z] + 1
+                                if z_to_computes_processed[z] == z_to_number_of_chunks[z]:
+                                    if z in z_to_render_released:
+                                        if z_to_render_released[z]:
+                                            pass
+                                            # raise ValueError('Attempt to release render for z={} twice'.format(z+1))
+                                        else:
+                                            print('CF done for z={}, releasing render for z={}'.format(z, z))
+                                            z_to_render_released[z] = True
+                                            status_file.write('cf {}\n'.format(z))
+                                            executeNew(BlockAlignRender, [z])
+                                elif z_to_computes_processed[z] > z_to_number_of_chunks[z]:
+                                    # import ipdb
+                                    # ipdb.set_trace()
+                                    raise ValueError('More compute chunks processed than exist for z = {}'.format(z))
+                        elif parsed_msg['task'] == 'RT':
+                            already_processed = chunk_to_render_processed[pos_tuple]
+                            if not already_processed:
+                                chunk_to_render_processed[pos_tuple] = True
+                                z_to_renders_processed[z] = z_to_renders_processed[z] + 1
+                                if z_to_renders_processed[z] == z_to_number_of_chunks[z]:
+                                    renders_complete = renders_complete + 1
+                                    # if renders_complete == 19:
+                                        # import ipdb
+                                        # ipdb.set_trace()
+                                    print('Renders complete: {}'.format(renders_complete))
+                                    if z+1 in z_to_compute_released:
+                                        if z_to_compute_released[z+1]:
+                                            pass
+                                            # raise ValueError('Attempt to release compute for z={} twice'.format(z+1))
+                                        else:
+                                            print('Render done for z={}, releasing cf for z={}'.format(z, z+1))
+                                            z_to_compute_released[z+1] = True
+                                            status_file.write('rt {}\n'.format(z))
+                                            executeNew(BlockAlignComputeField, [z+1])
+                                elif z_to_renders_processed[z] > z_to_number_of_chunks[z]:
+                                    raise ValueError('More render chunks processed than exist for z = {}'.format(z))
+                        else:
+                            raise ValueError('Unsupported task type {}'.format(parsed_msg['task']))
+
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
-    if do_render:
-        print("COPY STARTING SECTION OF ALL BLOCKS")
-        execute(StarterCopy, copy_range)
-    if do_alignment:
-        if coarse_field_cv is not None:
-            print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
-            execute(StarterUpsampleField, copy_range)
-        print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
-        execute(StarterComputeField, starter_range)
-    if do_render:
-        execute(StarterRender, starter_range)
-    for z_offset in sorted(block_offset_to_z_range.keys()):
-        z_range = list(block_offset_to_z_range[z_offset])
-        if do_alignment:
-            print("ALIGN BLOCK OFFSET {}".format(z_offset))
-            execute(BlockAlignComputeField, z_range)
-            if not skip_vv:
-                print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-                execute(BlockAlignVectorVote, z_range)
+
+    # for z_offset in sorted(block_offset_to_z_range.keys()):
+    #     z_range = list(block_offset_to_z_range[z_offset])
+    #     if do_alignment:
+    #         print("ALIGN BLOCK OFFSET {}".format(z_offset))
+    #         execute(BlockAlignComputeField, z_range)
+    #         if not skip_vv:
+    #             print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
+    #             execute(BlockAlignVectorVote, z_range)
+    #     if do_render:
+    #         print("RENDER BLOCK OFFSET {}".format(z_offset))
+    #         execute(BlockAlignRender, z_range)
+    
+    if args.recover_status_from_file is None:
         if do_render:
-            print("RENDER BLOCK OFFSET {}".format(z_offset))
-            execute(BlockAlignRender, z_range)
+            print("COPY STARTING SECTION OF ALL BLOCKS")
+            execute(StarterCopy, copy_range)
+        if do_alignment:
+            if coarse_field_cv is not None:
+                print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
+                execute(StarterUpsampleField, copy_range)
+            print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
+            execute(StarterComputeField, starter_range)
+        if do_render:
+            execute(StarterRender, starter_range)
+        executionLoop(first_z_release)
+    else:
+        first_cf_release, first_rt_release = recover_status_from_file(args.recover_status_from_file)
+        # import ipdb
+        # ipdb.set_trace()
+        executionLoop(first_cf_release, first_rt_release)
+        
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
     print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
