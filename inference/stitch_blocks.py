@@ -83,7 +83,9 @@ if __name__ == '__main__':
   parser.add_argument('--render_pad', type=int, default=256)
   parser.add_argument('--block_size', type=int, default=10)
   parser.add_argument('--decay_dist', type=int, default=10)
-  parser.add_argument('--suffix', type=str, default='',
+  parser.add_argument('--stitch_suffix', type=str, default='',
+    help='string to append to directory names')
+  parser.add_argument('--render_suffix', type=str, default='',
     help='string to append to directory names')
   parser.add_argument(
     "--skip_stitching",
@@ -187,14 +189,14 @@ if __name__ == '__main__':
   tgt_mask_cv = None
 
   broadcasting_field = cm.create(join(args.dst_path, 'field',
-                                      'stitchtemp', 'broadcasting'),
+                                      'stitch', 'broadcasting'),
                                  data_type='int16', num_channels=2,
                                  fill_missing=True, overwrite=False).path
   block_field = cm.create(join(args.dst_path, 'field', 'vvote'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=False).path
 
-  compose_field = cm.create(join(args.dst_path, 'field', 'stitchtemp{}'.format(args.suffix),
+  compose_field = cm.create(join(args.dst_path, 'field', 'stitch{}'.format(args.stitch_suffix),
                                  'compose'),
                           data_type='int16', num_channels=2,
                           fill_missing=True, overwrite=do_stitching).path
@@ -202,7 +204,7 @@ if __name__ == '__main__':
   #                                'compose'),
   #                         data_type='int16', num_channels=2,
   #                         fill_missing=True, overwrite=do_stitching).path
-  final_dst = cmr.create(join(args.dst_path, 'image_stitchtempmip1{}'.format(args.suffix)),
+  final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.render_suffix)),
                         data_type='uint8', num_channels=1, fill_missing=True,
                         overwrite=do_render).path
 
