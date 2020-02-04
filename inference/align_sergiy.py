@@ -162,7 +162,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--decay_dist",
         type=int,
-        default=None
+        default=100
     )
     parser.add_argument(
         "--seethrough",
@@ -179,6 +179,7 @@ if __name__ == "__main__":
         type=str,
         default='none'
     )
+    parser.add_argument('--skip_list_lookup', type=str, help='relative path to file identifying list of skip sections')
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
 
     args = parse_args(parser)
@@ -285,6 +286,15 @@ if __name__ == "__main__":
     # import ipdb
     # ipdb.set_trace
 
+    secret_skip_list = []
+    if args.skip_list_lookup is not None:
+        with open(args.skip_list_lookup, 'r') as f:
+            line = f.readline()
+            while line:
+                skip_ind = int(line)
+                secret_skip_list.append(skip_ind)
+                line = f.readline() 
+
     # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
     bbox_lookup = {}
     model_lookup = {}
@@ -292,6 +302,9 @@ if __name__ == "__main__":
     vvote_lookup = {}
     skip_list = []
     # skip_list = [17491, 17891]
+    alignment_z_starts = [args.z_start]
+    last_alignment_start = args.z_start
+    minimum_block_size = 5
     with open(args.param_lookup) as f:
         reader = csv.reader(f, delimiter=",")
         for k, r in enumerate(reader):
@@ -305,6 +318,12 @@ if __name__ == "__main__":
                 bbox_mip = int(r[6])
                 model_path = join("..", "models", r[7])
                 tgt_radius = int(r[8])
+                while z_start - last_alignment_start > (block_size + minimum_block_size):
+                    last_alignment_start = last_alignment_start + block_size
+                    alignment_z_starts.append(last_alignment_start)
+                if z_start > last_alignment_start:
+                    last_alignment_start = z_start
+                    alignment_z_starts.append(z_start)
                 if tgt_radius > 1 and skip_vv:
                     raise ValueError('Cannot have both a tgt_radius greater than 1 and skip vv.')
                 skip = bool(int(r[9]))
@@ -318,6 +337,10 @@ if __name__ == "__main__":
                     tgt_radius_lookup[z] = tgt_radius
                     vvote_lookup[z] = [-i for i in range(1, tgt_radius + 1)]
 
+    while min(z_stop, args.z_stop) - last_alignment_start > block_size:
+        last_alignment_start = last_alignment_start + block_size
+        alignment_z_starts.append(last_alignment_start)
+    
     # Filter out skipped sections from vvote_offsets
     min_offset = 0
     for z, tgt_radius in vvote_lookup.items():
@@ -331,7 +354,8 @@ if __name__ == "__main__":
         vvote_lookup[z] = tgt_radius
 
     # Adjust block starts so they don't start on a skipped section
-    initial_block_starts = list(range(args.z_start, args.z_stop, block_size))
+    # initial_block_starts = list(range(args.z_start, args.z_stop, block_size))
+    initial_block_starts = alignment_z_starts
     if initial_block_starts[-1] != args.z_stop:
         initial_block_starts.append(args.z_stop)
     block_starts = []
@@ -511,11 +535,20 @@ if __name__ == "__main__":
             batch_mip=final_render_mip,
         )
         final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.stitch_suffix)),
-                            data_type=output_img_dtype, num_channels=1, fill_missing=True,
+                            data_type=args.output_img_dtype, num_channels=1, fill_missing=True,
                             overwrite=do_final_render).path
 
-    import ipdb
-    ipdb.set_trace()
+    compose_range = range(args.z_start, args.z_stop)
+    render_range = range(args.z_start+1, args.z_stop)
+    decay_dist = args.decay_dist
+    influencing_blocks_lookup = {z: [] for z in compose_range}
+    for b_start in block_starts:
+        for z in range(b_start+1, b_start+decay_dist+1):
+            if z < args.z_stop:
+                influencing_blocks_lookup[z].append(b_start)
+    
+    # import ipdb
+    # ipdb.set_trace()
 
     # Task scheduling functions
     def remote_upload(tasks):
@@ -720,7 +753,7 @@ if __name__ == "__main__":
             for z in self.z_range:
                 bbox = bbox_lookup[z]
                 tgt_offsets = vvote_lookup[z]
-                fine_fields = {i: block_pair_fields[i] for i in tgt_offsets}
+                fine_fields = {i: block_pair_fields[i] for i in tgt_offsets if z + i not in secret_skip_list}
                 t = a.vector_vote(
                     cm,
                     fine_fields,
@@ -845,7 +878,7 @@ if __name__ == "__main__":
             for z in self.z_range:
                 bbox = bbox_lookup[z]
                 tgt_offsets = vvote_lookup[z]
-                fine_fields = {i: stitch_pair_fields[i] for i in tgt_offsets}
+                fine_fields = {i: stitch_pair_fields[i] for i in tgt_offsets if z + i not in secret_skip_list}
                 t = a.vector_vote(
                     cm,
                     fine_fields,
@@ -916,7 +949,7 @@ if __name__ == "__main__":
             for z in self.z_range:
                 bbox = bbox_lookup[z]
                 offsets = block_start_to_stitch_offsets[z]
-                fields = {i: stitch_fields[i] for i in offsets}
+                fields = {i: stitch_fields[i] for i in offsets if z - i not in secret_skip_list}
                 t = a.vector_vote(
                     cm,
                     fields,
@@ -964,28 +997,28 @@ if __name__ == "__main__":
 
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
-    # if do_render:
-    #     print("COPY STARTING SECTION OF ALL BLOCKS")
-    #     execute(StarterCopy, copy_range)
-    # if do_alignment:
-    #     if coarse_field_cv is not None:
-    #         print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
-    #         execute(StarterUpsampleField, copy_range)
-    #     print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
-    #     execute(StarterComputeField, starter_range)
-    # if do_render:
-    #     execute(StarterRender, starter_range)
-    # for z_offset in sorted(block_offset_to_z_range.keys()):
-    #     z_range = list(block_offset_to_z_range[z_offset])
-    #     if do_alignment:
-    #         print("ALIGN BLOCK OFFSET {}".format(z_offset))
-    #         execute(BlockAlignComputeField, z_range)
-    #         if not skip_vv:
-    #             print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-    #             execute(BlockAlignVectorVote, z_range)
-    #     if do_render:
-    #         print("RENDER BLOCK OFFSET {}".format(z_offset))
-    #         execute(BlockAlignRender, z_range)
+    if do_render:
+        print("COPY STARTING SECTION OF ALL BLOCKS")
+        execute(StarterCopy, copy_range)
+    if do_alignment:
+        if coarse_field_cv is not None:
+            print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
+            execute(StarterUpsampleField, copy_range)
+        print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
+        execute(StarterComputeField, starter_range)
+    if do_render:
+        execute(StarterRender, starter_range)
+    for z_offset in sorted(block_offset_to_z_range.keys()):
+        z_range = list(block_offset_to_z_range[z_offset])
+        if do_alignment:
+            print("ALIGN BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignComputeField, z_range)
+            if not skip_vv:
+                print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
+                execute(BlockAlignVectorVote, z_range)
+        if do_render:
+            print("RENDER BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignRender, z_range)
     # print("END BLOCK ALIGNMENT")
     # print("START BLOCK STITCHING")
     # print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
@@ -993,25 +1026,25 @@ if __name__ == "__main__":
     # #    z_range = list(stitch_offset_to_z_range[z_offset])
     # #    execute(SeethroughStitchRender, z_range=z_range)
 
-    # if do_render:
-    #     execute(StitchOverlapCopy, overlap_copy_range)
-    # for z_offset in sorted(stitch_offset_to_z_range.keys()):
-    #     z_range = list(stitch_offset_to_z_range[z_offset])
-    #     if do_alignment:
-    #         print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
-    #         execute(StitchAlignComputeField, z_range)
-    #         if not skip_vv:
-    #             print("VECTOR VOTE OVERLAPPING OFFSET {}".format(z_offset))
-    #             execute(StitchAlignVectorVote, z_range)
-    #     if do_render and not skip_vv:
-    #         print("RENDER OVERLAPPING OFFSET {}".format(z_offset))
-    #         execute(StitchAlignRender, z_range)
+    if do_render:
+        execute(StitchOverlapCopy, overlap_copy_range)
+    for z_offset in sorted(stitch_offset_to_z_range.keys()):
+        z_range = list(stitch_offset_to_z_range[z_offset])
+        if do_alignment:
+            print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
+            execute(StitchAlignComputeField, z_range)
+            if not skip_vv:
+                print("VECTOR VOTE OVERLAPPING OFFSET {}".format(z_offset))
+                execute(StitchAlignVectorVote, z_range)
+        if do_render and not skip_vv:
+            print("RENDER OVERLAPPING OFFSET {}".format(z_offset))
+            execute(StitchAlignRender, z_range)
 
-    # if do_alignment and not skip_vv:
-    #     print("COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING")
-    #     execute(StitchBroadcastCopy, stitch_range)
-    #     print("VECTOR VOTE STITCHING FIELDS")
-    #     execute(StitchBroadcastVectorVote, block_starts[1:])
+    if do_alignment and not skip_vv:
+        print("COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING")
+        execute(StitchBroadcastCopy, stitch_range)
+        print("VECTOR VOTE STITCHING FIELDS")
+        execute(StitchBroadcastVectorVote, block_starts[1:])
 
     if do_compose:
         execute(StitchCompose, compose_range)
