@@ -355,7 +355,9 @@ if __name__ == "__main__":
 
     # Adjust block starts so they don't start on a skipped section
     # initial_block_starts = list(range(args.z_start, args.z_stop, block_size))
-    initial_block_starts = alignment_z_starts
+    initial_block_starts = [s for s in alignment_z_starts \
+                                                    if s < args.z_stop]
+
     if initial_block_starts[-1] != args.z_stop:
         initial_block_starts.append(args.z_stop)
     block_starts = []
