@@ -1091,11 +1091,12 @@ class Aligner:
         field -= ident
 
       if is_identity(field):
-        image = self.get_image(image_cv, image_z, bbox, image_mip,
-                               to_tensor=True, normalizer=None)
+        image = self.get_masked_image(image_cv, image_z, bbox, image_mip,
+                                      masks=masks,
+                                      to_tensor=True, normalizer=None,
+                                      mask_op=blackout_mask_op)
         mask = self.get_masks(masks, image_z, bbox,
                                dst_mip=image_mip)
-        # image = image.masked_fill_(mask, 0)
         new_bbox = padded_bbox
       else:
         distance = self.profile_field(field)

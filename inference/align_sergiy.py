@@ -293,7 +293,7 @@ if __name__ == "__main__":
             while line:
                 skip_ind = int(line)
                 secret_skip_list.append(skip_ind)
-                line = f.readline() 
+                line = f.readline()
 
     # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
     bbox_lookup = {}
@@ -340,7 +340,7 @@ if __name__ == "__main__":
     while min(z_stop, args.z_stop) - last_alignment_start > block_size:
         last_alignment_start = last_alignment_start + block_size
         alignment_z_starts.append(last_alignment_start)
-    
+
     # Filter out skipped sections from vvote_offsets
     min_offset = 0
     for z, tgt_radius in vvote_lookup.items():
@@ -447,7 +447,6 @@ if __name__ == "__main__":
     stitch_range = [z for z_range in stitch_offset_to_z_range.values() for z in z_range]
     for b, v in block_start_to_stitch_offsets.items():
         print(b)
-        assert len(v) % 2 == 1
 
 
     compose_range = range(args.z_start, args.z_stop)
@@ -546,7 +545,7 @@ if __name__ == "__main__":
         for z in range(b_start+1, b_start+decay_dist+1):
             if z < args.z_stop:
                 influencing_blocks_lookup[z].append(b_start)
-    
+
     # import ipdb
     # ipdb.set_trace()
 
@@ -864,8 +863,8 @@ if __name__ == "__main__":
                         field = stitch_pair_fields[tgt_offset]
                     t = a.compute_field(cm, model_path, block_dst, overlap_image, field,
                                         z, tgt_z, bbox, mip, pad,
-                                        src_masks=src_masks,
-                                        tgt_masks=tgt_masks,
+                                        src_masks=[],
+                                        tgt_masks=[],
                                         prev_field_cv=None,
                                         prev_field_z=tgt_z,stitch=True)
                     yield from t
