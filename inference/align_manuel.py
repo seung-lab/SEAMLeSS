@@ -189,6 +189,7 @@ if __name__ == "__main__":
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--status_output_file', type=str, default=None)
     parser.add_argument('--recover_status_from_file', type=str, default=None)
+    parser.add_argument('--block_overlap', type=int, default=0)
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -300,6 +301,9 @@ if __name__ == "__main__":
     vvote_lookup = {}
     skip_list = []
     # skip_list = [17491, 17891]
+    alignment_z_starts = [args.z_start]
+    last_alignment_start = args.z_start
+    minimum_block_size = 5
     with open(args.param_lookup) as f:
         reader = csv.reader(f, delimiter=",")
         for k, r in enumerate(reader):
@@ -313,6 +317,12 @@ if __name__ == "__main__":
                 bbox_mip = int(r[6])
                 model_path = join("..", "models", r[7])
                 tgt_radius = int(r[8])
+                while z_start - last_alignment_start > (block_size + minimum_block_size):
+                    last_alignment_start = last_alignment_start + block_size
+                    alignment_z_starts.append(last_alignment_start)
+                if z_start > last_alignment_start:
+                    last_alignment_start = z_start
+                    alignment_z_starts.append(z_start)
                 if tgt_radius > 1 and skip_vv:
                     raise ValueError('Cannot have both a tgt_radius greater than 1 and skip vv.')
                 skip = bool(int(r[9]))
@@ -325,6 +335,10 @@ if __name__ == "__main__":
                     model_lookup[z] = model_path
                     tgt_radius_lookup[z] = tgt_radius
                     vvote_lookup[z] = [-i for i in range(1, tgt_radius + 1)]
+
+    while min(z_stop, args.z_stop) - last_alignment_start > block_size:
+        last_alignment_start = last_alignment_start + block_size
+        alignment_z_starts.append(last_alignment_start)
 
     # Filter out skipped sections from vvote_offsets
     min_offset = 0
@@ -339,7 +353,14 @@ if __name__ == "__main__":
         vvote_lookup[z] = tgt_radius
 
     # Adjust block starts so they don't start on a skipped section
-    initial_block_starts = list(range(args.z_start, args.z_stop, block_size))
+    # initial_block_starts = list(range(args.z_start, args.z_stop, block_size))
+    # if initial_block_starts[-1] != args.z_stop:
+    #     initial_block_starts.append(args.z_stop)
+    initial_block_starts = [s for s in alignment_z_starts \
+                            if (s >= args.z_start and s <= args.z_stop)]
+    # if len(initial_block_starts) == 0:
+        # initial_block_starts.append(z_stop)
+
     if initial_block_starts[-1] != args.z_stop:
         initial_block_starts.append(args.z_stop)
     block_starts = []
@@ -972,6 +993,10 @@ if __name__ == "__main__":
                          masks=src_masks, blackout_op=blackout_op)
             yield from t
 
+    block_to_z_list = {}
+    for i in range(len(block_starts)-1):
+        cur_bs = block_starts[i]
+    
     # compute_field_map = {}
     # render_map = {}
     max_dist = 1
@@ -1030,8 +1055,8 @@ if __name__ == "__main__":
                                     cm.dst_voxel_offsets[mip], mip=mip, max_mip=cm.max_mip)
     chunk_to_compute_processed = dict(zip(chunks, [False] * len(chunks)))
     chunk_to_render_processed = dict(zip(chunks, [False] * len(chunks)))
-    z_to_computes_processed = dict(zip(block_z_list, [0] * len(chunks)))
-    z_to_renders_processed = dict(zip(block_z_list, [0] * len(chunks)))
+    z_to_computes_processed = dict(zip(block_z_list, [0] * len(block_z_list)))
+    z_to_renders_processed = dict(zip(block_z_list, [0] * len(block_z_list)))
     # z_to_chunks_processed = dict(zip(block_z_list, [0] * len(block_z_list)))
     z_to_compute_released = dict(zip(block_z_list, [False] * len(block_z_list)))
     z_to_render_released = dict(zip(block_z_list, [False] * len(block_z_list)))
