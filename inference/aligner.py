@@ -1095,7 +1095,7 @@ class Aligner:
                                to_tensor=True, normalizer=None)
         mask = self.get_masks(masks, image_z, bbox,
                                dst_mip=image_mip)
-        image = image.masked_fill_(mask, 0)
+        # image = image.masked_fill_(mask, 0)
         new_bbox = padded_bbox
       else:
         distance = self.profile_field(field)

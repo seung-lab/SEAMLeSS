@@ -873,9 +873,12 @@ def vector_vote(fields, softmin_temp, blur_sigma=None):
   if blur_sigma:
     fields_blurred = [blur_field(f, blur_sigma) for f in fields]
   n = len(fields)
-  assert(n % 2 == 1)
+  #   assert(n % 2 == 1)
   # majority
-  m = n // 2 + 1
+  if n % 2 == 0:
+    m = n // 2
+  else:
+    m = n // 2 + 1
   indices = range(n)
 
   # compute distances for all pairs of fields

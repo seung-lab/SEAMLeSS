@@ -1,0 +1,2 @@
+x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
+150000,175000,17612,308752,308752,17636,0,sergiy_m8m10_net_opt,5,0,original
