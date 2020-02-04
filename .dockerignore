@@ -137,6 +137,8 @@ inference/docker/secret.yaml
 # isolate single modle
 models/
 !models/nk_vf_30_minnie_jit_mip4_opt_v4/**
+!models/nk_vf_30_minnie_jit_mip4/**
+!models/sergiy_m8m10_net_opt_v2/**
 # !models/nk_vf_30_minnie_jit_mip3/**
 # !models/nk_vf_30_minnie_jit_mip3_opt/**
 # !models/nk_vf_30_minnie_jit_mip4_v3_opt/**

@@ -89,7 +89,7 @@ class Model(nn.Module):
             tgt = tgt
 
             if 'src_mask' in kwargs:
-                large_defect_threshold = 600
+                large_defect_threshold = 400
                 small_defect_threshold = 25
                 src_large_defects = (kwargs['src_mask'] >= large_defect_threshold).float()
                 src_small_defects = (kwargs['src_mask'] >= small_defect_threshold).float()
@@ -125,7 +125,7 @@ class Model(nn.Module):
                     src_large_defects=src_large_defects.float(),
                     src_defects=src_defects.float(),
                     tgt_defects=tgt_defects.float(),
-                    max_iter=400
+                    max_iter=100
                                     )
             #sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
             #pred_res[sm_mask[0]] = 0

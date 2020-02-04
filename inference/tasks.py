@@ -214,15 +214,15 @@ class ComputeFieldTask(RegisteredTask):
                                             src_masks=src_masks, tgt_masks=tgt_masks,
                                             tgt_alt_z=None, prev_field_cv=prev_field_cv, prev_field_z=prev_field_z,
                                             coarse_field_cv=coarse_field_cv, coarse_field_mip=coarse_field_mip, tgt_field_cv=tgt_field_cv)
-        aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)        
+        aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
         if self.report and aligner.completed_task_queue is not None:
-          print('Reporting to completed queue...')        
+          print('Reporting to completed queue...')
           api_obj = aligner.completed_task_queue._api
           sqs_obj = aligner.completed_task_queue._api._sqs
-          
+
           # import ipdb
           # ipdb.set_trace()
-          msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'Id': 'id', 'MessageBody':json.dumps(message)}])    
+          msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'Id': 'id', 'MessageBody':json.dumps(message)}])
           if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
             success = False
             for i in range(20):
@@ -305,14 +305,15 @@ class RenderTask(RegisteredTask):
                coarsen_misalign=96, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=True,
-               blackout_op='none', report=False):
+               blackout_op='none', report=False, brighten_misalign=False):
     if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                      field_mip, masks, affine, use_cpu, pad, seethrough,
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
                       seethrough_folds, seethrough_misalign, seethrough_black,
-                      big_fold_threshold, seethrough_renormalize, blackout_op, report)
+                      big_fold_threshold, seethrough_renormalize, blackout_op, report,
+                      brighten_misalign)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -408,7 +409,8 @@ class RenderTask(RegisteredTask):
                      image[seethrough_tissue_mask] *= this_stdev / prev_stdev
                      image[seethrough_tissue_mask] += this_mean
                      image[image < 0] = 0
-                     #image[seethrough_tissue_mask] += 0.05
+                     if self.brighten_misalign:
+                         image[seethrough_tissue_mask] += 0.02
 
              if self.seethrough_misalign:
                  misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,

@@ -297,11 +297,14 @@ def unsupervised_loss(smoothness_factor, smoothness_type='rig', use_defect_mask=
                       norm_mse=False, white_threshold=-0.1, reverse=True, coarsen_mse=0,
                       coarsen_smooth=0, coarsen_positive_mse=0, tgt_defects_sm=True,
                       tgt_defects_mse=True, positive_mse_mult=1.0, sm_mask_factor=0,
-                      sm_decay_factor=0.5, sm_decay_length=0):
+                      sm_decay_factor=0.5, sm_decay_length=0, sm_keys_to_apply={},
+                      mse_keys_to_apply={}):
     def compute_loss(bundle, smoothness_mult=1.0, crop=32):
         loss_dict = {}
         if use_defect_mask:
-            mse_mask, smoothness_mask = get_mse_and_smoothness_masks2(bundle)
+            mse_mask, smoothness_mask = get_mse_and_smoothness_masks2(bundle,
+                    sm_keys_to_appy=sm_keys_to_apply,
+                    mse_keys_to_appy=mse_keys_to_apply)
         else:
             mse_mask = None
             smoothness_mask = None

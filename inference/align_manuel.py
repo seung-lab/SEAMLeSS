@@ -127,6 +127,11 @@ if __name__ == "__main__":
         help="If specified, CloudVolume path to render to instead of default"
     )
     parser.add_argument(
+        "--brighten_misalign",
+        action='store_true',
+        help="If True,brightens misalignments seenthrough"
+    )
+    parser.add_argument(
         "--skip_alignment",
         action='store_true',
         help="If True, skip compute field and vector voting"
@@ -582,7 +587,7 @@ if __name__ == "__main__":
                     src_mip=mip,
                     field_mip=coarse_field_mip,
                     masks=src_masks,
-                    # seethrough=args.seethrough,
+                    seethrough=args.seethrough,
                     # seethrough_misalign=args.seethrough_misalign
                 )
                 yield from t
@@ -761,6 +766,7 @@ if __name__ == "__main__":
                     pad=pad,
                     seethrough=args.seethrough,
                     seethrough_misalign=args.seethrough_misalign,
+                    brighten_misalign=args.brighten_misalign,
                     report=True
                 )
                 yield from t
@@ -953,7 +959,7 @@ if __name__ == "__main__":
                                 mip, mip, factors, pad)
             yield from t
 
-    class StitchFinalRender(object):    
+    class StitchFinalRender(object):
         def __init__(self, z_range):
           self.z_range = z_range
 
@@ -1082,7 +1088,7 @@ if __name__ == "__main__":
 
     def executionLoop(compute_field_z_release, render_z_release=[]):
         with open(status_filename, 'w') as status_file:
-            if len(compute_field_z_release) > 0:            
+            if len(compute_field_z_release) > 0:
                 for z in compute_field_z_release:
                     executeNew(BlockAlignComputeField, compute_field_z_release)
                     z_to_compute_released[z] = True
@@ -1170,7 +1176,7 @@ if __name__ == "__main__":
     #     if do_render:
     #         print("RENDER BLOCK OFFSET {}".format(z_offset))
     #         execute(BlockAlignRender, z_range)
-    
+
     if args.recover_status_from_file is None:
         if do_render:
             print("COPY STARTING SECTION OF ALL BLOCKS")
@@ -1189,7 +1195,7 @@ if __name__ == "__main__":
         # import ipdb
         # ipdb.set_trace()
         executionLoop(first_cf_release, first_rt_release)
-        
+
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
     print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")

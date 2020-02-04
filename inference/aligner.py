@@ -1551,7 +1551,7 @@ class Aligner:
                    affine=None, use_cpu=False,
              return_iterator= False, pad=256, seethrough=False,
              seethrough_misalign=False,
-             blackout_op='none', report=False):
+             blackout_op='none', report=False, brighten_misalign=False):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1596,6 +1596,7 @@ class Aligner:
                        masks,
                        affine, use_cpu, pad,
                        seethrough=seethrough,
+                       brighten_misalign=brighten_misalign,
                        seethrough_misalign=seethrough_misalign,
                        blackout_op=blackout_op,
                        report=report)
@@ -1609,6 +1610,7 @@ class Aligner:
                            masks,
                            affine, use_cpu, pad,
                            seethrough=seethrough,
+                           brighten_misalign=brighten_misalign,
                            seethrough_misalign=seethrough_misalign,
                            blackout_op=blackout_op,
                            report=report))

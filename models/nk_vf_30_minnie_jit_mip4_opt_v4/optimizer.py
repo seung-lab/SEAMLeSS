@@ -147,9 +147,11 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
 
 def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_defects, src_defects,
         src_large_defects, src_small_defects,
-        crop=128, bot_mip=4, max_iter=800):
-    sm_val = 230e0
-    sm_val2 = 230e0
+        crop=128, bot_mip=4, max_iter=800,
+        sm_keys_to_apply={}, mse_keys_to_apply={}):
+
+    sm_val = 220e0
+    sm_val2 = 220e0
     sm = {
         4: sm_val,
         5: sm_val,
@@ -187,7 +189,10 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
                                       positive_mse_mult=0,
                                       sm_mask_factor=sm_mask_factor,
                                       sm_decay_length=100,
-                                      sm_decay_factor=0.2),
+                                      sm_decay_factor=0.2,
+                                      sm_keys_to_apply=sm_keys_to_apply,
+                                      mse_keys_to_apply=mse_keys_to_apply
+                                      ),
         5: unsupervised_loss(smoothness_factor=sm[5], use_defect_mask=True,
                                       white_threshold=-10, reverse=True,
                                       coarsen_mse=0,coarsen_smooth=0,
@@ -195,31 +200,19 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
                                       positive_mse_mult=0,
                                       sm_mask_factor=sm_mask_factor,
                                       sm_decay_length=100,
-                                      sm_decay_factor=0.2),
+                                      sm_decay_factor=0.2,
+                                      sm_keys_to_apply=sm_keys_to_apply,
+                                      mse_keys_to_apply=mse_keys_to_apply
+                                      ),
         6: unsupervised_loss(smoothness_factor=sm[6], use_defect_mask=True,
                                       white_threshold=-10, reverse=True,
                                       coarsen_mse=0,coarsen_smooth=0,
                                       coarsen_positive_mse=0,
                                       positive_mse_mult=0,
-                                      sm_mask_factor=sm_mask_factor),
-        7: unsupervised_loss(smoothness_factor=sm[7], use_defect_mask=True,
-                                      white_threshold=-10, reverse=True,
-                                      coarsen_mse=0,coarsen_smooth=0,
-                                      coarsen_positive_mse=0,
-                                      positive_mse_mult=0,
-                                      sm_mask_factor=sm_mask_factor),
-        8: unsupervised_loss(smoothness_factor=sm[8], use_defect_mask=True,
-                                      white_threshold=-10, reverse=True,
-                                      coarsen_mse=0,coarsen_smooth=0,
-                                      coarsen_positive_mse=0,
-                                      positive_mse_mult=0,
-                                      sm_mask_factor=sm_mask_factor),
-        9: unsupervised_loss(smoothness_factor=sm[9], use_defect_mask=True,
-                                      white_threshold=-10, reverse=True,
-                                      coarsen_mse=0,coarsen_smooth=0,
-                                      coarsen_positive_mse=0,
-                                      positive_mse_mult=0,
-                                      sm_mask_factor=sm_mask_factor),
+                                      sm_mask_factor=sm_mask_factor,
+                                      sm_keys_to_apply=sm_keys_to_apply,
+                                      mse_keys_to_apply=mse_keys_to_apply
+                                      ),
     }
 
     pred_res = pred_res_start.clone()
@@ -286,6 +279,42 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
 def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defects=None, src_small_defects=None,
         src_large_defects=None, max_iter=400):
     start = time.time()
+
+    mse_keys_to_apply = {
+        'src': [
+            {'name': 'src_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0)]}
+            ],
+        'tgt':[
+            {'name': 'tgt_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0)]}
+        ]
+    }
+    sm_keys_to_apply = {
+        'src': [
+            {'name': 'src_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0)],
+             "mask_value": 0e-6},
+            {'name': 'src_large_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(3, 2), (64, 0.3)],
+             "mask_value": 1e-6},
+            {'name': 'src_small_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(8, 0.3)],
+             "mask_value": 0e-6},
+            {'name': 'src',
+                'fm': 0,
+             'binarization': {'strat': 'gt', 'value': -5.0},
+            'mask_value': 0}
+            ],
+        'tgt':[
+        ]
+    }
+
     mips = [6, 5]
 
     if src_defects is not None:
@@ -311,7 +340,9 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             tgt_defects=tgt_defects,
             src_small_defects=src_small_defects,
             src_large_defects=src_large_defects,
-            crop=128, bot_mip=5, max_iter=max_iter*2)
+            crop=128, bot_mip=5, max_iter=max_iter*2,
+            sm_keys_to_apply=sm_keys_to_apply,
+            mse_keys_to_apply=mse_keys_to_apply)
 
     num_reatures = model.state['up'][str(4)]['output'].shape[1]
     src_bm = model.state['up'][str(4)]['output'][0:1, num_reatures//2 - 1]
@@ -340,7 +371,9 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             tgt_defects=tgt_defects,
             src_small_defects=src_small_defects,
             src_large_defects=src_large_defects,
-            mips=mips, crop=128, bot_mip=4, max_iter=max_iter)
+            mips=mips, crop=128, bot_mip=4, max_iter=max_iter,
+            sm_keys_to_apply=sm_keys_to_apply,
+            mse_keys_to_apply=mse_keys_to_apply)
     end = time.time()
     print ("OPTIMIZATION FINISHED. Optimizing time: {0:.2f} sec".format(end - start))
     return pred_res_opt
