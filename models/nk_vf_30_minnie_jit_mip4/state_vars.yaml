@@ -1,8 +1,8 @@
-batch_size: 1
-catastrophic_loss: 0.5
+batch_size: 4
+catastrophic_loss: 0.18
 checkpoint_time: 100
 encodings: true
-epoch: 212
+epoch: 755
 epochs_per_mip: 2
 feature_maps:
 - 12
@@ -13,7 +13,7 @@ feature_maps:
 - 42
 gamma: 0.5
 gamma_step: 5000
-gpus: '3'
+gpus: 0,1,2,3
 height: 6
 initialized_list:
 - true
@@ -23,10 +23,10 @@ initialized_list:
 - true
 - true
 iteration: null
-lambda1: 10000000.0
+lambda1: 2000000.0
 levels: null
 log_time: 1
-lr: 0.0001
+lr: 0.0002
 name: nk_vf_30_minnie_jit_mip4
 num_epochs: 1000000000
 num_samples: null
@@ -34,8 +34,8 @@ penalty: rig
 plan: all
 repeats: 1
 seed: null
-skip_aug: true
-start_lr: 0.0001
+skip_aug: false
+start_lr: 0.0002
 supervised: false
 training_set_path: !!python/object/apply:pathlib.PosixPath
 - /
@@ -43,13 +43,13 @@ training_set_path: !!python/object/apply:pathlib.PosixPath
 - people
 - nkemnitz
 - SEAMLeSS
-- jit_mip4_fold1200_train.h5
+- jit_mip4_fold1200_v12_train.h5
 validation_set_path: !!python/object/apply:pathlib.PosixPath
 - /
 - usr
 - people
 - nkemnitz
 - SEAMLeSS
-- jit_mip4_fold10_train.h5
+- jit_mip4_starter_valid_v12_train.h5
 vis_time: 50
 wd: 0

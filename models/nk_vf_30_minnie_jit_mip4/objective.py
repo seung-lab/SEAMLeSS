@@ -185,54 +185,101 @@ def prepare_masks(sample, threshold=127):
     Returns properly formatted masks with which to weight the loss function.
     If masks is None, this calls gen_masks to generate them.
     """
-    # MSE coefficient on the defect (src, tgt) and radius:
-    tissue_coef0 = 0, 0
-    tissue_radius0 = 0
-    # MSE coefficient in the defect neighborhood (src, tgt) and radius:
-    tissue_coef1 = 5.0, 1.0
-    tissue_radius1 = 10
-    # smoothness coefficient on the defect (src, tgt) and radius:
-    field_coef0 = 0.000001, 1.0
-    field_radius0 = 0
-    # smoothness coefficient in the defect neighborhood (src, tgt) and radius:
-    field_coef1 = 5.0, 1.0
-    field_radius1 = 10
+    # MSE coefficient on the folds (src, tgt) and radius:
+    fold_main_mse_coef = 0, 0
+    fold_main_mse_radius = 0
+
+    # MSE coefficient in the fold neighborhood (src, tgt) and radius:
+    fold_surround_mse_coef = 1.0, 1.0
+    fold_surround_mse_radius = 0
+
+    # MSE coefficient on the cracks (src, tgt) and radius:
+    crack_main_mse_coef = 0.5, 0.0
+    crack_main_mse_radius = 0
+
+    # MSE coefficient in the crack neighborhood (src, tgt) and radius:
+    crack_surround_mse_coef = 1.0, 1.0
+    crack_surround_mse_radius = 0
+
+    # smoothness coefficient on the folds (src, tgt) and radius:
+    fold_main_field_coef = 0.000001, 1.0
+    fold_main_field_radius = 0
+
+    # smoothness coefficient in the fold neighborhood (src, tgt) and radius:
+    fold_surround_field_coef = 1.0, 1.0
+    fold_surround_field_radius = 0
+
+    # smoothness coefficient on the cracks (src, tgt) and radius:
+    crack_main_field_coef = 0.00000001, 1.0
+    crack_main_field_radius = 0
+
+    # smoothness coefficient in the crack neighborhood (src, tgt) and radius:
+    crack_surround_field_coef = 0.25, 1.0
+    crack_surround_field_radius = 1
+
 
     src, tgt = sample.src.image, sample.tgt.image
     src_weights, tgt_weights = torch.ones_like(src), torch.ones_like(tgt)
     src_field_weights = torch.ones_like(src)
     tgt_field_weights = torch.ones_like(tgt)
 
-    if sample.src.mask is None or len(sample.src.mask) == 0:
+    if sample.src.folds is None or len(sample.src.folds) == 0:
         assert False
-    else:
-        src_defects = sample.src.mask > threshold
-        tgt_defects = sample.tgt.mask > threshold
+    if sample.src.cracks is None or len(sample.src.cracks) == 0:
+        assert False
 
-    # Tissue (MSE) masks
-    src_mask_0 = masklib.dilate(src_defects, radius=tissue_radius0)
-    tgt_mask_0 = masklib.dilate(tgt_defects, radius=tissue_radius0)
-    src_mask_1 = masklib.dilate(src_defects, radius=tissue_radius1)
-    tgt_mask_1 = masklib.dilate(tgt_defects, radius=tissue_radius1)
-    # coefficient in the defect neighborhood:
-    src_weights[src_mask_1], tgt_weights[tgt_mask_1] = tissue_coef1
-    # coefficient on the defect:
-    src_weights[src_mask_0], tgt_weights[tgt_mask_0] = tissue_coef0
+    src_fold_defects = sample.src.folds > threshold
+    tgt_fold_defects = sample.tgt.folds > threshold
+    src_crack_defects = sample.src.cracks > threshold
+    tgt_crack_defects = sample.tgt.cracks > threshold
+
+    # Fold (MSE) masks
+    src_fold_main = masklib.dilate(src_fold_defects, radius=fold_main_mse_radius)
+    tgt_fold_main = masklib.dilate(tgt_fold_defects, radius=fold_main_mse_radius)
+    src_fold_surround = masklib.dilate(src_fold_defects, radius=fold_surround_mse_radius)
+    tgt_fold_surround = masklib.dilate(tgt_fold_defects, radius=fold_surround_mse_radius)
+
+    # Crack (MSE) masks
+    src_crack_main = masklib.dilate(src_crack_defects, radius=crack_main_mse_radius)
+    tgt_crack_main = masklib.dilate(tgt_crack_defects, radius=crack_main_mse_radius)
+    src_crack_surround = masklib.dilate(src_crack_defects, radius=crack_surround_mse_radius)
+    tgt_crack_surround = masklib.dilate(tgt_crack_defects, radius=crack_surround_mse_radius)
+
+    # coefficient in the fold/crack neighborhood:
+    src_weights[src_fold_surround], tgt_weights[tgt_fold_surround] = fold_surround_mse_coef
+    src_weights[src_crack_surround], tgt_weights[tgt_crack_surround] = crack_surround_mse_coef
+
+    # coefficient on the fold/crack:
+    src_weights[src_fold_main], tgt_weights[tgt_fold_main] = fold_main_mse_coef
+    src_weights[src_crack_main], tgt_weights[tgt_crack_main] = crack_main_mse_coef
+
     # no MSE outside tissue
     src_weights[(src*255.0).to(torch.uint8) < 1] = 0
     tgt_weights[(tgt*255.0).to(torch.uint8) < 1] = 0
 
-    # Field (smoothness) masks
-    src_field_mask_0 = masklib.dilate(src_defects, radius=field_radius0)
-    tgt_field_mask_0 = masklib.dilate(tgt_defects, radius=field_radius0)
-    src_field_mask_1 = masklib.dilate(src_defects, radius=field_radius1)
-    tgt_field_mask_1 = masklib.dilate(tgt_defects, radius=field_radius1)
-    # coefficient in the defect neighborhood:
-    src_field_weights[src_field_mask_1], tgt_field_weights[tgt_field_mask_1] = field_coef1
-    # coefficient on the defect:
-    src_field_weights[src_field_mask_0], tgt_field_weights[tgt_field_mask_0] = field_coef0
+
+    # Fold (Field) masks
+    src_fold_field_main = masklib.dilate(src_fold_defects, radius=fold_main_field_radius)
+    tgt_fold_field_main = masklib.dilate(tgt_fold_defects, radius=fold_main_field_radius)
+    src_fold_field_surround = masklib.dilate(src_fold_defects, radius=fold_surround_field_radius)
+    tgt_fold_field_surround = masklib.dilate(tgt_fold_defects, radius=fold_surround_field_radius)
+
+    # Crack (Field) masks
+    src_crack_field_main = masklib.dilate(src_crack_defects, radius=crack_main_field_radius)
+    tgt_crack_field_main = masklib.dilate(tgt_crack_defects, radius=crack_main_field_radius)
+    src_crack_field_surround = masklib.dilate(src_crack_defects, radius=crack_surround_field_radius)
+    tgt_crack_field_surround = masklib.dilate(tgt_crack_defects, radius=crack_surround_field_radius)
+
+    # coefficient in the fold/crack neighborhood:
+    src_field_weights[src_fold_field_surround], tgt_field_weights[tgt_fold_field_surround] = fold_surround_field_coef
+    src_field_weights[src_crack_field_surround], tgt_field_weights[tgt_crack_field_surround] = crack_surround_field_coef
+
+    # coefficient on the fold/crack:
+    src_field_weights[src_fold_field_main], tgt_field_weights[tgt_fold_field_main] = fold_main_field_coef
+    src_field_weights[src_crack_field_main], tgt_field_weights[tgt_crack_field_main] = crack_main_field_coef
+
     # less strict field outside src tissue (to extend folds)
-    src_field_weights[(src*255.0).to(torch.uint8) < 1] = 0.0001
+    src_field_weights[(src*255.0).to(torch.uint8) < 1] = 0.001
 
     src_aug_masks = ([1.0 - m.float() for m in sample.src.aug_masks]
                      if sample.src.aug_masks else [])
