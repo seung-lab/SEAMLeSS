@@ -44,6 +44,19 @@ def ranges_overlap(a_pair, b_pair):
          (b_start >= a_start and b_stop <= a_stop) or
          (b_start <= a_stop  and b_stop >= a_stop))
 
+def interpolate(x, start, stop_dist):
+  """Return interpolation value of x for range(start, stop)
+
+  Args
+     x: int location
+     start: location corresponding to 1
+     stop_dist: distance from start corresponding to 0
+  """
+  assert(stop_dist != 0)
+  stop = start + stop_dist
+  d = (stop - x) / (stop - start)
+  return min(max(d, 0.), 1.)
+
 
 if __name__ == '__main__':
   parser = get_argparser()
@@ -61,6 +74,7 @@ if __name__ == '__main__':
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--src_dtype', type=str, default='uint8')
   parser.add_argument('--dst_dtype', type=str, default='uint8')
+  parser.add_argument('--final_dst_dtype', type=str, default='uint8')
   parser.add_argument('--dst_field_dtype', type=str, default='int16')
   parser.add_argument('--mip', type=int)
   parser.add_argument('--z_start', type=int)
@@ -95,7 +109,8 @@ if __name__ == '__main__':
   args.serial_operation = True
   a = get_aligner(args)
   provenance = get_provenance(args)
-  chunk_size = 1024
+  # chunk_size = 1024
+  chunk_size = 2048
 
   # Simplify var names
   mip = args.mip
@@ -332,8 +347,8 @@ if __name__ == '__main__':
                                  'compose'),
                           data_type=args.dst_field_dtype, num_channels=2,
                           fill_missing=True, overwrite=do_compose).path
-  final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.compose_suffix)),
-                        data_type=args.dst_dtype, num_channels=1, fill_missing=True,
+  final_dst = cm.create(join(args.dst_path, 'image_stitch{}'.format(args.compose_suffix)),
+                        data_type=args.final_dst_dtype, num_channels=1, fill_missing=True,
                         overwrite=do_final_render).path
 
 
@@ -565,6 +580,15 @@ if __name__ == '__main__':
                           inverse=False, serial=True, softmin_temp=(2**mip)/6.0, blur_sigma=1)
         yield from t
 
+  compose_range = range(args.z_start, args.z_stop)
+  render_range = range(args.z_start+1, args.z_stop)
+  decay_dist = args.decay_dist
+  influencing_blocks_lookup = {z: [] for z in compose_range}
+  for b_start in block_starts:
+    for z in range(b_start+1, b_start+decay_dist+1):
+      if z < args.z_stop:
+        influencing_blocks_lookup[z].append(b_start)
+
   
   class StitchCompose(object):
     def __init__(self, z_range):
@@ -596,38 +620,38 @@ if __name__ == '__main__':
         yield from t
 
   # Serial alignment with block stitching 
-  print('START BLOCK ALIGNMENT')
-  print('COPY STARTING SECTION OF ALL BLOCKS')
-  execute(StarterCopy, copy_range)
-  print('ALIGN STARTER SECTIONS FOR EACH BLOCK')
-  execute(StarterComputeField, starter_range)
-  execute(StarterRender, starter_range)
-  for z_offset in sorted(block_offset_to_z_range.keys()):
-    z_range = list(block_offset_to_z_range[z_offset])
-    print('ALIGN BLOCK OFFSET {}'.format(z_offset))
-    execute(BlockAlignComputeField, z_range)
-    print('VECTOR VOTE BLOCK OFFSET {}'.format(z_offset))
-    execute(BlockAlignVectorVote, z_range)
-    print('RENDER BLOCK OFFSET {}'.format(z_offset))
-    execute(BlockAlignRender, z_range)
+  # print('START BLOCK ALIGNMENT')
+  # print('COPY STARTING SECTION OF ALL BLOCKS')
+  # execute(StarterCopy, copy_range)
+  # print('ALIGN STARTER SECTIONS FOR EACH BLOCK')
+  # execute(StarterComputeField, starter_range)
+  # execute(StarterRender, starter_range)
+  # for z_offset in sorted(block_offset_to_z_range.keys()):
+  #   z_range = list(block_offset_to_z_range[z_offset])
+  #   print('ALIGN BLOCK OFFSET {}'.format(z_offset))
+  #   execute(BlockAlignComputeField, z_range)
+  #   print('VECTOR VOTE BLOCK OFFSET {}'.format(z_offset))
+  #   execute(BlockAlignVectorVote, z_range)
+  #   print('RENDER BLOCK OFFSET {}'.format(z_offset))
+  #   execute(BlockAlignRender, z_range)
 
-  print('END BLOCK ALIGNMENT')
-  print('START BLOCK STITCHING')
-  print('COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS')
-  execute(StitchOverlapCopy, overlap_copy_range)
-  for z_offset in sorted(stitch_offset_to_z_range.keys()):
-    z_range = list(stitch_offset_to_z_range[z_offset])
-    print('ALIGN OVERLAPPING OFFSET {}'.format(z_offset))
-    execute(StitchAlignComputeField, z_range)
-    print('VECTOR VOTE OVERLAPPING OFFSET {}'.format(z_offset))
-    execute(StitchAlignVectorVote, z_range)
-    print('RENDER OVERLAPPING OFFSET {}'.format(z_offset))
-    execute(StitchAlignRender, z_range)
+  # print('END BLOCK ALIGNMENT')
+  # print('START BLOCK STITCHING')
+  # print('COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS')
+  # execute(StitchOverlapCopy, overlap_copy_range)
+  # for z_offset in sorted(stitch_offset_to_z_range.keys()):
+  #   z_range = list(stitch_offset_to_z_range[z_offset])
+  #   print('ALIGN OVERLAPPING OFFSET {}'.format(z_offset))
+  #   execute(StitchAlignComputeField, z_range)
+  #   print('VECTOR VOTE OVERLAPPING OFFSET {}'.format(z_offset))
+  #   execute(StitchAlignVectorVote, z_range)
+  #   print('RENDER OVERLAPPING OFFSET {}'.format(z_offset))
+  #   execute(StitchAlignRender, z_range)
 
-  print('COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING')
-  execute(StitchBroadcastCopy, stitch_range)
-  print('VECTOR VOTE STITCHING FIELDS')
-  execute(StitchBroadcastVectorVote, block_starts[1:])
+  # print('COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING')
+  # execute(StitchBroadcastCopy, stitch_range)
+  # print('VECTOR VOTE STITCHING FIELDS')
+  # execute(StitchBroadcastVectorVote, block_starts[1:])
 
   if do_compose:
     execute(StitchCompose, compose_range)
