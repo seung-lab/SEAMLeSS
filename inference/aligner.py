@@ -171,11 +171,13 @@ class Aligner:
         for mask in masks:
             mask_data = self.get_mask(mask.cv, z, bbox, mask.mip, dst_mip, mask.val,
                                 to_tensor=to_tensor, mask_op=mask_op,
-                                coarsen_count=mask.coarsen_count).long()
+                                coarsen_count=mask.coarsen_count,
+                                mult=mask.mult).long()
             if result is None:
                 result = mask_data
             else:
                 result[mask_data > 0] = mask_data[mask_data > 0]
+
 
         end = time()
         diff = end - start
@@ -184,7 +186,7 @@ class Aligner:
 
 
   def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True,
-               mask_op='none', coarsen_count=0):
+               mask_op='none', coarsen_count=0, mult=1.0):
     start = time()
     data = self.get_data(cv, z, bbox, src_mip=src_mip, dst_mip=dst_mip,
                              to_float=False, to_tensor=to_tensor, normalizer=None)
@@ -208,6 +210,8 @@ class Aligner:
         raise Exception("Mask op {} unsupported".format(mask_op))
     if coarsen_count > 0:
         mask = coarsen_mask(mask, count=coarsen_count)
+    mask = mask * mult
+
     end = time()
     diff = end - start
     print('get_mask: {:.3f}'.format(diff), flush=True)
@@ -236,6 +240,7 @@ class Aligner:
     start = time()
     image = self.get_image(image_cv, z, bbox, image_mip,
                            to_tensor=True, normalizer=normalizer)
+    mask = None
     if len(masks) > 0:
       mask = self.get_masks(masks, z, bbox,
                            dst_mip=image_mip, mask_op=mask_op
