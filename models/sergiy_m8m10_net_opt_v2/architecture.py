@@ -102,7 +102,7 @@ class Model(nn.Module):
                     src_large_defects=src_folds.float(),
                     src_defects=torch.zeros_like(src),
                     tgt_defects=torch.zeros_like(src),
-                    max_iter=400)
+                    max_iter=100)
 
 
         #final_res[..., 0] = src_folds

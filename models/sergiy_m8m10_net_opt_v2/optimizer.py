@@ -9,6 +9,10 @@ from .residuals import combine_residuals
 from .blockmatch import block_match
 
 def combine_pre_post(res, pre, post):
+    while pre.shape[-2] < res.shape[-2]:
+        pre = upsample_residuals(pre)
+    while post.shape[-2] < res.shape[-2]:
+        post = upsample_residuals(post)
 
     result = combine_residuals(post,
                                combine_residuals(res, pre, is_pix_res=True),
@@ -21,15 +25,20 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
                       src_large_defects,
                       src_small_defects,
                       opt_params={},
-                      crop=128):
+                      crop=128,
+                      opt_res_coarsness=0):
     wd = 1e-3
     pred_res = initial_res.clone()
     pred_res.requires_grad = False
-    pre_res = torch.zeros_like(pred_res, device=pred_res.device, requires_grad=True)
-    post_res = torch.zeros_like(pred_res, device=pred_res.device, requires_grad=True)
 
-    prev_pre_res = torch.zeros_like(pred_res, device=pred_res.device, requires_grad=True)
-    prev_post_res = torch.zeros_like(pred_res, device=pred_res.device, requires_grad=True)
+    pre_res = torch.zeros_like(pred_res, device=pred_res.device, requires_grad=True)
+    for _ in range(opt_res_coarsness):
+        pre_res = downsample_residuals(pre_res).detach()
+
+    post_res = torch.zeros_like(pre_res, device=pred_res.device, requires_grad=True)
+
+    prev_pre_res = torch.zeros_like(pre_res, device=pred_res.device, requires_grad=True)
+    prev_post_res = torch.zeros_like(pre_res, device=pred_res.device, requires_grad=True)
 
     trainable = [pre_res, post_res]
     if opt_mode == 'adam':
@@ -52,14 +61,12 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
     prev_loss = []
 
     s = time.time()
-    loss_bundle['pred_res'] = combine_residuals(post_res,
-                                   combine_residuals(pred_res, pre_res, is_pix_res=True),
-                                   is_pix_res=True)
+    loss_bundle['pred_res'] = combine_pre_post(pred_res, pre_res, post_res)
+
     while loss_bundle['pred_res'].shape[-2] < src.shape[-2]:
         loss_bundle['pred_res'] = upsample_residuals(loss_bundle['pred_res'])
 
     loss_bundle['pred_tgt'] = res_warp_img(src, loss_bundle['pred_res'], is_pix_res=True)
-    #import pdb; pdb.set_trace()
     loss_dict = opti_loss(loss_bundle, crop=crop)
     best_loss = loss_dict['result'].cpu().detach().numpy()
     new_best_ago = 0
@@ -130,8 +137,8 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
             if lr_halfed_count >= 15:
                 break
 
-
     loss_bundle['pred_res'] = combine_pre_post(pred_res, prev_pre_res, prev_post_res)
+
     while loss_bundle['pred_res'].shape[-2] < src.shape[-2]:
         loss_bundle['pred_res'] = upsample_residuals(loss_bundle['pred_res'])
     loss_bundle['pred_tgt'] = res_warp_img(src, loss_bundle['pred_res'], is_pix_res=True)
@@ -211,9 +218,8 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
             tgt_defects_downs = torch.nn.functional.max_pool2d(tgt_defects_downs, 2)
             src_small_defects_downs = torch.nn.functional.max_pool2d(src_small_defects_downs, 2)
             src_large_defects_downs = torch.nn.functional.max_pool2d(src_large_defects_downs, 2)
-
-        for i in range(m - bot_mip):
             pred_res_downs = downsample_residuals(pred_res_downs)
+        #for i in range(m - bot_mip):
 
 
         '''if m == 6:
@@ -243,14 +249,15 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
                 src_large_defects=src_large_defects_downs,
                 tgt_defects=tgt_defects_downs,
                 crop=crop, opt_mode=opt_mode,
-                opt_params=opt_params
+                opt_params=opt_params,
+                opt_res_coarsness=(m - bot_mip)
                 )
 
         pre_res_ups = pre_res.detach()
         post_res_ups = post_res.detach()
-        for i in range(m - bot_mip):
-            pre_res_ups = upsample_residuals(pre_res_ups)
-            post_res_ups = upsample_residuals(post_res_ups)
+        #for i in range(m - bot_mip):
+        #    pre_res_ups = upsample_residuals(pre_res_ups)
+        #    post_res_ups = upsample_residuals(post_res_ups)
 
         pred_res = combine_pre_post(pred_res, pre_res_ups, post_res_ups)
     return pred_res
@@ -289,7 +296,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
         ]
     }
 
-    mips = [8, 8]
+    mips = [11, 10, 9, 8]
 
     if src_defects is not None:
         src_defects = src_defects.squeeze(0)
@@ -317,7 +324,6 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             crop=128, bot_mip=8, img_mip=8, max_iter=max_iter,
             sm_keys_to_apply=sm_keys_to_apply,
             mse_keys_to_apply=mse_keys_to_apply)
-
     end = time.time()
     print ("OPTIMIZATION FINISHED. Optimizing time: {0:.2f} sec".format(end - start))
     return pred_res_opt
