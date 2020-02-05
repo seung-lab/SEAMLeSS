@@ -357,9 +357,6 @@ if __name__ == "__main__":
     initial_block_starts = [s for s in alignment_z_starts \
                             if (s >= args.z_start and s <= args.z_stop)]
 
-    if args.z_start not in initial_block_starts:
-        initial_block_starts.append(args.z_start)
-
     if initial_block_starts[-1] != args.z_stop:
         initial_block_starts.append(args.z_stop)
     block_starts = []
@@ -550,8 +547,8 @@ if __name__ == "__main__":
             if z < args.z_stop:
                 influencing_blocks_lookup[z].append(b_start)
 
-    import ipdb
-    ipdb.set_trace()
+    # import ipdb
+    # ipdb.set_trace()
 
     # Task scheduling functions
     def remote_upload(tasks):
@@ -1000,28 +997,28 @@ if __name__ == "__main__":
 
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
-    # if do_render:
-    #     print("COPY STARTING SECTION OF ALL BLOCKS")
-    #     execute(StarterCopy, copy_range)
-    # if do_alignment:
-    #     if coarse_field_cv is not None:
-    #         print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
-    #         execute(StarterUpsampleField, copy_range)
-    #     print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
-    #     execute(StarterComputeField, starter_range)
-    # if do_render:
-    #     execute(StarterRender, starter_range)
-    # for z_offset in sorted(block_offset_to_z_range.keys()):
-    #     z_range = list(block_offset_to_z_range[z_offset])
-    #     if do_alignment:
-    #         print("ALIGN BLOCK OFFSET {}".format(z_offset))
-    #         execute(BlockAlignComputeField, z_range)
-    #         if not skip_vv:
-    #             print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-    #             execute(BlockAlignVectorVote, z_range)
-    #     if do_render:
-    #         print("RENDER BLOCK OFFSET {}".format(z_offset))
-    #         execute(BlockAlignRender, z_range)
+    if do_render:
+        print("COPY STARTING SECTION OF ALL BLOCKS")
+        execute(StarterCopy, copy_range)
+    if do_alignment:
+        if coarse_field_cv is not None:
+            print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
+            execute(StarterUpsampleField, copy_range)
+        print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
+        execute(StarterComputeField, starter_range)
+    if do_render:
+        execute(StarterRender, starter_range)
+    for z_offset in sorted(block_offset_to_z_range.keys()):
+        z_range = list(block_offset_to_z_range[z_offset])
+        if do_alignment:
+            print("ALIGN BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignComputeField, z_range)
+            if not skip_vv:
+                print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
+                execute(BlockAlignVectorVote, z_range)
+        if do_render:
+            print("RENDER BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignRender, z_range)
     # print("END BLOCK ALIGNMENT")
     # print("START BLOCK STITCHING")
     # print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
@@ -1029,8 +1026,8 @@ if __name__ == "__main__":
     # #    z_range = list(stitch_offset_to_z_range[z_offset])
     # #    execute(SeethroughStitchRender, z_range=z_range)
 
-    # if do_render:
-        # execute(StitchOverlapCopy, overlap_copy_range)
+    if do_render:
+        execute(StitchOverlapCopy, overlap_copy_range)
     for z_offset in sorted(stitch_offset_to_z_range.keys()):
         z_range = list(stitch_offset_to_z_range[z_offset])
         if do_alignment:
@@ -1043,13 +1040,13 @@ if __name__ == "__main__":
             print("RENDER OVERLAPPING OFFSET {}".format(z_offset))
             execute(StitchAlignRender, z_range)
 
-    # if do_alignment and not skip_vv:
-    #     print("COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING")
-    #     execute(StitchBroadcastCopy, stitch_range)
-    #     print("VECTOR VOTE STITCHING FIELDS")
-    #     execute(StitchBroadcastVectorVote, block_starts[1:])
+    if do_alignment and not skip_vv:
+        print("COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING")
+        execute(StitchBroadcastCopy, stitch_range)
+        print("VECTOR VOTE STITCHING FIELDS")
+        execute(StitchBroadcastVectorVote, block_starts[1:])
 
-    # if do_compose:
-    #     execute(StitchCompose, compose_range)
-    # if do_final_render:
-    #     execute(StitchFinalRender, compose_range)
+    if do_compose:
+        execute(StitchCompose, compose_range)
+    if do_final_render:
+        execute(StitchFinalRender, compose_range)

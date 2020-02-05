@@ -911,7 +911,7 @@ if __name__ == "__main__":
                     src_mip=mip,
                     pad=pad,
                     field_mip=mip,
-                    mask=src_masks,
+                    masks=src_masks,
                     seethrough=args.seethrough,
                     seethrough_misalign=args.seethrough_misalign
                 )
