@@ -19,10 +19,24 @@ class Preprocessor(nn.Module):
                                      tileGridSize=tileGridSize)
 
     def forward(self, X, *args, **kwargs):
+        lower_bound = kwargs.get('lower_bound', (0.0, 0.0))
+        upper_bound = kwargs.get('upper_bound', (1.0, 1.0))
         for i in range(X.shape[-3]):
             mask = self.gen_mask(X[..., i, :, :])
-            X[..., i, :, :] = self.contrast(X[..., i, :, :])
-            X[..., i, :, :] = self.normalize(X[..., i, :, :], mask=mask, min=1.0/255.0)
+            X[..., i, :, :] = self.normalize(
+                X[..., i, :, :],
+                lower_bound,
+                upper_bound,
+                mask=mask
+            )
+
+            # X[..., i, :, :] = self.contrast(X[..., i, :, :])
+            # X[..., i, :, :] = self.normalize(
+            #     X[..., i, :, :],
+            #     lower_bound=(0.0, 1.0/255.0),
+            #     upper_bound=(1.0, 1.0),
+            #     mask=mask
+            # )
         return X
 
     def contrast(self, X, mask=...):
@@ -44,15 +58,17 @@ class Preprocessor(nn.Module):
         X[...] = eq.unsqueeze(0).to(torch.float) / 255
         return X
 
-    def normalize(self, X, mask=..., min=0, max=1):
+    def normalize(self, X, lower_bound, upper_bound, mask=...):
         """
         Rescale values from min to max
         """
         if len(X[mask]) > 0 and X[mask].max() > 0.0:
-            X[mask] = X[mask] - X[mask].min()
-            X[mask] = X[mask] / X[mask].max() * (max - min) + min
+            X[mask] = (X[mask] - lower_bound[0]) * (upper_bound[1] - lower_bound[1])
+            X[mask] = X[mask] / (upper_bound[0] - lower_bound[0]) + lower_bound[1]
+
+            X[mask] = X[mask].clamp(lower_bound[1], upper_bound[1])
         else:
-            X[mask] = min
+            X[mask] = lower_bound[1]
 
         return X
 

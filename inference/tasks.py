@@ -697,9 +697,11 @@ class MaskOutTask(RegisteredTask):
 
 class ComputeFcorrTask(RegisteredTask):
   def __init__(self, src_cv, dst_pre_cv, dst_post_cv, patch_bbox, src_mip, dst_mip,
-               src_z, tgt_z, dst_z, chunk_size, fill_value, preprocessor_path):
+               src_z, tgt_z, dst_z, chunk_size, fill_value, preprocessor_path,
+               lower_bound, upper_bound):
     super(). __init__(src_cv, dst_pre_cv, dst_post_cv, patch_bbox, src_mip, dst_mip,
-                      src_z, tgt_z, dst_z, chunk_size, fill_value, preprocessor_path)
+                      src_z, tgt_z, dst_z, chunk_size, fill_value, preprocessor_path,
+                      lower_bound, upper_bound)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -714,6 +716,8 @@ class ComputeFcorrTask(RegisteredTask):
     chunk_size = self.chunk_size
     fill_value = self.fill_value
     preprocessor_path = self.preprocessor_path
+    lower_bound = self.lower_bound or (0.0, 0.0)
+    upper_bound = self.upper_bound or (1.0, 1.0)
     print("\nFCorr"
           "src_cv {}\n"
           "dst_pre_cv {}\n"
@@ -723,12 +727,18 @@ class ComputeFcorrTask(RegisteredTask):
           "src_mip={}, dst_mip={}\n"
           "chunk_size={}\n"
           "fill_value={}\n"
-          "preprocessor={}"
+          "preprocessor={}\n"
+          "lower_bound={} -> {}\n"
+          "upper_bound={} -> {}"
           "\n".format(src_cv, dst_pre_cv, dst_post_cv, src_z, tgt_z, dst_z, src_mip, 
-                      dst_mip, chunk_size, fill_value, preprocessor_path), flush=True)
+                      dst_mip, chunk_size, fill_value, preprocessor_path,
+                      lower_bound[0], lower_bound[1],
+                      upper_bound[0], upper_bound[1]), flush=True)
     start = time()
     post_image, pre_image = aligner.get_fcorr(src_cv, src_z, tgt_z, patch_bbox, src_mip,
-                                              chunk_size, fill_value, preprocessor_path)
+                                              chunk_size, fill_value, preprocessor_path,
+                                              lower_bound=lower_bound,
+                                              upper_bound=upper_bound)
     aligner.save_image(pre_image, dst_pre_cv, dst_z, patch_bbox, dst_mip, to_uint8=False)
     aligner.save_image(post_image, dst_post_cv, dst_z, patch_bbox, dst_mip, 
                        to_uint8=False)

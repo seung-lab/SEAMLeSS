@@ -1908,7 +1908,8 @@ class Aligner:
       return lap([field], device=self.device).unsqueeze(0)
 
   def compute_fcorr(self, cm, src_cv, dst_pre_cv, dst_post_cv, bbox, src_mip, 
-                    dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0, preprocessor_path=''):
+                    dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0,
+                    preprocessor_path='', lower_bound=None, upper_bound=None):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[dst_mip], mip=dst_mip,
                                       max_mip=cm.max_mip)
@@ -1916,10 +1917,15 @@ class Aligner:
       for chunk in chunks:
         batch.append(tasks.ComputeFcorrTask(src_cv, dst_pre_cv, dst_post_cv, chunk, 
                                             src_mip, dst_mip, src_z, tgt_z, dst_z, 
-                                            fcorr_chunk_size, fill_value, preprocessor_path))
+                                            fcorr_chunk_size, fill_value,
+                                            preprocessor_path,
+                                            lower_bound, upper_bound))
       return batch
 
-  def get_fcorr(self, cv, src_z, tgt_z, bbox, mip, chunk_size=16, fill_value=0, preprocessor_path=''):
+  def get_fcorr(
+    self, cv, src_z, tgt_z, bbox, mip, chunk_size=16, fill_value=0,
+    preprocessor_path='', **kwargs
+  ):
       """Perform fcorr for two images
       """
       pad = 8
@@ -1928,7 +1934,7 @@ class Aligner:
         normalizer = None
       else:
         archive = self.get_model_archive(preprocessor_path)
-        normalizer = archive.preprocessor
+        normalizer = partial(archive.preprocessor, **kwargs)
 
       padded_bbox = deepcopy(bbox)
       padded_bbox.uncrop(pad*chunk_size, mip=mip)
