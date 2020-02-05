@@ -1086,11 +1086,17 @@ if __name__ == "__main__":
     if status_filename is None:
         status_filename = 'align_block_status_{}.txt'.format(floor(time()))
 
+    profile_filename = 'profile_align_blocks_{}.txt'.format(floor(time()))
+    profile_file = open(profile_filename, 'w')
+    receive_time = 0
+    process_time = 0
+    delete_time = 0
+
     def executionLoop(compute_field_z_release, render_z_release=[]):
         with open(status_filename, 'w') as status_file:
             if len(compute_field_z_release) > 0:
+                executeNew(BlockAlignComputeField, compute_field_z_release)
                 for z in compute_field_z_release:
-                    executeNew(BlockAlignComputeField, compute_field_z_release)
                     z_to_compute_released[z] = True
             if len(render_z_release) > 0:
                 executeNew(BlockAlignRender, render_z_release)
@@ -1100,7 +1106,9 @@ if __name__ == "__main__":
                 sqs_obj = ctq._api._sqs
                 global renders_complete
                 while renders_complete < len(block_z_list):
+                    before_receive_time = time()
                     msgs = sqs_obj.receive_message(QueueUrl=ctq._api._qurl, MaxNumberOfMessages=10)
+                    receive_time = receive_time + time() - before_receive_time
                     if 'Messages' not in msgs:
                         sleep(1)
                         continue
@@ -1112,7 +1120,10 @@ if __name__ == "__main__":
                             'Id': str(i)
                         })
                         parsed_msgs.append(json.loads(msgs['Messages'][i]['Body']))
+                    before_delete_time = time()
                     sqs_obj.delete_message_batch(QueueUrl=ctq._api._qurl, Entries=entriesT)
+                    delete_time = delete_time + time() - before_delete_time
+                    before_process_time = time()
                     for parsed_msg in parsed_msgs:
                         pos_tuple = (parsed_msg['x'], parsed_msg['y'], parsed_msg['z'])
                         z = pos_tuple[2]
@@ -1132,6 +1143,9 @@ if __name__ == "__main__":
                                             print('CF done for z={}, releasing render for z={}'.format(z, z))
                                             z_to_render_released[z] = True
                                             status_file.write('cf {}\n'.format(z))
+                                            profile_file.write('process time {}\n'.format(process_time))
+                                            profile_file.write('receive time {}\n'.format(receive_time))
+                                            profile_file.write('delete time {}\n'.format(delete_time))
                                             executeNew(BlockAlignRender, [z])
                                 elif z_to_computes_processed[z] > z_to_number_of_chunks[z]:
                                     # import ipdb
@@ -1156,11 +1170,15 @@ if __name__ == "__main__":
                                             print('Render done for z={}, releasing cf for z={}'.format(z, z+1))
                                             z_to_compute_released[z+1] = True
                                             status_file.write('rt {}\n'.format(z))
+                                            profile_file.write('process time {}\n'.format(process_time))
+                                            profile_file.write('receive time {}\n'.format(receive_time))
+                                            profile_file.write('delete time {}\n'.format(delete_time))
                                             executeNew(BlockAlignComputeField, [z+1])
                                 elif z_to_renders_processed[z] > z_to_number_of_chunks[z]:
                                     raise ValueError('More render chunks processed than exist for z = {}'.format(z))
                         else:
                             raise ValueError('Unsupported task type {}'.format(parsed_msg['task']))
+                    process_time = process_time + time() - before_process_time
 
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
