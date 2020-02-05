@@ -130,7 +130,7 @@ class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
                      patch_bbox, mip, pad, src_masks, tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False, report=False):
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False, report=False, block_start=None):
     #src_serialized_masks = [m.to_dict() for m in src_masks]
     #tgt_serialized_masks = [m.to_dict() for m in tgt_masks]
 
@@ -144,7 +144,7 @@ class ComputeFieldTask(RegisteredTask):
                      patch_bbox, mip, pad, src_masks,
                      tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report)
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -164,7 +164,8 @@ class ComputeFieldTask(RegisteredTask):
       "x": patch_bbox.x_range(mip=self.mip)[0],
       "y": patch_bbox.y_range(mip=self.mip)[0],
       "z": src_z,
-      "task": "CF"
+      "task": "CF",
+      "block_start": self.block_start
     }
     mip = self.mip
     pad = self.pad
@@ -305,7 +306,7 @@ class RenderTask(RegisteredTask):
                coarsen_misalign=96, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=True,
-               blackout_op='none', report=False, brighten_misalign=False):
+               blackout_op='none', report=False, brighten_misalign=False, block_start=None):
     if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
@@ -313,7 +314,7 @@ class RenderTask(RegisteredTask):
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
                       seethrough_folds, seethrough_misalign, seethrough_black,
                       big_fold_threshold, seethrough_renormalize, blackout_op, report,
-                      brighten_misalign)
+                      brighten_misalign, block_start)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -327,7 +328,8 @@ class RenderTask(RegisteredTask):
       "x": patch_bbox.x_range(mip=self.src_mip)[0],
       "y": patch_bbox.y_range(mip=self.src_mip)[0],
       "z": src_z,
-      "task": "RT"
+      "task": "RT",
+      "block_start": self.block_start
     }
     src_mip = self.src_mip
     field_mip = self.field_mip

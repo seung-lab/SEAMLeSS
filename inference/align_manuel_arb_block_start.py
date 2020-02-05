@@ -72,8 +72,6 @@ if __name__ == "__main__":
         type=str,
         help="relative path to CSV file identifying params to use per z range",
     )
-    # parser.add_argument('--z_range_path', type=str,
-    #   help='path to csv file with list of z indices to use')
     parser.add_argument("--src_path", type=str)
     parser.add_argument("--seethrough_stitch_path", type=str)
     parser.add_argument("--chunk_size", type=int, default=1024)
@@ -97,7 +95,6 @@ if __name__ == "__main__":
         default=2048,
     )
     parser.add_argument("--block_size", type=int, default=10)
-    parser.add_argument("--restart", type=int, default=0)
     parser.add_argument(
         "--coarse_field_path",
         type=str,
@@ -127,6 +124,11 @@ if __name__ == "__main__":
         help="If specified, CloudVolume path to render to instead of default"
     )
     parser.add_argument(
+        "--brighten_misalign",
+        action='store_true',
+        help="If True,brightens misalignments seenthrough"
+    )
+    parser.add_argument(
         "--skip_alignment",
         action='store_true',
         help="If True, skip compute field and vector voting"
@@ -150,11 +152,6 @@ if __name__ == "__main__":
         "--skip_render",
         action='store_true',
         help="If True, skip rendering"
-    )
-    parser.add_argument(
-        "--skip_vv",
-        action='store_true',
-        help="If True, skip vv"
     )
     parser.add_argument(
         "--final_render_mip",
@@ -184,12 +181,7 @@ if __name__ == "__main__":
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--status_output_file', type=str, default=None)
     parser.add_argument('--recover_status_from_file', type=str, default=None)
-    parser.add_argument(
-        "--block_overlap",
-        type=int,
-        default=0
-    )
-    parser.add_argument('--skip_list_lookup', type=str, help='relative path to file identifying list of skip sections')
+    parser.add_argument('--block_overlap', type=int, default=1)
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -217,7 +209,6 @@ if __name__ == "__main__":
     do_final_render = not args.skip_final_render
     blackout_op = args.blackout_op
     stitch_suffix = args.stitch_suffix
-    skip_vv = args.skip_vv
     output_field_dtype = args.output_field_dtype
 
     final_render_mip = args.final_render_mip or args.mip
@@ -299,19 +290,9 @@ if __name__ == "__main__":
     model_lookup = {}
     tgt_radius_lookup = {}
     vvote_lookup = {}
-    skip_list = []
-    if args.skip_list_lookup is not None:
-        with open(args.skip_list_lookup, 'r') as f:
-            line = f.readline()
-            while line:
-                skip_ind = int(line)
-                skip_list.append(skip_ind)
-                line = f.readline()
-    # skip_list = [17491, 17891]
-    block_alignment_zs = []
-    # block_arb_starts = []
-    alignment_z_starts = []
-    stitching_sections = []
+    alignment_z_starts = [args.z_start]
+    last_alignment_start = args.z_start
+    minimum_block_size = 5
     with open(args.param_lookup) as f:
         reader = csv.reader(f, delimiter=",")
         for k, r in enumerate(reader):
@@ -322,62 +303,52 @@ if __name__ == "__main__":
                 x_stop = int(r[3])
                 y_stop = int(r[4])
                 z_stop = int(r[5])
-                alignment_z_starts.append(z_start)
                 bbox_mip = int(r[6])
                 model_path = join("..", "models", r[7])
                 tgt_radius = int(r[8])
-                if tgt_radius > 1 and skip_vv:
-                    raise ValueError('Cannot have both a tgt_radius greater than 1 and skip vv.')
-                skip = bool(int(r[9]))
+                while z_start - last_alignment_start > (block_size + minimum_block_size):
+                    last_alignment_start = last_alignment_start + block_size
+                    alignment_z_starts.append(last_alignment_start)
+                if z_start > last_alignment_start:
+                    last_alignment_start = z_start
+                    alignment_z_starts.append(z_start)
                 bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
                 # print('{},{}'.format(z_start, z_stop))
                 for z in range(z_start, z_stop):
-                    if skip:
-                        skip_list.append(z)
                     bbox_lookup[z] = bbox
                     model_lookup[z] = model_path
                     tgt_radius_lookup[z] = tgt_radius
                     vvote_lookup[z] = [-i for i in range(1, tgt_radius + 1)]
 
-    # if 
-    for i in range(len(alignment_z_starts) - 1):
-        cur_start = alignment_z_starts[i]
-        next_start = alignment_z_starts[i+1]
-        block_alignment_zs.append([*range(cur_start+1, next_start + 1 + args.block_overlap)])
-        stitching_sections.append(next_start + 1 + args.block_overlap)
-    
-    block_alignment_zs.append([*range(z_starts[-1]+1, args.z_stop)])
-    # for cur_start in z_starts:
+    while min(z_stop, args.z_stop) - last_alignment_start > block_size:
+        last_alignment_start = last_alignment_start + block_size
+        alignment_z_starts.append(last_alignment_start)
 
-    
     # Filter out skipped sections from vvote_offsets
     min_offset = 0
     for z, tgt_radius in vvote_lookup.items():
         offset = 0
         for i, r in enumerate(tgt_radius):
-            while r + offset + z in skip_list:
-                offset -= 1
             tgt_radius[i] = r + offset
         min_offset = min(min_offset, r + offset)
         offset = 0
         vvote_lookup[z] = tgt_radius
 
     # Adjust block starts so they don't start on a skipped section
-    initial_block_starts = list(range(args.z_start, args.z_stop, block_size))
+    initial_block_starts = [s for s in alignment_z_starts \
+                            if (s >= args.z_start and s <= args.z_stop)]
+    # if len(initial_block_starts) == 0:
+        # initial_block_starts.append(z_stop)
+
     if initial_block_starts[-1] != args.z_stop:
         initial_block_starts.append(args.z_stop)
     block_starts = []
     for bs, be in zip(initial_block_starts[:-1], initial_block_starts[1:]):
-        while bs in skip_list:
-            bs += 1
-            assert bs < be
         block_starts.append(bs)
     block_stops = block_starts[1:]
     if block_starts[-1] != args.z_stop:
         block_stops.append(args.z_stop)
-    # section_to_block_start = {}
-    # for z in range(args.z_start, args.z_stop):
-    #     section_to_block_start[z] = max(filter(lambda x: (x <= z), block_starts))
+    
     # Assign even/odd to each block start so results are stored in appropriate CloudVolume
     # Create lookup dicts based on offset in the canonical block
     # BLOCK ALIGNMENT
@@ -405,41 +376,28 @@ if __name__ == "__main__":
             if i > 0:
                 block_start_lookup[z] = bs
                 block_dst_lookup[z] = block_dsts[even_odd]
-                if z not in skip_list:
-                    block_offset_to_z_range[i].add(z)
-                    for tgt_offset in vvote_lookup[z]:
-                        tgt_z = z + tgt_offset
-                        if tgt_z <= bs:
-                            starter_dst_lookup[tgt_z] = block_dsts[even_odd]
-                            # ignore first block for stitching operations
-                            if k > 0:
-                                overlap_copy_range.add(tgt_z)
-                        if tgt_z < bs:
-                            starter_z_to_offset[tgt_z] = bs - tgt_z
-                            starter_offset_to_z_range[tgt_z - bs].add(tgt_z)
+                block_offset_to_z_range[i].add(z)
+                for tgt_offset in vvote_lookup[z]:
+                    tgt_z = z + tgt_offset
+                    if tgt_z <= bs:
+                        starter_dst_lookup[tgt_z] = block_dsts[even_odd]
+                        # ignore first block for stitching operations
+                        if k > 0:
+                            overlap_copy_range.add(tgt_z)
+                    if tgt_z < bs:
+                        starter_z_to_offset[tgt_z] = bs - tgt_z
+                        starter_offset_to_z_range[tgt_z - bs].add(tgt_z)
     offset_range = [i for i in range(min_offset, abs(min_offset) + 1)]
-
-    new_block_dst_lookup = {}
-    new_block_start_lookup = {}
-    new_
-
-    block_alignment_zs
-
-
     # check for restart
-    print("Align starting from OFFSET {}".format(args.restart))
-    starter_restart = -100
-    if args.restart <= 0:
-        starter_restart = args.restart
-
+    starter_restart = 0
     copy_offset_to_z_range = {
-        k: v for k, v in copy_offset_to_z_range.items() if k == args.restart
+        k: v for k, v in copy_offset_to_z_range.items() if k == 0
     }
     starter_offset_to_z_range = {
         k: v for k, v in starter_offset_to_z_range.items() if k <= starter_restart
     }
     block_offset_to_z_range = {
-        k: v for k, v in block_offset_to_z_range.items() if k >= args.restart
+        k: v for k, v in block_offset_to_z_range.items() if k >= 0
     }
     copy_range = [z for z_range in copy_offset_to_z_range.values() for z in z_range]
     starter_range = [
@@ -466,15 +424,15 @@ if __name__ == "__main__":
         assert len(v) % 2 == 1
 
 
-    # compose_range = range(args.z_start, args.z_stop)
-    # render_range = range(args.z_start+1, args.z_stop)
-    # if do_compose:
-    #     decay_dist = args.decay_dist
-    #     influencing_blocks_lookup = {z: [] for z in compose_range}
-    #     for b_start in block_starts:
-    #         for z in range(b_start+1, b_start+decay_dist+1):
-    #           if z < args.z_stop:
-    #               influencing_blocks_lookup[z].append(b_start)
+    compose_range = range(args.z_start, args.z_stop)
+    render_range = range(args.z_start+1, args.z_stop)
+    if do_compose:
+        decay_dist = args.decay_dist
+        influencing_blocks_lookup = {z: [] for z in compose_range}
+        for b_start in block_starts:
+            for z in range(b_start+1, b_start+decay_dist+1):
+              if z < args.z_stop:
+                  influencing_blocks_lookup[z].append(b_start+args.block_overlap-1)
 
 
     # Create field CloudVolumes
@@ -554,9 +512,6 @@ if __name__ == "__main__":
                             data_type='uint8', num_channels=1, fill_missing=True,
                             overwrite=do_final_render).path
 
-    # import ipdb
-    # ipdb.set_trace()
-
     # Task scheduling functions
     def remote_upload(tasks):
         with GreenTaskQueue(queue_name=args.queue_name) as tq:
@@ -619,7 +574,7 @@ if __name__ == "__main__":
                     src_mip=mip,
                     field_mip=coarse_field_mip,
                     masks=src_masks,
-                    # seethrough=args.seethrough,
+                    seethrough=args.seethrough,
                     # seethrough_misalign=args.seethrough_misalign
                 )
                 yield from t
@@ -699,7 +654,6 @@ if __name__ == "__main__":
                     field_z=z,
                     dst_z=z,
                     bbox=bbox,
-                    # src_mip=render_mip,
                     src_mip=mip,
                     field_mip=mip,
                     masks=src_masks,
@@ -709,25 +663,25 @@ if __name__ == "__main__":
                 yield from t
 
     class BlockAlignComputeField(object):
-        def __init__(self, z_range):
+        def __init__(self, z_range, block_starts_for_range):
             self.z_range = z_range
+            self.block_starts = block_starts_for_range
 
         def __iter__(self):
-            for src_z in self.z_range:
-                dst = block_dst_lookup[src_z]
+            for i in len(self.z_range):
+                src_z = self.z_range[i]
+                block_start = self.block_starts[i]
+                dst = block_dst_lookup[self.block_starts[i]+1]
                 bbox = bbox_lookup[src_z]
                 model_path = model_lookup[src_z]
                 tgt_offsets = vvote_lookup[src_z]
                 for tgt_offset in tgt_offsets:
                     tgt_z = src_z + tgt_offset
-                    if skip_vv:
-                        fine_field = block_vvote_field
-                    else:
-                        fine_field = block_pair_fields[tgt_offset]
+                    fine_field = block_vvote_field
                     if tgt_z in copy_range:
                         tgt_field = block_pair_fields[0]
-                    elif tgt_z in starter_range and src_z > block_start_lookup[src_z] and block_start_lookup[src_z] > tgt_z:
-                        tgt_field = block_pair_fields[starter_z_to_offset[tgt_z]]
+                    # elif tgt_z in starter_range and src_z > block_start_lookup[src_z] and block_start_lookup[src_z] > tgt_z:
+                    #     tgt_field = block_pair_fields[starter_z_to_offset[tgt_z]]
                     else:
                         tgt_field = block_vvote_field
                     t = a.compute_field(
@@ -748,40 +702,21 @@ if __name__ == "__main__":
                         coarse_field_cv=coarse_field_cv,
                         coarse_field_mip=coarse_field_mip,
                         tgt_field_cv=tgt_field,
-                        report=True
+                        report=True,
+                        block_start=block_start
                     )
                     yield from t
 
-    class BlockAlignVectorVote(object):
-        def __init__(self, z_range):
-            self.z_range = z_range
-
-        def __iter__(self):
-            for z in self.z_range:
-                bbox = bbox_lookup[z]
-                tgt_offsets = vvote_lookup[z]
-                fine_fields = {i: block_pair_fields[i] for i in tgt_offsets}
-                t = a.vector_vote(
-                    cm,
-                    fine_fields,
-                    block_vvote_field,
-                    z,
-                    bbox,
-                    mip,
-                    inverse=False,
-                    serial=True,
-                    softmin_temp=(2 ** coarse_field_mip) / 6.0,
-                    blur_sigma=1,
-                )
-                yield from t
-
     class BlockAlignRender(object):
-        def __init__(self, z_range):
+        def __init__(self, z_range, block_starts_for_range):
             self.z_range = z_range
+            self.block_starts = block_starts_for_range
 
         def __iter__(self):
-            for z in self.z_range:
-                dst = block_dst_lookup[z]
+            for i in len(self.z_range):
+                z = self.z_range[i]
+                block_start = self.block_starts[i]
+                dst = block_dst_lookup[self.block_starts[i]+1]
                 bbox = bbox_lookup[z]
                 t = a.render(
                     cm,
@@ -798,35 +733,10 @@ if __name__ == "__main__":
                     pad=pad,
                     seethrough=args.seethrough,
                     seethrough_misalign=args.seethrough_misalign,
-                    report=True
+                    brighten_misalign=args.brighten_misalign,
+                    report=True,
+                    block_start=block_start
                 )
-                yield from t
-
-    seethrough_offset = 5
-
-    class SeethroughStitchRender(object):
-        def __init__(self, z_range):
-            self.z_range = z_range
-
-        def __iter__(self):
-            for z in self.z_range:
-                z_start = z
-                z_end = z + seethrough_offset
-
-                src = block_dst_lookup[z]
-                dst = seethrough_stitch_dst
-                bbox = bbox_lookup[z]
-                t = a.seethrough_stitch_render(
-                    cm,
-                    src,
-                    dst,
-                    z_start=z_start,
-                    z_end=z_end,
-                    bbox=bbox,
-                    mip=mip,
-                    pad=pad
-                )
-
                 yield from t
 
 
@@ -864,12 +774,7 @@ if __name__ == "__main__":
                 tgt_offsets = vvote_lookup[z]
                 for tgt_offset in tgt_offsets:
                     tgt_z = z + tgt_offset
-                    if skip_vv:
-                        # field = overlap_vvote_field
-                        fields = broadcasting_field
-                        z = block_start_lookup[z]
-                    else:
-                        field = stitch_pair_fields[tgt_offset]
+                    fields = broadcasting_field
                     t = a.compute_field(cm, model_path, block_dst, overlap_image, field,
                                         z, tgt_z, bbox, mip, pad,
                                         src_masks=src_masks,
@@ -877,100 +782,6 @@ if __name__ == "__main__":
                                         prev_field_cv=None,
                                         prev_field_z=tgt_z,stitch=True)
                     yield from t
-
-    class StitchAlignVectorVote(object):
-        def __init__(self, z_range):
-            self.z_range = z_range
-
-        def __iter__(self):
-            for z in self.z_range:
-                bbox = bbox_lookup[z]
-                tgt_offsets = vvote_lookup[z]
-                fine_fields = {i: stitch_pair_fields[i] for i in tgt_offsets}
-                t = a.vector_vote(
-                    cm,
-                    fine_fields,
-                    overlap_vvote_field,
-                    z,
-                    bbox,
-                    mip,
-                    inverse=False,
-                    serial=True,
-                    softmin_temp=(2 ** mip) / 6.0,
-                    blur_sigma=1,
-                )
-                yield from t
-
-    class StitchAlignRender(object):
-        def __init__(self, z_range):
-            self.z_range = z_range
-
-        def __iter__(self):
-            for z in self.z_range:
-                block_dst = block_dst_lookup[z]
-                bbox = bbox_lookup[z]
-                t = a.render(
-                    cm,
-                    block_dst,
-                    overlap_vvote_field,
-                    overlap_image,
-                    src_z=z,
-                    field_z=z,
-                    dst_z=z,
-                    bbox=bbox,
-                    src_mip=mip,
-                    pad=pad,
-                    field_mip=mip,
-                    mask=src_masks,
-                    seethrough=args.seethrough,
-                    seethrough_misalign=args.seethrough_misalign
-                )
-                yield from t
-
-    class StitchBroadcastCopy:
-        def __init__(self, z_range):
-            self.z_range = z_range
-
-        def __iter__(self):
-            for z in self.z_range:
-                bs = block_start_lookup[z]
-                z_offset = bs - z
-                stitch_field = stitch_fields[z_offset]
-                bbox = bbox_lookup[z]
-                t = a.copy(
-                    cm,
-                    overlap_vvote_field,
-                    stitch_field,
-                    z,
-                    bs,
-                    bbox,
-                    mip,
-                    is_field=True,
-                )
-                yield from t
-
-    class StitchBroadcastVectorVote(object):
-        def __init__(self, z_range):
-            self.z_range = z_range
-
-        def __iter__(self):
-            for z in self.z_range:
-                bbox = bbox_lookup[z]
-                offsets = block_start_to_stitch_offsets[z]
-                fields = {i: stitch_fields[i] for i in offsets}
-                t = a.vector_vote(
-                    cm,
-                    fields,
-                    broadcasting_field,
-                    z,
-                    bbox,
-                    mip,
-                    inverse=False,
-                    serial=True,
-                    softmin_temp=(2 ** mip) / 6.0,
-                    blur_sigma=1,
-                )
-                yield from t
 
     class StitchCompose(object):
         def __init__(self, z_range):
@@ -990,7 +801,7 @@ if __name__ == "__main__":
                                 mip, mip, factors, pad)
             yield from t
 
-    class StitchFinalRender(object):    
+    class StitchFinalRender(object):
         def __init__(self, z_range):
           self.z_range = z_range
 
@@ -1003,18 +814,7 @@ if __name__ == "__main__":
                          masks=src_masks, blackout_op=blackout_op)
             yield from t
 
-    # compute_field_map = {}
-    # render_map = {}
-    max_dist = 1
-    block_z_list = []
-    first_z_release = None
-    for z_offset in sorted(block_offset_to_z_range.keys()):
-        if first_z_release is None:
-            first_z_release = list(block_offset_to_z_range[z_offset])
-        block_z_list.append(list(block_offset_to_z_range[z_offset]))
-    block_z_list = np.concatenate(block_z_list)
-
-    def break_into_chunks(chunk_size, offset, mip, max_mip=12):
+    def break_into_chunks(chunk_size, offset, mip, z_list, max_mip=12):
         """Break bbox into list of chunks with chunk_size, given offset for all data
 
         Args:
@@ -1028,7 +828,7 @@ if __name__ == "__main__":
         """
         chunks = []
         z_to_number_of_chunks = {}
-        for z in block_z_list:
+        for z in z_list:
             bbox = bbox_lookup[z]
             raw_x_range = bbox.x_range(mip=mip)
             raw_y_range = bbox.y_range(mip=mip)
@@ -1052,64 +852,85 @@ if __name__ == "__main__":
             for xs in range(calign_x_range[0], calign_x_range[1], chunk_size[0]):
                 for ys in range(calign_y_range[0], calign_y_range[1], chunk_size[1]):
                     chunks.append((xs, ys, int(z)))
-                    # chunks.append(BoundingBox(xs, xs + chunk_size[0],
-                                            #  ys, ys + chunk_size[1],
-                                            #  mip=mip, max_mip=max_mip))
         return chunks, z_to_number_of_chunks
 
-    chunks, z_to_number_of_chunks = break_into_chunks(cm.dst_chunk_sizes[mip],
-                                    cm.dst_voxel_offsets[mip], mip=mip, max_mip=cm.max_mip)
-    chunk_to_compute_processed = dict(zip(chunks, [False] * len(chunks)))
-    chunk_to_render_processed = dict(zip(chunks, [False] * len(chunks)))
-    z_to_computes_processed = dict(zip(block_z_list, [0] * len(chunks)))
-    z_to_renders_processed = dict(zip(block_z_list, [0] * len(chunks)))
-    # z_to_chunks_processed = dict(zip(block_z_list, [0] * len(block_z_list)))
-    z_to_compute_released = dict(zip(block_z_list, [False] * len(block_z_list)))
-    z_to_render_released = dict(zip(block_z_list, [False] * len(block_z_list)))
-    renders_complete = 0
+    block_z_to_compute_released = {}
+    block_z_to_render_released = {}
+    block_z_to_computes_processed = {}
+    block_z_to_renders_processed = {}
+    block_chunk_to_compute_processed = {}
+    block_chunk_to_render_processed = {}
+
+    total_sections_to_align = 0
+    total_sections_aligned = 0
+
+    for i in range(len(block_starts)-1):
+        cur_bs = block_starts[i]
+        end_bs = block_starts[i+1] + args.block_overlap
+        zs_for_cur_block = [*range(cur_bs, end_bs)]
+        total_sections_to_align = total_sections_to_align + len(zs_for_cur_block)
+        block_z_to_compute_released[cur_bs] = dict(zip(zs_for_cur_block, [False] * len(zs_for_cur_block)))
+        block_z_to_render_released[cur_bs] = dict(zip(zs_for_cur_block, [False] * len(zs_for_cur_block)))
+        block_z_to_computes_processed[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+        block_z_to_renders_processed[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+        chunks, z_to_number_of_chunks = break_into_chunks(cm.dst_chunk_sizes[mip], cm.dst_voxel_offsets[mip], mip=mip, z_list=zs_for_cur_block, max_mip=cm.max_mip)
+        block_chunk_to_compute_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
+        block_chunk_to_render_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
 
     def recover_status_from_file(filename):
-        global renders_complete
+        global total_sections_aligned
         with open(filename, 'r') as recover_file:
             line = recover_file.readline()
             while line:
-                z = int(line[3:])
-                if line[0:2] == 'cf':
-                    z_to_compute_released[z] = True
-                elif line[0:2] == 'rt':
-                    z_to_render_released[z] = True
-                    renders_complete = renders_complete + 1
+                spl = line.split()
+                bs = int(spl[1])
+                task = spl[2]
+                z = int(spl[3])
+                if task == 'cf':
+                    block_z_to_compute_released[bs][z] = True
+                elif task == 'rt':
+                    block_z_to_render_released[bs][z] = True
+                    total_sections_aligned = total_sections_aligned + 1
                 line = recover_file.readline()
+    
+    def generate_first_releases():
         new_cf_list = []
         new_rt_list = []
-        for z in first_z_release:
-            # import ipdb
-            # ipdb.set_trace()
-            while z in z_to_compute_released:
-                if not z_to_compute_released[z]:
+        cf_block_start = []
+        rt_block_start = []
+        for bs in block_starts[:-1]:
+            z = bs + 1
+            while z in block_z_to_compute_released[bs]:
+                if not block_z_to_compute_released[bs][z]:
                     new_cf_list.append(z)
+                    cf_block_start.append(bs)
                     break
-                if not z_to_render_released[z]:
+                if not block_z_to_render_released[bs][z]:
                     new_rt_list.append(z)
+                    rt_block_start.append(bs)
                     break
                 z = z + 1
-        return new_cf_list, new_rt_list
+        return new_cf_list, new_rt_list, cf_block_start, rt_block_start
 
     import ipdb
     ipdb.set_trace()
 
-    def executeNew(task_iterator, z_range):
+    def executeNew(task_iterator, z_range, block_starts):
+        assert len(z_range) == len(block_starts)
         if len(z_range) == 1:
             ptask = []
             # ptask.append(task_iterator(z_range[0]))
-            remote_upload(task_iterator(z_range))
+            remote_upload(task_iterator(z_range, block_starts))
         elif len(z_range) > 0:
             ptask = []
             range_list = make_range(z_range, a.threads)
+            block_range_list = make_range(block_starts, a.threads)
             start = time()
 
-            for irange in range_list:
-                ptask.append(task_iterator(irange))
+            for i in len(range_list):
+                irange = range_list[i]
+                iblock_starts = block_range_list[i]
+                ptask.append(task_iterator(irange, iblock_starts))
             with ProcessPoolExecutor(max_workers=a.threads) as executor:
                 executor.map(remote_upload, ptask)
 
@@ -1117,20 +938,26 @@ if __name__ == "__main__":
     if status_filename is None:
         status_filename = 'align_block_status_{}.txt'.format(floor(time()))
 
-    def executionLoop(compute_field_z_release, render_z_release=[]):
+    def executionLoop(compute_field_z_release, render_z_release, cf_block_starts, rt_block_starts):
+        assert len(compute_field_z_release) == len(cf_block_starts)
+        assert len(render_z_release) == len(rt_block_starts)
         with open(status_filename, 'w') as status_file:
-            if len(compute_field_z_release) > 0:            
-                for z in compute_field_z_release:
-                    executeNew(BlockAlignComputeField, compute_field_z_release)
-                    z_to_compute_released[z] = True
+            if len(compute_field_z_release) > 0:
+                executeNew(BlockAlignComputeField, compute_field_z_release, cf_block_starts)
+                for i in len(compute_field_z_release):
+                    block_start = cf_block_starts[i]
+                    z = compute_field_z_release[i]
+                    block_z_to_compute_released[block_start][z] = True
             if len(render_z_release) > 0:
-                executeNew(BlockAlignRender, render_z_release)
-                for z in render_z_release:
-                    z_to_render_released[z] = True
+                executeNew(BlockAlignRender, render_z_release, rt_block_starts)
+                for i in len(render_z_release):
+                    block_start = rt_block_starts[i]
+                    z = render_z_release[i]
+                    block_z_to_render_released[block_start][z] = True
             with TaskQueue(queue_name=args.completed_queue_name, n_threads=0) as ctq:
                 sqs_obj = ctq._api._sqs
-                global renders_complete
-                while renders_complete < len(block_z_list):
+                global total_sections_aligned
+                while total_sections_aligned < total_sections_to_align:
                     msgs = sqs_obj.receive_message(QueueUrl=ctq._api._qurl, MaxNumberOfMessages=10)
                     if 'Messages' not in msgs:
                         sleep(1)
@@ -1147,48 +974,42 @@ if __name__ == "__main__":
                     for parsed_msg in parsed_msgs:
                         pos_tuple = (parsed_msg['x'], parsed_msg['y'], parsed_msg['z'])
                         z = pos_tuple[2]
+                        block_start = parsed_msg['block_start']
                         if parsed_msg['task'] == 'CF':
-                            # import ipdb
-                            # ipdb.set_trace()
-                            already_processed = chunk_to_compute_processed[pos_tuple]
+                            already_processed = block_chunk_to_compute_processed[block_start][pos_tuple]
                             if not already_processed:
-                                chunk_to_compute_processed[pos_tuple] = True
-                                z_to_computes_processed[z] = z_to_computes_processed[z] + 1
-                                if z_to_computes_processed[z] == z_to_number_of_chunks[z]:
-                                    if z in z_to_render_released:
-                                        if z_to_render_released[z]:
+                                block_chunk_to_compute_processed[block_start][pos_tuple] = True
+                                block_z_to_computes_processed[block_start][z] = block_z_to_computes_processed[block_start][z] + 1
+                                if block_z_to_computes_processed[block_start][z] == z_to_number_of_chunks:
+                                    if z in block_z_to_render_released[block_start]:
+                                        if block_z_to_render_released[block_start][z]:
                                             pass
                                             # raise ValueError('Attempt to release render for z={} twice'.format(z+1))
                                         else:
                                             print('CF done for z={}, releasing render for z={}'.format(z, z))
-                                            z_to_render_released[z] = True
-                                            status_file.write('cf {}'.format(z))
-                                            executeNew(BlockAlignRender, [z])
-                                elif z_to_computes_processed[z] > z_to_number_of_chunks[z]:
-                                    # import ipdb
-                                    # ipdb.set_trace()
+                                            block_z_to_render_released[block_start][z] = True
+                                            status_file.write('bs {} cf {}\n'.format(block_start, z))
+                                            executeNew(BlockAlignRender, [z], [block_start])
+                                elif block_z_to_computes_processed[block_start][z] > z_to_number_of_chunks:
                                     raise ValueError('More compute chunks processed than exist for z = {}'.format(z))
                         elif parsed_msg['task'] == 'RT':
-                            already_processed = chunk_to_render_processed[pos_tuple]
+                            already_processed = block_chunk_to_render_processed[block_start][pos_tuple]
                             if not already_processed:
-                                chunk_to_render_processed[pos_tuple] = True
-                                z_to_renders_processed[z] = z_to_renders_processed[z] + 1
-                                if z_to_renders_processed[z] == z_to_number_of_chunks[z]:
-                                    renders_complete = renders_complete + 1
-                                    # if renders_complete == 19:
-                                        # import ipdb
-                                        # ipdb.set_trace()
-                                    print('Renders complete: {}'.format(renders_complete))
-                                    if z+1 in z_to_compute_released:
-                                        if z_to_compute_released[z+1]:
+                                block_chunk_to_render_processed[block_start][pos_tuple] = True
+                                block_z_to_renders_processed[block_start][z] = block_z_to_renders_processed[block_start][z] + 1
+                                if block_z_to_renders_processed[block_start][z] == z_to_number_of_chunks:
+                                    total_sections_aligned = total_sections_aligned + 1
+                                    print('Renders complete: {}'.format(total_sections_aligned))
+                                    if z+1 in block_z_to_compute_released[block_start]:
+                                        if block_z_to_compute_released[block_start][z+1]:
                                             pass
                                             # raise ValueError('Attempt to release compute for z={} twice'.format(z+1))
                                         else:
                                             print('Render done for z={}, releasing cf for z={}'.format(z, z+1))
-                                            z_to_compute_released[z+1] = True
-                                            status_file.write('rt {}'.format(z))
-                                            executeNew(BlockAlignComputeField, [z+1])
-                                elif z_to_renders_processed[z] > z_to_number_of_chunks[z]:
+                                            block_z_to_compute_released[block_start][z+1] = True
+                                            status_file.write('rt {}\n'.format(z))
+                                            executeNew(BlockAlignComputeField, [z+1], [block_start])
+                                elif block_z_to_renders_processed[block_start][z] > z_to_number_of_chunks:
                                     raise ValueError('More render chunks processed than exist for z = {}'.format(z))
                         else:
                             raise ValueError('Unsupported task type {}'.format(parsed_msg['task']))
@@ -1196,18 +1017,6 @@ if __name__ == "__main__":
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
 
-    # for z_offset in sorted(block_offset_to_z_range.keys()):
-    #     z_range = list(block_offset_to_z_range[z_offset])
-    #     if do_alignment:
-    #         print("ALIGN BLOCK OFFSET {}".format(z_offset))
-    #         execute(BlockAlignComputeField, z_range)
-    #         if not skip_vv:
-    #             print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-    #             execute(BlockAlignVectorVote, z_range)
-    #     if do_render:
-    #         print("RENDER BLOCK OFFSET {}".format(z_offset))
-    #         execute(BlockAlignRender, z_range)
-    
     if args.recover_status_from_file is None:
         if do_render:
             print("COPY STARTING SECTION OF ALL BLOCKS")
@@ -1220,13 +1029,12 @@ if __name__ == "__main__":
             execute(StarterComputeField, starter_range)
         if do_render:
             execute(StarterRender, starter_range)
-        executionLoop(first_z_release)
     else:
-        first_cf_release, first_rt_release = recover_status_from_file(args.recover_status_from_file)
-        # import ipdb
-        # ipdb.set_trace()
-        executionLoop(first_cf_release, first_rt_release)
-        
+        recover_status_from_file(args.recover_status_from_file)
+
+    cf_list, rt_list, cf_block_start, rt_block_start = generate_first_releases()
+    executionLoop(cf_list, rt_list, cf_block_start, rt_block_start)
+
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
     print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
@@ -1238,21 +1046,11 @@ if __name__ == "__main__":
         execute(StitchOverlapCopy, overlap_copy_range)
     for z_offset in sorted(stitch_offset_to_z_range.keys()):
         z_range = list(stitch_offset_to_z_range[z_offset])
+        for i in len(z_range):
+            z_range[i] = z_range[i] + args.block_overlap - 1
         if do_alignment:
             print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
             execute(StitchAlignComputeField, z_range)
-            if not skip_vv:
-                print("VECTOR VOTE OVERLAPPING OFFSET {}".format(z_offset))
-                execute(StitchAlignVectorVote, z_range)
-        if do_render and not skip_vv:
-            print("RENDER OVERLAPPING OFFSET {}".format(z_offset))
-            execute(StitchAlignRender, z_range)
-
-    if do_alignment and not skip_vv:
-        print("COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING")
-        execute(StitchBroadcastCopy, stitch_range)
-        print("VECTOR VOTE STITCHING FIELDS")
-        execute(StitchBroadcastVectorVote, block_starts[1:])
 
     if do_compose:
         execute(StitchCompose, compose_range)
