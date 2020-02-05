@@ -1130,6 +1130,9 @@ if __name__ == "__main__":
             with TaskQueue(queue_name=args.completed_queue_name, n_threads=0) as ctq:
                 sqs_obj = ctq._api._sqs
                 global renders_complete
+                global receive_time
+                global process_time
+                global delete_time
                 while renders_complete < len(block_z_list):
                     before_receive_time = time()
                     msgs = sqs_obj.receive_message(QueueUrl=ctq._api._qurl, MaxNumberOfMessages=10)
