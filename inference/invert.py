@@ -44,8 +44,6 @@ if __name__ == '__main__':
   parser.add_argument('--src_path', type=str)
   parser.add_argument('--info_path', type=str,
     help='path to CloudVolume to use as template info file')
-  parser.add_argument('--field_path', type=str)
-  parser.add_argument('--field_mip', type=int)
   parser.add_argument('--dst_path', type=str)
   parser.add_argument('--src_mip', type=int)
   parser.add_argument('--bbox_start', nargs=3, type=int,
@@ -66,7 +64,6 @@ if __name__ == '__main__':
   chunk_size = 1024
 
   src_mip = args.src_mip
-  field_mip = args.field_mip
   max_mip = args.max_mip
   pad = args.pad
 
@@ -97,11 +94,9 @@ if __name__ == '__main__':
                       create_info=True)
 
   # Create src CloudVolumes
-  src = cm.create(args.src_path, data_type='uint8', num_channels=1,
+  src = cm.create(args.src_path, data_type='int16', num_channels=2,
                      fill_missing=True, overwrite=False)
-  field = cm.create(args.field_path, data_type='int16', num_channels=2,
-                         fill_missing=True, overwrite=False)
-  dst = cm.create(args.dst_path, data_type='uint8', num_channels=1,
+  dst = cm.create(args.dst_path, data_type='int16', num_channels=2,
                      fill_missing=True, overwrite=True)
 
   # Source Dict
@@ -134,7 +129,7 @@ if __name__ == '__main__':
       with GreenTaskQueue(queue_name=args.queue_name) as tq:
           tq.insert_all(tasks)
 
-  class RenderTaskIterator(object):
+  class InvertTaskIterator(object):
       def __init__(self, zrange):
         self.zrange = zrange
       def __iter__(self):
@@ -154,15 +149,15 @@ if __name__ == '__main__':
           except KeyError:
             src_path = src.path
           
-          t = a.render_get_tasks_batch(cm, src_path, field.path, dst.path, z, z, z, bbox,
-                           src_mip, field_mip, affine=affine) 
+          t = a.invert_get_tasks_batch(cm, src_path, dst.path, z, bbox,
+                           src_mip, pad) 
           yield from t
 
   ptask = []
   range_list = make_range(z_range, a.threads)
   start = time()
   for irange in range_list:
-      ptask.append(RenderTaskIterator(irange))
+      ptask.append(InvertTaskIterator(irange))
 
   if a.distributed:
     with ProcessPoolExecutor(max_workers=a.threads) as executor:

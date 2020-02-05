@@ -186,8 +186,11 @@ class ComputeFieldTask(RegisteredTask):
 class RenderTask(RegisteredTask):
   def __init__(self, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
                field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu=False):
-    super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
-                     field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu)
+    print("init")
+    print(field_cv)
+    super().__init__(field_cv)
+    #super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip, 
+                     #field_mip, mask_cv, mask_mip, mask_val, affine, use_cpu)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
@@ -196,7 +199,9 @@ class RenderTask(RegisteredTask):
     src_z = self.src_z
     field_z = self.field_z
     dst_z = self.dst_z
+    print(type(self.patch_bbox))
     patch_bbox = deserialize_bbox(self.patch_bbox)
+    """
     src_mip = self.src_mip
     field_mip = self.field_mip
     mask_cv = None 
@@ -227,7 +232,35 @@ class RenderTask(RegisteredTask):
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
       end = time()
       diff = end - start
-      print('RenderTask: {:.3f} s'.format(diff))
+      print('RenderTask: {:.3f} s'.format(diff))"""
+
+class InvertTask(RegisteredTask):
+  def __init__(self, src_cv, dst_cv, z, patch_bbox, src_mip, pad, use_cpu=False):
+    super(). __init__(src_cv, dst_cv, z, patch_bbox, src_mip, pad, use_cpu=False)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv) 
+    dst_cv = DCV(self.dst_cv) 
+    z = self.z
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    src_mip = self.src_mip
+    pad = self.pad
+    mask_cv = None 
+
+    print("\nInverting\n"
+          "src {}\n"
+          "dst {}\n"
+          "z={}\n"
+          "MIP{}\n"
+          "padding {}\n"
+          "\n".format(src_cv.path, dst_cv.path, z, src_mip, pad), flush=True)
+    start = time()
+    if not aligner.dry_run:
+      aligner.invert_field(z, src_cv, dst_cv, patch_bbox, src_mip, pad)
+      end = time()
+      diff = end - start
+      print('InvertTask: {:.3f} s'.format(diff))
+
 
 class VectorVoteTask(RegisteredTask):
   def __init__(self, pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial,

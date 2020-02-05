@@ -45,6 +45,8 @@ import tenacity
 import boto3
 from fcorr import get_fft_power2, get_hp_fcorr
 
+import torchfields
+
 retry = tenacity.retry(
   reraise=True, 
   stop=tenacity.stop_after_attempt(7), 
@@ -422,12 +424,13 @@ class Aligner:
       z: int for section index
       bbox: BoundingBox for X & Y extent of the field to be stored
       mip: int for resolution at which to store the vector field
-      relative: bool indicating whether to convert MIP0 residuals to relative residuals
-        from [-1,1] based on residual location within shape of the bbox 
+      relative: bool indicating whether the field is given as relative residuals
+        from [-1,1] based on the residual location within shape of the bbox - if True,
+        then field will be converted to MIP0 absolutes before saving
       as_int16: bool indicating whether vectors should be saved as int16
     """
     if relative: 
-      field = field * (field.shape[-2] / 2) * (2**mip)
+      field = self.rel_to_abs_residual(field, mip)
     # field = field.data.cpu().numpy() 
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
@@ -644,7 +647,53 @@ class Aligner:
       softmin_temp = 2**mip
     return vector_vote(fields, softmin_temp=softmin_temp, blur_sigma=blur_sigma)
 
-  def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
+  def invert_field_generator(self, cm, src_cv, dst_cv, z, bbox, src_mip, pad):
+    """Take the pull field in src_cv, and invert it to a push field in src_cv
+
+    Args:
+       cm: CloudManager that corresponds to the src_cv, field_cv, & dst_cv
+       src_cv: miplesscloudvolume where source field is stored 
+       dst_cv: miplesscloudvolume where destination field will be written 
+       z: int for section index of field
+       bbox: BoundingBox for region where source and target image will be loaded,
+        and where the resulting vector field will be written
+       src_mip: int for MIP level of src field
+       pad: how much padding to use for computing inverses
+    """
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[src_mip],
+                                    cm.dst_voxel_offsets[src_mip], mip=src_mip, 
+                                    max_mip=cm.max_mip)
+    class RenderTaskIterator():
+        def __init__(self, cl, start, stop):
+          self.chunklist = cl
+          self.start = start
+          self.stop = stop
+        def __len__(self):
+          return self.stop - self.start
+        def __getitem__(self, slc):
+          itr = deepcopy(self)
+          itr.start = slc.start
+          itr.stop = slc.stop
+          return itr
+        def __iter__(self):
+          for i in range(self.start, self.stop):
+            chunk = self.chunklist[i]
+            yield tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
+                       field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
+                       mask_mip, mask_val, affine, use_cpu)
+    if return_iterator:
+        return RenderTaskIterator(chunks,0, len(chunks))
+    else:
+        batch = []
+        for chunk in chunks:
+          batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
+                           field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
+                           mask_mip, mask_val, affine, use_cpu))
+        return batch
+
+
+  def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad):
     """Compute the inverse vector field for a given bbox 
 
     Args:
@@ -654,28 +703,26 @@ class Aligner:
        bbox: BoundingBox for region to be processed
        mip: int for MIP level to be processed
        pad: int for additional bbox padding to use during processing
-       model_path: string for relative path to the inverter model; if blank, then use
-        the runtime optimizer
     """
     padded_bbox = deepcopy(bbox)
     padded_bbox.uncrop(pad, mip=mip)
     f = self.get_field(src_cv, z, padded_bbox, mip,
-                       relative=True, to_tensor=True, as_int16=as_int16)
+                       relative=True, to_tensor=True, as_int16=False)
     print('invert_field shape: {0}'.format(f.shape))
     start = time()
-    if model_path:
-      archive = self.get_model_archive(model_path)
-      model = archive.model
-      invf = model(f)
-    else:
-      # use optimizer if no model provided
-      invf = invert(f)
+    
+    # permute into (N, C, H, W) convention for displace fields and cast to field
+    f = f.permute(0,3,1,2).field()
+    invf = ~f.tensor().permute(0,2,3,1)
+
+    # must convert to abs residuals while padded
     invf = self.rel_to_abs_residual(invf, mip=mip)
     invf = invf[:,pad:-pad, pad:-pad,:]    
     end = time()
     print (": {} sec".format(end - start))
-    invf = invf.data.cpu().numpy() 
-    self.save_field(dst_cv, z, invf, bbox, mip, relative=True, as_int16=as_int16) 
+    invf = invf.data.cpu().numpy()
+  
+    self.save_field(dst_cv, z, invf, bbox, mip, relative=False, as_int16=True) 
 
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
                         bbox, image_mip, field_mip, mask_cv=None,
@@ -1120,7 +1167,7 @@ class Aligner:
                                               prev_field_cv, prev_field_z, prev_field_inverse))
         return batch
   
-  def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
+  def render_get_tasks_batch(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
                    bbox, src_mip, field_mip, mask_cv=None, mask_mip=0, 
                    mask_val=0, affine=None, use_cpu=False,
              return_iterator= False):
@@ -1171,10 +1218,67 @@ class Aligner:
     else:
         batch = []
         for chunk in chunks:
+          t = tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
+                           field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
+                           mask_mip, mask_val, affine, use_cpu)
+          print(t)
           batch.append(tasks.RenderTask(src_cv, field_cv, dst_cv, src_z,
                            field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
                            mask_mip, mask_val, affine, use_cpu))
         return batch
+
+  def invert_get_tasks_batch(self, cm, src_cv, dst_cv, z, 
+                   bbox, src_mip, pad, use_cpu=False):
+    """Warp image in src_cv by field in field_cv and save result to dst_cv
+
+    Args:
+       cm: CloudManager that corresponds to the src_cv, field_cv, & dst_cv
+       src_cv: MiplessCloudVolume where source image is stored 
+       field_cv: MiplessCloudVolume where vector field is stored 
+       dst_cv: MiplessCloudVolume where destination image will be written 
+       src_z: int for section index of source image
+       field_z: int for section index of vector field 
+       dst_z: int for section index of destination image
+       bbox: BoundingBox for region where source and target image will be loaded,
+        and where the resulting vector field will be written
+       src_mip: int for MIP level of src images 
+       field_mip: int for MIP level of vector field; field_mip >= src_mip
+       mask_cv: MiplessCloudVolume where source mask is stored
+       mask_mip: int for MIP level at which source mask is stored
+       mask_val: int for pixel value in the mask that should be zero-filled
+       wait: bool indicating whether to wait for all tasks must finish before proceeding
+       affine: 2x3 ndarray for preconditioning affine to use (default: None means identity)
+    """
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[src_mip],
+                                    cm.dst_voxel_offsets[src_mip], mip=src_mip, 
+                                    max_mip=cm.max_mip)
+    class InvertTaskIterator():
+        def __init__(self, cl, start, stop):
+          self.chunklist = cl
+          self.start = start
+          self.stop = stop
+        def __len__(self):
+          return self.stop - self.start
+        def __getitem__(self, slc):
+          itr = deepcopy(self)
+          itr.start = slc.start
+          itr.stop = slc.stop
+          return itr
+        def __iter__(self):
+          for i in range(self.start, self.stop):
+            chunk = self.chunklist[i]
+            yield tasks.InvertTask(src_cv, field_cv, dst_cv, src_z,
+                       field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
+                       mask_mip, mask_val, affine, use_cpu)
+    batch = []
+    print(src_cv)
+    for chunk in chunks:
+      t=tasks.InvertTask(src_cv, dst_cv, z, chunk, src_mip, pad, use_cpu)
+      print(t)
+      batch.append(tasks.InvertTask(src_cv, dst_cv, z,
+                       chunk, src_mip, pad, use_cpu))
+    return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,
                   inverse=False, serial=True, return_iterator=False,

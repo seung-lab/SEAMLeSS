@@ -3,6 +3,7 @@ from cloudvolume import CloudVolume
 from cloudvolume.lib import Bbox, Vec, find_closest_divisor
 import numpy as np
 from copy import copy
+import torchfields
 
 from os.path import join
 
@@ -87,6 +88,31 @@ def create_cloudvolume(dst_path, info, src_mip, dst_mip):
 def get_field(cv, bbox, device=torch.device('cpu')):
   f = cv[bbox.to_slices()]
   return torch.from_numpy(f).permute(2,0,1,3).to(device=device)
+
+def get_inverse_field(cv, bbox, device=torch.device('cpu')):
+  bbsize = bbox.size()
+  t = get_field(cv, bbox, device=device) 
+
+  # permute into (N, C, H, W) convention for displace fields
+  tf = t.permute(0,3,1,2).float()
+
+  # normalize displacement fields
+  tf[:, 0, :, :].div_(bbsize[0] / 2)
+  tf[:, 1, :, :].div_(bbsize[1] / 2) 
+  
+  # cast to field and invert each z index
+  f = tf.field()
+  g = f.clone()
+  for z in range(0, f.size()[0]):
+    g[z, :, :, :] = ~f[z, :, :, :] 
+
+  # unnormalize, cast back to tensor, unpermute, and match type
+  g[:, 0, :, :].mul_(bbsize[0] / 2)
+  g[:, 1, :, :].mul_(bbsize[1] / 2)
+
+  g = g.tensor().permute(0, 2, 3, 1).type(t.dtype)
+  return g
+
 
 def field_to_numpy(field):
   if field.is_cuda:
