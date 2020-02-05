@@ -374,11 +374,42 @@ def get_mse_and_smoothness_masks3(bundle, **kwargs):
     #sm_keys_to_apply['tgt'] = []
     return get_warped_srctgt_mask(bundle, mse_keys_to_apply, sm_keys_to_apply)
 
-
-def get_mse_and_smoothness_masks2(bundle, mse_keys_to_apply,
-                                  sm_keys_to_apply, **kwargs):
+def get_mse_and_smoothness_masks2(bundle, **kwargs):
     #yoman
-
+    mse_keys_to_apply = {
+        'src': [
+            {'name': 'src_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0)]}
+            ],
+        'tgt':[
+            {'name': 'tgt_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0)]}
+        ]
+    }
+    sm_keys_to_apply = {
+        'src': [
+            {'name': 'src_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0)],
+             "mask_value": 0e-6},
+            {'name': 'src_large_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(3, 2), (64, 0.3)],
+             "mask_value": 1e-6},
+            {'name': 'src_small_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(8, 0.3)],
+             "mask_value": 0e-6},
+            {'name': 'src',
+                'fm': 0,
+             'binarization': {'strat': 'gt', 'value': -5.0},
+            'mask_value': 0}
+            ],
+        'tgt':[
+        ]
+    }
     #mse_keys_to_apply['src'] = []
     #mse_keys_to_apply['tgt'] = []
     #sm_keys_to_apply['src'] = []

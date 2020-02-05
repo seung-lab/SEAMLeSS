@@ -356,8 +356,9 @@ if __name__ == "__main__":
     # initial_block_starts = list(range(args.z_start, args.z_stop, block_size))
     initial_block_starts = [s for s in alignment_z_starts \
                             if (s >= args.z_start and s <= args.z_stop)]
-    if len(initial_block_starts) == 0:
-        initial_block_starts.append(z_stop)
+
+    if args.z_start not in initial_block_starts:
+        initial_block_starts.append(args.z_start)
 
     if initial_block_starts[-1] != args.z_stop:
         initial_block_starts.append(args.z_stop)

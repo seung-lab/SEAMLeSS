@@ -56,8 +56,11 @@ class Model(nn.Module):
             model_run_params = {'level_in': 8}
             stack = torch.cat((warped_src, warped_tgt), 1)
             adj_res = None
+            if 'src_mask' in kwargs:
+                src_folds = (kwargs['src_mask'] > 0).float()
+            else:
+                src_folds = torch.zeros_like(src)
 
-            src_folds = (kwargs['src_mask'] > 0).float()
             if self.range_adjust:
                 tissue_mask = (src != 0).squeeze(0).type(torch.cuda.FolatTensor)
                 pred_res_adj = self.align(stack, **model_run_params)

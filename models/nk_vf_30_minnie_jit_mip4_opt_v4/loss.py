@@ -302,9 +302,7 @@ def unsupervised_loss(smoothness_factor, smoothness_type='rig', use_defect_mask=
     def compute_loss(bundle, smoothness_mult=1.0, crop=32):
         loss_dict = {}
         if use_defect_mask:
-            mse_mask, smoothness_mask = get_mse_and_smoothness_masks2(bundle,
-                    sm_keys_to_apply=sm_keys_to_apply,
-                    mse_keys_to_apply=mse_keys_to_apply)
+            mse_mask, smoothness_mask = get_mse_and_smoothness_masks2(bundle)
         else:
             mse_mask = None
             smoothness_mask = None

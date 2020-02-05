@@ -221,7 +221,7 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
                         min_overlap_count=min_overlap_px)
                 ncc_np = ncc.squeeze().cpu().numpy()
 
-                if ncc.var() < 1E-13 or ((ncc != ncc).sum() > 0):
+                if ncc.var() < 1E-15 or ((ncc != ncc).sum() > 0):
                     #match_displacement = [0, 0]
                     match_displacement = [float(filler), float(filler)]
                     #print ("black ncc")
@@ -232,8 +232,8 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
                     peak_vals.append([ncc_np[peak1[0][0],  peak1[0][1]],
                                       ncc_np[peak2[0][0],  peak2[0][1]],
                                     ])
-                    peak_ratios.append(peak_vals[-1][0] / (peak_vals[-1][1] + 1e-5))
-                    if peak_ratios[-1] < 1.1:
+                    peak_ratios.append(peak_vals[-1][0] / (peak_vals[-1][1] + 1e-15))
+                    if peak_ratios[-1] < 2.0:
                         match_displacement = [float(filler), float(filler)]
                     else:
                         match_tile_start = (tgt_tile_coord[0].start + match[0], tgt_tile_coord[1].start + match[1])
@@ -262,13 +262,13 @@ def filter_black_field(field, img, black_threshold=0):
     field[..., black_mask] = 0
     return field
 
-def get_ncc(tgt, tmpl, div_by_overlap=False, min_overlap_ratio=0.6,
+def get_ncc(tgt, tmpl, div_by_overlap=False, min_overlap_ratio=0.2,
             min_overlap_count=500):
     tgt = tgt.unsqueeze(0).unsqueeze(0)
     tmpl = tmpl.unsqueeze(0).unsqueeze(0)
     #import pdb; pdb.set_trace()
 
-    mask_val = 0.05
+    mask_val = 0.001
     tgt_mask = tgt.abs() > mask_val
     tmpl_mask = tmpl.abs() > mask_val
 
