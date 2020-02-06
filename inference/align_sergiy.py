@@ -547,8 +547,8 @@ if __name__ == "__main__":
             if z < args.z_stop:
                 influencing_blocks_lookup[z].append(b_start)
 
-    # import ipdb
-    # ipdb.set_trace()
+    import ipdb
+    ipdb.set_trace()
 
     # Task scheduling functions
     def remote_upload(tasks):
