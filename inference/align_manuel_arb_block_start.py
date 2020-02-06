@@ -778,7 +778,7 @@ if __name__ == "__main__":
                 tgt_offsets = vvote_lookup[z]
                 for tgt_offset in tgt_offsets:
                     tgt_z = z + tgt_offset
-                    fields = broadcasting_field
+                    field = broadcasting_field
                     t = a.compute_field(cm, model_path, block_dst, overlap_image, field,
                                         z, tgt_z, bbox, mip, pad,
                                         src_masks=src_masks,
@@ -1043,17 +1043,17 @@ if __name__ == "__main__":
     print("START BLOCK ALIGNMENT")
 
     if args.recover_status_from_file is None:
-        # if do_render:
-        #     print("COPY STARTING SECTION OF ALL BLOCKS")
-        #     execute(StarterCopy, copy_range)
-        # if do_alignment:
-        #     if coarse_field_cv is not None:
-        #         print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
-        #         execute(StarterUpsampleField, copy_range)
-        #     print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
-        #     execute(StarterComputeField, starter_range)
-        # if do_render:
-        #     execute(StarterRender, starter_range)
+        if do_render:
+            print("COPY STARTING SECTION OF ALL BLOCKS")
+            execute(StarterCopy, copy_range)
+        if do_alignment:
+            if coarse_field_cv is not None:
+                print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
+                execute(StarterUpsampleField, copy_range)
+            print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
+            execute(StarterComputeField, starter_range)
+        if do_render:
+            execute(StarterRender, starter_range)
         pass
     else:
         recover_status_from_file(args.recover_status_from_file)
@@ -1085,7 +1085,7 @@ if __name__ == "__main__":
         execute(StitchOverlapCopy, overlap_copy_range)
     for z_offset in sorted(stitch_offset_to_z_range.keys()):
         z_range = list(stitch_offset_to_z_range[z_offset])
-        for i in len(z_range):
+        for i in range(len(z_range)):
             z_range[i] = z_range[i] + args.block_overlap - 1
         if do_alignment:
             print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))

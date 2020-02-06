@@ -456,15 +456,15 @@ if __name__ == "__main__":
         assert len(v) % 2 == 1
 
 
-    # compose_range = range(args.z_start, args.z_stop)
-    # render_range = range(args.z_start+1, args.z_stop)
-    # if do_compose:
-    #     decay_dist = args.decay_dist
-    #     influencing_blocks_lookup = {z: [] for z in compose_range}
-    #     for b_start in block_starts:
-    #         for z in range(b_start+1, b_start+decay_dist+1):
-    #           if z < args.z_stop:
-    #               influencing_blocks_lookup[z].append(b_start)
+    compose_range = range(args.z_start, args.z_stop)
+    render_range = range(args.z_start+1, args.z_stop)
+    if do_compose:
+        decay_dist = args.decay_dist
+        influencing_blocks_lookup = {z: [] for z in compose_range}
+        for b_start in block_starts:
+            for z in range(b_start+1, b_start+decay_dist+1):
+              if z < args.z_stop:
+                  influencing_blocks_lookup[z].append(b_start)
 
 
     # Create field CloudVolumes
@@ -1212,17 +1212,17 @@ if __name__ == "__main__":
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
 
-    # for z_offset in sorted(block_offset_to_z_range.keys()):
-    #     z_range = list(block_offset_to_z_range[z_offset])
-    #     if do_alignment:
-    #         print("ALIGN BLOCK OFFSET {}".format(z_offset))
-    #         execute(BlockAlignComputeField, z_range)
-    #         if not skip_vv:
-    #             print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-    #             execute(BlockAlignVectorVote, z_range)
-    #     if do_render:
-    #         print("RENDER BLOCK OFFSET {}".format(z_offset))
-    #         execute(BlockAlignRender, z_range)
+    for z_offset in sorted(block_offset_to_z_range.keys()):
+        z_range = list(block_offset_to_z_range[z_offset])
+        if do_alignment:
+            print("ALIGN BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignComputeField, z_range)
+            if not skip_vv:
+                print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
+                execute(BlockAlignVectorVote, z_range)
+        if do_render:
+            print("RENDER BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignRender, z_range)
 
     if args.recover_status_from_file is None:
         if do_render:
@@ -1239,8 +1239,6 @@ if __name__ == "__main__":
         executionLoop(first_z_release)
     else:
         first_cf_release, first_rt_release = recover_status_from_file(args.recover_status_from_file)
-        # import ipdb
-        # ipdb.set_trace()
         executionLoop(first_cf_release, first_rt_release)
 
     print("END BLOCK ALIGNMENT")
