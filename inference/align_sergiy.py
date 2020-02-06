@@ -180,6 +180,7 @@ if __name__ == "__main__":
     )
     parser.add_argument('--skip_list_lookup', type=str, help='relative path to file identifying list of skip sections')
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
+    parser.add_argument('--final_render_suffix', type=str, default='', help='string to append to directory names')
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -535,7 +536,8 @@ if __name__ == "__main__":
             size_chunk=chunk_size,
             batch_mip=final_render_mip,
         )
-        final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.stitch_suffix)),
+        final_dst = cmr.create(join(args.dst_path, 'image_stitch{}{}'.format(args.stitch_suffix,
+                            args.final_render_suffix)),
                             data_type=args.img_dtype, num_channels=1, fill_missing=True,
                             overwrite=do_final_render).path
 
@@ -548,8 +550,6 @@ if __name__ == "__main__":
             if z < args.z_stop:
                 influencing_blocks_lookup[z].append(b_start)
 
-    import ipdb
-    ipdb.set_trace()
 
     # Task scheduling functions
     def remote_upload(tasks):
@@ -1046,8 +1046,12 @@ if __name__ == "__main__":
         execute(StitchBroadcastCopy, stitch_range)
         print("VECTOR VOTE STITCHING FIELDS")
         execute(StitchBroadcastVectorVote, block_starts[1:])
-
+    print ("END BLOCK STITCHIN")
+    print ("START BLOCK COMPOSE")
     if do_compose:
         execute(StitchCompose, compose_range)
+    print ("END BLOCK COMPOSE")
+    print ("START FINAL RENDER")
     if do_final_render:
         execute(StitchFinalRender, compose_range)
+    print ("END FINAL RENDER")

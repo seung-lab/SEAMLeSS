@@ -349,7 +349,7 @@ class Aligner:
           else:
             data = data.type('torch.cuda.DoubleTensor')
             data = interpolate(data, size=size, mode='nearest')
-            data = data.type('torch.cuda.ByteTensor')
+            data = data.type('torch.cuda.LongTensor')
       else:
         data = data.float()
         if src_mip > dst_mip:
