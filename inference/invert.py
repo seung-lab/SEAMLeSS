@@ -169,12 +169,12 @@ if __name__ == '__main__':
 
   end = time()
   diff = end - start
-  print("Sending Render Tasks use time:", diff)
-  print('Running Render Tasks')
+  print("Sending Invert Tasks use time:", diff)
+  print('Running Invert Tasks')
   # wait 
   start = time()
   # a.wait_for_sqs_empty()
   end = time()
   diff = end - start
-  print("Executing Render Tasks use time:", diff)
+  print("Executing Invert Tasks use time:", diff)
 

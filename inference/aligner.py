@@ -431,7 +431,6 @@ class Aligner:
     """
     if relative: 
       field = self.rel_to_abs_residual(field, mip)
-    # field = field.data.cpu().numpy() 
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     field = np.transpose(field, (1,2,0,3))
@@ -488,7 +487,7 @@ class Aligner:
       tgt_cv: MiplessCloudVolume with target image
       bbox: BoundingBox for region of both sections to process
       mip: int of MIP level to use for bbox
-      pad: int for amount of padding to add to the bbox before processing
+      pad: int for amount of padding (at the mip level provided) to add to the bbox before processing
       mask_cv: MiplessCloudVolume with mask to be used for both src & tgt image
       prev_field_cv: if specified, a MiplessCloudVolume containing the
                      previously predicted field to be profile and displace
@@ -693,7 +692,7 @@ class Aligner:
         return batch
 
 
-  def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad):
+  def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, use_cpu=False):
     """Compute the inverse vector field for a given bbox 
 
     Args:
@@ -704,16 +703,18 @@ class Aligner:
        mip: int for MIP level to be processed
        pad: int for additional bbox padding to use during processing
     """
+    if use_cpu:
+        self.device = 'cpu'
     padded_bbox = deepcopy(bbox)
     padded_bbox.uncrop(pad, mip=mip)
     f = self.get_field(src_cv, z, padded_bbox, mip,
-                       relative=True, to_tensor=True, as_int16=False)
+                       relative=True, to_tensor=True, as_int16=True)
     print('invert_field shape: {0}'.format(f.shape))
     start = time()
     
     # permute into (N, C, H, W) convention for displace fields and cast to field
     f = f.permute(0,3,1,2).field()
-    invf = ~f.tensor().permute(0,2,3,1)
+    invf = (~f).tensor().permute(0,2,3,1)
 
     # must convert to abs residuals while padded
     invf = self.rel_to_abs_residual(invf, mip=mip)
@@ -721,8 +722,9 @@ class Aligner:
     end = time()
     print (": {} sec".format(end - start))
     invf = invf.data.cpu().numpy()
+    print('invert_field shape: {0}'.format(invf.shape))
   
-    self.save_field(dst_cv, z, invf, bbox, mip, relative=False, as_int16=True) 
+    self.save_field(invf, dst_cv, z, bbox, mip, relative=False, as_int16=True) 
 
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
                         bbox, image_mip, field_mip, mask_cv=None,
@@ -1275,7 +1277,6 @@ class Aligner:
     print(src_cv)
     for chunk in chunks:
       t=tasks.InvertTask(src_cv, dst_cv, z, chunk, src_mip, pad, use_cpu)
-      print(t)
       batch.append(tasks.InvertTask(src_cv, dst_cv, z,
                        chunk, src_mip, pad, use_cpu))
     return batch
