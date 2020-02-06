@@ -369,6 +369,7 @@ if __name__ == "__main__":
     block_stops = block_starts[1:]
     if block_starts[-1] != args.z_stop:
         block_stops.append(args.z_stop)
+
     # section_to_block_start = {}
     # for z in range(args.z_start, args.z_stop):
     #     section_to_block_start[z] = max(filter(lambda x: (x <= z), block_starts))
@@ -858,7 +859,7 @@ if __name__ == "__main__":
                     tgt_z = z + tgt_offset
                     if skip_vv:
                         # field = overlap_vvote_field
-                        fields = broadcasting_field
+                        field = broadcasting_field
                         z = block_start_lookup[z]
                     else:
                         field = stitch_pair_fields[tgt_offset]
@@ -1021,10 +1022,10 @@ if __name__ == "__main__":
             execute(BlockAlignRender, z_range)
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
-    # print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
-    # #for z_offset in sorted(stitch_offset_to_z_range.keys()):
-    # #    z_range = list(stitch_offset_to_z_range[z_offset])
-    # #    execute(SeethroughStitchRender, z_range=z_range)
+    print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
+    #for z_offset in sorted(stitch_offset_to_z_range.keys()):
+    #    z_range = list(stitch_offset_to_z_range[z_offset])
+    #    execute(SeethroughStitchRender, z_range=z_range)
 
     if do_render:
         execute(StitchOverlapCopy, overlap_copy_range)
