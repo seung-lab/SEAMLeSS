@@ -365,7 +365,16 @@ class RenderTask(RegisteredTask):
                         field_mip_print, src_mip), flush=True)
     start = time()
     if not aligner.dry_run:
-      image, folds = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
+      if not seethrough:
+         image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
+                                     patch_bbox, src_mip, field_mip,
+                                     masks=masks,
+                                     affine=affine,
+                                     use_cpu=self.use_cpu, pad=self.pad,
+                                     return_mask=False,
+                                     blackout_mask_op=self.blackout_op)
+      else:
+         image, folds = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
                                      patch_bbox, src_mip, field_mip,
                                      masks=masks,
                                      affine=affine,
@@ -373,7 +382,7 @@ class RenderTask(RegisteredTask):
                                      return_mask=True,
                                      blackout_mask_op=self.blackout_op,
                                      return_mask_op='data')
-      if seethrough:
+
          prev_image = aligner.get_masked_image(seethrough_cv, dst_z-1,
                                        patch_bbox, src_mip,
                                        masks=[],

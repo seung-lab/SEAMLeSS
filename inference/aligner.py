@@ -354,12 +354,13 @@ class Aligner:
         data = data.float()
         if src_mip > dst_mip:
           size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
+          data = data.type('torch.DoubleTensor')
           data = interpolate(data, size=size, mode='nearest')
-          data = data.type(torch.ByteTensor)
+          data = data.type(torch.LongTensor)
         elif src_mip < dst_mip:
           ratio = 2**(dst_mip-src_mip)
           data = max_pool2d(data, kernel_size=ratio)
-          data = data.type(torch.ByteTensor)
+          data = data.type(torch.LongTensor)
       if not to_tensor:
         data = data.cpu().numpy()
 
@@ -1095,8 +1096,6 @@ class Aligner:
                                       masks=masks,
                                       to_tensor=True, normalizer=None,
                                       mask_op=blackout_mask_op)
-        mask = self.get_masks(masks, image_z, bbox,
-                               dst_mip=image_mip)
         new_bbox = padded_bbox
       else:
         distance = self.profile_field(field)
