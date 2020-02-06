@@ -1,2 +1,4 @@
 x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
-150000,175000,17612,308752,308752,17636,0,sergiy_m8m10_net_opt,5,0,original
+150000,175000,17009,180000,205000,17020,0,nk_vf_30_minnie_jit_mip4,1,0,original
+150000,175000,17020,180000,205000,17029,0,nk_vf_30_minnie_jit_mip4,1,0,original
+150000,175000,17029,180000,205000,17040,0,nk_vf_30_minnie_jit_mip4,1,0,original
