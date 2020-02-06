@@ -1,6 +1,7 @@
 import torch
 import time
 import numpy as np
+import six
 
 from .loss import unsupervised_loss
 from .residuals import res_warp_img, downsample_residuals, upsample_residuals
@@ -8,6 +9,10 @@ from .residuals import combine_residuals
 from .blockmatch import block_match
 
 def combine_pre_post(res, pre, post):
+    if pre.shape[-2] < res.shape[-2]:
+        pre = upsample_residuals(pre, factor=res.shape[-2]//pre.shape[-2])
+    if post.shape[-2] < res.shape[-2]:
+        post = upsample_residuals(post, factor=res.shape[-2]//post.shape[-2])
 
     result = combine_residuals(post,
                                combine_residuals(res, pre, is_pix_res=True),
@@ -20,114 +25,130 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
                       src_large_defects,
                       src_small_defects,
                       opt_params={},
-                      crop=128):
+                      crop=256,
+                      opt_res_coarsness=0):
     wd = 1e-3
-    pred_res = initial_res.clone()
-    pred_res.requires_grad = False
-    pre_res = torch.zeros_like(pred_res, device=pred_res.device, requires_grad=True)
-    post_res = torch.zeros_like(pred_res, device=pred_res.device, requires_grad=True)
+    finish = False
+    sdb = False
+    while not finish:
+        #import pdb; pdb.set_trace()
+        finish = True
+        pred_res = initial_res.clone()
+        pred_res.requires_grad = False
 
-    prev_pre_res = torch.zeros_like(pred_res, device=pred_res.device, requires_grad=True)
-    prev_post_res = torch.zeros_like(pred_res, device=pred_res.device, requires_grad=True)
+        pre_res = torch.zeros_like(pred_res, device=pred_res.device, requires_grad=True)
+        for _ in range(opt_res_coarsness):
+            pre_res = downsample_residuals(pre_res).detach()
 
-    trainable = [pre_res, post_res]
-    if opt_mode == 'adam':
-        optimizer = torch.optim.Adam(trainable, lr=lr, weight_decay=wd)
-    elif opt_mode == 'sgd':
-        optimizer = torch.optim.SGD(trainable, lr=lr, **opt_params)
+        pre_res = torch.zeros_like(pre_res, device=pred_res.device, requires_grad=True)
 
-    loss_bundle = {
-        'src': src,
-        'tgt': tgt,
-        'tgt_defects': tgt_defects,
-        'src_plastic': torch.zeros_like(src_defects, device=tgt_defects.device),
-        'tgt_plastic': torch.zeros_like(src_defects, device=tgt_defects.device),
-        'src_edges': torch.zeros_like(src_defects, device=tgt_defects.device),
-        'tgt_edges': torch.zeros_like(src_defects, device=tgt_defects.device)
-    }
-    loss_bundle['src_defects'] = src_defects
-    loss_bundle['src_small_defects'] = src_small_defects
-    loss_bundle['src_large_defects'] = src_large_defects
-    prev_loss = []
+        post_res = torch.zeros_like(pre_res, device=pred_res.device, requires_grad=True)
 
-    s = time.time()
-    loss_bundle['pred_res'] = combine_residuals(post_res,
-                                   combine_residuals(pred_res, pre_res, is_pix_res=True),
-                                   is_pix_res=True)
-    while loss_bundle['pred_res'].shape[-2] < src.shape[-2]:
-        loss_bundle['pred_res'] = upsample_residuals(loss_bundle['pred_res'])
+        prev_pre_res = torch.zeros_like(pre_res, device=pred_res.device, requires_grad=True)
+        prev_post_res = torch.zeros_like(pre_res, device=pred_res.device, requires_grad=True)
 
-    loss_bundle['pred_tgt'] = res_warp_img(src, loss_bundle['pred_res'], is_pix_res=True)
-    #import pdb; pdb.set_trace()
-    loss_dict = opti_loss(loss_bundle, crop=crop)
-    best_loss = loss_dict['result'].cpu().detach().numpy()
-    new_best_ago = 0
-    lr_halfed_count = 0
-    nan_count = 0
-    no_impr_count = 0
-    new_best_count = 0
-    print (loss_dict['result'].cpu().detach().numpy(), loss_dict['similarity'].detach().cpu().numpy(), loss_dict['smoothness'].detach().cpu().numpy())
-    for epoch in range(num_iter):
+        trainable = [pre_res, post_res]
+        if opt_mode == 'adam':
+            optimizer = torch.optim.Adam(trainable, lr=lr, weight_decay=wd)
+        elif opt_mode == 'sgd':
+            optimizer = torch.optim.SGD(trainable, lr=lr, **opt_params)
 
+        loss_bundle = {
+            'src': src,
+            'tgt': tgt,
+            'tgt_defects': tgt_defects,
+            'src_plastic': torch.zeros_like(src_defects, device=tgt_defects.device),
+            'tgt_plastic': torch.zeros_like(src_defects, device=tgt_defects.device),
+            'src_edges': torch.zeros_like(src_defects, device=tgt_defects.device),
+            'tgt_edges': torch.zeros_like(src_defects, device=tgt_defects.device)
+        }
+        loss_bundle['src_defects'] = src_defects
+        loss_bundle['src_small_defects'] = src_small_defects
+        loss_bundle['src_large_defects'] = src_large_defects
+        prev_loss = []
+
+        s = time.time()
         loss_bundle['pred_res'] = combine_pre_post(pred_res, pre_res, post_res)
         while loss_bundle['pred_res'].shape[-2] < src.shape[-2]:
             loss_bundle['pred_res'] = upsample_residuals(loss_bundle['pred_res'])
+
         loss_bundle['pred_tgt'] = res_warp_img(src, loss_bundle['pred_res'], is_pix_res=True)
-
         loss_dict = opti_loss(loss_bundle, crop=crop)
-        loss_var = loss_dict['result']
-        #print (loss_dict['result'].cpu().detach().numpy(), loss_dict['similarity'].detach().cpu().numpy(), loss_dict['smoothness'].detach().cpu().numpy())
+        best_loss = loss_dict['result'].cpu().detach().numpy()
+        new_best_ago = 0
+        lr_halfed_count = 0
+        nan_count = 0
+        no_impr_count = 0
+        new_best_count = 0
+        print (loss_dict['result'].cpu().detach().numpy(), loss_dict['similarity'].detach().cpu().numpy(), loss_dict['smoothness'].detach().cpu().numpy())
+        for epoch in range(num_iter):
 
-        curr_loss = loss_var.cpu().detach().numpy()
+            loss_bundle['pred_res'] = combine_pre_post(pred_res, pre_res, post_res)
+            while loss_bundle['pred_res'].shape[-2] < src.shape[-2]:
+                loss_bundle['pred_res'] = upsample_residuals(loss_bundle['pred_res'])
+            loss_bundle['pred_tgt'] = res_warp_img(src, loss_bundle['pred_res'], is_pix_res=True)
+            if sdb:
+                import pdb; pdb.set_trace()
+            loss_dict = opti_loss(loss_bundle, crop=crop)
+            loss_var = loss_dict['result']
+            #print (loss_dict['result'].cpu().detach().numpy(), loss_dict['similarity'].detach().cpu().numpy(), loss_dict['smoothness'].detach().cpu().numpy())
 
-        #print (loss_dict['result'].cpu().detach().numpy(), loss_dict['similarity'].detach().cpu().numpy(), loss_dict['smoothness'].detach().cpu().numpy())
-        if np.isnan(curr_loss):
-            nan_count += 1
-            lr /= 1.5
-            lr_halfed_count += 1
-            pre_res = prev_pre_res.clone().detach()
-            post_res = prev_post_res.clone().detach()
-            post_res.requires_grad = True
-            pre_res.requires_grad = True
-            trainable = [pre_res, post_res]
-            if opt_mode == 'adam':
-                optimizer = torch.optim.Adam([pre_res, post_res], lr=lr, weight_decay=wd)
-            elif opt_mode == 'sgd':
-                optimizer = torch.optim.SGD([pre_res, post_res], lr=lr, **opt_params)
-            prev_loss = []
-            new_best_ago = 0
-        else:
+            curr_loss = loss_var.cpu().detach().numpy()
 
-            if not np.isnan(curr_loss) and curr_loss < best_loss:
-                prev_pre_res = pre_res.clone()
-                prev_post_res = post_res.clone()
-                best_loss = curr_loss
-                #print ("new best")
-                new_best_count += 1
+            #print (loss_dict['result'].cpu().detach().numpy(), loss_dict['similarity'].detach().cpu().numpy(), loss_dict['smoothness'].detach().cpu().numpy())
+            if np.isnan(curr_loss):
+                if sdb:
+                    print ("NAN LOSS")
+                    import pdb; pdb.set_trace()
+                nan_count += 1
+                lr /= 1.5
+                lr_halfed_count += 1
+                pre_res = prev_pre_res.clone().detach()
+                post_res = prev_post_res.clone().detach()
+                post_res.requires_grad = True
+                pre_res.requires_grad = True
+                trainable = [pre_res, post_res]
+                if opt_mode == 'adam':
+                    optimizer = torch.optim.Adam([pre_res, post_res], lr=lr, weight_decay=wd)
+                elif opt_mode == 'sgd':
+                    optimizer = torch.optim.SGD([pre_res, post_res], lr=lr, **opt_params)
+                prev_loss = []
                 new_best_ago = 0
             else:
-                new_best_ago += 1
-                if new_best_ago > 12:
-                    #print ("No improvement, reducing lr")
-                    no_impr_count += 1
-                    lr /= 2
-                    lr_halfed_count += 1
-                    #pre_res = prev_pre_res.clone().detach()
-                    #post_res = prev_post_res.clone().detach()
-                    #post_res.requires_grad = True
-                    #pre_res.requires_grad = True
-                    if opt_mode == 'adam':
-                        optimizer = torch.optim.Adam([pre_res, post_res], lr=lr)
-                    elif opt_mode == 'sgd':
-                        optimizer = torch.optim.SGD([pre_res, post_res], lr=lr, **opt_params)
-                    new_best_ago -= 5
-                prev_loss.append(curr_loss)
+                min_improve = 1e-14
+                if not np.isnan(curr_loss) and curr_loss + min_improve <= best_loss:
+                    prev_pre_res = pre_res.clone()
+                    prev_post_res = post_res.clone()
+                    best_loss = curr_loss
+                    #print ("new best")
+                    new_best_count += 1
+                    new_best_ago = 0
+                else:
+                    new_best_ago += 1
+                    if new_best_ago > 12:
+                        #print ("No improvement, reducing lr")
+                        no_impr_count += 1
+                        lr /= 2
+                        lr_halfed_count += 1
+                        #pre_res = prev_pre_res.clone().detach()
+                        #post_res = prev_post_res.clone().detach()
+                        #post_res.requires_grad = True
+                        #pre_res.requires_grad = True
+                        if opt_mode == 'adam':
+                            optimizer = torch.optim.Adam([pre_res, post_res], lr=lr)
+                        elif opt_mode == 'sgd':
+                            optimizer = torch.optim.SGD([pre_res, post_res], lr=lr, **opt_params)
+                        new_best_ago -= 5
+                    prev_loss.append(curr_loss)
 
-                optimizer.zero_grad()
-                loss_var.backward()
-                optimizer.step()
-            if lr_halfed_count >= 15:
-                break
+                    optimizer.zero_grad()
+                    loss_var.backward()
+                    #torch.nn.utils.clip_grad_norm([pre_res, post_res], 4e0)
+                    pre_res.grad[pre_res.grad != pre_res.grad] = 0
+                    post_res.grad[post_res.grad != post_res.grad] = 0
+                    optimizer.step()
+                if lr_halfed_count >= 15:
+                    break
 
 
     loss_bundle['pred_res'] = combine_pre_post(pred_res, prev_pre_res, prev_post_res)
@@ -146,12 +167,13 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
     return prev_pre_res, prev_post_res
 
 def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_defects, src_defects,
-        src_large_defects, src_small_defects,
-        crop=128, bot_mip=4, max_iter=800,
+        src_large_defects, src_small_defects, sm_val,
+        crop=256, bot_mip=4, max_iter=800,
+        img_mip=4,
         sm_keys_to_apply={}, mse_keys_to_apply={}):
 
-    sm_val = 220e0
-    sm_val2 = 220e0
+    #sm_val = 220e0
+    #sm_val2 = 220e0
     sm = {
         4: sm_val,
         5: sm_val,
@@ -162,9 +184,9 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
     }
 
     lr = {
-        4: 15e-2,
-        5: 25e-2,
-        6: 25e-2,
+        4: 18e-2,
+        5: 18e-2,
+        6: 18e-2,
         7: 1e-2,
         8: 2e-3,
         9: 1e-3
@@ -181,39 +203,14 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
     opt_params = {}
     opt_mode = 'adam'
     sm_mask_factor = 0.00
-    opti_losses = {
-        4: unsupervised_loss(smoothness_factor=sm[4], use_defect_mask=True,
+
+    opti_losses = {}
+    for k, v in six.iteritems(sm):
+        opti_losses[k] = unsupervised_loss(smoothness_factor=v, use_defect_mask=True,
                                       white_threshold=-10, reverse=True,
-                                      coarsen_mse=0,coarsen_smooth=0,
-                                      coarsen_positive_mse=0,
-                                      positive_mse_mult=0,
-                                      sm_mask_factor=sm_mask_factor,
-                                      sm_decay_length=100,
-                                      sm_decay_factor=0.2,
                                       sm_keys_to_apply=sm_keys_to_apply,
                                       mse_keys_to_apply=mse_keys_to_apply
-                                      ),
-        5: unsupervised_loss(smoothness_factor=sm[5], use_defect_mask=True,
-                                      white_threshold=-10, reverse=True,
-                                      coarsen_mse=0,coarsen_smooth=0,
-                                      coarsen_positive_mse=0,
-                                      positive_mse_mult=0,
-                                      sm_mask_factor=sm_mask_factor,
-                                      sm_decay_length=100,
-                                      sm_decay_factor=0.2,
-                                      sm_keys_to_apply=sm_keys_to_apply,
-                                      mse_keys_to_apply=mse_keys_to_apply
-                                      ),
-        6: unsupervised_loss(smoothness_factor=sm[6], use_defect_mask=True,
-                                      white_threshold=-10, reverse=True,
-                                      coarsen_mse=0,coarsen_smooth=0,
-                                      coarsen_positive_mse=0,
-                                      positive_mse_mult=0,
-                                      sm_mask_factor=sm_mask_factor,
-                                      sm_keys_to_apply=sm_keys_to_apply,
-                                      mse_keys_to_apply=mse_keys_to_apply
-                                      ),
-    }
+                                      )
 
     pred_res = pred_res_start.clone()
 
@@ -225,7 +222,8 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
         tgt_defects_downs = tgt_defects
         src_small_defects_downs = src_small_defects
         src_large_defects_downs = src_large_defects
-        for i in range (bot_mip - 4):
+
+        for i in range (bot_mip - img_mip):
             pred_res_downs = downsample_residuals(pred_res_downs)
 
             src_defects_downs = torch.nn.functional.max_pool2d(src_defects_downs, 2)
@@ -233,9 +231,8 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
             src_small_defects_downs = torch.nn.functional.max_pool2d(src_small_defects_downs, 2)
             src_large_defects_downs = torch.nn.functional.max_pool2d(src_large_defects_downs, 2)
 
-        for i in range(m - bot_mip):
-            pred_res_downs = downsample_residuals(pred_res_downs)
-
+            #pred_res_downs = downsample_residuals(pred_res_downs)
+        #for i in range(m - bot_mip):
 
         '''if m == 6:
             src_downs = test_pyramid.state['up'][str(6)]['output'][0:1, 0:4]
@@ -263,13 +260,12 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
                 src_large_defects=src_large_defects_downs,
                 tgt_defects=tgt_defects_downs,
                 crop=crop, opt_mode=opt_mode,
-                opt_params=opt_params)
+                opt_params=opt_params,
+                opt_res_coarsness=(m - bot_mip)
+                )
 
         pre_res_ups = pre_res.detach()
         post_res_ups = post_res.detach()
-        for i in range(m - 4):
-            pre_res_ups = upsample_residuals(pre_res_ups)
-            post_res_ups = upsample_residuals(post_res_ups)
 
         pred_res = combine_pre_post(pred_res, pre_res_ups, post_res_ups)
     return pred_res
@@ -279,43 +275,50 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
 def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defects=None, src_small_defects=None,
         src_large_defects=None, max_iter=400):
     start = time.time()
-
+    do = True
+    #    import pdb; pdb.set_trace()
+    if not do:
+        return pred_res_start
     mse_keys_to_apply = {
         'src': [
             {'name': 'src_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0)]}
+             "coarsen_ranges": [(0, 0)],
+             "mask_value": 1e-9}
             ],
         'tgt':[
             {'name': 'tgt_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0)]}
+             "coarsen_ranges": [(0, 0)],
+             "mask_value": 1e-9}
         ]
     }
     sm_keys_to_apply = {
         'src': [
             {'name': 'src_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0)],
-             "mask_value": 0e-6},
+             "coarsen_ranges": [(8, 0.2)],
+             "mask_value": 1e-9},
             {'name': 'src_large_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(3, 2), (64, 0.3)],
+             "coarsen_ranges": [(2, 2), (64, 0.25)],
              "mask_value": 1e-6},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(8, 0.3)],
-             "mask_value": 0e-6},
+             "coarsen_ranges": [(0, 0.3)],
+             "mask_value": 1e-9},
             {'name': 'src',
                 'fm': 0,
              'binarization': {'strat': 'gt', 'value': -5.0},
-            'mask_value': 0}
+            'mask_value': 1e-9}
             ],
         'tgt':[
         ]
     }
+    #mse_keys_to_apply['src'] = []
+    #mse_keys_to_apply['tgt'] = []
 
-    mips = [6, 5]
+    mips = [9, 7, 5]
 
     if src_defects is not None:
         src_defects = src_defects.squeeze(0)
@@ -340,9 +343,10 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             tgt_defects=tgt_defects,
             src_small_defects=src_small_defects,
             src_large_defects=src_large_defects,
-            crop=128, bot_mip=5, max_iter=max_iter*2,
+            crop=64, bot_mip=5, img_mip=4, max_iter=int(max_iter*1.5),
             sm_keys_to_apply=sm_keys_to_apply,
-            mse_keys_to_apply=mse_keys_to_apply)
+            mse_keys_to_apply=mse_keys_to_apply,
+            sm_val=50e0)
 
     num_reatures = model.state['up'][str(4)]['output'].shape[1]
     src_bm = model.state['up'][str(4)]['output'][0:1, num_reatures//2 - 1]
@@ -365,15 +369,65 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
 
         print ("BM time: {}".format(time.time() - s))
 
-    mips = [4]
+    mse_keys_to_apply = {
+        'src': [
+            {'name': 'src_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0)],
+             "mask_value": 1e-9}
+            ],
+        'tgt':[
+            {'name': 'tgt_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0)],
+             "mask_value": 1e-9}
+        ]
+    }
+    sm_keys_to_apply = {
+        'src': [
+            {'name': 'src_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(1, 0)],
+             "mask_value": 1e-9},
+            {'name': 'src_large_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(3, 2), (64, 0.3)],
+             "mask_value": 1e-6},
+            {'name': 'src_small_defects',
+             'binarization': {'strat': 'value', 'value': 0},
+             "coarsen_ranges": [(8, 0.3)],
+             "mask_value": 1e-9},
+            {'name': 'src',
+                'fm': 0,
+             'binarization': {'strat': 'gt', 'value': -5.0},
+            'mask_value': 1e-9}
+            ],
+        'tgt':[
+        ]
+    }
+    mips = [6]#6, 5, 4]
     pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt,
             src_defects=src_defects,
             tgt_defects=tgt_defects,
             src_small_defects=src_small_defects,
             src_large_defects=src_large_defects,
-            mips=mips, crop=128, bot_mip=4, max_iter=max_iter,
+            mips=mips, crop=128, bot_mip=4, img_mip=4,
+            max_iter=max_iter//2,
             sm_keys_to_apply=sm_keys_to_apply,
-            mse_keys_to_apply=mse_keys_to_apply)
+            mse_keys_to_apply=mse_keys_to_apply,
+            sm_val=100e0)
+    mips = [4]#6, 5, 4]
+    pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt,
+            src_defects=src_defects,
+            tgt_defects=tgt_defects,
+            src_small_defects=src_small_defects,
+            src_large_defects=src_large_defects,
+            mips=mips, crop=128, bot_mip=4, img_mip=4,
+            max_iter=max_iter,
+            sm_keys_to_apply=sm_keys_to_apply,
+            mse_keys_to_apply=mse_keys_to_apply,
+            sm_val=200e0)
+
     end = time.time()
     print ("OPTIMIZATION FINISHED. Optimizing time: {0:.2f} sec".format(end - start))
     return pred_res_opt

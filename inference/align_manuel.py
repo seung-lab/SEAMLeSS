@@ -369,6 +369,7 @@ if __name__ == "__main__":
             bs += 1
             assert bs < be
         block_starts.append(bs)
+
     block_stops = block_starts[1:]
     if block_starts[-1] != args.z_stop:
         block_stops.append(args.z_stop)
@@ -996,7 +997,7 @@ if __name__ == "__main__":
     block_to_z_list = {}
     for i in range(len(block_starts)-1):
         cur_bs = block_starts[i]
-    
+
     # compute_field_map = {}
     # render_map = {}
     max_dist = 1

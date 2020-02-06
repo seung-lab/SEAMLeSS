@@ -53,11 +53,14 @@ def res_warp_img(img, res_in, is_pix_res=True, padding_mode='zeros'):
 def combine_residuals(a, b, is_pix_res=True):
     return b + res_warp_res(a, b, is_pix_res=is_pix_res)
 
-upsampler = torch.nn.UpsamplingBilinear2d(scale_factor=2)
-def upsample_residuals(residuals):
-    result = upsampler(residuals.permute(
-                                     0, 3, 1, 2)).permute(0, 2, 3, 1)
-    result *= 2
+
+#upsampler = torch.nn.UpsamplingBicubic2d(scale_factor=2)
+def upsample_residuals(residuals, factor=2.0):
+    res_perm = residuals.permute(0, 3, 1, 2)
+    #result = upsampler(residuals.permute(
+    #                                 0, 3, 1, 2)).permute(0, 2, 3, 1)
+    result = torch.nn.functional.interpolate(res_perm, scale_factor=factor, mode='bicubic').permute(0, 2, 3, 1)
+    result *= factor
     return result
 
 def downsample_residuals(residuals):
