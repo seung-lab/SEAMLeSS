@@ -1223,7 +1223,6 @@ if __name__ == "__main__":
     #     if do_render:
     #         print("RENDER BLOCK OFFSET {}".format(z_offset))
     #         execute(BlockAlignRender, z_range)
-
     if args.recover_status_from_file is None:
         if do_render:
             print("COPY STARTING SECTION OF ALL BLOCKS")
