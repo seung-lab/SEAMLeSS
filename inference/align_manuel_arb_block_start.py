@@ -905,12 +905,11 @@ if __name__ == "__main__":
         block_chunk_to_compute_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
         block_chunk_to_render_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
         # HACK: Remove later 
-        fake_zs_hack = [*range(cur_bs+1, end_bs - args.block_overlap + 1)]
+        fake_zs_hack = [*range(cur_bs+1, initial_block_starts[i+1] + 1)]
         for fake_z in fake_zs_hack:
             block_z_to_compute_released[cur_bs][fake_z] = True
             block_z_to_render_released[cur_bs][fake_z] = True
             total_sections_aligned = total_sections_aligned + 1
-
 
     def recover_status_from_file(filename):
         global total_sections_aligned
