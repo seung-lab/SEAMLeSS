@@ -681,6 +681,8 @@ if __name__ == "__main__":
                 for tgt_offset in tgt_offsets:
                     tgt_z = src_z + tgt_offset
                     fine_field = block_vvote_field
+                    # if src_z > self.block_starts[i] + block_size:
+                    #     fine_field = block
                     if tgt_z in copy_range:
                         tgt_field = block_pair_fields[0]
                     # elif tgt_z in starter_range and src_z > block_start_lookup[src_z] and block_start_lookup[src_z] > tgt_z:
