@@ -857,7 +857,7 @@ if __name__ == "__main__":
                     tgt_z = z + tgt_offset
                     if skip_vv:
                         # field = overlap_vvote_field
-                        fields = broadcasting_field
+                        field = broadcasting_field
                         z = block_start_lookup[z]
                     else:
                         field = stitch_pair_fields[tgt_offset]
