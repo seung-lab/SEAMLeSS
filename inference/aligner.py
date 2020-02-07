@@ -601,7 +601,7 @@ class Aligner:
       print('alternative target slices:', tgt_alt_z)
 
     src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
-                                masks=src_masks,
+                                masks=[],
                                 to_tensor=True, normalizer=normalizer)
     tgt_patch = self.get_composite_image(tgt_cv, tgt_z, padded_bbox, mip,
                                 masks=[],
