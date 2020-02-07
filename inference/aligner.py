@@ -1957,7 +1957,7 @@ class Aligner:
       tmp_image = tmp_image.cpu().numpy()
       tmp = deepcopy(tmp_image)
       tmp[tmp==2]=1
-      std = 2.0
+      std = 1.0
       blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp, sigma=(0, 0, std, std))
       s = scipy.ndimage.generate_binary_structure(2, 1)[None, None, :, :]
       closed = scipy.ndimage.morphology.grey_closing(blurred, footprint=s)
