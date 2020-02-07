@@ -430,9 +430,13 @@ if __name__ == "__main__":
         decay_dist = args.decay_dist
         influencing_blocks_lookup = {z: [] for z in compose_range}
         for b_start in block_starts:
-            for z in range(b_start+1, b_start+decay_dist+1):
+            b_stitch = b_start + args.block_overlap-1
+            for z in range(b_stitch, b_stitch+decay_dist+1):
               if z < args.z_stop:
-                  influencing_blocks_lookup[z].append(b_start+args.block_overlap-1)
+                  influencing_blocks_lookup[z].append(b_stitch)
+
+    # import ipdb
+    # ipdb.set_trace()
 
 
     # Create field CloudVolumes
@@ -448,6 +452,13 @@ if __name__ == "__main__":
         ).path
     block_vvote_field = cm.create(
         join(args.dst_path, "field", "vvote"),
+        data_type=output_field_dtype,
+        num_channels=2,
+        fill_missing=True,
+        overwrite=do_alignment,
+    ).path
+    block_overlap_field = cm.create(
+        join(args.dst_path, "field", "overlap"),
         data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
@@ -681,10 +692,12 @@ if __name__ == "__main__":
                 for tgt_offset in tgt_offsets:
                     tgt_z = src_z + tgt_offset
                     fine_field = block_vvote_field
-                    # if src_z > self.block_starts[i] + block_size:
-                    #     fine_field = block
+                    if src_z > self.block_starts[i] + block_size:
+                        fine_field = block_overlap_field
                     if tgt_z in copy_range:
                         tgt_field = block_pair_fields[0]
+                    elif tgt_z > self.block_starts[i] + block_size:
+                        tgt_field = block_overlap_field
                     # elif tgt_z in starter_range and src_z > block_start_lookup[src_z] and block_start_lookup[src_z] > tgt_z:
                     #     tgt_field = block_pair_fields[starter_z_to_offset[tgt_z]]
                     else:
@@ -724,10 +737,14 @@ if __name__ == "__main__":
                 block_start = self.block_starts[i]
                 dst = block_dst_lookup[self.block_starts[i]+1]
                 bbox = bbox_lookup[z]
+                if z > self.block_starts[i] + block_size:
+                    field = block_overlap_field
+                else:
+                    field = block_vvote_field
                 t = a.render(
                     cm,
                     src,
-                    block_vvote_field,
+                    field,
                     dst,
                     src_z=z,
                     field_z=z,
@@ -755,18 +772,18 @@ if __name__ == "__main__":
                 dst = block_dst_lookup[z-args.block_overlap]
                 bbox = bbox_lookup[z]
                 ti = a.copy(cm, dst, overlap_image, z, z, bbox, mip, is_field=False)
-                tf = a.copy(
-                    cm,
-                    block_vvote_field,
-                    overlap_vvote_field,
-                    z,
-                    z,
-                    bbox,
-                    mip,
-                    is_field=True,
-                )
-                t = ti + tf
-                yield from t
+                # tf = a.copy(
+                #     cm,
+                #     block_vvote_field,
+                #     overlap_vvote_field,
+                #     z,
+                #     z,
+                #     bbox,
+                #     mip,
+                #     is_field=True,
+                # )
+                # t = ti + tf
+                yield from ti
 
     class StitchAlignComputeField(object):
         def __init__(self, z_range):
@@ -796,12 +813,21 @@ if __name__ == "__main__":
         def __iter__(self):
           for z in self.z_range:
             influencing_blocks = influencing_blocks_lookup[z]
+            # if z ==
+            # import ipdb
+            # ipdb.set_trace()
             factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
             factors += [1.]
             print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
                                                                    factors))
             bbox = bbox_lookup[z]
-            cv_list = [broadcasting_field]*len(influencing_blocks) + [block_vvote_field]
+            field = block_vvote_field
+            z_block_start = block_start_lookup[z]
+            if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
+                field = block_overlap_field
+            for i in range(len(influencing_blocks)):
+                influencing_blocks[i] = influencing_blocks[i] - 1
+            cv_list = [broadcasting_field]*len(influencing_blocks) + [field]
             z_list = list(influencing_blocks) + [z]
             t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
                                 mip, mip, factors, pad)
@@ -870,6 +896,7 @@ if __name__ == "__main__":
 
     total_sections_to_align = 0
     total_sections_aligned = 0
+    blocks_finished = 0
 
     for i in range(len(initial_block_starts)-1):
         cur_bs = initial_block_starts[i]
@@ -948,6 +975,8 @@ if __name__ == "__main__":
     receive_time = 0
     process_time = 0
     delete_time = 0
+    # import ipdb
+    # ipdb.set_trace()
     
     def executionLoop(compute_field_z_release, render_z_release, cf_block_starts, rt_block_starts):
         assert len(compute_field_z_release) == len(cf_block_starts)
@@ -972,6 +1001,7 @@ if __name__ == "__main__":
                 global receive_time
                 global process_time
                 global delete_time
+                global blocks_finished
                 while total_sections_aligned < total_sections_to_align:
                     before_receive_time = time()
                     msgs = sqs_obj.receive_message(QueueUrl=ctq._api._qurl, MaxNumberOfMessages=10)
@@ -1035,6 +1065,9 @@ if __name__ == "__main__":
                                             profile_file.write('receive time {}\n'.format(receive_time))
                                             profile_file.write('delete time {}\n'.format(delete_time))
                                             executeNew(BlockAlignComputeField, [z+1], [block_start])
+                                    else:
+                                        blocks_finished = blocks_finished + 1
+                                        print('Blocks finished: {}'.format(blocks_finished))
                                 elif block_z_to_renders_processed[block_start][z] > number_of_chunks_in_z:
                                     raise ValueError('More render chunks processed than exist for z = {}'.format(z))
                         else:
@@ -1044,37 +1077,37 @@ if __name__ == "__main__":
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
 
-    if args.recover_status_from_file is None:
-        if do_render:
-            print("COPY STARTING SECTION OF ALL BLOCKS")
-            execute(StarterCopy, copy_range)
-        if do_alignment:
-            if coarse_field_cv is not None:
-                print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
-                execute(StarterUpsampleField, copy_range)
-            print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
-            execute(StarterComputeField, starter_range)
-        if do_render:
-            execute(StarterRender, starter_range)
-        pass
-    else:
-        recover_status_from_file(args.recover_status_from_file)
+    # if args.recover_status_from_file is None:
+    #     if do_render:
+    #         print("COPY STARTING SECTION OF ALL BLOCKS")
+    #         execute(StarterCopy, copy_range)
+    #     if do_alignment:
+    #         if coarse_field_cv is not None:
+    #             print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
+    #             execute(StarterUpsampleField, copy_range)
+    #         print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
+    #         execute(StarterComputeField, starter_range)
+    #     if do_render:
+    #         execute(StarterRender, starter_range)
+    #     pass
+    # else:
+    #     recover_status_from_file(args.recover_status_from_file)
 
-    if a.distributed:
-        cf_list, rt_list, cf_block_start, rt_block_start = generate_first_releases()
-        executionLoop(cf_list, rt_list, cf_block_start, rt_block_start)
-    else:
-        for z_offset in sorted(block_offset_to_z_range.keys()):
-            z_range = list(block_offset_to_z_range[z_offset])
-            if do_alignment:
-                print("ALIGN BLOCK OFFSET {}".format(z_offset))
-                execute(BlockAlignComputeField, z_range)
-                if not skip_vv:
-                    print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-                    execute(BlockAlignVectorVote, z_range)
-            if do_render:
-                print("RENDER BLOCK OFFSET {}".format(z_offset))
-                execute(BlockAlignRender, z_range)
+    # if a.distributed:
+    #     cf_list, rt_list, cf_block_start, rt_block_start = generate_first_releases()
+    #     executionLoop(cf_list, rt_list, cf_block_start, rt_block_start)
+    # else:
+    #     for z_offset in sorted(block_offset_to_z_range.keys()):
+    #         z_range = list(block_offset_to_z_range[z_offset])
+    #         if do_alignment:
+    #             print("ALIGN BLOCK OFFSET {}".format(z_offset))
+    #             execute(BlockAlignComputeField, z_range)
+    #             if not skip_vv:
+    #                 print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
+    #                 execute(BlockAlignVectorVote, z_range)
+    #         if do_render:
+    #             print("RENDER BLOCK OFFSET {}".format(z_offset))
+    #             execute(BlockAlignRender, z_range)
 
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
@@ -1083,15 +1116,15 @@ if __name__ == "__main__":
     #    z_range = list(stitch_offset_to_z_range[z_offset])
     #    execute(SeethroughStitchRender, z_range=z_range)
 
-    if do_render:
-        execute(StitchOverlapCopy, overlap_copy_range)
-    for z_offset in sorted(stitch_offset_to_z_range.keys()):
-        z_range = list(stitch_offset_to_z_range[z_offset])
-        for i in range(len(z_range)):
-            z_range[i] = z_range[i] + args.block_overlap - 1
-        if do_alignment:
-            print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
-            execute(StitchAlignComputeField, z_range)
+    # if do_render:
+    #     execute(StitchOverlapCopy, overlap_copy_range)
+    # for z_offset in sorted(stitch_offset_to_z_range.keys()):
+    #     z_range = list(stitch_offset_to_z_range[z_offset])
+    #     for i in range(len(z_range)):
+    #         z_range[i] = z_range[i] + args.block_overlap - 1
+    #     if do_alignment:
+    #         print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
+    #         execute(StitchAlignComputeField, z_range)
 
     if do_compose:
         execute(StitchCompose, compose_range)

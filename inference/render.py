@@ -67,7 +67,9 @@ if __name__ == '__main__':
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
+  # chunk_size = 1024
   chunk_size = 1024
+
 
   src_mip = args.src_mip
   field_mip = args.field_mip
