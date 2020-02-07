@@ -860,9 +860,9 @@ class Aligner:
     # Running the model is the only part that will increase memory consumption
     # significantly - only incrementing the GPU lock here should be sufficient.
     if self.gpu_lock is not None:
-      start = time.time()
+      start = time()
       self.gpu_lock.acquire()
-      end = time.time()
+      end = time()
       print("Process {} acquired GPU lock. Locked time: {0:.2f} sec".format(os.getpid(), end - start))
 
     try:

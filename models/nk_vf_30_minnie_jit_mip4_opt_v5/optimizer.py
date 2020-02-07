@@ -426,7 +426,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             max_iter=max_iter,
             sm_keys_to_apply=sm_keys_to_apply,
             mse_keys_to_apply=mse_keys_to_apply,
-            sm_val=200e0)
+            sm_val=205e0)
 
     end = time.time()
     print ("OPTIMIZATION FINISHED. Optimizing time: {0:.2f} sec".format(end - start))

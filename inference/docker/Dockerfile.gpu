@@ -1,7 +1,10 @@
 FROM pytorch/pytorch:1.3-cuda10.1-cudnn7-runtime
 
-ADD . /opt/SEAMLeSS
 WORKDIR /opt/SEAMLeSS
+COPY ./[^m]* /opt/SEAMLeSS/
+COPY ./inference/ /opt/SEAMLeSS/inference
+COPY ./training/ /opt/SEAMLeSS/training
+COPY ./utilities/ /opt/SEAMLeSS/utilities
 
 RUN apt-get update \
   # Install SEAMLeSS dependencies
@@ -23,3 +26,4 @@ RUN apt-get update \
         \( -type f -a \( -name '*.pyc' -o -name '*.pyo' \) \) \
       \) -exec rm -rf '{}' +
 
+ADD ./models /opt/SEAMLeSS/models

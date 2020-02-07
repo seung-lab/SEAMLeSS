@@ -1212,18 +1212,6 @@ if __name__ == "__main__":
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
 
-    for z_offset in sorted(block_offset_to_z_range.keys()):
-        z_range = list(block_offset_to_z_range[z_offset])
-        if do_alignment:
-            print("ALIGN BLOCK OFFSET {}".format(z_offset))
-            execute(BlockAlignComputeField, z_range)
-            if not skip_vv:
-                print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-                execute(BlockAlignVectorVote, z_range)
-        if do_render:
-            print("RENDER BLOCK OFFSET {}".format(z_offset))
-            execute(BlockAlignRender, z_range)
-
     if args.recover_status_from_file is None:
         if do_render:
             print("COPY STARTING SECTION OF ALL BLOCKS")
@@ -1240,6 +1228,19 @@ if __name__ == "__main__":
     else:
         first_cf_release, first_rt_release = recover_status_from_file(args.recover_status_from_file)
         executionLoop(first_cf_release, first_rt_release)
+
+    for z_offset in sorted(block_offset_to_z_range.keys()):
+        z_range = list(block_offset_to_z_range[z_offset])
+        if do_alignment:
+            print("ALIGN BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignComputeField, z_range)
+            if not skip_vv:
+                print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
+                execute(BlockAlignVectorVote, z_range)
+        if do_render:
+            print("RENDER BLOCK OFFSET {}".format(z_offset))
+            execute(BlockAlignRender, z_range)
+
 
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")

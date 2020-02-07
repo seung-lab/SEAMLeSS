@@ -63,16 +63,16 @@ def ranges_overlap(a_pair, b_pair):
 def coarsen_mask(mask_in, count, flip=False):
     with torch.no_grad():
         kernel = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
-        mask = mask_in.type(torch.cuda.FloatTensor)
+        mask = mask_in.float()
         while len(mask.shape) < 4:
             mask = mask.unsqueeze(0)
-        kernel_var = torch.cuda.FloatTensor(kernel).unsqueeze(0).unsqueeze(0)
+        kernel_var = torch.cuda.FloatTensor(kernel).unsqueeze(0).unsqueeze(0).to(mask_in.device)
         k = torch.nn.Parameter(data=kernel_var, requires_grad=False)
         if flip:
             mask = 1 - mask
         for _ in range(count):
             mask =  (torch.nn.functional.conv2d(mask,
-                        kernel_var, padding=1) >= 1).type(torch.cuda.FloatTensor)
+                        kernel_var, padding=1) >= 1).float()
 
         if flip:
             mask = 1 - mask

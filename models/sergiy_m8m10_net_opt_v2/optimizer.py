@@ -158,8 +158,8 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
         crop=32, bot_mip=4, max_iter=800,
         sm_keys_to_apply={}, mse_keys_to_apply={}, img_mip=4):
 
-    sm_val = 550e0
-    sm_val2 = 650e0
+    sm_val = 250e0
+    sm_val2 = 250e0
     sm = {
         4: sm_val,
         5: sm_val,
