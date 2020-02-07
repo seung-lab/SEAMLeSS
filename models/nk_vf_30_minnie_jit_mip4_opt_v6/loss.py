@@ -133,7 +133,7 @@ def rigidity(field, power=2, diagonal_mult=1.2):
     result += rigidity_score(field_dy(field_abs, forward=True), 1, power=power)
     result += rigidity_score(field_dxy(field_abs, forward=True), 2**(1/2), power=power) * diagonal_mult
     result += rigidity_score(field_dxy(field_abs, forward=False), 2**(1/2), power=power) * diagonal_mult
-    result /= 6
+    result /= (4 + 2*diagonal_mult)
 
     #compensate for padding
     result[..., 0:6, :] = 0
