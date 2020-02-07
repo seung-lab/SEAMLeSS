@@ -109,13 +109,13 @@ if __name__ == "__main__":
         "--coarse_field_dtype",
         type=str,
         help="Data type of coarse vector field (typically int16 or float32)",
-        default='int16'
+        default='float32'
     )
     parser.add_argument(
         "--output_field_dtype",
         type=str,
         help="Data type of output vector fields (typically int16 or float32)",
-        default='int16'
+        default='float32'
     )
     parser.add_argument(
         "--render_dst",

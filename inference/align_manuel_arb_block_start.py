@@ -109,13 +109,13 @@ if __name__ == "__main__":
         "--coarse_field_dtype",
         type=str,
         help="Data type of coarse vector field (typically int16 or float32)",
-        default='int16'
+        default='float32'
     )
     parser.add_argument(
         "--output_field_dtype",
         type=str,
         help="Data type of output vector fields (typically int16 or float32)",
-        default='int16'
+        default='float32'
     )
     parser.add_argument(
         "--render_dst",
@@ -430,13 +430,11 @@ if __name__ == "__main__":
         decay_dist = args.decay_dist
         influencing_blocks_lookup = {z: [] for z in compose_range}
         for b_start in block_starts:
-            b_stitch = b_start + args.block_overlap-1
+            b_stitch = b_start + args.block_overlap
             for z in range(b_stitch, b_stitch+decay_dist+1):
               if z < args.z_stop:
                   influencing_blocks_lookup[z].append(b_stitch)
 
-    # import ipdb
-    # ipdb.set_trace()
 
 
     # Create field CloudVolumes
@@ -812,10 +810,7 @@ if __name__ == "__main__":
 
         def __iter__(self):
           for z in self.z_range:
-            # import ipdb
-            # ipdb.set_trace()            
             influencing_blocks = influencing_blocks_lookup[z]
-            # if z ==
             factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
             factors += [1.]
             print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
@@ -826,8 +821,6 @@ if __name__ == "__main__":
                 z_block_start = block_start_lookup[z]
                 if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
                     field = block_overlap_field
-            for i in range(len(influencing_blocks)):
-                influencing_blocks[i] = influencing_blocks[i] - 1
             cv_list = [broadcasting_field]*len(influencing_blocks) + [field]
             z_list = list(influencing_blocks) + [z]
             t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
@@ -911,6 +904,13 @@ if __name__ == "__main__":
         chunks, z_to_number_of_chunks, number_of_chunks_in_z = break_into_chunks(cm.dst_chunk_sizes[mip], cm.dst_voxel_offsets[mip], mip=mip, z_list=zs_for_cur_block, max_mip=cm.max_mip)
         block_chunk_to_compute_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
         block_chunk_to_render_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
+        # HACK: Remove later 
+        fake_zs_hack = [*range(cur_bs+1, end_bs - args.block_overlap + 1)]
+        for fake_z in fake_zs_hack:
+            block_z_to_compute_released[cur_bs][fake_z] = True
+            block_z_to_render_released[cur_bs][fake_z] = True
+            total_sections_aligned = total_sections_aligned + 1
+
 
     def recover_status_from_file(filename):
         global total_sections_aligned
@@ -976,8 +976,6 @@ if __name__ == "__main__":
     receive_time = 0
     process_time = 0
     delete_time = 0
-    # import ipdb
-    # ipdb.set_trace()
     
     def executionLoop(compute_field_z_release, render_z_release, cf_block_starts, rt_block_starts):
         assert len(compute_field_z_release) == len(cf_block_starts)
