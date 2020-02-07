@@ -812,19 +812,20 @@ if __name__ == "__main__":
 
         def __iter__(self):
           for z in self.z_range:
+            # import ipdb
+            # ipdb.set_trace()            
             influencing_blocks = influencing_blocks_lookup[z]
             # if z ==
-            # import ipdb
-            # ipdb.set_trace()
             factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
             factors += [1.]
             print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
                                                                    factors))
             bbox = bbox_lookup[z]
             field = block_vvote_field
-            z_block_start = block_start_lookup[z]
-            if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
-                field = block_overlap_field
+            if z in block_start_lookup:
+                z_block_start = block_start_lookup[z]
+                if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
+                    field = block_overlap_field
             for i in range(len(influencing_blocks)):
                 influencing_blocks[i] = influencing_blocks[i] - 1
             cv_list = [broadcasting_field]*len(influencing_blocks) + [field]
@@ -1077,37 +1078,37 @@ if __name__ == "__main__":
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
 
-    # if args.recover_status_from_file is None:
-    #     if do_render:
-    #         print("COPY STARTING SECTION OF ALL BLOCKS")
-    #         execute(StarterCopy, copy_range)
-    #     if do_alignment:
-    #         if coarse_field_cv is not None:
-    #             print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
-    #             execute(StarterUpsampleField, copy_range)
-    #         print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
-    #         execute(StarterComputeField, starter_range)
-    #     if do_render:
-    #         execute(StarterRender, starter_range)
-    #     pass
-    # else:
-    #     recover_status_from_file(args.recover_status_from_file)
+    if args.recover_status_from_file is None:
+        if do_render:
+            print("COPY STARTING SECTION OF ALL BLOCKS")
+            execute(StarterCopy, copy_range)
+        if do_alignment:
+            if coarse_field_cv is not None:
+                print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
+                execute(StarterUpsampleField, copy_range)
+            print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
+            execute(StarterComputeField, starter_range)
+        if do_render:
+            execute(StarterRender, starter_range)
+        pass
+    else:
+        recover_status_from_file(args.recover_status_from_file)
 
-    # if a.distributed:
-    #     cf_list, rt_list, cf_block_start, rt_block_start = generate_first_releases()
-    #     executionLoop(cf_list, rt_list, cf_block_start, rt_block_start)
-    # else:
-    #     for z_offset in sorted(block_offset_to_z_range.keys()):
-    #         z_range = list(block_offset_to_z_range[z_offset])
-    #         if do_alignment:
-    #             print("ALIGN BLOCK OFFSET {}".format(z_offset))
-    #             execute(BlockAlignComputeField, z_range)
-    #             if not skip_vv:
-    #                 print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-    #                 execute(BlockAlignVectorVote, z_range)
-    #         if do_render:
-    #             print("RENDER BLOCK OFFSET {}".format(z_offset))
-    #             execute(BlockAlignRender, z_range)
+    if a.distributed:
+        cf_list, rt_list, cf_block_start, rt_block_start = generate_first_releases()
+        executionLoop(cf_list, rt_list, cf_block_start, rt_block_start)
+    else:
+        for z_offset in sorted(block_offset_to_z_range.keys()):
+            z_range = list(block_offset_to_z_range[z_offset])
+            if do_alignment:
+                print("ALIGN BLOCK OFFSET {}".format(z_offset))
+                execute(BlockAlignComputeField, z_range)
+                if not skip_vv:
+                    print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
+                    execute(BlockAlignVectorVote, z_range)
+            if do_render:
+                print("RENDER BLOCK OFFSET {}".format(z_offset))
+                execute(BlockAlignRender, z_range)
 
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
@@ -1116,15 +1117,15 @@ if __name__ == "__main__":
     #    z_range = list(stitch_offset_to_z_range[z_offset])
     #    execute(SeethroughStitchRender, z_range=z_range)
 
-    # if do_render:
-    #     execute(StitchOverlapCopy, overlap_copy_range)
-    # for z_offset in sorted(stitch_offset_to_z_range.keys()):
-    #     z_range = list(stitch_offset_to_z_range[z_offset])
-    #     for i in range(len(z_range)):
-    #         z_range[i] = z_range[i] + args.block_overlap - 1
-    #     if do_alignment:
-    #         print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
-    #         execute(StitchAlignComputeField, z_range)
+    if do_render:
+        execute(StitchOverlapCopy, overlap_copy_range)
+    for z_offset in sorted(stitch_offset_to_z_range.keys()):
+        z_range = list(stitch_offset_to_z_range[z_offset])
+        for i in range(len(z_range)):
+            z_range[i] = z_range[i] + args.block_overlap - 1
+        if do_alignment:
+            print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
+            execute(StitchAlignComputeField, z_range)
 
     if do_compose:
         execute(StitchCompose, compose_range)
