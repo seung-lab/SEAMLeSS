@@ -123,7 +123,7 @@ def pix_identity(size, batch=1, device='cuda'):
     result = torch.transpose(result, 1, 2)
     return result
 
-def rigidity(field, power=2, diagonal_mult=1.2):
+def rigidity(field, power=2, diagonal_mult=1.5):
     identity = pix_identity(size=field.shape[-2])
     field_abs = field + identity
 

@@ -297,7 +297,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
         'src': [
             {'name': 'src_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(8, 0.08)],
+             "coarsen_ranges": [(8, 0.065)],
              "mask_value": 1e-9},
             {'name': 'src_large_defects',
              'binarization': {'strat': 'value', 'value': 0},
@@ -346,7 +346,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             crop=64, bot_mip=5, img_mip=4, max_iter=int(max_iter*1.5),
             sm_keys_to_apply=sm_keys_to_apply,
             mse_keys_to_apply=mse_keys_to_apply,
-            sm_val=124e0)
+            sm_val=140e0)
 
     num_reatures = model.state['up'][str(4)]['output'].shape[1]
     src_bm = model.state['up'][str(4)]['output'][0:1, num_reatures//2 - 1]
@@ -395,7 +395,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
              "mask_value": 1e-6},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(8, 0.08)],
+             "coarsen_ranges": [(8, 0.065)],
              "mask_value": 1e-9},
             {'name': 'src',
                 'fm': 0,
@@ -415,7 +415,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             max_iter=max_iter//2,
             sm_keys_to_apply=sm_keys_to_apply,
             mse_keys_to_apply=mse_keys_to_apply,
-            sm_val=620e0)
+            sm_val=900e0)
     mips = [4]#6, 5, 4]
     pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt,
             src_defects=src_defects,
@@ -426,7 +426,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             max_iter=max_iter,
             sm_keys_to_apply=sm_keys_to_apply,
             mse_keys_to_apply=mse_keys_to_apply,
-            sm_val=820e0)
+            sm_val=900e0)
 
     end = time.time()
     print ("OPTIMIZATION FINISHED. Optimizing time: {0:.2f} sec".format(end - start))
