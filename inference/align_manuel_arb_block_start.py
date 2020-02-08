@@ -892,6 +892,8 @@ if __name__ == "__main__":
     total_sections_aligned = 0
     blocks_finished = 0
 
+    hacks = False
+
     for i in range(len(initial_block_starts)-1):
         cur_bs = initial_block_starts[i]
         end_bs = min(initial_block_starts[-1], initial_block_starts[i+1] + args.block_overlap)
@@ -905,6 +907,7 @@ if __name__ == "__main__":
         block_chunk_to_compute_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
         block_chunk_to_render_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
         # HACK: Remove later 
+        hacks = True
         fake_zs_hack = [*range(cur_bs+1, initial_block_starts[i+1] + 1)]
         for fake_z in fake_zs_hack:
             block_z_to_compute_released[cur_bs][fake_z] = True
@@ -1075,7 +1078,7 @@ if __name__ == "__main__":
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
 
-    if args.recover_status_from_file is None:
+    if args.recover_status_from_file is None and hacks is False:
         if do_render:
             print("COPY STARTING SECTION OF ALL BLOCKS")
             execute(StarterCopy, copy_range)
