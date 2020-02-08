@@ -690,11 +690,11 @@ if __name__ == "__main__":
                 for tgt_offset in tgt_offsets:
                     tgt_z = src_z + tgt_offset
                     fine_field = block_vvote_field
-                    if src_z > self.block_starts[i] + block_size:
+                    if self.block_starts[i] != block_start_lookup[src_z]:
                         fine_field = block_overlap_field
                     if tgt_z in copy_range:
                         tgt_field = block_pair_fields[0]
-                    elif tgt_z > self.block_starts[i] + block_size:
+                    elif block_start_lookup[tgt_z] != self.block_starts[i]:
                         tgt_field = block_overlap_field
                     # elif tgt_z in starter_range and src_z > block_start_lookup[src_z] and block_start_lookup[src_z] > tgt_z:
                     #     tgt_field = block_pair_fields[starter_z_to_offset[tgt_z]]
@@ -735,7 +735,7 @@ if __name__ == "__main__":
                 block_start = self.block_starts[i]
                 dst = block_dst_lookup[self.block_starts[i]+1]
                 bbox = bbox_lookup[z]
-                if z > self.block_starts[i] + block_size:
+                if block_start_lookup[z] != self.block_starts[i]:
                     field = block_overlap_field
                 else:
                     field = block_vvote_field
@@ -892,8 +892,6 @@ if __name__ == "__main__":
     total_sections_aligned = 0
     blocks_finished = 0
 
-    hacks = False
-
     for i in range(len(initial_block_starts)-1):
         cur_bs = initial_block_starts[i]
         end_bs = min(initial_block_starts[-1], initial_block_starts[i+1] + args.block_overlap)
@@ -906,13 +904,6 @@ if __name__ == "__main__":
         chunks, z_to_number_of_chunks, number_of_chunks_in_z = break_into_chunks(cm.dst_chunk_sizes[mip], cm.dst_voxel_offsets[mip], mip=mip, z_list=zs_for_cur_block, max_mip=cm.max_mip)
         block_chunk_to_compute_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
         block_chunk_to_render_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
-        # HACK: Remove later 
-        hacks = True
-        fake_zs_hack = [*range(cur_bs+1, initial_block_starts[i+1] + 1)]
-        for fake_z in fake_zs_hack:
-            block_z_to_compute_released[cur_bs][fake_z] = True
-            block_z_to_render_released[cur_bs][fake_z] = True
-            total_sections_aligned = total_sections_aligned + 1
 
     def recover_status_from_file(filename):
         global total_sections_aligned
@@ -1078,7 +1069,7 @@ if __name__ == "__main__":
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
 
-    if args.recover_status_from_file is None and hacks is False:
+    if args.recover_status_from_file is None:
         if do_render:
             print("COPY STARTING SECTION OF ALL BLOCKS")
             execute(StarterCopy, copy_range)
@@ -1116,6 +1107,9 @@ if __name__ == "__main__":
     #for z_offset in sorted(stitch_offset_to_z_range.keys()):
     #    z_range = list(stitch_offset_to_z_range[z_offset])
     #    execute(SeethroughStitchRender, z_range=z_range)
+
+    # import ipdb
+    # ipdb.set_trace()
 
     if do_render:
         execute(StitchOverlapCopy, overlap_copy_range)
