@@ -295,17 +295,13 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
     }
     sm_keys_to_apply = {
         'src': [
-            {'name': 'src_defects',
-             'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(8, 0.065)],
-             "mask_value": 1e-9},
             {'name': 'src_large_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(2, 2), (64, 0.11)],
+             "coarsen_ranges": [(8, 0.065), (64, 0.11)],
              "mask_value": 1e-6},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(0, 0.2)],
+             "coarsen_ranges": [(8, 0.065)],
              "mask_value": 1e-9},
             {'name': 'src',
                 'fm': 0,
@@ -385,17 +381,13 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
     }
     sm_keys_to_apply = {
         'src': [
-            {'name': 'src_defects',
-             'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0)],
-             "mask_value": 1e-9},
             {'name': 'src_large_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(3, 2), (64, 0.08)],
+             "coarsen_ranges": [(1, 0), (3, 2), (64, 0.08)],
              "mask_value": 1e-6},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(8, 0.065)],
+             "coarsen_ranges": [(1, 0), (8, 0.065)],
              "mask_value": 1e-9},
             {'name': 'src',
                 'fm': 0,
