@@ -885,6 +885,8 @@ if __name__ == "__main__":
     block_z_to_render_released = {}
     block_z_to_computes_processed = {}
     block_z_to_renders_processed = {}
+    block_z_to_last_compute_time = {}
+    block_z_to_last_render_time = {}
     block_chunk_to_compute_processed = {}
     block_chunk_to_render_processed = {}
 
@@ -901,6 +903,8 @@ if __name__ == "__main__":
         block_z_to_render_released[cur_bs] = dict(zip(zs_for_cur_block, [False] * len(zs_for_cur_block)))
         block_z_to_computes_processed[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
         block_z_to_renders_processed[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+        block_z_to_last_compute_time[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+        block_z_to_last_render_time[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
         chunks, z_to_number_of_chunks, number_of_chunks_in_z = break_into_chunks(cm.dst_chunk_sizes[mip], cm.dst_voxel_offsets[mip], mip=mip, z_list=zs_for_cur_block, max_mip=cm.max_mip)
         block_chunk_to_compute_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
         block_chunk_to_render_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
@@ -916,10 +920,12 @@ if __name__ == "__main__":
                 z = int(spl[3])
                 if task == 'cf':
                     block_z_to_compute_released[bs][z] = True
+                    block_z_to_computes_processed[bs][z] = number_of_chunks_in_z
                 elif task == 'rt':
                     if not block_z_to_render_released[bs][z]:
                         total_sections_aligned = total_sections_aligned + 1
                     block_z_to_render_released[bs][z] = True
+                    block_z_to_renders_processed[bs][z] = number_of_chunks_in_z
                 line = recover_file.readline()
     
     def generate_first_releases():
@@ -969,23 +975,59 @@ if __name__ == "__main__":
     receive_time = 0
     process_time = 0
     delete_time = 0
-    
-    def executionLoop(compute_field_z_release, render_z_release, cf_block_starts, rt_block_starts):
+
+    def release_compute_and_render(compute_field_z_release, render_z_release, cf_block_starts, rt_block_starts):
         assert len(compute_field_z_release) == len(cf_block_starts)
         assert len(render_z_release) == len(rt_block_starts)
+        if len(compute_field_z_release) > 0:
+            executeNew(BlockAlignComputeField, compute_field_z_release, cf_block_starts)
+            for i in range(len(compute_field_z_release)):
+                block_start = cf_block_starts[i]
+                z = compute_field_z_release[i]
+                block_z_to_compute_released[block_start][z] = True
+                block_z_to_last_compute_time[block_start][z] = time()
+        if len(render_z_release) > 0:
+            executeNew(BlockAlignRender, render_z_release, rt_block_starts)
+            for i in range(len(render_z_release)):
+                block_start = rt_block_starts[i]
+                z = render_z_release[i]
+                block_z_to_render_released[block_start][z] = True
+                block_z_to_last_render_time[block_start][z] = time()
+
+    poll_time = 300
+
+    def get_lagged_tasks(resend_time):
+        cf_list = []
+        rt_list = []
+        cf_block_start = []
+        rt_block_start = []
+        time_check = time()
+        for block_start in block_z_to_compute_released:
+            zs_for_block = block_z_to_compute_released[block_start]
+            for z in zs_for_block:
+                if block_z_to_compute_released[block_start][z]:
+                    if block_z_to_computes_processed[block_start][z] != number_of_chunks_in_z:
+                        if time_check - block_z_to_last_compute_time[block_start][z] >= resend_time:
+                            cf_list.append(z)
+                            cf_block_start.append(block_start)
+                else:
+                    break
+        for block_start in block_z_to_render_released:
+            zs_for_block = block_z_to_render_released[block_start]
+            for z in zs_for_block:
+                if block_z_to_render_released[block_start][z]:
+                    if block_z_to_renders_processed[block_start][z] != number_of_chunks_in_z:
+                        if time_check - block_z_to_last_render_time[block_start][z] >= resend_time:
+                            rt_list.append(z)
+                            rt_block_start.append(block_start)
+                else:
+                    break
+        return cf_list, rt_list, cf_block_start, rt_block_start
+    
+    def executionLoop(compute_field_z_release, render_z_release, cf_block_starts, rt_block_starts):
+        release_compute_and_render(compute_field_z_release, render_z_release, cf_block_starts, rt_block_starts)
+        first_poll_time = time()
         with open(status_filename, 'w') as status_file:
-            if len(compute_field_z_release) > 0:
-                executeNew(BlockAlignComputeField, compute_field_z_release, cf_block_starts)
-                for i in range(len(compute_field_z_release)):
-                    block_start = cf_block_starts[i]
-                    z = compute_field_z_release[i]
-                    block_z_to_compute_released[block_start][z] = True
-            if len(render_z_release) > 0:
-                executeNew(BlockAlignRender, render_z_release, rt_block_starts)
-                for i in range(len(render_z_release)):
-                    block_start = rt_block_starts[i]
-                    z = render_z_release[i]
-                    block_z_to_render_released[block_start][z] = True
             with TaskQueue(queue_name=args.completed_queue_name, n_threads=0) as ctq:
                 sqs_obj = ctq._api._sqs
                 global total_sections_aligned
@@ -994,13 +1036,31 @@ if __name__ == "__main__":
                 global process_time
                 global delete_time
                 global blocks_finished
+                empty_in_a_row = 0
                 while total_sections_aligned < total_sections_to_align:
+                    check_poll_time = time()
+                    if check_poll_time - first_poll_time >= poll_time:
+                        first_poll_time = check_poll_time
+                        cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(3600)
+                        if len(cf_list) > 0 or len(rt_list) > 0:
+                            profile_file.write('Restarting tasks because too much time has passed\n')
+                            print('Restarting tasks because too much time has passed\n')
+                        release_compute_and_render(cf_list, rt_list, cf_block_start, rt_block_start)
                     before_receive_time = time()
                     msgs = sqs_obj.receive_message(QueueUrl=ctq._api._qurl, MaxNumberOfMessages=10)
                     receive_time = receive_time + time() - before_receive_time
                     if 'Messages' not in msgs:
-                        sleep(1)
+                        empty_in_a_row = empty_in_a_row + 1
+                        if empty_in_a_row >= 5:
+                            if a.sqs_is_empty_fast():
+                                cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(0)
+                                profile_file.write('Restarting tasks because queue is empty\n')
+                                print('Restarting tasks because queue is empty\n')
+                                release_compute_and_render(cf_list, rt_list, cf_block_start, rt_block_start)
+                        else:
+                            sleep(1)
                         continue
+                    empty_in_a_row = 0
                     entriesT = []
                     parsed_msgs = []
                     for i in range(len(msgs['Messages'])):
@@ -1020,6 +1080,7 @@ if __name__ == "__main__":
                         if parsed_msg['task'] == 'CF':
                             already_processed = block_chunk_to_compute_processed[block_start][pos_tuple]
                             if not already_processed:
+                                block_z_to_last_compute_time[block_start][z] = time()
                                 block_chunk_to_compute_processed[block_start][pos_tuple] = True
                                 block_z_to_computes_processed[block_start][z] = block_z_to_computes_processed[block_start][z] + 1
                                 if block_z_to_computes_processed[block_start][z] == number_of_chunks_in_z:
@@ -1034,17 +1095,20 @@ if __name__ == "__main__":
                                             profile_file.write('process time {}\n'.format(process_time))
                                             profile_file.write('receive time {}\n'.format(receive_time))
                                             profile_file.write('delete time {}\n'.format(delete_time))
+                                            block_z_to_last_render_time[block_start][z] = time()
                                             executeNew(BlockAlignRender, [z], [block_start])
                                 elif block_z_to_computes_processed[block_start][z] > number_of_chunks_in_z:
                                     raise ValueError('More compute chunks processed than exist for z = {}'.format(z))
                         elif parsed_msg['task'] == 'RT':
                             already_processed = block_chunk_to_render_processed[block_start][pos_tuple]
                             if not already_processed:
+                                block_z_to_last_render_time[block_start][z] = time()
                                 block_chunk_to_render_processed[block_start][pos_tuple] = True
                                 block_z_to_renders_processed[block_start][z] = block_z_to_renders_processed[block_start][z] + 1
                                 if block_z_to_renders_processed[block_start][z] == number_of_chunks_in_z:
                                     total_sections_aligned = total_sections_aligned + 1
                                     print('Renders complete: {}'.format(total_sections_aligned))
+                                    status_file.write('bs {} rt {}\n'.format(block_start, z))
                                     if z+1 in block_z_to_compute_released[block_start]:
                                         if block_z_to_compute_released[block_start][z+1]:
                                             pass
@@ -1052,10 +1116,10 @@ if __name__ == "__main__":
                                         else:
                                             print('Render done for z={}, releasing cf for z={}'.format(z, z+1))
                                             block_z_to_compute_released[block_start][z+1] = True
-                                            status_file.write('bs {} rt {}\n'.format(block_start, z))
                                             profile_file.write('process time {}\n'.format(process_time))
                                             profile_file.write('receive time {}\n'.format(receive_time))
                                             profile_file.write('delete time {}\n'.format(delete_time))
+                                            block_z_to_last_compute_time[block_start][z+1] = time()
                                             executeNew(BlockAlignComputeField, [z+1], [block_start])
                                     else:
                                         blocks_finished = blocks_finished + 1
