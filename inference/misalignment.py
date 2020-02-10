@@ -134,12 +134,12 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
         #img2_enc[img2_enc.squeeze().abs() < 0.15] = 0
 
     misalignment_mask = compute_fcorr(img1_enc, img2_enc).squeeze()
-    img1_bright = ((img1_downs * 255) > 141).squeeze()
-    img2_bright = ((img2_downs * 255) > 141).squeeze()
-    both_img_bright = img1_bright * img2_bright
-    both_img_bright_coarse = coarsen_mask(both_img_bright, 25)
-    skip_misalign = (both_img_bright_coarse + (img1.squeeze() == 0) + (img2.squeeze() == 0)) > 0
-    misalignment_mask[skip_misalign] = False
+    #img1_bright = ((img1_downs * 255) > 141).squeeze()
+    #img2_bright = ((img2_downs * 255) > 141).squeeze()
+    #both_img_bright = img1_bright * img2_bright
+    #both_img_bright_coarse = coarsen_mask(both_img_bright, 25)
+    #skip_misalign = (both_img_bright_coarse + (img1.squeeze() == 0) + (img2.squeeze() == 0)) > 0
+    #misalignment_mask[skip_misalign] = False
     # do the double cell body detection
     #misalignment_mask_ups = scipy.misc.imresize(misalignment_mask, get_np(img1).shape)
 
