@@ -346,7 +346,7 @@ if __name__ == "__main__":
     block_stops = block_starts[1:]
     if block_starts[-1] != args.z_stop:
         block_stops.append(args.z_stop)
-    
+
     # Assign even/odd to each block start so results are stored in appropriate CloudVolume
     # Create lookup dicts based on offset in the canonical block
     # BLOCK ALIGNMENT
@@ -583,8 +583,7 @@ if __name__ == "__main__":
                     src_mip=mip,
                     field_mip=coarse_field_mip,
                     masks=src_masks,
-                    seethrough=args.seethrough,
-                    # seethrough_misalign=args.seethrough_misalign
+                    seethrough=False
                 )
                 yield from t
 
@@ -921,7 +920,7 @@ if __name__ == "__main__":
                         total_sections_aligned = total_sections_aligned + 1
                     block_z_to_render_released[bs][z] = True
                 line = recover_file.readline()
-    
+
     def generate_first_releases():
         new_cf_list = []
         new_rt_list = []
@@ -969,7 +968,7 @@ if __name__ == "__main__":
     receive_time = 0
     process_time = 0
     delete_time = 0
-    
+
     def executionLoop(compute_field_z_release, render_z_release, cf_block_starts, rt_block_starts):
         assert len(compute_field_z_release) == len(cf_block_starts)
         assert len(render_z_release) == len(rt_block_starts)

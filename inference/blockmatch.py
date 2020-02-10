@@ -220,7 +220,7 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
                         min_overlap_count=min_overlap_px)
                 ncc_np = ncc.squeeze().cpu().numpy()
 
-                if ncc.var() < 1E-15 or ((ncc != ncc).sum() > 0):
+                if ncc.var() < 1E-16 or ((ncc != ncc).sum() > 0):
                     #match_displacement = [0, 0]
                     #match_displacement = [float(filler), float(filler)]
                     match_displacement = [0, 0]
