@@ -224,14 +224,14 @@ class ComputeFieldTask(RegisteredTask):
           # import ipdb
           # ipdb.set_trace()
           msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'Id': 'id', 'MessageBody':json.dumps(message)}])
-          if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
+          if 'Successful' in msg_ack and len(msg_ack['Successful']) > 0:
+            pass
+          else:
             success = False
             for i in range(20):
               sleep(1 + random.randrange(4))
               msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'Id': 'id', 'MessageBody':json.dumps(message)}])
-              if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
-                pass
-              else:
+              if 'Successful' in msg_ack and len(msg_ack['Successful']) > 0:
                 success = True
                 break
             if success == False:
@@ -487,14 +487,14 @@ class RenderTask(RegisteredTask):
           # }
           print('Reporting to completed queue...')
           msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'Id': 'id', 'MessageBody':json.dumps(message)}])
-          if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
+          if 'Successful' in msg_ack and len(msg_ack['Successful']) > 0:
+            pass
+          else:
             success = False
-            for i in range(10):
-              sleep(1 + random.randrange(3))
+            for i in range(20):
+              sleep(1 + random.randrange(4))
               msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'Id': 'id', 'MessageBody':json.dumps(message)}])
-              if 'Failed' in msg_ack and len(msg_ack['Failed']) > 0:
-                pass
-              else:
+              if 'Successful' in msg_ack and len(msg_ack['Successful']) > 0:
                 success = True
                 break
             if success == False:
