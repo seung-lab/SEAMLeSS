@@ -2553,6 +2553,10 @@ class Aligner:
   def sqs_is_empty_fast(self):
     # hashtag hackerlife
     attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
+    if self.sqs is None:
+        self.sqs = boto3.client('sqs', region_name='us-east-1')
+        self.queue_url  = self.sqs.get_queue_url(QueueName=self.queue_name)["QueueUrl"]
+
     for i in range(3):
       response = self.sqs.get_queue_attributes(QueueUrl=self.queue_url,
                                                AttributeNames=attribute_names)

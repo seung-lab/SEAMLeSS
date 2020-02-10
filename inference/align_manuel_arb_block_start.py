@@ -347,7 +347,7 @@ if __name__ == "__main__":
     block_stops = block_starts[1:]
     if block_starts[-1] != args.z_stop:
         block_stops.append(args.z_stop)
-    
+
     # Assign even/odd to each block start so results are stored in appropriate CloudVolume
     # Create lookup dicts based on offset in the canonical block
     # BLOCK ALIGNMENT
@@ -584,8 +584,7 @@ if __name__ == "__main__":
                     src_mip=mip,
                     field_mip=coarse_field_mip,
                     masks=src_masks,
-                    seethrough=args.seethrough,
-                    # seethrough_misalign=args.seethrough_misalign
+                    seethrough=False
                 )
                 yield from t
 
@@ -941,7 +940,7 @@ if __name__ == "__main__":
                     block_z_to_render_released[bs][z] = True
                     block_z_to_renders_processed[bs][z] = number_of_chunks_in_z
                 line = recover_file.readline()
-    
+
     def generate_first_releases():
         new_cf_list = []
         new_rt_list = []
@@ -1037,7 +1036,7 @@ if __name__ == "__main__":
                 else:
                     break
         return cf_list, rt_list, cf_block_start, rt_block_start
-    
+
     def executionLoop(compute_field_z_release, render_z_release, cf_block_starts, rt_block_starts):
         release_compute_and_render(compute_field_z_release, render_z_release, cf_block_starts, rt_block_starts)
         first_poll_time = time()

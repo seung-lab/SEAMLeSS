@@ -15,6 +15,8 @@ from pdb import set_trace as st
 from fcorr import get_fft_power2, get_hp_fcorr
 from blockmatch import block_match
 
+from utilities.helpers import upsample_field, coarsen_mask
+
 def get_np(pt):
     return pt.cpu().detach().numpy()
 
@@ -100,7 +102,6 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
         img2 /= 255.0
         print ("DIVIDING")
 
-
     img1_downs = img1
     img2_downs = img2
     while len(img1_downs.shape) < 4:
@@ -110,8 +111,12 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
     for _ in range(mip, TARGET_MIP):
         img1_downs = torch.nn.functional.avg_pool2d(img1_downs, 2)
         img2_downs = torch.nn.functional.avg_pool2d(img2_downs, 2)
-    img1_downs_norm = normalize(img1_downs, mask=img1_downs.abs()>0.25, mask_fill=-20)
-    img2_downs_norm = normalize(img2_downs, mask=img2_downs.abs()>0.25, mask_fill=-20)
+
+    img1_downs_tissue_mask = (img1_downs > 0.05) * (img1_downs < (150.0/255.0))
+    img2_downs_tissue_mask = (img2_downs > 0.05) * (img2_downs < (150.0/255.0))
+
+    img1_downs_norm = normalize(img1_downs, mask=img1_downs_tissue_mask, mask_fill=-20)
+    img2_downs_norm = normalize(img2_downs, mask=img2_downs_tissue_mask, mask_fill=-20)
 
     mypath = str(pathlib.Path(__file__).parent.absolute())
     pyramid_name = 'ncc_m4'
@@ -120,17 +125,24 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
         "model", checkpoint_folder=ncc_model_path
     )
 
-
     with torch.no_grad():
         img1_enc = encoder(img1_downs_norm).squeeze()
         img2_enc = encoder(img2_downs_norm).squeeze()
-        img1_enc[img1_downs.squeeze().abs() < 0.05] = 0
-        img2_enc[img2_downs.squeeze().abs() < 0.05] = 0
+        img1_enc[img1_downs_tissue_mask.squeeze() == False] = 0
+        img2_enc[img2_downs_tissue_mask.squeeze() == False] = 0
         #img1_enc[img1_enc.squeeze().abs() < 0.15] = 0
         #img2_enc[img2_enc.squeeze().abs() < 0.15] = 0
 
     misalignment_mask = compute_fcorr(img1_enc, img2_enc).squeeze()
+    #img1_bright = ((img1_downs * 255) > 141).squeeze()
+    #img2_bright = ((img2_downs * 255) > 141).squeeze()
+    #both_img_bright = img1_bright * img2_bright
+    #both_img_bright_coarse = coarsen_mask(both_img_bright, 25)
+    #skip_misalign = (both_img_bright_coarse + (img1.squeeze() == 0) + (img2.squeeze() == 0)) > 0
+    #misalignment_mask[skip_misalign] = False
+    # do the double cell body detection
     #misalignment_mask_ups = scipy.misc.imresize(misalignment_mask, get_np(img1).shape)
+
     #fcorr_ups_var = torch.Tensor(fcorr_ups, device=img1.device)
     return misalignment_mask
 
