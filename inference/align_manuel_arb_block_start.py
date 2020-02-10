@@ -179,6 +179,7 @@ if __name__ == "__main__":
         default='none'
     )
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
+    parser.add_argument('--final_render_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--status_output_file', type=str, default=None)
     parser.add_argument('--recover_status_from_file', type=str, default=None)
     parser.add_argument('--block_overlap', type=int, default=1)
@@ -517,7 +518,7 @@ if __name__ == "__main__":
             size_chunk=chunk_size,
             batch_mip=final_render_mip,
         )
-        final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.stitch_suffix)),
+        final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.final_render_suffix)),
                             data_type='uint8', num_channels=1, fill_missing=True,
                             overwrite=do_final_render).path
 
@@ -840,6 +841,19 @@ if __name__ == "__main__":
                          masks=src_masks, blackout_op=blackout_op)
             yield from t
 
+    class StitchFinalRenderFirstSec(object):
+        def __init__(self, z_range):
+          self.z_range = z_range
+
+        def __iter__(self):
+          for z in self.z_range:
+            bbox = bbox_lookup[z]
+            t = a.render(cm, src, coarse_field_cv, final_dst, src_z=z,
+                         field_z=z, dst_z=z, bbox=bbox,
+                         src_mip=final_render_mip, field_mip=coarse_field_mip, pad=final_render_pad,
+                         masks=src_masks, blackout_op=blackout_op)
+            yield from t
+
     def break_into_chunks(chunk_size, offset, mip, z_list, max_mip=12):
         """Break bbox into list of chunks with chunk_size, given offset for all data
 
@@ -1150,17 +1164,15 @@ if __name__ == "__main__":
         recover_status_from_file(args.recover_status_from_file)
 
     if a.distributed:
-        cf_list, rt_list, cf_block_start, rt_block_start = generate_first_releases()
-        executionLoop(cf_list, rt_list, cf_block_start, rt_block_start)
+        if do_alignment:
+            cf_list, rt_list, cf_block_start, rt_block_start = generate_first_releases()
+            executionLoop(cf_list, rt_list, cf_block_start, rt_block_start)
     else:
         for z_offset in sorted(block_offset_to_z_range.keys()):
             z_range = list(block_offset_to_z_range[z_offset])
             if do_alignment:
                 print("ALIGN BLOCK OFFSET {}".format(z_offset))
                 execute(BlockAlignComputeField, z_range)
-                if not skip_vv:
-                    print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
-                    execute(BlockAlignVectorVote, z_range)
             if do_render:
                 print("RENDER BLOCK OFFSET {}".format(z_offset))
                 execute(BlockAlignRender, z_range)
@@ -1188,4 +1200,5 @@ if __name__ == "__main__":
     if do_compose:
         execute(StitchCompose, compose_range)
     if do_final_render:
-        execute(StitchFinalRender, compose_range)
+        execute(StitchFinalRender, render_range)
+        execute(StitchFinalRenderFirstSec, [args.z_start])
