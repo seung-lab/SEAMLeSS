@@ -303,7 +303,7 @@ class RenderTask(RegisteredTask):
                masks=[],
                affine=None, use_cpu=False, pad=256,
                seethrough=False, coarsen_small_folds=1, coarsen_big_folds=15,
-               coarsen_misalign=96, seethrough_cv=None,
+               coarsen_misalign=128, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=False,
                blackout_op='none', report=False, brighten_misalign=False, block_start=None):

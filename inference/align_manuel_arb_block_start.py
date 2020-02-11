@@ -584,7 +584,8 @@ if __name__ == "__main__":
                     src_mip=mip,
                     field_mip=coarse_field_mip,
                     masks=src_masks,
-                    seethrough=False
+                    seethrough=args.seethrough,
+                    seethrough_misalign=False
                 )
                 yield from t
 
