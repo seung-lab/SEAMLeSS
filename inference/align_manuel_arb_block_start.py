@@ -933,17 +933,18 @@ if __name__ == "__main__":
             line = recover_file.readline()
             while line:
                 spl = line.split()
-                bs = int(spl[1])
-                task = spl[2]
-                z = int(spl[3])
-                if task == 'cf':
-                    block_z_to_compute_released[bs][z] = True
-                    block_z_to_computes_processed[bs][z] = number_of_chunks_in_z
-                elif task == 'rt':
-                    if not block_z_to_render_released[bs][z]:
-                        total_sections_aligned = total_sections_aligned + 1
-                    block_z_to_render_released[bs][z] = True
-                    block_z_to_renders_processed[bs][z] = number_of_chunks_in_z
+                if bs != 'Restarting':
+                    bs = int(spl[1])
+                    task = spl[2]
+                    z = int(spl[3])
+                    if task == 'cf':
+                        block_z_to_compute_released[bs][z] = True
+                        block_z_to_computes_processed[bs][z] = number_of_chunks_in_z
+                    elif task == 'rt':
+                        if not block_z_to_render_released[bs][z]:
+                            total_sections_aligned = total_sections_aligned + 1
+                        block_z_to_render_released[bs][z] = True
+                        block_z_to_renders_processed[bs][z] = number_of_chunks_in_z
                 line = recover_file.readline()
 
     def generate_first_releases():
