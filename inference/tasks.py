@@ -190,6 +190,9 @@ class ComputeFieldTask(RegisteredTask):
       tgt_field_cv = None
     stitch = self.stitch
 
+    if self.cur_field_cv:
+      cur_field_cv = DCV(self.cur_field_cv)
+
     print("\nCompute field\n"
           "model {}\n"
           "src {}\n"
@@ -207,7 +210,7 @@ class ComputeFieldTask(RegisteredTask):
                                             patch_bbox, mip, pad,
                                             src_masks, tgt_masks,
                                             None, prev_field_cv, prev_field_z,
-                                            prev_field_inverse, cur_field_cv=cur_field_cv, coarse_field_cv=coarse_field_cv)
+                                            prev_field_inverse, cur_field_cv=cur_field_cv, coarse_field_cv=coarse_field_cv,coarse_field_mip=coarse_field_mip)
         aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       else:
         field = aligner.compute_field_chunk(model_path, src_cv=src_cv, tgt_cv=tgt_cv, src_z=src_z, tgt_z=tgt_z,
