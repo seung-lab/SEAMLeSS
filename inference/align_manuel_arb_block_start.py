@@ -803,6 +803,7 @@ if __name__ == "__main__":
                                         # prev_field_cv=None,
                                         prev_field_cv=block_overlap_field,
                                         cur_field_cv=block_vvote_field,
+                                        coarse_field_cv=coarse_field_cv,
                                         prev_field_z=tgt_z,stitch=True)
                     yield from t
 
