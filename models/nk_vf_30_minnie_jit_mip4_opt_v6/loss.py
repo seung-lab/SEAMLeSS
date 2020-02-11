@@ -108,6 +108,15 @@ def field_dxy(f, forward=False):
     result = torch.nn.functional.pad(delta, pad=(0, 0, 1, 1, 1, 1, 0, 0))
     return result
 
+def field_dxy2(f, forward=False):
+    if forward:
+        delta = f[:, 1:-1, 1:-1, :] - f[:, 2:, :-2, :]
+    else:
+        delta = f[:, 1:-1, 1:-1, :] - f[:, :-2, 2:, :]
+
+    result = delta
+    result = torch.nn.functional.pad(delta, pad=(0, 0, 1, 1, 1, 1, 0, 0))
+    return result
 
 def rigidity_score(field_delta, tgt_length, power=2):
     spring_lengths = torch.sqrt(field_delta[..., 0]**2 + field_delta[..., 1]**2)
@@ -123,7 +132,7 @@ def pix_identity(size, batch=1, device='cuda'):
     result = torch.transpose(result, 1, 2)
     return result
 
-def rigidity(field, power=2, diagonal_mult=1.5):
+def rigidity(field, power=2, diagonal_mult=0.8, two_diagonals=True):
     identity = pix_identity(size=field.shape[-2])
     field_abs = field + identity
 
@@ -133,7 +142,13 @@ def rigidity(field, power=2, diagonal_mult=1.5):
     result += rigidity_score(field_dy(field_abs, forward=True), 1, power=power)
     result += rigidity_score(field_dxy(field_abs, forward=True), 2**(1/2), power=power) * diagonal_mult
     result += rigidity_score(field_dxy(field_abs, forward=False), 2**(1/2), power=power) * diagonal_mult
-    result /= (4 + 2*diagonal_mult)
+    total = 4 + 2*diagonal_mult
+    if two_diagonals:
+        result += rigidity_score(field_dxy2(field_abs, forward=True), 2**(1/2), power=power) * diagonal_mult
+        result += rigidity_score(field_dxy2(field_abs, forward=False), 2**(1/2), power=power) * diagonal_mult
+        total += 2*diagonal_mult
+
+    result /= total
 
     #compensate for padding
     result[..., 0:6, :] = 0

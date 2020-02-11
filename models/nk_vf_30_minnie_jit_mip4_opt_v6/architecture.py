@@ -125,7 +125,7 @@ class Model(nn.Module):
                     src_large_defects=src_large_defects.float(),
                     src_defects=src_defects.float(),
                     tgt_defects=tgt_defects.float(),
-                    max_iter=120
+                    max_iter=140
                                     )
             #sm_mask = (tgt_defects + res_warp_img(src_defects, pred_res, is_pix_res=True)) > 0
             #pred_res[sm_mask[0]] = 0

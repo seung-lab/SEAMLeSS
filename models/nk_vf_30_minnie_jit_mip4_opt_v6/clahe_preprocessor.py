@@ -22,13 +22,16 @@ class CLAHEPreprocessor(nn.Module):
                                      tileGridSize=tileGridSize)
 
 
-    def forward(self, X, *args, **kwargs):
+    def forward(self, X, in_place=True, *args, **kwargs):
+        X_out = X
+        if not in_place:
+            X_out = X.clone()
         for i in range(X.shape[-3]):
             mask = self.gen_mask(X[..., i, :, :])
-            X[..., i, :, :] = self.normalize(X[..., i, :, :], mask=mask)
-            X[..., i, :, :] = self.contrast(X[..., i, :, :])
-            X[..., i, :, :] = self.normalize(X[..., i, :, :], mask=mask, min=1.0/255.0)
-        return X
+            X_out[..., i, :, :] = self.normalize(X_out[..., i, :, :], mask=mask)
+            X_out[..., i, :, :] = self.contrast(X_out[..., i, :, :])
+            X_out[..., i, :, :] = self.normalize(X_out[..., i, :, :], mask=mask, min=1.0/255.0)
+        return X_out
 
     def contrast(self, X, mask=...):
         """

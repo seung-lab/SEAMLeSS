@@ -170,7 +170,7 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
         src_large_defects, src_small_defects, sm_val,
         crop=256, bot_mip=4, max_iter=800,
         img_mip=4,
-        sm_keys_to_apply={}, mse_keys_to_apply={}):
+        sm_keys_to_apply={}, mse_keys_to_apply={}, start_feature=0):
 
     #sm_val = 220e0
     #sm_val2 = 220e0
@@ -242,8 +242,10 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
             tgt_downs = test_pyramid.state['up'][str(5)]['output'][0:1, 2:]
         if m == 4:'''
         num_reatures = model.state['up'][str(bot_mip)]['output'].shape[1]
-        src_downs = model.state['up'][str(bot_mip)]['output'][0:1, :num_reatures//2]
-        tgt_downs = model.state['up'][str(bot_mip)]['output'][0:1, num_reatures//2:]
+        src_downs = model.state['up'][str(bot_mip)]['output'][0:1,
+                start_feature:num_reatures//2]
+        tgt_downs = model.state['up'][str(bot_mip)]['output'][0:1,
+                start_feature + num_reatures//2:]
 
         normer = torch.nn.GroupNorm(num_groups=src_downs.shape[1], num_channels=src_downs.shape[1], affine=False)
         src_downs = normer(src_downs)
@@ -297,11 +299,11 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
         'src': [
             {'name': 'src_large_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(8, 0.065), (64, 0.11)],
+             "coarsen_ranges": [(8, 0.2), (64, 0.4)],
              "mask_value": 1e-6},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(8, 0.065)],
+             "coarsen_ranges": [(8, 0.4)],
              "mask_value": 1e-9},
             {'name': 'src',
                 'fm': 0,
@@ -342,7 +344,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             crop=64, bot_mip=5, img_mip=4, max_iter=int(max_iter*1.5),
             sm_keys_to_apply=sm_keys_to_apply,
             mse_keys_to_apply=mse_keys_to_apply,
-            sm_val=140e0)
+            sm_val=70e0, start_feature=1)
 
     num_reatures = model.state['up'][str(4)]['output'].shape[1]
     src_bm = model.state['up'][str(4)]['output'][0:1, num_reatures//2 - 1]
@@ -383,11 +385,11 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
         'src': [
             {'name': 'src_large_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0), (3, 2), (64, 0.08)],
+             "coarsen_ranges": [(1, 0), (3, 2), (64, 0.4)],
              "mask_value": 1e-6},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0), (8, 0.065)],
+             "coarsen_ranges": [(1, 0), (8, 0.4)],
              "mask_value": 1e-9},
             {'name': 'src',
                 'fm': 0,
@@ -407,7 +409,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             max_iter=max_iter//2,
             sm_keys_to_apply=sm_keys_to_apply,
             mse_keys_to_apply=mse_keys_to_apply,
-            sm_val=900e0)
+            sm_val=120e0, start_feature=0)
     mips = [4]#6, 5, 4]
     pred_res_opt = optimize_pre_post_multiscale_ups(model, pred_res_opt, src, tgt,
             src_defects=src_defects,
@@ -418,7 +420,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             max_iter=max_iter,
             sm_keys_to_apply=sm_keys_to_apply,
             mse_keys_to_apply=mse_keys_to_apply,
-            sm_val=900e0)
+            sm_val=180e0)
 
     end = time.time()
     print ("OPTIMIZATION FINISHED. Optimizing time: {0:.2f} sec".format(end - start))
