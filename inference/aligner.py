@@ -576,19 +576,20 @@ class Aligner:
                                                 bbox.stringify(tgt_z)))
     print('pad: {}'.format(pad))
     padded_bbox = deepcopy(bbox)
-    padded_bbox.max_mip = mip
     padded_bbox.uncrop(pad, mip=mip)
 
     if prev_field_cv is not None and cur_field_cv is not None:
-        prev_coarse_field = self.get_field(coarse_field_cv, prev_field_z, padded_bbox, mip,
+        prev_coarse_field = self.get_field(coarse_field_cv, prev_field_z, padded_bbox, coarse_field_mip,
                            relative=False, to_tensor=True)
-        prev_field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, coarse_field_mip,
+        prev_coarse_field = upsample_field(prev_coarse_field, coarse_field_mip, mip)
+        prev_field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
                            relative=False, to_tensor=True)
         if prev_field_inverse:
           prev_field = -prev_field
         cur_field = self.get_field(cur_field_cv, src_z, padded_bbox, mip,
                            relative=False, to_tensor=True)
         cur_coarse_field = self.get_field(coarse_field_cv, src_z, padded_bbox, coarse_field_mip, relative=False, to_tensor=True)
+        cur_coarse_field = upsample_field(cur_coarse_field, coarse_field_mip, mip)
         field = (prev_field - prev_coarse_field) - (cur_field - cur_coarse_field)
         distance = self.profile_field(field)
         print('Displacement adjustment: {} px'.format(distance))
