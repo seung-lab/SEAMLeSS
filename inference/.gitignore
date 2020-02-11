@@ -1,3 +1,4 @@
 align_block*.tgt
 align_block_status*.txt
 profile_align_blocks*.txt
+retry_align_blocks*.txt

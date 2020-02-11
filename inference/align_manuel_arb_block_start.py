@@ -933,18 +933,17 @@ if __name__ == "__main__":
             line = recover_file.readline()
             while line:
                 spl = line.split()
-                if bs != 'Restarting':
-                    bs = int(spl[1])
-                    task = spl[2]
-                    z = int(spl[3])
-                    if task == 'cf':
-                        block_z_to_compute_released[bs][z] = True
-                        block_z_to_computes_processed[bs][z] = number_of_chunks_in_z
-                    elif task == 'rt':
-                        if not block_z_to_render_released[bs][z]:
-                            total_sections_aligned = total_sections_aligned + 1
-                        block_z_to_render_released[bs][z] = True
-                        block_z_to_renders_processed[bs][z] = number_of_chunks_in_z
+                bs = int(spl[1])
+                task = spl[2]
+                z = int(spl[3])
+                if task == 'cf':
+                    block_z_to_compute_released[bs][z] = True
+                    block_z_to_computes_processed[bs][z] = number_of_chunks_in_z
+                elif task == 'rt':
+                    if not block_z_to_render_released[bs][z]:
+                        total_sections_aligned = total_sections_aligned + 1
+                    block_z_to_render_released[bs][z] = True
+                    block_z_to_renders_processed[bs][z] = number_of_chunks_in_z
                 line = recover_file.readline()
 
     def generate_first_releases():
@@ -990,7 +989,9 @@ if __name__ == "__main__":
         status_filename = 'align_block_status_{}.txt'.format(floor(time()))
 
     profile_filename = 'profile_align_blocks_{}.txt'.format(floor(time()))
+    retry_filename = 'retry_align_blocks_{}.txt'.format(floor(time()))
     profile_file = open(profile_filename, 'w')
+    retry_file = open(retry_filename, 'w')
     receive_time = 0
     process_time = 0
     delete_time = 0
@@ -1062,7 +1063,10 @@ if __name__ == "__main__":
                         first_poll_time = check_poll_time
                         cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(3600)
                         if len(cf_list) > 0 or len(rt_list) > 0:
-                            profile_file.write('Restarting tasks because too much time has passed\n')
+                            for cf_i in range(len(cf_list)):
+                                retry_file.write('bs {} cf {} time {}\n'.format(cf_block_start[cf_i], cf_list[cf_i], first_poll_time))
+                            for rt_i in range(len(rt_list)):
+                                retry_file.write('bs {} rt {} time {}\n'.format(rt_block_start[rt_i], rt_list[rt_i], first_poll_time))
                             print('Restarting tasks because too much time has passed\n')
                         release_compute_and_render(cf_list, rt_list, cf_block_start, rt_block_start)
                     before_receive_time = time()
