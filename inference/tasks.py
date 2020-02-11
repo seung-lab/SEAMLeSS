@@ -130,7 +130,7 @@ class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
                      patch_bbox, mip, pad, src_masks, tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False, report=False, block_start=None):
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False, report=False, block_start=None, cur_field_cv=None):
     #src_serialized_masks = [m.to_dict() for m in src_masks]
     #tgt_serialized_masks = [m.to_dict() for m in tgt_masks]
 
@@ -144,7 +144,7 @@ class ComputeFieldTask(RegisteredTask):
                      patch_bbox, mip, pad, src_masks,
                      tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start)
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start, cur_field_cv)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -207,7 +207,7 @@ class ComputeFieldTask(RegisteredTask):
                                             patch_bbox, mip, pad,
                                             src_masks, tgt_masks,
                                             None, prev_field_cv, prev_field_z,
-                                            prev_field_inverse)
+                                            prev_field_inverse, cur_field_cv=cur_field_cv, coarse_field_cv=coarse_field_cv)
         aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       else:
         field = aligner.compute_field_chunk(model_path, src_cv=src_cv, tgt_cv=tgt_cv, src_z=src_z, tgt_z=tgt_z,

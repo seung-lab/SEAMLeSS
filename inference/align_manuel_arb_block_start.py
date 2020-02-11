@@ -800,7 +800,9 @@ if __name__ == "__main__":
                                         z, tgt_z, bbox, mip, pad,
                                         src_masks=src_masks,
                                         tgt_masks=tgt_masks,
-                                        prev_field_cv=None,
+                                        # prev_field_cv=None,
+                                        prev_field_cv=block_overlap_field,
+                                        cur_field_cv=block_vvote_field,
                                         prev_field_z=tgt_z,stitch=True)
                     yield from t
 

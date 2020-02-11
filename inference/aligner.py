@@ -551,7 +551,7 @@ class Aligner:
   def compute_field_chunk_stitch(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
                           src_masks=[], tgt_masks=[],
                           tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
-                          prev_field_inverse=False):
+                          prev_field_inverse=False, cur_field_cv=None, coarse_field_cv=None):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
     Args:
       model_path: str for relative path to model directory
@@ -579,11 +579,17 @@ class Aligner:
     padded_bbox.max_mip = mip
     padded_bbox.uncrop(pad, mip=mip)
 
-    if prev_field_cv is not None:
-        field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
+    if prev_field_cv is not None and cur_field_cv is not None:
+        prev_coarse_field = self.get_field(coarse_field_cv, prev_field_z, padded_bbox, mip,
+                           relative=False, to_tensor=True)
+        prev_field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
                            relative=False, to_tensor=True)
         if prev_field_inverse:
-          field = -field
+          prev_field = -prev_field
+        cur_field = self.get_field(cur_field_cv, src_z, padded_bbox, mip,
+                           relative=False, to_tensor=True)
+        cur_coarse_field = self.get_field(coarse_field_cv, src_z, padded_bbox, mip, relative=False, to_tensor=True)
+        field = (prev_field - prev_coarse_field) - (cur_field - cur_coarse_field)
         distance = self.profile_field(field)
         print('Displacement adjustment: {} px'.format(distance))
         distance = (distance // (2 ** mip)) * 2 ** mip
@@ -724,7 +730,7 @@ class Aligner:
         to_tensor=True,
       ).to(device=self.device)
       #HACKS
-      tgt_field = torch.zeros_like(tgt_field)
+      # tgt_field = torch.zeros_like(tgt_field)
 
       if coarse_field_cv is not None and not is_identity(tgt_field):
         # Alignment with coarse field: Need to subtract the coarse field out of
@@ -739,7 +745,7 @@ class Aligner:
         ).to(device=self.device)
 
         #HACKS
-        tgt_coarse_field = torch.zeros_like(tgt_coarse_field)
+        # tgt_coarse_field = torch.zeros_like(tgt_coarse_field)
 
         tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_()
         tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
@@ -1430,7 +1436,7 @@ class Aligner:
                     tgt_masks=[],
                     return_iterator=False, prev_field_cv=None, prev_field_z=None,
                     prev_field_inverse=False, coarse_field_cv=None,
-                    coarse_field_mip=0,tgt_field_cv=None,stitch=False,report=False,block_start=None):
+                    coarse_field_mip=0,tgt_field_cv=None,stitch=False,report=False,block_start=None,cur_field_cv=None):
     """Compute field to warp src section to tgt section
 
     Args:
@@ -1477,7 +1483,7 @@ class Aligner:
                                           src_mask,
                                           tgt_mask,
                                           prev_field_cv, prev_field_z, prev_field_inverse,
-                                          coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start)
+                                          coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start,cur_field_cv)
     if return_iterator:
         return ComputeFieldTaskIterator(chunks,0, len(chunks))
     else:
@@ -1488,7 +1494,7 @@ class Aligner:
                                               src_masks,
                                               tgt_masks,
                                               prev_field_cv, prev_field_z, prev_field_inverse,
-                                              coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start))
+                                              coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start,cur_field_cv))
         return batch
 
   def seethrough_stitch_render(self, cm, src_cv, dst_cv, z_start, z_end,
