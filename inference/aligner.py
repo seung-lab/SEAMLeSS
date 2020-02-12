@@ -532,9 +532,14 @@ class Aligner:
     favg = field.sum() / (torch.nonzero(field).size(0) + self.eps)
     return favg
 
-  def profile_field(self, field):
-    nonzero = field[(field[...,0] != 0) & (field[...,1] != 0)]
-    if len(nonzero) == 0:
+  def profile_field(self, field, unwarped_image=None):
+    #nonzero = field[(field[...,0] != 0) & (field[...,1] != 0)]
+    field_mask = torch.ones_like(field[..., 0]) #only need one per xy
+    if unwarped_image is not None:
+      warped_image = grid_sample(unwarped_image, field, padding_mode='zeros')
+      field_mask[warped_image == 0] = 0
+
+    if field_mask.sum() == 0:
       return torch.Tensor([0, 0])
 
     low_l = percentile(nonzero, 25)
