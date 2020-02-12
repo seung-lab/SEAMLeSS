@@ -73,7 +73,6 @@ if __name__ == "__main__":
         help="relative path to CSV file identifying params to use per z range",
     )
     parser.add_argument("--src_path", type=str)
-    parser.add_argument("--seethrough_stitch_path", type=str)
     parser.add_argument("--chunk_size", type=int, default=1024)
     parser.add_argument('--src_mask', action='append',
             help='Pass string that contains a JSON dict. Fields: "cv", "mip", "val", "op"',
@@ -149,11 +148,6 @@ if __name__ == "__main__":
         help="If True, skip composition"
     )
     parser.add_argument(
-        "--skip_render",
-        action='store_true',
-        help="If True, skip rendering"
-    )
-    parser.add_argument(
         "--final_render_mip",
         type=int,
         default=None
@@ -183,6 +177,10 @@ if __name__ == "__main__":
     parser.add_argument('--status_output_file', type=str, default=None)
     parser.add_argument('--recover_status_from_file', type=str, default=None)
     parser.add_argument('--block_overlap', type=int, default=1)
+    parser.add_argument('--independent_block_file', type=str, default=None)
+    parser.add_argument('--write_composing_field', action='store_true')
+    parser.add_argument('--generate_params_from_skip_file', type=str, default=None)
+    parser.add_argument('--pin_second_starting_section', type=int, default=None)
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -202,15 +200,17 @@ if __name__ == "__main__":
     if args.tgt_masks is not None:
         tgt_masks = [Mask(**m) for m in args.tgt_masks]
 
+    ind_block_align = args.independent_block_file is not None
+
     block_size = args.block_size
     do_alignment = not args.skip_alignment
-    do_render = not args.skip_render
-    do_stitching = not args.skip_stitching
-    do_compose = not args.skip_compose
-    do_final_render = not args.skip_final_render
+    do_stitching = not args.skip_stitching and not ind_block_align
+    do_compose = not args.skip_compose and not ind_block_align
+    do_final_render = not args.skip_final_render and not ind_block_align
     blackout_op = args.blackout_op
     stitch_suffix = args.stitch_suffix
     output_field_dtype = args.output_field_dtype
+    write_composing_field = args.write_composing_field
 
     final_render_mip = args.final_render_mip or args.mip
     # Create CloudVolume Manager
@@ -271,18 +271,9 @@ if __name__ == "__main__":
             data_type=args.img_dtype,
             num_channels=1,
             fill_missing=True,
-            overwrite=do_render,
+            overwrite=do_alignment,
         )
         block_dsts[i] = block_dst.path
-
-    if args.seethrough_stitch_path is not None:
-        seethrough_stitch_dst = cm.create(
-            args.seethrough_stitch_path,
-            data_type=args.img_dtype,
-            num_channels=1,
-            fill_missing=True,
-            overwrite=do_render,
-        ).path
 
     # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
     bbox_lookup = {}
@@ -305,23 +296,47 @@ if __name__ == "__main__":
                 bbox_mip = int(r[6])
                 model_path = join("..", "models", r[7])
                 tgt_radius = int(r[8])
+                bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
+                for z in range(z_start, z_stop):
+                    bbox_lookup[z] = bbox
+                    model_lookup[z] = model_path
+                    tgt_radius_lookup[z] = tgt_radius
+                    vvote_lookup[z] = [-i for i in range(1, tgt_radius + 1)]
+                if args.generate_params_from_skip_file is not None:
+                    continue
                 while z_start - last_alignment_start > (block_size + minimum_block_size):
                     last_alignment_start = last_alignment_start + block_size
                     alignment_z_starts.append(last_alignment_start)
                 if z_start > last_alignment_start:
                     last_alignment_start = z_start
                     alignment_z_starts.append(z_start)
-                bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
-                # print('{},{}'.format(z_start, z_stop))
-                for z in range(z_start, z_stop):
-                    bbox_lookup[z] = bbox
-                    model_lookup[z] = model_path
-                    tgt_radius_lookup[z] = tgt_radius
-                    vvote_lookup[z] = [-i for i in range(1, tgt_radius + 1)]
 
-    while min(z_stop, args.z_stop) - last_alignment_start > block_size:
-        last_alignment_start = last_alignment_start + block_size
-        alignment_z_starts.append(last_alignment_start)
+    if args.generate_params_from_skip_file is None:
+        while min(z_stop, args.z_stop) - last_alignment_start > block_size:
+            last_alignment_start = last_alignment_start + block_size
+            alignment_z_starts.append(last_alignment_start)
+    else:
+        skip_sections = []
+        with open(args.generate_params_from_skip_file) as f:
+            line = f.readline()
+            while line:
+                z = int(line)
+                skip_sections.append(z)
+                line = f.readline()
+        cur_start = args.z_start
+        if args.pin_second_starting_section is not None:
+            cur_start = args.pin_second_starting_section
+            alignment_z_starts.append(cur_start)
+        while cur_start < args.z_stop:
+            # alignment_z_starts.append(cur_start)
+            cur_stop = cur_start + block_size
+            prev_stop = cur_stop
+            while cur_stop in skip_sections:
+                cur_stop = cur_stop + 1
+            if cur_stop < args.z_stop:
+                alignment_z_starts.append(cur_stop)
+            cur_start = prev_stop
+            
 
     # Filter out skipped sections from vvote_offsets
     min_offset = 0
@@ -334,19 +349,28 @@ if __name__ == "__main__":
         vvote_lookup[z] = tgt_radius
 
     # Adjust block starts so they don't start on a skipped section
-    initial_block_starts = [s for s in alignment_z_starts \
-                            if (s >= args.z_start and s <= args.z_stop)]
-    # if len(initial_block_starts) == 0:
-        # initial_block_starts.append(z_stop)
+    if ind_block_align:
+        block_starts = []
+        initial_block_starts = block_starts
+        block_stops = []
+        with open(args.independent_block_file, 'r') as f:
+            line = f.readline()
+            while line:
+                block_starts.append(int(line))
+                block_stops.append(int(line) + block_size)
+                line = f.readline()
+    else:
+        initial_block_starts = [s for s in alignment_z_starts \
+                                if (s >= args.z_start and s <= args.z_stop)]
 
-    if initial_block_starts[-1] != args.z_stop:
-        initial_block_starts.append(args.z_stop)
-    block_starts = []
-    for bs, be in zip(initial_block_starts[:-1], initial_block_starts[1:]):
-        block_starts.append(bs)
-    block_stops = block_starts[1:]
-    if block_starts[-1] != args.z_stop:
-        block_stops.append(args.z_stop)
+        if initial_block_starts[-1] != args.z_stop:
+            initial_block_starts.append(args.z_stop)
+        block_starts = []
+        for bs, be in zip(initial_block_starts[:-1], initial_block_starts[1:]):
+            block_starts.append(bs)
+        block_stops = block_starts[1:]
+        if block_starts[-1] != args.z_stop:
+            block_stops.append(args.z_stop)
 
     # Assign even/odd to each block start so results are stored in appropriate CloudVolume
     # Create lookup dicts based on offset in the canonical block
@@ -470,21 +494,21 @@ if __name__ == "__main__":
             data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
-            overwrite=do_alignment,
+            overwrite=do_stitching,
         ).path
     overlap_vvote_field = cm.create(
         join(args.dst_path, "field", "stitch", "vvote", "field"),
         data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
-        overwrite=do_alignment,
+        overwrite=do_stitching,
     ).path
     overlap_image = cm.create(
         join(args.dst_path, "field", "stitch", "vvote", "image"),
         data_type=args.img_dtype,
         num_channels=1,
         fill_missing=True,
-        overwrite=do_render,
+        overwrite=do_stitching,
     ).path
     stitch_fields = {}
     for z_offset in offset_range:
@@ -493,14 +517,14 @@ if __name__ == "__main__":
             data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
-            overwrite=do_alignment,
+            overwrite=do_stitching,
         ).path
     broadcasting_field = cm.create(
         join(args.dst_path, "field", "stitch", "broadcasting"),
         data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
-        overwrite=do_alignment,
+        overwrite=do_stitching,
     ).path
 
     compose_field = cm.create(join(args.dst_path, 'field',
@@ -521,6 +545,12 @@ if __name__ == "__main__":
         final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.final_render_suffix)),
                             data_type='uint8', num_channels=1, fill_missing=True,
                             overwrite=do_final_render).path
+
+    if write_composing_field:
+        composing_field = cm.create(join(args.dst_path, 'field',
+                        'stitch{}'.format(args.stitch_suffix), 'compose_diff'),
+                        data_type=output_field_dtype, num_channels=2,
+                        fill_missing=True, overwrite=do_compose).path
 
     # Task scheduling functions
     def remote_upload(tasks):
@@ -678,16 +708,13 @@ if __name__ == "__main__":
             self.block_starts = block_starts_for_range
 
         def __iter__(self):
-            # print('iter')
             for i in range(len(self.z_range)):
-                # print('loop begin')
                 src_z = self.z_range[i]
                 block_start = self.block_starts[i]
                 dst = block_dst_lookup[self.block_starts[i]+1]
                 bbox = bbox_lookup[src_z]
                 model_path = model_lookup[src_z]
                 tgt_offsets = vvote_lookup[src_z]
-                # print('second loop\n')
                 for tgt_offset in tgt_offsets:
                     tgt_z = src_z + tgt_offset
                     fine_field = block_vvote_field
@@ -697,8 +724,6 @@ if __name__ == "__main__":
                         tgt_field = block_pair_fields[0]
                     elif block_start_lookup[tgt_z] != self.block_starts[i]:
                         tgt_field = block_overlap_field
-                    # elif tgt_z in starter_range and src_z > block_start_lookup[src_z] and block_start_lookup[src_z] > tgt_z:
-                    #     tgt_field = block_pair_fields[starter_z_to_offset[tgt_z]]
                     else:
                         tgt_field = block_vvote_field
                     t = a.compute_field(
@@ -722,7 +747,6 @@ if __name__ == "__main__":
                         report=True,
                         block_start=block_start
                     )
-                    # print('yielding\n')
                     yield from t
 
     class BlockAlignRender(object):
@@ -771,17 +795,6 @@ if __name__ == "__main__":
                 dst = block_dst_lookup[z-args.block_overlap]
                 bbox = bbox_lookup[z]
                 ti = a.copy(cm, dst, overlap_image, z, z, bbox, mip, is_field=False)
-                # tf = a.copy(
-                #     cm,
-                #     block_vvote_field,
-                #     overlap_vvote_field,
-                #     z,
-                #     z,
-                #     bbox,
-                #     mip,
-                #     is_field=True,
-                # )
-                # t = ti + tf
                 yield from ti
 
     class StitchAlignComputeField(object):
@@ -826,11 +839,20 @@ if __name__ == "__main__":
                 z_block_start = block_start_lookup[z]
                 if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
                     field = block_overlap_field
-            cv_list = [broadcasting_field]*len(influencing_blocks) + [field]
-            z_list = list(influencing_blocks) + [z]
-            t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
+            if write_composing_field:
+                cv_list = [broadcasting_field] * len(influencing_blocks)
+                z_list = list(influencing_blocks) 
+                pre_t = a.multi_compose(cm, cv_list, composing_field, z_list, z, bbox,
                                 mip, mip, factors, pad)
-            yield from t
+                post_t = a.multi_compose(cm, [composing_field, field], compose_field, [z, z], z, bbox,
+                                mip, mip, factors, pad)
+                yield from pre_t + post_t
+            else:
+                cv_list = [broadcasting_field]*len(influencing_blocks) + [field]
+                z_list = list(influencing_blocks) + [z]
+                t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
+                                    mip, mip, factors, pad)
+                yield from t
 
     class StitchFinalRender(object):
         def __init__(self, z_range):
@@ -912,20 +934,36 @@ if __name__ == "__main__":
     total_sections_aligned = 0
     blocks_finished = 0
 
-    for i in range(len(initial_block_starts)-1):
-        cur_bs = initial_block_starts[i]
-        end_bs = min(initial_block_starts[-1], initial_block_starts[i+1] + args.block_overlap)
-        zs_for_cur_block = [*range(cur_bs+1, end_bs)]
-        total_sections_to_align = total_sections_to_align + len(zs_for_cur_block)
-        block_z_to_compute_released[cur_bs] = dict(zip(zs_for_cur_block, [False] * len(zs_for_cur_block)))
-        block_z_to_render_released[cur_bs] = dict(zip(zs_for_cur_block, [False] * len(zs_for_cur_block)))
-        block_z_to_computes_processed[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
-        block_z_to_renders_processed[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
-        block_z_to_last_compute_time[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
-        block_z_to_last_render_time[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
-        chunks, z_to_number_of_chunks, number_of_chunks_in_z = break_into_chunks(cm.dst_chunk_sizes[mip], cm.dst_voxel_offsets[mip], mip=mip, z_list=zs_for_cur_block, max_mip=cm.max_mip)
-        block_chunk_to_compute_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
-        block_chunk_to_render_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
+    if ind_block_align:
+        for i in range(len(block_starts)):
+            cur_bs = block_starts[i]
+            end_bs = cur_bs + block_size
+            zs_for_cur_block = [*range(cur_bs+1, end_bs)]
+            total_sections_to_align = total_sections_to_align + len(zs_for_cur_block)
+            block_z_to_compute_released[cur_bs] = dict(zip(zs_for_cur_block, [False] * len(zs_for_cur_block)))
+            block_z_to_render_released[cur_bs] = dict(zip(zs_for_cur_block, [False] * len(zs_for_cur_block)))
+            block_z_to_computes_processed[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+            block_z_to_renders_processed[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+            block_z_to_last_compute_time[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+            block_z_to_last_render_time[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+            chunks, z_to_number_of_chunks, number_of_chunks_in_z = break_into_chunks(cm.dst_chunk_sizes[mip], cm.dst_voxel_offsets[mip], mip=mip, z_list=zs_for_cur_block, max_mip=cm.max_mip)
+            block_chunk_to_compute_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
+            block_chunk_to_render_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
+    else:
+        for i in range(len(initial_block_starts)-1):
+            cur_bs = initial_block_starts[i]
+            end_bs = min(initial_block_starts[-1], initial_block_starts[i+1] + args.block_overlap)
+            zs_for_cur_block = [*range(cur_bs+1, end_bs)]
+            total_sections_to_align = total_sections_to_align + len(zs_for_cur_block)
+            block_z_to_compute_released[cur_bs] = dict(zip(zs_for_cur_block, [False] * len(zs_for_cur_block)))
+            block_z_to_render_released[cur_bs] = dict(zip(zs_for_cur_block, [False] * len(zs_for_cur_block)))
+            block_z_to_computes_processed[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+            block_z_to_renders_processed[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+            block_z_to_last_compute_time[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+            block_z_to_last_render_time[cur_bs] = dict(zip(zs_for_cur_block, [0] * len(zs_for_cur_block)))
+            chunks, z_to_number_of_chunks, number_of_chunks_in_z = break_into_chunks(cm.dst_chunk_sizes[mip], cm.dst_voxel_offsets[mip], mip=mip, z_list=zs_for_cur_block, max_mip=cm.max_mip)
+            block_chunk_to_compute_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
+            block_chunk_to_render_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
 
     def recover_status_from_file(filename):
         global total_sections_aligned
@@ -969,7 +1007,6 @@ if __name__ == "__main__":
         assert len(z_range) == len(respective_block_starts)
         if len(z_range) == 1:
             ptask = []
-            # ptask.append(task_iterator(z_range[0]))
             remote_upload(task_iterator(z_range, respective_block_starts))
         elif len(z_range) > 0:
             ptask = []
@@ -1064,9 +1101,9 @@ if __name__ == "__main__":
                         cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(3600)
                         if len(cf_list) > 0 or len(rt_list) > 0:
                             for cf_i in range(len(cf_list)):
-                                retry_file.write('bs {} cf {} time {}\n'.format(cf_block_start[cf_i], cf_list[cf_i], first_poll_time))
+                                retry_file.write('Timed out: bs {} cf {} time {}\n'.format(cf_block_start[cf_i], cf_list[cf_i], check_poll_time))
                             for rt_i in range(len(rt_list)):
-                                retry_file.write('bs {} rt {} time {}\n'.format(rt_block_start[rt_i], rt_list[rt_i], first_poll_time))
+                                retry_file.write('Timed out: bs {} rt {} time {}\n'.format(rt_block_start[rt_i], rt_list[rt_i], check_poll_time))
                             print('Restarting tasks because too much time has passed\n')
                         release_compute_and_render(cf_list, rt_list, cf_block_start, rt_block_start)
                     before_receive_time = time()
@@ -1077,7 +1114,10 @@ if __name__ == "__main__":
                         if empty_in_a_row >= 5:
                             if a.sqs_is_empty_fast():
                                 cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(0)
-                                profile_file.write('Restarting tasks because queue is empty\n')
+                                for cf_i in range(len(cf_list)):
+                                    retry_file.write('Queue empty: bs {} cf {} time {}\n'.format(cf_block_start[cf_i], cf_list[cf_i], check_poll_time))
+                                for rt_i in range(len(rt_list)):
+                                    retry_file.write('Queue empty: bs {} rt {} time {}\n'.format(rt_block_start[rt_i], rt_list[rt_i], check_poll_time))
                                 print('Restarting tasks because queue is empty\n')
                                 release_compute_and_render(cf_list, rt_list, cf_block_start, rt_block_start)
                         else:
@@ -1157,7 +1197,7 @@ if __name__ == "__main__":
     print("START BLOCK ALIGNMENT")
 
     if args.recover_status_from_file is None:
-        if do_render:
+        if do_alignment:
             print("COPY STARTING SECTION OF ALL BLOCKS")
             execute(StarterCopy, copy_range)
         if do_alignment:
@@ -1166,7 +1206,7 @@ if __name__ == "__main__":
                 execute(StarterUpsampleField, copy_range)
             print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
             execute(StarterComputeField, starter_range)
-        if do_render:
+        if do_alignment:
             execute(StarterRender, starter_range)
         pass
     else:
@@ -1182,27 +1222,21 @@ if __name__ == "__main__":
             if do_alignment:
                 print("ALIGN BLOCK OFFSET {}".format(z_offset))
                 execute(BlockAlignComputeField, z_range)
-            if do_render:
+            if do_alignment:
                 print("RENDER BLOCK OFFSET {}".format(z_offset))
                 execute(BlockAlignRender, z_range)
 
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
     print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
-    #for z_offset in sorted(stitch_offset_to_z_range.keys()):
-    #    z_range = list(stitch_offset_to_z_range[z_offset])
-    #    execute(SeethroughStitchRender, z_range=z_range)
 
-    # import ipdb
-    # ipdb.set_trace()
-
-    if do_render:
+    if do_stitching:
         execute(StitchOverlapCopy, overlap_copy_range)
     for z_offset in sorted(stitch_offset_to_z_range.keys()):
         z_range = list(stitch_offset_to_z_range[z_offset])
         for i in range(len(z_range)):
             z_range[i] = z_range[i] + args.block_overlap - 1
-        if do_alignment:
+        if do_stitching:
             print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
             execute(StitchAlignComputeField, z_range)
 

@@ -309,7 +309,8 @@ class RenderTask(RegisteredTask):
                coarsen_misalign=128, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=False,
-               blackout_op='none', report=False, brighten_misalign=False, block_start=None):
+               blackout_op='none', report=False, brighten_misalign=False, block_start=None,
+               misalignment_mask_cv=None):
     if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
@@ -317,7 +318,7 @@ class RenderTask(RegisteredTask):
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
                       seethrough_folds, seethrough_misalign, seethrough_black,
                       big_fold_threshold, seethrough_renormalize, blackout_op, report,
-                      brighten_misalign, block_start)
+                      brighten_misalign, block_start, misalignment_mask_cv)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -352,6 +353,9 @@ class RenderTask(RegisteredTask):
 
     if self.affine:
       affine = np.array(self.affine)
+
+    if self.misalignment_mask_cv:
+      misalignment_mask_cv = DCV(self.misalignment_mask_cv)
 
     field_cv_path = ""
     field_mip_print = ""
@@ -463,30 +467,10 @@ class RenderTask(RegisteredTask):
                  image[fold_blackout_region] = 1.0 / 255.0
 
       image = image.cpu().numpy()
-      # import ipdb
-      # ipdb.set_trace()
-      # import ipdb
-      # try:
-      #   aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
-      #   ipdb.set_trace()
-      #   a = 10
-      # except:
-      #   ipdb.set_trace()
-      #   b = 100
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
       if self.report and aligner.completed_task_queue is not None:
           api_obj = aligner.completed_task_queue._api
           sqs_obj = aligner.completed_task_queue._api._sqs
-          # message = {
-            # "bbox": self.patch_bbox,
-            # "task": "CF"
-          # }
-          # message = {
-          #   "x": patch_bbox.m0_x[0],
-          #   "y": patch_bbox.m0_y[0],
-          #   "z": src_z,
-          #   "task": "RT"
-          # }
           print('Reporting to completed queue...')
           msg_ack = sqs_obj.send_message_batch(QueueUrl = api_obj._qurl, Entries=[{'Id': 'id', 'MessageBody':json.dumps(message)}])
           if 'Successful' in msg_ack and len(msg_ack['Successful']) > 0:
