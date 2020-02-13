@@ -863,15 +863,15 @@ if __name__ == "__main__":
           for z in self.z_range:
             influencing_blocks = influencing_blocks_lookup[z]
             factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
-            factors += [1.]
             print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
                                                                    factors))
             bbox = bbox_lookup[z]
             cv_list = [broadcasting_field] * len(influencing_blocks)
-            z_list = list(influencing_blocks) 
-            t = a.multi_compose(cm, cv_list, composing_field, z_list, z, bbox,
-                            mip, mip, factors, pad)
-            yield from t
+            z_list = list(influencing_blocks)
+            if len(cv_list) > 0: 
+                t = a.multi_compose(cm, cv_list, composing_field, z_list, z, bbox,
+                                mip, mip, factors, pad)
+                yield from t
     
     class StitchCompose(object):
         def __init__(self, z_range):
@@ -892,7 +892,7 @@ if __name__ == "__main__":
                     field = block_overlap_field
             if write_composing_field:
                 t = a.multi_compose(cm, [composing_field, field], compose_field, [z, z], z, bbox,
-                                mip, mip, factors, pad)
+                                mip, mip, [1., 1.], pad)
                 yield from t
             else:
                 cv_list = [broadcasting_field]*len(influencing_blocks) + [field]

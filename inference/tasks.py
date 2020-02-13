@@ -193,6 +193,9 @@ class ComputeFieldTask(RegisteredTask):
     if self.cur_field_cv:
       cur_field_cv = DCV(self.cur_field_cv)
 
+    if self.unaligned_cv:
+      unaligned_cv = DCV(self.unaligned_cv)
+
     print("\nCompute field\n"
           "model {}\n"
           "src {}\n"
