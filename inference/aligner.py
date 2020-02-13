@@ -617,7 +617,7 @@ class Aligner:
         tgt_raw_patch = self.get_composite_image(unaligned_cv, tgt_z, padded_bbox, mip,
                                 masks=[],
                                 to_tensor=True, normalizer=None)
-        src_rendered_image = grid_sample(src_raw_patch, cur_field, padding_mode='zeros')        
+        src_rendered_image = grid_sample(src_raw_patch, cur_field, padding_mode='zeros')
         tgt_rendered_image = grid_sample(tgt_raw_patch, prev_field, padding_mode='zeros')
         cur_field = self.rel_to_abs_residual(cur_field, mip)
         prev_field = self.rel_to_abs_residual(prev_field, mip)
