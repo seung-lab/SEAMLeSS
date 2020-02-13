@@ -130,7 +130,7 @@ class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
                      patch_bbox, mip, pad, src_masks, tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False, report=False, block_start=None, cur_field_cv=None):
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False, report=False, block_start=None, cur_field_cv=None, unaligned_cv=None):
     #src_serialized_masks = [m.to_dict() for m in src_masks]
     #tgt_serialized_masks = [m.to_dict() for m in tgt_masks]
 
@@ -144,7 +144,7 @@ class ComputeFieldTask(RegisteredTask):
                      patch_bbox, mip, pad, src_masks,
                      tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start, cur_field_cv)
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start, cur_field_cv, unaligned_cv)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -210,7 +210,7 @@ class ComputeFieldTask(RegisteredTask):
                                             patch_bbox, mip, pad,
                                             src_masks, tgt_masks,
                                             None, prev_field_cv, prev_field_z,
-                                            prev_field_inverse, cur_field_cv=cur_field_cv, coarse_field_cv=coarse_field_cv,coarse_field_mip=coarse_field_mip)
+                                            prev_field_inverse, cur_field_cv=cur_field_cv, coarse_field_cv=coarse_field_cv,coarse_field_mip=coarse_field_mip,unaligned_cv=unaligned_cv)
         aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       else:
         field = aligner.compute_field_chunk(model_path, src_cv=src_cv, tgt_cv=tgt_cv, src_z=src_z, tgt_z=tgt_z,
@@ -451,8 +451,10 @@ class RenderTask(RegisteredTask):
                  while len(image.shape) > len(misalignment_fill_in.shape):
                      misalignment_fill_in.unsqueeze(0)
                  image[misalignment_fill_in] = prev_image[misalignment_fill_in]
-
-
+                 if self.misalignment_mask_cv is not None:
+                   misalignment_mask = np.zeros(shape=image.shape, dtype=np.uint8)
+                   misalignment_mask[misalignment_fill_in.cpu().numpy() != 0] = 1
+                   aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
 
          if self.seethrough_folds:
              if folds is not None:

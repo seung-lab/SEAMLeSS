@@ -532,17 +532,38 @@ class Aligner:
     favg = field.sum() / (torch.nonzero(field).size(0) + self.eps)
     return favg
 
-  def profile_field(self, field):
-    nonzero = field[(field[...,0] != 0) & (field[...,1] != 0)]
-    if len(nonzero) == 0:
-      return torch.Tensor([0, 0])
+  def profile_field(self, field, images=None):
+    if images is None:
+      nonzero = field[(field[...,0] != 0) & (field[...,1] != 0)]
+      if len(nonzero) == 0:
+        return torch.Tensor([0, 0])
 
-    low_l = percentile(nonzero, 25)
-    high_l = percentile(nonzero, 75)
-    mid = 0.5*(low_l + high_l)
+      low_l = percentile(nonzero, 25)
+      high_l = percentile(nonzero, 75)
+      mid = 0.5*(low_l + high_l)
 
-    print("MID:", mid[0].item(), mid[1].item())
+      print("MID:", mid[0].item(), mid[1].item())
+    else:
+      nonzero = field[(field[...,0] != 0) & (field[...,1] != 0)]
+      if len(nonzero) == 0:
+        return torch.Tensor([0, 0])
+
+      field_mask = torch.ones_like(field[...,0])
+      for image in images:
+        image = image.squeeze(0)
+        field_mask[image == 0] = 0
+
+      if field_mask.sum() == 0:
+        return torch.Tensor([0, 0])
+
+      profile_subset = field[field_mask != 0, ...]
+      low_l = percentile(profile_subset, 25)
+      high_l = percentile(profile_subset, 75)
+      mid = 0.5*(low_l + high_l)
+
+      print("MID:", mid[0].item(), mid[1].item())
     return mid.cpu()
+
 
   #############################
   # CloudVolume chunk methods #
@@ -551,7 +572,7 @@ class Aligner:
   def compute_field_chunk_stitch(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
                           src_masks=[], tgt_masks=[],
                           tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
-                          prev_field_inverse=False, cur_field_cv=None, coarse_field_cv=None, coarse_field_mip=None):
+                          prev_field_inverse=False, cur_field_cv=None, coarse_field_cv=None, coarse_field_mip=None, unaligned_cv=None):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
     Args:
       model_path: str for relative path to model directory
@@ -583,15 +604,25 @@ class Aligner:
                            relative=False, to_tensor=True)
         prev_coarse_field = upsample_field(prev_coarse_field, coarse_field_mip, mip)
         prev_field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
-                           relative=False, to_tensor=True)
+                           relative=True, to_tensor=True)
         if prev_field_inverse:
           prev_field = -prev_field
         cur_field = self.get_field(cur_field_cv, src_z, padded_bbox, mip,
-                           relative=False, to_tensor=True)
+                           relative=True, to_tensor=True)
         cur_coarse_field = self.get_field(coarse_field_cv, src_z, padded_bbox, coarse_field_mip, relative=False, to_tensor=True)
         cur_coarse_field = upsample_field(cur_coarse_field, coarse_field_mip, mip)
+        src_raw_patch = self.get_masked_image(unaligned_cv, src_z, padded_bbox, mip,
+                                masks=[],
+                                to_tensor=True, normalizer=None)
+        tgt_raw_patch = self.get_composite_image(unaligned_cv, tgt_z, padded_bbox, mip,
+                                masks=[],
+                                to_tensor=True, normalizer=None)
+        src_rendered_image = grid_sample(src_raw_patch, cur_field, padding_mode='zeros')        
+        tgt_rendered_image = grid_sample(tgt_raw_patch, prev_field, padding_mode='zeros')
+        cur_field = self.rel_to_abs_residual(cur_field, mip)
+        prev_field = self.rel_to_abs_residual(prev_field, mip)
         field = (prev_field - prev_coarse_field) - (cur_field - cur_coarse_field)
-        distance = self.profile_field(field)
+        distance = self.profile_field(field, [src_rendered_image, tgt_rendered_image])
         print('Displacement adjustment: {} px'.format(distance))
         distance = (distance // (2 ** mip)) * 2 ** mip
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
@@ -758,9 +789,12 @@ class Aligner:
         # or prev_field is identity
         tgt_drift_field = tgt_field
 
+      tgt_unaligned_image = self.get_image(src_cv, tgt_z, padded_tgt_bbox_fine, mip,
+                              to_tensor=True, normalizer=None)
 
+      tgt_rendered_image = grid_sample(tgt_unaligned_image, tgt_drift_field, padding_mode='zeros')
       tgt_drift_field = self.rel_to_abs_residual(tgt_drift_field, mip)
-      drift_distance = self.profile_field(tgt_drift_field)
+      drift_distance = self.profile_field(tgt_drift_field, [tgt_rendered_image])
       drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
       drift_distance_coarse_snap = (
         drift_distance // (2 ** coarse_field_mip)
@@ -1437,7 +1471,7 @@ class Aligner:
                     tgt_masks=[],
                     return_iterator=False, prev_field_cv=None, prev_field_z=None,
                     prev_field_inverse=False, coarse_field_cv=None,
-                    coarse_field_mip=0,tgt_field_cv=None,stitch=False,report=False,block_start=None,cur_field_cv=None):
+                    coarse_field_mip=0,tgt_field_cv=None,stitch=False,report=False,block_start=None,cur_field_cv=None,unaligned_cv=None):
     """Compute field to warp src section to tgt section
 
     Args:
@@ -1484,7 +1518,7 @@ class Aligner:
                                           src_mask,
                                           tgt_mask,
                                           prev_field_cv, prev_field_z, prev_field_inverse,
-                                          coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start,cur_field_cv)
+                                          coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start,cur_field_cv,unaligned_cv)
     if return_iterator:
         return ComputeFieldTaskIterator(chunks,0, len(chunks))
     else:
@@ -1495,7 +1529,7 @@ class Aligner:
                                               src_masks,
                                               tgt_masks,
                                               prev_field_cv, prev_field_z, prev_field_inverse,
-                                              coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start,cur_field_cv))
+                                              coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start,cur_field_cv,unaligned_cv))
         return batch
 
   def seethrough_stitch_render(self, cm, src_cv, dst_cv, z_start, z_end,
@@ -1558,7 +1592,8 @@ class Aligner:
                    affine=None, use_cpu=False,
              return_iterator= False, pad=256, seethrough=False,
              seethrough_misalign=False,
-             blackout_op='none', report=False, brighten_misalign=False, block_start=None):
+             blackout_op='none', report=False, brighten_misalign=False, block_start=None,
+             misalignment_mask_cv=None):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1606,7 +1641,8 @@ class Aligner:
                        brighten_misalign=brighten_misalign,
                        seethrough_misalign=seethrough_misalign,
                        blackout_op=blackout_op,
-                       report=report, block_start=block_start)
+                       report=report, block_start=block_start,
+                       misalignment_mask_cv=misalignment_mask_cv)
     if return_iterator:
         return RenderTaskIterator(chunks,0, len(chunks))
     else:
@@ -1620,7 +1656,8 @@ class Aligner:
                            brighten_misalign=brighten_misalign,
                            seethrough_misalign=seethrough_misalign,
                            blackout_op=blackout_op,
-                           report=report, block_start=block_start))
+                           report=report, block_start=block_start,
+                           misalignment_mask_cv=misalignment_mask_cv))
         return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,

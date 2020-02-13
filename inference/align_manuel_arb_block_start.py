@@ -181,6 +181,7 @@ if __name__ == "__main__":
     parser.add_argument('--write_composing_field', action='store_true')
     parser.add_argument('--generate_params_from_skip_file', type=str, default=None)
     parser.add_argument('--pin_second_starting_section', type=int, default=None)
+    parser.add_argument('--write_misalignment_masks', action='store_true')
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -211,6 +212,12 @@ if __name__ == "__main__":
     stitch_suffix = args.stitch_suffix
     output_field_dtype = args.output_field_dtype
     write_composing_field = args.write_composing_field
+    write_misalignment_masks = args.write_misalignment_masks
+
+    if write_misalignment_masks:
+        # Need composing field to produce misalignment masks
+        # assert(write_composing_field)
+        write_composing_field = True
 
     final_render_mip = args.final_render_mip or args.mip
     # Create CloudVolume Manager
@@ -487,6 +494,21 @@ if __name__ == "__main__":
         fill_missing=True,
         overwrite=do_alignment,
     ).path
+    if write_misalignment_masks:
+        misalignment_mask_cv = cm.create(
+            join(args.dst_path, "image_blocks", "misalignment_mask"),
+            data_type='uint8',
+            num_channels=1,
+            fill_missing=True,
+            overwrite=do_alignment,
+        ).path
+        misalignment_mask_overlap_cv = cm.create(
+            join(args.dst_path, "image_blocks", "misalignment_mask_overlap"),
+            data_type='uint8',
+            num_channels=1,
+            fill_missing=True,
+            overwrite=do_alignment,
+        ).path
     stitch_pair_fields = {}
     for z_offset in offset_range:
         stitch_pair_fields[z_offset] = cm.create(
@@ -531,6 +553,7 @@ if __name__ == "__main__":
                         'stitch{}'.format(args.stitch_suffix), 'compose'),
                         data_type=output_field_dtype, num_channels=2,
                         fill_missing=True, overwrite=do_compose).path
+
     if do_final_render:
         # Create CloudVolume Manager
         cmr = CloudManager(
@@ -545,6 +568,10 @@ if __name__ == "__main__":
         final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.final_render_suffix)),
                             data_type='uint8', num_channels=1, fill_missing=True,
                             overwrite=do_final_render).path
+        
+        if write_misalignment_masks:
+            final_misalignment_masks = cmr.create(join(args.dst_path, 'misalignment_stitch{}'.format(args.final_render_suffix)),
+                            data_type='uint8', num_channels=1, fill_missing=True, overwrite=True).path
 
     if write_composing_field:
         composing_field = cm.create(join(args.dst_path, 'field',
@@ -760,10 +787,15 @@ if __name__ == "__main__":
                 block_start = self.block_starts[i]
                 dst = block_dst_lookup[self.block_starts[i]+1]
                 bbox = bbox_lookup[z]
+                misalignment_mask_cv_to_use = None
                 if block_start_lookup[z] != self.block_starts[i]:
                     field = block_overlap_field
+                    if write_misalignment_masks:
+                        misalignment_mask_cv_to_use = misalignment_mask_overlap_cv
                 else:
                     field = block_vvote_field
+                    if write_misalignment_masks:
+                        misalignment_mask_cv_to_use = misalignment_mask_cv                        
                 t = a.render(
                     cm,
                     src,
@@ -781,7 +813,8 @@ if __name__ == "__main__":
                     seethrough_misalign=args.seethrough_misalign,
                     brighten_misalign=args.brighten_misalign,
                     report=True,
-                    block_start=block_start
+                    block_start=block_start,
+                    misalignment_mask_cv=misalignment_mask_cv_to_use
                 )
                 yield from t
 
@@ -819,9 +852,27 @@ if __name__ == "__main__":
                                         cur_field_cv=block_vvote_field,
                                         coarse_field_cv=coarse_field_cv,
                                         coarse_field_mip=coarse_field_mip,
-                                        prev_field_z=tgt_z,stitch=True)
+                                        prev_field_z=tgt_z,stitch=True,unaligned_cv=src)
                     yield from t
 
+    class StitchPreCompose(object):
+        def __init__(self, z_range):
+          self.z_range = z_range
+
+        def __iter__(self):
+          for z in self.z_range:
+            influencing_blocks = influencing_blocks_lookup[z]
+            factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
+            factors += [1.]
+            print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
+                                                                   factors))
+            bbox = bbox_lookup[z]
+            cv_list = [broadcasting_field] * len(influencing_blocks)
+            z_list = list(influencing_blocks) 
+            t = a.multi_compose(cm, cv_list, composing_field, z_list, z, bbox,
+                            mip, mip, factors, pad)
+            yield from t
+    
     class StitchCompose(object):
         def __init__(self, z_range):
           self.z_range = z_range
@@ -840,13 +891,9 @@ if __name__ == "__main__":
                 if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
                     field = block_overlap_field
             if write_composing_field:
-                cv_list = [broadcasting_field] * len(influencing_blocks)
-                z_list = list(influencing_blocks) 
-                pre_t = a.multi_compose(cm, cv_list, composing_field, z_list, z, bbox,
+                t = a.multi_compose(cm, [composing_field, field], compose_field, [z, z], z, bbox,
                                 mip, mip, factors, pad)
-                post_t = a.multi_compose(cm, [composing_field, field], compose_field, [z, z], z, bbox,
-                                mip, mip, factors, pad)
-                yield from pre_t + post_t
+                yield from t
             else:
                 cv_list = [broadcasting_field]*len(influencing_blocks) + [field]
                 z_list = list(influencing_blocks) + [z]
@@ -878,6 +925,23 @@ if __name__ == "__main__":
                          field_z=z, dst_z=z, bbox=bbox,
                          src_mip=final_render_mip, field_mip=coarse_field_mip, pad=final_render_pad,
                          masks=src_masks, blackout_op=blackout_op)
+            yield from t
+
+    class RenderMisalignmentMasks(object):
+        def __init__(self, z_range):
+          self.z_range = z_range
+
+        def __iter__(self):
+          for z in self.z_range:
+            bbox = bbox_lookup[z]
+            misalignment_mask_cv_to_use = misalignment_mask_cv
+            if z in block_start_lookup:
+                z_block_start = block_start_lookup[z]
+                if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
+                    misalignment_mask_cv_to_use = misalignment_mask_overlap_cv
+            t = a.render(cm, misalignment_mask_cv_to_use, composing_field, final_misalignment_masks, src_z=z,
+                         field_z=z, dst_z=z, bbox=bbox,
+                         src_mip=final_render_mip, field_mip=mip, pad=final_render_pad)
             yield from t
 
     def break_into_chunks(chunk_size, offset, mip, z_list, max_mip=12):
@@ -1241,7 +1305,15 @@ if __name__ == "__main__":
             execute(StitchAlignComputeField, z_range)
 
     if do_compose:
+        if write_misalignment_masks:
+            print("COMPOSING FOR MISALIGNMENT MASKS")
+            execute(StitchPreCompose, compose_range)
+        print("FINAL COMPOSING")
         execute(StitchCompose, compose_range)
     if do_final_render:
+        print("FINAL RENDERING")
         execute(StitchFinalRender, render_range)
         execute(StitchFinalRenderFirstSec, [args.z_start])
+        if write_misalignment_masks:
+            print("FINAL RENDERING FOR MISALIGNMENT MASKS")
+            execute(RenderMisalignmentMasks, render_range)
