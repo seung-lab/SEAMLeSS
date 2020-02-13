@@ -614,7 +614,7 @@ class Aligner:
         src_raw_patch = self.get_masked_image(unaligned_cv, src_z, padded_bbox, mip,
                                 masks=[],
                                 to_tensor=True, normalizer=None)
-        tgt_raw_patch = self.get_composite_image(unaligned_cv, tgt_z, padded_bbox, mip,
+        tgt_raw_patch = self.get_composite_image(unaligned_cv, [tgt_z], padded_bbox, mip,
                                 masks=[],
                                 to_tensor=True, normalizer=None)
         src_rendered_image = grid_sample(src_raw_patch, cur_field, padding_mode='zeros')
