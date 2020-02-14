@@ -66,7 +66,7 @@ def coarsen_mask(mask_in, count, flip=False):
         mask = mask_in.float()
         while len(mask.shape) < 4:
             mask = mask.unsqueeze(0)
-        kernel_var = torch.cuda.FloatTensor(kernel).unsqueeze(0).unsqueeze(0).to(mask_in.device)
+        kernel_var = torch.FloatTensor(kernel).unsqueeze(0).unsqueeze(0).to(mask_in.device)
         k = torch.nn.Parameter(data=kernel_var, requires_grad=False)
         if flip:
             mask = 1 - mask

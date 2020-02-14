@@ -86,12 +86,12 @@ if __name__ == "__main__":
     parser.add_argument("--z_stop", type=int)
     parser.add_argument("--max_mip", type=int, default=9)
     parser.add_argument("--img_dtype", type=str, default='uint8')
-    parser.add_argument("--final_render_pad", type=int, default=2048)
+    parser.add_argument("--final_render_pad", type=int, default=1024)
     parser.add_argument(
         "--pad",
         help="the size of the largest displacement expected; should be 2^high_mip",
         type=int,
-        default=2048,
+        default=512,
     )
     parser.add_argument("--block_size", type=int, default=10)
     parser.add_argument(
@@ -908,41 +908,29 @@ if __name__ == "__main__":
         def __iter__(self):
           for z in self.z_range:
             bbox = bbox_lookup[z]
-            t = a.render(cm, src, compose_field, final_dst, src_z=z,
+            if z == args.z_start:
+                field = coarse_field_cv
+                field_mip = coarse_field_mip
+            else:
+                field = compose_field
+                field_mip = mip
+            t = a.render(cm, src, field, final_dst, src_z=z,
                          field_z=z, dst_z=z, bbox=bbox,
-                         src_mip=final_render_mip, field_mip=mip, pad=final_render_pad,
+                         src_mip=final_render_mip, field_mip=field_mip, pad=final_render_pad,
                          masks=src_masks, blackout_op=blackout_op)
-            yield from t
+            if write_misalignment_masks:
+                misalignment_mask_cv_to_use = misalignment_mask_cv
+                if z in block_start_lookup:
+                    z_block_start = block_start_lookup[z]
+                    if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
+                        misalignment_mask_cv_to_use = misalignment_mask_overlap_cv
+                t_mask = a.render(cm, misalignment_mask_cv_to_use, composing_field, final_misalignment_masks, src_z=z,
+                            field_z=z, dst_z=z, bbox=bbox,
+                            src_mip=mip, field_mip=mip, pad=final_render_pad)
+                yield from t + t_mask
+            else:
+                yield from t
 
-    class StitchFinalRenderFirstSec(object):
-        def __init__(self, z_range):
-          self.z_range = z_range
-
-        def __iter__(self):
-          for z in self.z_range:
-            bbox = bbox_lookup[z]
-            t = a.render(cm, src, coarse_field_cv, final_dst, src_z=z,
-                         field_z=z, dst_z=z, bbox=bbox,
-                         src_mip=final_render_mip, field_mip=coarse_field_mip, pad=final_render_pad,
-                         masks=src_masks, blackout_op=blackout_op)
-            yield from t
-
-    class RenderMisalignmentMasks(object):
-        def __init__(self, z_range):
-          self.z_range = z_range
-
-        def __iter__(self):
-          for z in self.z_range:
-            bbox = bbox_lookup[z]
-            misalignment_mask_cv_to_use = misalignment_mask_cv
-            if z in block_start_lookup:
-                z_block_start = block_start_lookup[z]
-                if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
-                    misalignment_mask_cv_to_use = misalignment_mask_overlap_cv
-            t = a.render(cm, misalignment_mask_cv_to_use, composing_field, final_misalignment_masks, src_z=z,
-                         field_z=z, dst_z=z, bbox=bbox,
-                         src_mip=final_render_mip, field_mip=mip, pad=final_render_pad)
-            yield from t
 
     def break_into_chunks(chunk_size, offset, mip, z_list, max_mip=12):
         """Break bbox into list of chunks with chunk_size, given offset for all data
@@ -1312,8 +1300,4 @@ if __name__ == "__main__":
         execute(StitchCompose, compose_range)
     if do_final_render:
         print("FINAL RENDERING")
-        execute(StitchFinalRender, render_range)
-        execute(StitchFinalRenderFirstSec, [args.z_start])
-        if write_misalignment_masks:
-            print("FINAL RENDERING FOR MISALIGNMENT MASKS")
-            execute(RenderMisalignmentMasks, render_range)
+        execute(StitchFinalRender, compose_range)
