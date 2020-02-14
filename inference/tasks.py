@@ -384,7 +384,7 @@ class RenderTask(RegisteredTask):
                                      return_mask=False,
                                      blackout_mask_op=self.blackout_op)
       else:
-         image, folds = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
+         image, mask_data = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
                                      patch_bbox, src_mip, field_mip,
                                      masks=masks,
                                      affine=affine,
@@ -398,33 +398,43 @@ class RenderTask(RegisteredTask):
                                        masks=[],
                                        to_tensor=True, normalizer=None)
          seethrough_region = torch.zeros_like(image).byte()
+         unseethru_blackout = torch.zeros_like(image).byte()
          prev_image_tissue = get_threshold_tissue_mask(prev_image)
+         if mask_data is not None:
+             unseethru_blackout = mask_data < 0
+         image_tissue = get_threshold_tissue_mask(image)
+         image[unseethru_blackout] = 0
 
          if (prev_image != 0).sum() == 0:
-             undetected_plastic = ((image * 255.0 > 180.0) + (image * 255.0 < 80)) > 0
-             undetected_plastic = coarsen_mask(undetected_plastic, 8)
-             image[undetected_plastic] = 0
+             #undetected_plastic = ((image * 255.0 > 180.0) + (image * 255.0 < 80)) > 0
+             #undetected_plastic = coarsen_mask(undetected_plastic, 8)
+             #image[undetected_plastic] = 0
+             pass
          else:
-             undetected_plastic = (((image * 255.0) > 180) + \
-                     ((prev_image == 0) * ((image * 255.0) > 160.0)) + \
-                     ((image * 255.0) < 80.0)
-                     ) > 0
-             undetected_plastic = coarsen_mask(undetected_plastic, 10)
-             image[undetected_plastic] = 0
-             image_tissue = get_threshold_tissue_mask(image)
+             #undetected_plastic = (((image * 255.0) > 180) + \
+             #        ((prev_image == 0) * ((image * 255.0) > 160.0)) + \
+             #        ((image * 255.0) < 80.0)
+             #        ) > 0
+             #undetected_plastic = coarsen_mask(undetected_plastic, 10)
+             #image[undetected_plastic] = 0
+
+             # mask values < 0 are the un-seethroughable masks that
+             # should be applied before misalignment detection
 
              if self.seethrough_black:
                  seethrough_region[(image_tissue == False) * prev_image_tissue] = True
+                 seethrough_region[unseethru_blackout] = False
                  image[seethrough_region] = prev_image[seethrough_region]
 
              if self.seethrough_folds:
-                 if folds is not None:
-                     small_fold_region = folds > 0
-                     big_fold_region = folds > self.big_fold_threshold
+                 if mask_data is not None:
+                     small_fold_region = mask_data > 0
+                     big_fold_region = mask_data > self.big_fold_threshold
                      small_fold_region_coarse = coarsen_mask(small_fold_region, coarsen_small_folds).byte()
                      big_fold_region_coarse = coarsen_mask(big_fold_region, coarsen_big_folds).byte()
                      fold_region_coarse = (big_fold_region_coarse + small_fold_region_coarse) > 0
                      seethrough_region[fold_region_coarse * prev_image_tissue] = True
+                     seethrough_region[unseethru_blackout] = False
                      image[seethrough_region] = prev_image[seethrough_region]
 
              if seethrough_renormalize:
@@ -442,14 +452,15 @@ class RenderTask(RegisteredTask):
                      image[seethrough_tissue_mask] += this_mean
                      image[image < 0] = 0
                      if self.brighten_misalign:
-                         image[seethrough_tissue_mask] += 0.02
+                         image[seethrough_tissue_mask] += 0.12
 
              if self.seethrough_misalign:
                  misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
                                                              threshold=80)
              #misalignment_region = torch.zeros_like(misalignment_region)
                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
-                 misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
+                 misalignment_fill_in = misalignment_region_coarse * prev_image_tissue * \
+                     (unseethru_blackout == False)
                  seethrough_region[misalignment_fill_in] = True
                  while len(image.shape) > len(misalignment_fill_in.shape):
                      misalignment_fill_in.unsqueeze(0)
@@ -460,9 +471,9 @@ class RenderTask(RegisteredTask):
                    aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
 
          if self.seethrough_folds:
-             if folds is not None:
-                 small_fold_region = folds > 0
-                 big_fold_region = folds > self.big_fold_threshold
+             if mask_data is not None:
+                 small_fold_region = mask_data > 0
+                 big_fold_region = mask_data > self.big_fold_threshold
                  small_fold_region_coarse = coarsen_mask(small_fold_region, coarsen_small_folds).byte()
                  big_fold_region_coarse = coarsen_mask(big_fold_region, coarsen_big_folds).byte()
                  fold_region_coarse = (big_fold_region_coarse + small_fold_region_coarse) > 0

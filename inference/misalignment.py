@@ -112,8 +112,8 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
         img1_downs = torch.nn.functional.avg_pool2d(img1_downs, 2)
         img2_downs = torch.nn.functional.avg_pool2d(img2_downs, 2)
 
-    img1_downs_tissue_mask = (img1_downs > 0.05) * (img1_downs < (150.0/255.0))
-    img2_downs_tissue_mask = (img2_downs > 0.05) * (img2_downs < (150.0/255.0))
+    img1_downs_tissue_mask = (img1_downs > 0.05) * (img1_downs < (180.0/255.0))
+    img2_downs_tissue_mask = (img2_downs > 0.05) * (img2_downs < (180.0/255.0))
 
     img1_downs_norm = normalize(img1_downs, mask=img1_downs_tissue_mask, mask_fill=-20)
     img2_downs_norm = normalize(img2_downs, mask=img2_downs_tissue_mask, mask_fill=-20)
@@ -156,11 +156,11 @@ def compute_fcorr(image1, image2):
     ma_length = 8
     bm_result = block_match(image2, image1, min_overlap_px=4000, tile_step=tile_size//2,
             tile_size=tile_size,
-            peak_ratio_cutoff=3.5, peak_distance=ma_length,  max_disp=16, filler=250)
+            peak_ratio_cutoff=3.7, peak_distance=ma_length,  max_disp=16, filler=250)
     nonzero_bm_mask1 = ((bm_result[..., 0].abs() > ma_length) + (bm_result[..., 1].abs() > ma_length)) > 0
     bm_result = block_match(image1, image2, min_overlap_px=4000, tile_step=tile_size//2,
             tile_size=tile_size,
-            peak_ratio_cutoff=3.5, peak_distance=ma_length,  max_disp=16, filler=250)
+            peak_ratio_cutoff=3.7, peak_distance=ma_length,  max_disp=16, filler=250)
     nonzero_bm_mask2 = ((bm_result[..., 0].abs() > ma_length) + (bm_result[..., 1].abs() > ma_length)) > 0
     nonzero_bm_mask = (nonzero_bm_mask1 + nonzero_bm_mask2) > 0
 

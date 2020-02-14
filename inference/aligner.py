@@ -176,7 +176,7 @@ class Aligner:
             if result is None:
                 result = mask_data
             else:
-                result[mask_data > 0] = mask_data[mask_data > 0]
+                result[mask_data != 0] = mask_data[mask_data != 0]
 
 
         end = time()
@@ -210,6 +210,7 @@ class Aligner:
         raise Exception("Mask op {} unsupported".format(mask_op))
     if coarsen_count > 0:
         mask = coarsen_mask(mask, count=coarsen_count)
+    mask = mask.long()
     mask = mask * mult
 
     end = time()
@@ -914,6 +915,7 @@ class Aligner:
       )
 
       # model produces field in relative coordinates
+      src_patch[src_mask < 0] = 0.0
       accum_field = model(
         src_patch,
         tgt_patch,
