@@ -400,9 +400,9 @@ class RenderTask(RegisteredTask):
          seethrough_region = torch.zeros_like(image).byte()
          preseethru_blackout = torch.zeros_like(image).byte()
          prev_image_tissue = get_threshold_tissue_mask(prev_image)
+         image_tissue = get_threshold_tissue_mask(image)
          if mask_data is not None:
              preseethru_blackout = mask_data < 0
-         image_tissue = get_threshold_tissue_mask(image)
          image[preseethru_blackout] = 0
 
          if (prev_image != 0).sum() == 0:
@@ -453,6 +453,7 @@ class RenderTask(RegisteredTask):
                          image[seethrough_tissue_mask] += 0.12
 
              if self.seethrough_misalign:
+                 prev_image_md = prev_image.clone()
                  misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
                                                              threshold=80)
              #misalignment_region = torch.zeros_like(misalignment_region)

@@ -115,6 +115,9 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
     img1_downs_tissue_mask = (img1_downs > 0.05) * (img1_downs < (180.0/255.0))
     img2_downs_tissue_mask = (img2_downs > 0.05) * (img2_downs < (180.0/255.0))
 
+    img1_downs_tissue_mask *= img2_downs_tissue_mask
+    img2_downs_tissue_mask *= img1_downs_tissue_mask
+
     img1_downs_norm = normalize(img1_downs, mask=img1_downs_tissue_mask, mask_fill=-20)
     img2_downs_norm = normalize(img2_downs, mask=img2_downs_tissue_mask, mask_fill=-20)
 
