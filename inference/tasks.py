@@ -398,12 +398,12 @@ class RenderTask(RegisteredTask):
                                        masks=[],
                                        to_tensor=True, normalizer=None)
          seethrough_region = torch.zeros_like(image).byte()
-         unseethru_blackout = torch.zeros_like(image).byte()
+         preseethru_blackout = torch.zeros_like(image).byte()
          prev_image_tissue = get_threshold_tissue_mask(prev_image)
          if mask_data is not None:
-             unseethru_blackout = mask_data < 0
+             preseethru_blackout = mask_data < 0
          image_tissue = get_threshold_tissue_mask(image)
-         image[unseethru_blackout] = 0
+         image[preseethru_blackout] = 0
 
          if (prev_image != 0).sum() == 0:
              #undetected_plastic = ((image * 255.0 > 180.0) + (image * 255.0 < 80)) > 0
@@ -423,7 +423,6 @@ class RenderTask(RegisteredTask):
 
              if self.seethrough_black:
                  seethrough_region[(image_tissue == False) * prev_image_tissue] = True
-                 seethrough_region[unseethru_blackout] = False
                  image[seethrough_region] = prev_image[seethrough_region]
 
              if self.seethrough_folds:
@@ -434,7 +433,6 @@ class RenderTask(RegisteredTask):
                      big_fold_region_coarse = coarsen_mask(big_fold_region, coarsen_big_folds).byte()
                      fold_region_coarse = (big_fold_region_coarse + small_fold_region_coarse) > 0
                      seethrough_region[fold_region_coarse * prev_image_tissue] = True
-                     seethrough_region[unseethru_blackout] = False
                      image[seethrough_region] = prev_image[seethrough_region]
 
              if seethrough_renormalize:
@@ -459,8 +457,7 @@ class RenderTask(RegisteredTask):
                                                              threshold=80)
              #misalignment_region = torch.zeros_like(misalignment_region)
                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
-                 misalignment_fill_in = misalignment_region_coarse * prev_image_tissue * \
-                     (unseethru_blackout == False)
+                 misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
                  seethrough_region[misalignment_fill_in] = True
                  while len(image.shape) > len(misalignment_fill_in.shape):
                      misalignment_fill_in.unsqueeze(0)
