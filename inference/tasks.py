@@ -466,7 +466,8 @@ class RenderTask(RegisteredTask):
                    misalignment_mask = np.zeros(shape=image.shape, dtype=np.uint8)
                    misalignment_mask[misalignment_fill_in.cpu().numpy() != 0] = 1
                    aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
-
+             preseethru_blackout_fill = preseethru_blackout * prev_image_tissue
+             image[preseethru_blackout_fill] = prev_image[preseethru_blackout_fill]
          if self.seethrough_folds:
              if mask_data is not None:
                  small_fold_region = mask_data > 0
