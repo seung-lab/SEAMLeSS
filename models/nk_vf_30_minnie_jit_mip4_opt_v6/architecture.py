@@ -64,7 +64,6 @@ class Model(nn.Module):
         return my_p
 
 
-
     def forward(self, src, tgt, src_field=None, tgt_field=None, **kwargs):
         with torch.no_grad():
             src_clahe = self.clahe(src)

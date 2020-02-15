@@ -209,7 +209,8 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
                                                                 y_offset=max_disp)
             src_tile = padded_src[src_tile_coord]
             tgt_tile = padded_tgt[tgt_tile_coord]
-            if get_black_fraction(src_tile, 0) > 0.4 or get_black_fraction(tgt_tile, 0) > 0.9:
+
+            if get_black_fraction(src_tile, 0) > 0.3 or get_black_fraction(tgt_tile, 0) > 0.6:
                 match_displacement = [0, 0]
                 if get_black_fraction(src_tile, 0) != 1.0 and \
                         get_black_fraction(tgt_tile, 0) != 1.0:
