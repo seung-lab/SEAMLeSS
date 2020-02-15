@@ -250,6 +250,13 @@ if __name__ == "__main__":
             overwrite=False,
         )
 
+    mask_dict = {}
+    for mask in masks:
+        mask_mip = mask.dst_mip or mip
+        if mask_mip in mask_dict:
+            mask_dict[mask_mip].append(mask)
+        else:
+            mask_dict[mask_mip] = [mask]
 
     coarse_field_cv = cm.create(
         args.coarse_field_path,
@@ -570,8 +577,13 @@ if __name__ == "__main__":
                             overwrite=do_final_render).path
         
         if write_misalignment_masks:
-            final_misalignment_masks = cmr.create(join(args.dst_path, 'misalignment_stitch{}'.format(args.final_render_suffix)),
+            mask_cv_dict = {}
+            final_misalignment_masks = cm.create(join(args.dst_path, 'misalignment_stitch{}'.format(args.final_render_suffix)),
                             data_type='uint8', num_channels=1, fill_missing=True, overwrite=True).path
+            for final_mask_mip in mask_dict:
+                final_mask_mip_cv = cm.create(join(args.dst_path, 'mask_mip{}_stitch{}'.format(final_mask_mip, args.final_render_suffix)),
+                            data_type='uint8', num_channels=1, fill_missing=True, overwrite=True).path
+                mask_cv_dict[final_mask_mip] = final_mask_mip_cv
 
     if write_composing_field:
         composing_field = cm.create(join(args.dst_path, 'field',
@@ -909,8 +921,9 @@ if __name__ == "__main__":
           for z in self.z_range:
             bbox = bbox_lookup[z]
             if z == args.z_start:
-                field = coarse_field_cv
-                field_mip = coarse_field_mip
+                field = block_pair_fields[0]
+                field_mip = mip
+                # field_mip = coarse_field_mip
             else:
                 field = compose_field
                 field_mip = mip
@@ -931,11 +944,14 @@ if __name__ == "__main__":
                 tasks = tasks + t_mask
                 # yield from t + t_mask
             # else:
-            if len(src_masks) > 0:
-                t_other_masks = a.render_masks(cm, dst, field, src_z=z,
-                         field_z=z, dst_z=z, bbox=bbox,
-                         dst_mip=src_mask.dst_mip or mip, pad=args.pad,
-                         masks=[src_mask], blackout_op=args.blackout_op)
+                if len(src_masks) > 0:
+                    for cur_mask_cv_mip in mask_cv_dict:
+                        cur_mask_cv = mask_cv_dict[cur_mask_cv_mip]
+                        t_other_masks = a.render_masks(cm, cur_mask_cv, field, src_z=z,
+                                field_z=z, dst_z=z, bbox=bbox,
+                                dst_mip=cur_mask_cv_mip, pad=args.pad,
+                                masks=mask_dict[cur_mask_cv], blackout_op='none')
+                        tasks = tasks + t_other_masks
             yield from tasks
 
 

@@ -464,10 +464,6 @@ class RenderTask(RegisteredTask):
              # mask values < 0 are the un-seethroughable masks that
              # should be applied before misalignment detection
 
-             if self.seethrough_black:
-                 seethrough_region[(image_tissue == False) * prev_image_tissue] = True
-                 image[seethrough_region] = prev_image[seethrough_region]
-
              if self.seethrough_folds:
                  if mask_data is not None:
                      small_fold_region = mask_data > 0
@@ -499,6 +495,7 @@ class RenderTask(RegisteredTask):
                  prev_image_md = prev_image.clone()
                  misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
                                                              threshold=80)
+                 misalignment_region[image == 0] = 0
              #misalignment_region = torch.zeros_like(misalignment_region)
                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
                  misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
@@ -510,6 +507,10 @@ class RenderTask(RegisteredTask):
                    misalignment_mask = np.zeros(shape=image.shape, dtype=np.uint8)
                    misalignment_mask[misalignment_fill_in.cpu().numpy() != 0] = 1
                    aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
+             
+             if self.seethrough_black:
+                 seethrough_region[(image_tissue == False) * prev_image_tissue] = True
+                 image[seethrough_region] = prev_image[seethrough_region]
              preseethru_blackout_fill = preseethru_blackout * prev_image_tissue
              image[preseethru_blackout_fill] = prev_image[preseethru_blackout_fill]
          if self.seethrough_folds:
