@@ -165,7 +165,7 @@ class Aligner:
   # Image IO + handlers #
   #######################
   def get_masks(self, masks, z, bbox, dst_mip, to_tensor=True,
-               mask_op='none'):
+               mask_op='none', to_long=True):
         start = time()
         result = None
         for mask in masks:
@@ -405,11 +405,25 @@ class Aligner:
     #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
     if to_uint8 and cv[mip].dtype != np.float32:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
-    # try:
+    hacks = False
+    if hacks:
+      if cv[mip].bounds.maxpt[1] < y_range[1]:
+        diff = y_range[1] - cv[mip].bounds.maxpt[1]
+        patch = patch[:,:y_range[1]-y_range[0]-diff,:,:]
+        y_range = (y_range[0], cv[mip].bounds.maxpt[1])
+      if cv[mip].bounds.minpt[1] > y_range[0]:
+        diff = cv[mip].bounds.minpt[1] - y_range[0]
+        patch = patch[:,diff:,:,:]
+        y_range = (cv[mip].bounds.minpt[1], y_range[1])
+      if cv[mip].bounds.maxpt[0] < x_range[1]:
+        diff = x_range[1] - cv[mip].bounds.maxpt[0]
+        patch = patch[:x_range[1]-x_range[0]-diff,:,:,:]
+        x_range = (x_range[0], cv[mip].bounds.maxpt[0])
+      if cv[mip].bounds.minpt[0] > x_range[0]:
+        diff = cv[mip].bounds.minpt[0] - x_range[0]
+        patch = patch[diff:,:,:,:]
+        x_range = (cv[mip].bounds.minpt, x_range[1])
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
-    # except:
-      # import ipdb
-      # ipdb.set_trace()
 
   def save_image_batch(self, cv, z_range, float_patch, bbox, mip, to_uint8=True):
     x_range = bbox.x_range(mip=mip)
@@ -1658,6 +1672,61 @@ class Aligner:
                            blackout_op=blackout_op,
                            report=report, block_start=block_start,
                            misalignment_mask_cv=misalignment_mask_cv))
+        return batch
+
+  def render_masks(self, cm, mask_dst_cv, field_cv, field_z, src_z, dst_z, bbox, dst_mip,
+             masks, use_cpu=False, pad=1024, blackout_op='none',
+             return_iterator= False):
+    """Warp image in src_cv by field in field_cv and save result to dst_cv
+
+    Args:
+       cm: CloudManager that corresponds to the src_cv, field_cv, & dst_cv
+       src_cv: MiplessCloudVolume where source image is stored
+       field_cv: MiplessCloudVolume where vector field is stored
+       dst_cv: MiplessCloudVolume where destination image will be written
+       src_z: int for section index of source image
+       field_z: int for section index of vector field
+       dst_z: int for section index of destination image
+       bbox: BoundingBox for region where source and target image will be loaded,
+        and where the resulting vector field will be written
+       src_mip: int for MIP level of src images
+       field_mip: int for MIP level of vector field; field_mip >= src_mip
+       mask_cv: MiplessCloudVolume where source mask is stored
+       mask_mip: int for MIP level at which source mask is stored
+       mask_val: int for pixel value in the mask that should be zero-filled
+       wait: bool indicating whether to wait for all tasks must finish before proceeding
+       affine: 2x3 ndarray for preconditioning affine to use (default: None means identity)
+    """
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[dst_mip],
+                                    cm.dst_voxel_offsets[dst_mip], mip=dst_mip,
+                                    max_mip=cm.max_mip)
+    class RenderTaskIterator():
+        def __init__(self, cl, start, stop):
+          self.chunklist = cl
+          self.start = start
+          self.stop = stop
+        def __len__(self):
+          return self.stop - self.start
+        def __getitem__(self, slc):
+          itr = deepcopy(self)
+          itr.start = slc.start
+          itr.stop = slc.stop
+          return itr
+        def __iter__(self):
+          for i in range(self.start, self.stop):
+            chunk = self.chunklist[i]
+            yield tasks.RenderMasksTask(mask_dst_cv, field_cv, field_z, 
+                      src_z, dst_z, chunk, dst_mip,
+                      masks, use_cpu, pad, blackout_op)
+    if return_iterator:
+        return RenderTaskIterator(chunks,0, len(chunks))
+    else:
+        batch = []
+        for chunk in chunks:
+          batch.append(tasks.RenderMasksTask(mask_dst_cv, field_cv, field_z, 
+                      src_z, dst_z, chunk, dst_mip,
+                      masks, use_cpu, pad, blackout_op))
         return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,

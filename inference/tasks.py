@@ -15,7 +15,7 @@ from cloudvolume.lib import scatter
 from boundingbox import BoundingBox, deserialize_bbox
 from fcorr import fcorr_conjunction
 from scipy import ndimage
-from utilities.helpers import upsample_field, coarsen_mask
+from utilities.helpers import upsample_field, coarsen_mask, grid_sample
 
 from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue, GreenTaskQueue
 from concurrent.futures import ProcessPoolExecutor
@@ -301,6 +301,49 @@ class SeethroughStitchRenderTask(RegisteredTask):
       end = time()
       diff = end - start
       print('RenderTask: {:.3f} s'.format(diff))
+
+class RenderMasksTask(RegisteredTask):
+  def __init__(self, mask_dst_cv, field_cv, field_z, src_z, dst_z, patch_bbox, dst_mip,
+               masks, use_cpu=False, pad=1024, blackout_op='none'):
+    if len(masks) > 0 and isinstance(masks[0], Mask):
+        masks = [m.to_dict() for m in masks]
+    super(). __init__(mask_dst_cv, field_cv, field_z, src_z, dst_z, patch_bbox, dst_mip,
+               masks, use_cpu, pad, blackout_op)
+
+  def execute(self, aligner):
+    mask_dst_cv = DCV(self.mask_dst_cv)
+    field_z = self.field_z
+    field_cv = DCV(self.field_cv)
+    src_z = self.src_z
+    dst_z = self.dst_z
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    dst_mip = self.dst_mip
+    masks = [Mask(**m) for m in self.masks]
+    for mask in masks:
+      mask.cv = DCV(mask.cv_path)
+    pad = self.pad
+
+    start = time()
+    if not aligner.dry_run:
+      padded_bbox = deepcopy(patch_bbox)
+      padded_bbox.uncrop(pad, mip=dst_mip)
+      field = aligner.get_field(field_cv, field_z, padded_bbox, dst_mip,
+                                relative=False, to_tensor=True)
+      distance = aligner.profile_field(field)
+      distance = (distance // (2 ** dst_mip)) * 2 ** dst_mip
+      new_bbox = aligner.adjust_bbox(padded_bbox, distance.flip(0))
+      field -= distance.to(device = aligner.device)
+      field = aligner.abs_to_rel_residual(field, padded_bbox, dst_mip)
+      field = field.to(device = aligner.device)
+      masked_result = aligner.get_masks(masks, src_z, new_bbox, dst_mip, mask_op=self.blackout_op)
+      masked_result = masked_result.float()
+      image = grid_sample(masked_result, field, padding_mode='zeros')
+      image = image[:,:,pad:-pad,pad:-pad]
+      image = image.cpu().numpy()
+      aligner.save_image(image, mask_dst_cv, dst_z, patch_bbox, dst_mip)
+      end = time()
+      diff = end - start
+      print('RenderMaskTask: {:.3f} s'.format(diff))
 
 
 class RenderTask(RegisteredTask):

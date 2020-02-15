@@ -914,22 +914,29 @@ if __name__ == "__main__":
             else:
                 field = compose_field
                 field_mip = mip
-            t = a.render(cm, src, field, final_dst, src_z=z,
+            t = a.render(cmr, src, field, final_dst, src_z=z,
                          field_z=z, dst_z=z, bbox=bbox,
                          src_mip=final_render_mip, field_mip=field_mip, pad=final_render_pad,
-                         masks=src_masks, blackout_op=blackout_op)
+                         masks=[], blackout_op=blackout_op)
+            tasks = t
             if write_misalignment_masks:
                 misalignment_mask_cv_to_use = misalignment_mask_cv
                 if z in block_start_lookup:
                     z_block_start = block_start_lookup[z]
                     if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
                         misalignment_mask_cv_to_use = misalignment_mask_overlap_cv
-                t_mask = a.render(cm, misalignment_mask_cv_to_use, composing_field, final_misalignment_masks, src_z=z,
+                t_mask = a.render(cmr, misalignment_mask_cv_to_use, composing_field, final_misalignment_masks, src_z=z,
                             field_z=z, dst_z=z, bbox=bbox,
                             src_mip=mip, field_mip=mip, pad=final_render_pad)
-                yield from t + t_mask
-            else:
-                yield from t
+                tasks = tasks + t_mask
+                # yield from t + t_mask
+            # else:
+            if len(src_masks) > 0:
+                t_other_masks = a.render_masks(cm, dst, field, src_z=z,
+                         field_z=z, dst_z=z, bbox=bbox,
+                         dst_mip=src_mask.dst_mip or mip, pad=args.pad,
+                         masks=[src_mask], blackout_op=args.blackout_op)
+            yield from tasks
 
 
     def break_into_chunks(chunk_size, offset, mip, z_list, max_mip=12):
