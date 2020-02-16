@@ -495,7 +495,7 @@ class RenderTask(RegisteredTask):
                  prev_image_md = prev_image.clone()
                  misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
                                                              threshold=80)
-                 misalignment_region[image == 0] = 0
+                 misalignment_region[image[0,0,:,:] == 0] = 0
              #misalignment_region = torch.zeros_like(misalignment_region)
                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
                  misalignment_fill_in = misalignment_region_coarse * prev_image_tissue

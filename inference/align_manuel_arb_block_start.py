@@ -182,6 +182,8 @@ if __name__ == "__main__":
     parser.add_argument('--generate_params_from_skip_file', type=str, default=None)
     parser.add_argument('--pin_second_starting_section', type=int, default=None)
     parser.add_argument('--write_misalignment_masks', action='store_true')
+    parser.add_argument('--write_other_masks', action='store_true')
+
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -213,6 +215,7 @@ if __name__ == "__main__":
     output_field_dtype = args.output_field_dtype
     write_composing_field = args.write_composing_field
     write_misalignment_masks = args.write_misalignment_masks
+    write_other_masks = args.write_other_masks
 
     if write_misalignment_masks:
         # Need composing field to produce misalignment masks
@@ -251,7 +254,7 @@ if __name__ == "__main__":
         )
 
     mask_dict = {}
-    for mask in masks:
+    for mask in src_masks:
         mask_mip = mask.dst_mip or mip
         if mask_mip in mask_dict:
             mask_dict[mask_mip].append(mask)
@@ -577,9 +580,10 @@ if __name__ == "__main__":
                             overwrite=do_final_render).path
         
         if write_misalignment_masks:
-            mask_cv_dict = {}
             final_misalignment_masks = cm.create(join(args.dst_path, 'misalignment_stitch{}'.format(args.final_render_suffix)),
                             data_type='uint8', num_channels=1, fill_missing=True, overwrite=True).path
+        if write_other_masks:
+            mask_cv_dict = {}
             for final_mask_mip in mask_dict:
                 final_mask_mip_cv = cm.create(join(args.dst_path, 'mask_mip{}_stitch{}'.format(final_mask_mip, args.final_render_suffix)),
                             data_type='uint8', num_channels=1, fill_missing=True, overwrite=True).path
@@ -944,6 +948,7 @@ if __name__ == "__main__":
                 tasks = tasks + t_mask
                 # yield from t + t_mask
             # else:
+            if write_other_masks:
                 if len(src_masks) > 0:
                     for cur_mask_cv_mip in mask_cv_dict:
                         cur_mask_cv = mask_cv_dict[cur_mask_cv_mip]
