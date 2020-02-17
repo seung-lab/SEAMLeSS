@@ -8,8 +8,8 @@ def positive_int(val):
     raise argparse.ArgumentTypeError("Positive integer expected, got %s" % val)
   return ival
 
-def get_argparser():
-  parser = argparse.ArgumentParser()
+def get_argparser(**kwargs):
+  parser = argparse.ArgumentParser(**kwargs)
   parser.add_argument('--queue_name', type=str, default=None)
   parser.add_argument('--device', type=str, default='cuda',
      help='device arg to pass for PyTorch objects; either cpu or cuda')
