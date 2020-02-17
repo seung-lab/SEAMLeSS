@@ -851,11 +851,12 @@ class Aligner:
         f = upsample_field(f, f_mip, dst_mip)
 
       if is_identity(f):
+        print('field f is the identity')
         g = self.get_field(g_cv, g_z, padded_bbox, g_mip,
                            relative=False, to_tensor=True)
         if g_mip > dst_mip:
             g = upsample_field(g, g_mip, dst_mip)
-        return g
+        return g[:,pad:-pad,pad:-pad,:]
 
       distance = self.profile_field(f)
       distance = (distance // (2 ** g_mip)) * 2 ** g_mip
