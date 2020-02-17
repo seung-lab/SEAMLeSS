@@ -1848,124 +1848,78 @@ class Aligner:
                                  inverse=False, T=T, negative_offsets=negative_offsets,
                                  serial_operation=serial_operation)
 
-  def get_neighborhood(self, z, F_cv, bbox, mip):
-    """Compile all vector fields that warp neighborhood in TGT_RANGE to Z
+  def get_fields(self, cv_list, z_list, bbox, mip, relative=False, as_int16=True):
+      """Compile list of vector fields 
+      
+      Args
+         cv_list: list of MiplessCloudVolume storing vector field 
+            as MIP0 residuals in X,Y,Z,2 order
+         z_list: list of ints for section indices 
+         bbox: BoundingBox defining chunk region
+         mip: int for MIP level of data
+         relative: bool indicating whether to transform vectors into space of bbox
+      """
+      fields = []
+      for cv, z in zip(cv_list, z_list):
+        f = self.get_field(cv, 
+                          z, 
+                          bbox, 
+                          mip, 
+                          relative=relative, 
+                          to_tensor=True,
+                          as_int16=as_int16)
+        fields.append(f)
+      return torch.cat(fields, 0)
 
-    Args
-       z: int for index of SRC section
-       F_cv: CloudVolume with fields 
-       bbox: BoundingBox defining chunk region
-       mip: int for MIP level of data
-    """
-    fields = []
-    z_range = [z+z_offset for z_offset in range(self.tgt_radius + 1)]
-    for k, tgt_z in enumerate(z_range):
-      F = self.get_field(F_cv, tgt_z, bbox, mip, relative=True, to_tensor=True,
-                        as_int16=as_int16)
-      fields.append(F)
-    return torch.cat(fields, 0)
- 
-  def shift_neighborhood(self, Fs, z, F_cv, bbox, mip, keep_first=False): 
-    """Shift field neighborhood by dropping earliest z & appending next z
+  def gaussian_filter_z_chunk(self, cv_list, z_list, bbox, mip, sigma=1.4):
+      """Filter a sequences of fields with a Gaussian kernel along z axis
   
-    Args
-       invFs: 4D torch tensor of inverse composed vector vote fields
-       z: int representing the z of the input invFs. invFs will be shifted to z+1.
-       F_cv: CloudVolume where next field will be loaded 
-       bbox: BoundingBox representing xy extent of invFs
-       mip: int for data resolution of the field
-    """
-    next_z = z + self.tgt_radius + 1
-    next_F = self.get_field(F_cv, next_z, bbox, mip, relative=True,
-                            to_tensor=True, as_int16=as_int16)
-    if keep_first:
-      return torch.cat((Fs, next_F), 0)
-    else:
-      return torch.cat((Fs[1:, ...], next_F), 0)
+      Args:
+         cv_list: list of MiplessCloudVolume storing vector field 
+            as MIP0 residuals in X,Y,Z,2 order
+         z_list: list of ints for section indices 
+         bbox: BoundingBox defining chunk region
+         mip: int for MIP level of data
+         sigma: float for std of Gaussian kernel
+      """
+      fs = self.get_fields(cv_list=cv_list,
+                        z_list=z_list,
+                        bbox=bbox,
+                        mip=mip,
+                        relative=False,
+                        as_int16=True)
+      bump = create_field_bump(fs.shape, sigma=sigma)
+      return torch.sum(torch.mul(bump, fs), dim=0, keepdim=True)
 
-  def regularize_z(self, z_range, dir_z, bbox, mip, sigma=1.4):
-    """For a given chunk, temporally regularize each Z in Z_RANGE
-    
-    Make Z_RANGE as large as possible to avoid IO: self.shift_field
-    is called to add and remove the newest and oldest sections.
-
-    Args
-       z_range: list of ints (assumed to be a contiguous block)
-       overlap: int for number of sections that overlap with a chunk
+  def gaussian_filter_z(self, cm, src_cv_list, dst_cv, z_list, dst_z, bbox, mip, sigma):
+    """Filter a sequences of fields with a Gaussian kernel along z axis
+  
+    Args:
+       src_cv_list: list of MiplessCloudVolume paths 
+       dst_cv: MiplessCloudVolume path where result will be written
+       z_list: list of ints for section indices 
+       dst_z: int for section where result will be stored
        bbox: BoundingBox defining chunk region
        mip: int for MIP level of data
-       sigma: float standard deviation of the Gaussian kernel used for the
-        weighted average inverse
-    """
-    block_size = len(z_range)
-    overlap = self.tgt_radius
-    curr_block = z_range[0]
-    next_block = curr_block + block_size
-    cm.add_composed_cv(curr_block, inverse=False,
-                                as_int16=as_int16)
-    cm.add_composed_cv(curr_block, inverse=True,
-                                as_int16=as_int16)
-    cm.add_composed_cv(next_block, inverse=False,
-                                as_int16=as_int16)
-    F_cv = cm.get_composed_cv(curr_block, inverse=False, for_read=True)
-    invF_cv = cm.get_composed_cv(curr_block, inverse=True, for_read=True)
-    next_cv = cm.get_composed_cv(next_block, inverse=False, for_read=False)
-    z = z_range[0]
-    invFs = self.get_neighborhood(z, invF_cv, bbox, mip)
-    bump_dims = np.asarray(invFs.shape)
-    bump_dims[0] = len(self.tgt_range)
-    full_bump = create_field_bump(bump_dims, sigma)
-    bump_z = 3 
-
-    for z in z_range:
-      composed = []
-      bump = full_bump[bump_z:, ...]
-      print(z)
-      print(bump.shape)
-      print(invFs.shape)
-      F = self.get_field(F_cv, z, bbox, mip, relative=True, to_tensor=True,
-                         as_int16=as_int16)
-      avg_invF = torch.sum(torch.mul(bump, invFs), dim=0, keepdim=True)
-      regF = compose_fields(avg_invF, F)
-      regF = regF.data.cpu().numpy() 
-      self.save_field(next_cv, z, regF, bbox, mip, relative=True, as_int16=as_int16)
-      if z != z_range[-1]:
-        invFs = self.shift_neighborhood(invFs, z, invF_cv, bbox, mip, 
-                                        keep_first=bump_z > 0)
-      bump_z = max(bump_z - 1, 0)
-
-  def regularize_z_chunkwise(self, z_range, dir_z, bbox, mip, sigma=1.4):
-    """Chunked-processing of temporal regularization 
-    
-    Args:
-       z_range: int list, range of sections over which to regularize 
-       dir_z: int indicating the z index of the CloudVolume dir
-       bbox: BoundingBox of region to process
-       mip: field MIP level
-       sigma: float for std of the bump function 
+       sigma: float for std of Gaussian kernel
     """
     start = time()
-    # cm.add_composed_cv(compose_start, inverse=False)
-    # cm.add_composed_cv(compose_start, inverse=True)
-    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[mip],
-                                    cm.vec_voxel_offsets[mip], mip=mip)
-    print("Regularizing slice range {0} @ MIP{1} ({2} chunks)".
-           format(z_range, mip, len(chunks)), flush=True)
-    if self.distributed:
-        batch = []
-        for patch_bbox in chunks:
-            batch.append(tasks.RegularizeTask(z_range[0], z_range[-1],
-                                                      dir_z, patch_bbox,
-                                                      mip, sigma))
-        self.upload_tasks(batch)
-        self.task_queue.block_until_empty()
-    else:
-        #for patch_bbox in chunks:
-        def chunkwise(patch_bbox):
-          self.regularize_z(z_range, dir_z, patch_bbox, mip, sigma=sigma)
-        self.pool.map(chunkwise, chunks)
-    end = time()
-    print (": {} sec".format(end - start))
+    chunks = self.break_into_chunks(bbox, 
+                                    cm.dst_chunk_sizes[mip],
+                                    cm.dst_voxel_offsets[mip], 
+                                    mip=mip, 
+                                    max_mip=cm.max_mip)
+    batch = []
+    for chunk in chunks:
+      t = tasks.GaussianFilterZTask(src_cv_list,
+                                    dst_cv,
+                                    z_list,
+                                    dst_z,
+                                    chunk,
+                                    mip,
+                                    sigma)
+      batch.append(t)
+    return batch
 
   def rechunck_image(self, chunk_size, image):
       I = image.split(chunk_size, dim=2)

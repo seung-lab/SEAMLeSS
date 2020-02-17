@@ -470,6 +470,28 @@ class InvertFieldTask(RegisteredTask):
       patch_bbox, self.mip, self.optimizer
     )
 
+class GaussianFilterZTask(RegisteredTask):
+  def __init__(self, src_cv_list, dst_cv, z_list, dst_z, bbox, mip, sigma):
+    super().__init__(src_cv_list, dst_cv, z_list, dst_z, bbox, mip, sigma)
+
+  def execute(self, a):
+    src_cv_list = [DCV(cv) for cv in self.src_cv_list]
+    dst_cv = DCV(self.dst_cv)
+    bbox = deserialize_bbox(self.bbox)
+    g = a.gaussian_filter_z_chunk(cv_list=src_cv_list,
+                            z_list=self.z_list,
+                            bbox=bbox,
+                            mip=self.mip,
+                            sigma=self.sigma)
+    a.save_field(field=g.cpu().numpy(), 
+                 cv=dst_cv, 
+                 z=self.dst_z, 
+                 bbox=bbox,
+                 mip=self.mip,
+                 relative=False,
+                 as_int16=True)
+
+
 class PrepareTask(RegisteredTask):
   def __init__(self, z, patches, mip, start_z):
     super().__init__(z, patches, mip, start_z)
