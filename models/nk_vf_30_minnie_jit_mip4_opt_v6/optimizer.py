@@ -303,7 +303,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
              "mask_value": 1e-6},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(8, 0.25)],
+             "coarsen_ranges": [(8, 0.4)],
              "mask_value": 1e-9},
             {'name': 'src',
                 'fm': 0,
@@ -389,8 +389,12 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
              "mask_value": 1e-6},
             {'name': 'src_small_defects',
              'binarization': {'strat': 'value', 'value': 0},
-             "coarsen_ranges": [(1, 0), (8, 0.25)],
-             "mask_value": 1e-9}
+             "coarsen_ranges": [(1, 0), (8, 0.4)],
+             "mask_value": 1e-9},
+            {'name': 'src',
+                'fm': 0,
+             'binarization': {'strat': 'gt', 'value': -5.0},
+            'mask_value': 1e-9}
             ],
         'tgt':[
         ]

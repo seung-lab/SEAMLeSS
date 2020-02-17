@@ -93,9 +93,8 @@ class Model(nn.Module):
                 src_large_defects = (kwargs['src_mask'] >= large_defect_threshold).float()
                 src_small_defects = (kwargs['src_mask'] >= small_defect_threshold).float()
 
-                tgt_defects = (tgt < 0.004).float()
-                src_defects = (src < 0.004).float() + src_large_defects + src_small_defects
-                #tgt_defects = torch.zeros_like(tgt)
+                tgt_defects = (tgt < 0.005).float()
+                src_defects = (src < 0.005).float() + src_large_defects + src_small_defects
                 #src_defects = torch.zeros_like(tgt)
 
             else:
