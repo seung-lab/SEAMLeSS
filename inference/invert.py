@@ -56,12 +56,15 @@ if __name__ == '__main__':
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
+  parser.add_argument('--use_cpu', 
+     help='use CPU as torch.device',
+     action='store_true')
   args = parse_args(parser)
   # only compute matches to previous sections
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
-  chunk_size = 1024
+  chunk_size = 64 
 
   src_mip = args.src_mip
   max_mip = args.max_mip
@@ -150,7 +153,7 @@ if __name__ == '__main__':
             src_path = src.path
           
           t = a.invert_get_tasks_batch(cm, src_path, dst.path, z, bbox,
-                           src_mip, pad) 
+                           src_mip, pad, use_cpu=args.use_cpu) 
           yield from t
 
   ptask = []

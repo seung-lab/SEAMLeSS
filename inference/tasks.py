@@ -230,8 +230,8 @@ class RenderTask(RegisteredTask):
       print('RenderTask: {:.3f} s'.format(diff))
 
 class InvertTask(RegisteredTask):
-  def __init__(self, src_cv, dst_cv, z, patch_bbox, src_mip, pad, use_cpu=False):
-    super(). __init__(src_cv, dst_cv, z, patch_bbox, src_mip, pad, use_cpu=False)
+  def __init__(self, src_cv, dst_cv, z, patch_bbox, src_mip, pad, use_cpu):
+    super(). __init__(src_cv, dst_cv, z, patch_bbox, src_mip, pad, use_cpu)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
