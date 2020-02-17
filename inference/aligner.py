@@ -692,7 +692,7 @@ class Aligner:
         return batch
 
 
-  def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, use_cpu=False):
+  def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, use_cpu=True):
     """Compute the inverse vector field for a given bbox 
 
     Args:
@@ -710,11 +710,17 @@ class Aligner:
     f = self.get_field(src_cv, z, padded_bbox, mip,
                        relative=True, to_tensor=True, as_int16=True)
     print('invert_field shape: {0}'.format(f.shape))
+    print('field.device: {}'.format(f.device))
     start = time()
     
     # permute into (N, C, H, W) convention for displace fields and cast to field
     f = f.permute(0,3,1,2).field()
-    invf = (~f).tensor().permute(0,2,3,1)
+    try:
+        invf = (~f).tensor().permute(0,2,3,1)
+    except:
+        if not use_cpu:
+            invf = (~f.to(device='cpu')).tensor().permute(0,2,3,1)
+
 
     # must convert to abs residuals while padded
     invf = self.rel_to_abs_residual(invf, mip=mip)
@@ -1230,7 +1236,7 @@ class Aligner:
         return batch
 
   def invert_get_tasks_batch(self, cm, src_cv, dst_cv, z, 
-                   bbox, src_mip, pad, use_cpu=False):
+                   bbox, src_mip, pad, use_cpu=True):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
