@@ -929,7 +929,6 @@ class Aligner:
       )
 
       # model produces field in relative coordinates
-      src_patch[src_mask < 0] = 0.0
       accum_field = model(
         src_patch,
         tgt_patch,
@@ -1718,7 +1717,7 @@ class Aligner:
         def __iter__(self):
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
-            yield tasks.RenderMasksTask(mask_dst_cv, field_cv, field_z, 
+            yield tasks.RenderMasksTask(mask_dst_cv, field_cv, field_z,
                       src_z, dst_z, chunk, dst_mip,
                       masks, use_cpu, pad, blackout_op)
     if return_iterator:
@@ -1726,7 +1725,7 @@ class Aligner:
     else:
         batch = []
         for chunk in chunks:
-          batch.append(tasks.RenderMasksTask(mask_dst_cv, field_cv, field_z, 
+          batch.append(tasks.RenderMasksTask(mask_dst_cv, field_cv, field_z,
                       src_z, dst_z, chunk, dst_mip,
                       masks, use_cpu, pad, blackout_op))
         return batch
