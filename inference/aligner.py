@@ -733,7 +733,12 @@ class Aligner:
     
     # permute into (N, C, H, W) convention for displace fields and cast to field
     f = f.field()
-    invf = f.linverse(autopad=False, padded=pad).tensor().permute(0,2,3,1)
+    try:
+        invf = f.linverse(autopad=False, padded=pad).tensor().permute(0,2,3,1)
+    except:
+        if not use_cpu:
+            invf = (f.to(device='cpu')).linverse(autopad=False, padded=pad).tensor().permute(0,2,3,1)
+
 
     # must convert to abs residuals while padded
     invf = self.rel_to_abs_residual(invf, mip=mip)
