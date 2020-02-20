@@ -378,7 +378,7 @@ class Aligner:
   #######################
   # Field IO + handlers #
   #######################
-  def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True, as_int16=True):
+  def get_field(self, cv, z, bbox, mip, relative=False, to_tensor=True, as_int16=True, field_order=False):
     """Retrieve vector field from CloudVolume.
 
     Args
@@ -406,7 +406,9 @@ class Aligner:
     if as_int16:
       field = np.float32(field) / 4
     if relative:
-      field = self.abs_to_rel_residual(field, bbox, mip)
+      field = self.abs_to_rel_residual_inplace(field, bbox, mip)
+    if field_order:
+      field = np.transpose(field, (0,3,1,2))
     if to_tensor:
       field = torch.from_numpy(field)
       return field.to(device=self.device)
@@ -430,7 +432,7 @@ class Aligner:
       as_int16: bool indicating whether vectors should be saved as int16
     """
     if relative: 
-      field = self.rel_to_abs_residual(field, mip)
+      field = self.rel_to_abs_residual_inplace(field, mip)
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     field = np.transpose(field, (1,2,0,3))
@@ -449,6 +451,13 @@ class Aligner:
     """
     return field * (field.shape[-2] / 2) * (2**mip)
 
+  def rel_to_abs_residual_inplace(self, field, mip):    
+    """Convert vector field from relative space [-1,1] to absolute MIP0 space
+    """
+    scale = (field.shape[-2] / 2) * (2**mip)
+    field[:, :, :, :] *= scale
+    return field
+
   def abs_to_rel_residual(self, field, bbox, mip):
     """Convert vector field from absolute MIP0 space to relative space [-1,1]
     """
@@ -458,6 +467,15 @@ class Aligner:
     rel_residual[:, :, :, 0] /= x_fraction
     rel_residual[:, :, :, 1] /= y_fraction
     return rel_residual
+
+  def abs_to_rel_residual_inplace(self, field, bbox, mip):
+    """Convert vector field from absolute MIP0 space to relative space [-1,1]
+    """
+    x_fraction = bbox.x_size(mip=0) * 0.5
+    y_fraction = bbox.y_size(mip=0) * 0.5
+    field[:, :, :, 0] /= x_fraction
+    field[:, :, :, 1] /= y_fraction
+    return field
 
   def avg_field(self, field):
     favg = field.sum() / (torch.nonzero(field).size(0) + self.eps)
@@ -708,13 +726,14 @@ class Aligner:
     padded_bbox = deepcopy(bbox)
     padded_bbox.uncrop(pad, mip=mip)
     f = self.get_field(src_cv, z, padded_bbox, mip,
-                       relative=True, to_tensor=True, as_int16=True)
+                       relative=True, to_tensor=True, as_int16=True, field_order=True)
+    
     print('invert_field shape: {0}'.format(f.shape))
     start = time()
     
     # permute into (N, C, H, W) convention for displace fields and cast to field
-    f = f.permute(0,3,1,2).field()
-    invf = (~f).tensor().permute(0,2,3,1)
+    f = f.field()
+    invf = f.linverse(autopad=False, padded=pad).tensor().permute(0,2,3,1)
 
     # must convert to abs residuals while padded
     invf = self.rel_to_abs_residual(invf, mip=mip)

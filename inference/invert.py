@@ -61,7 +61,7 @@ if __name__ == '__main__':
   a = get_aligner(args)
   bbox = get_bbox(args)
   provenance = get_provenance(args)
-  chunk_size = 1024
+  chunk_size = 512
 
   src_mip = args.src_mip
   max_mip = args.max_mip

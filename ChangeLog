@@ -1,11 +1,455 @@
 CHANGES
 =======
 
+* made invert work
+* initial commit for invert
+* Debug training (#117)
+* update docker, fix compose\_and\_render (#114)
+* Use torchfields functions instead of utilities.helpers (#112)
+* Update params for FAFBv15 samples (#113)
+* Inspect FAFBv15 montages
+* params: updated minnie fine model
+* model added, preprocessing doesnt work
+* Add create\_info flag to CloudManager & update render.py to use it
+* Factor out displacement fields into a separate repository (#108)
+* Update params
+* DisplacementField: minor bug fixes, refactors, and comments
+* Safe division to avoid NaNs during backward pass
+* Use winding number to test inclusion rather than bounding i,j
+* Epsilon for comparison to zero
+* Autopad functionality in left inverse
+* More efficient left inverse using sparse tensors
+* Mean finite vector function
+* Inefficient implementation of left inverse
+* Function to list gpu tensors tracked by garbage collecter
+* Add DisplacementField class to abstract displacement field operations
+* Speed up Gaussian blurring by removing unnecessary copying
+* Fix type issue when git call fails in ModelArchive (#107)
+* Update cpc script to follow latest convention
+* Update render script to use no prefix & operate locally
+* Adjust cloudsample\_image to use max mip of image & field mip
+* Update cpc with cv paths and no prefix
+* Add copy\_mask script to overwrite one section with another
+* Add fill\_bbox script
+* Fix stitch offset calculation for final vector vote
+* Update Dockerfile.gpu with git init command
+* Add .git to .dockerignore
+* Update requirements with six constraint
+* Update params
+* Fix bugs in stitch\_blocks
+* Release align\_blocks with block & stitching alignments
+* Update cloudsample\_multi\_compose for single fields & fix pad bug
+* Fix stitching alignment in align\_blocks; comment out block alignment for now
+* Hold on stitching alignment in align\_blocks
+* fix bad default commit value (#105)
+* Fix bugs in align\_blocks
+* Fix typos in tasks
+* Update params
+* Add script to run summary tasks, then compile restuls
+* Update params
+* Refactor align\_blocks & stitch\_blocks
+* Refactor align\_blocks for dynamic blocks based on per section params
+* Remove prefix arg from all aligner schedulers
+* Remove prefix arg from all tasks
+* Adjust padded\_bbox max mip in compute field
+* Add summarize task to compute simple stats for a chunk
+* Update bbox stringify with z\_start & z\_stop args
+* Remove done files from all tasks
+* Change compute\_fcorr output to fixed dim of 128
+* Add hardcoded blur & softmin to align\_blocks
+* Update align\_blocks for dynamic vvote & skipped sections
+* Update test params
+* Account for device in get\_data
+* Update fcorr for updated cloudmanager
+* Add binary dilation task & script
+* Add Threshold task & script
+* Remove sum\_pool from find\_seams
+* Fix bugs in find\_seams
+* Add device=cpu to find\_seams script
+* Add device arg for aligner to specify cuda or cpu
+* Start migrating sum\_pool over to torch pooling
+* Pass device arg to laplacian loss
+* Break find\_seams into compute\_smoothness & sum\_pool
+* Update find\_seams script based on field smoothness
+* Include compute\_smoothness in the aligner based on Laplacian
+* Update CopyTask & FindSeamsTask for summing & rechunking
+* Update cloudmanager create\_info with sufficient offset for max\_mip & consistent chunk\_size
+* Base find\_seams on skimage & summarize to MIP12
+* Create find\_seams task
+* Comment out done files for masking tasks
+* Remove wait from mask\_logic
+* Remove join of image to dst directory
+* Add dilation to make\_fcorr\_masks; Clean up mask\_logic
+* Update mask\_logic script
+* Simplify mask ops into disjunction & conjunction methods from single MaskLogicTask
+* clean mask operations
+* Update params
+* Fix copy field task generator bug
+* Fix bugs in stitch\_blocks for surgical procedures
+* Fix path bug in copy\_blocks
+* Add copy\_blocks for transferring surgical blocks
+* Update params
+* Remove unused cloudvolumes from align\_blocks
+* Update params
+* Update params
+* Update stitch\_blocks for non-contiguous rework
+* Fix bug in align\_blocks for non-contiguous blocks
+* Add render script (compose\_and\_render minus the compose)
+* Added the 2 missing ranges + 2 new sections to lookup (#100)
+* Remove ntq\_stitch\_blocks in favor of stitch\_blocks
+* Move ntq\_multi\_stitch\_blocks to stitch\_blocks
+* Update align\_blocks to operate on non-contiguous blocks
+* multi masks operation scripts
+* multi masks operation
+* Update params
+* Add z\_range file & info\_path to compose\_and\_render
+* Add copy back to align\_blocks
+* Rename render\_at\_mip1
+* Update render\_at\_mip1 to compose to the fine mip
+* Ignore wait at end of compute\_fcorr
+* Update make\_fcorr\_masks to take a list of images
+* five masks script
+* five masks operation
+* fix bugs
+* four mask operation
+* Add fcorr\_conjunction to operate on the post-processed output
+* Add script to call make\_fcorr\_masks
+* Replace slip method with make\_fcorr\_masks
+* Add params to fcorr tasks
+* receive a list of z
+* mask out the whole section
+* update
+* filterthree task
+* cpu deploy
+* minor fix
+* logical or
+* minor fix
+* minor fix
+* minor fix
+* minor fix
+* combine masks
+* three mask operation script
+* larger chunk size
+* larger chunk size
+* 3 masks operation wrapper
+* deploy cpu
+* 3 mask development
+* core function of 3 masks opertaion
+* cpu fcorr
+* threshold change to 240
+* Adjust stitch blocks for decay over multiple blocks
+* Fix bug in switch from CloudCompose to CloudMultiCompose
+* Fix return field in cloudsample multi compose
+* Update ntq\_stitch\_blocks and render\_at\_mip1 scripts with changes
+* Add factors parameter for multi-compose
+* Rename cloud\_multi\_compose\_field to multi\_compose
+* Add an optional factor for cloudsample composing fields
+* Correct the affine in cloudsample\_compose to be before the fields
+* Add tasks and scheduling for cloudsample multi-compose
+* Add cloudsample\_multi\_compose to compose a list of fields
+* threshold 180
+* fix bug
+* secure slip detection
+* update
+* Remove testing restriction (rendering only first 10 sections)
+* Adjust stitch\_blocks for separate overlap & stitch vvote params
+* Make softmin\_temp & blur\_sigma kwargs for vector vote
+* Update forward & reverse compose
+* Edit which prev\_fields are used in stitch\_blocks
+* Add blur\_field & use with vector vote inputs
+* Increase softmin temp back to original level
+* Add suffix to stitch\_blocks for directory renaming
+* Add copy field to stitch\_blocks
+* modify script to recieve threshold parameters
+* set mask threshold as parameters
+* set device to cpu
+* Start forward\_compose in stitch\_blocks
+* Minnie65 run
+* Add updated minnie fine params (#98)
+* Additional cleanup of vector\_fixer30\_faster\_v01 architecture code
+* Remove the lowest aligner module from vector\_fixer30\_faster\_v01
+* Clean up architecture code in vector\_fixer30\_faster\_v01
+* Add vector\_fixer30\_faster\_v01
+* Add a script to time models
+* Use grid\_sample in vector\_fixer30
+* slip write on z-1
+* ntq\_stitch\_blocks.py (#96)
+* Update softmin temp calculation in vector\_vote\_chunk (#95)
+* Affine update (#94)
+* Move new alignment script to align\_blocks
+* Adjust block stitching to correct drift from nets (#93)
+* using torch.zero for binary masks
+* mask op bug fix
+* remove monkey patching from aligner.py
+* add task queue version requirement
+* local queue support
+* New Net: sergiy\_m8m10\_03\_01\_mip\_10\_8\_new\_finetune
+* local queue support
+* parametrize distance of pairs to compute fcorr
+* threshold change
+* update the required task-queue version
+* local queue supported
+* using new task queue
+* mask operations
+* Coarse models (#85)
+* modify fcorr test script
+* add masks operations
+* fcorr parameter tuning: better give inaccurate value than no value at all
+* update requirements
+* new task queue support in aligner.py
+* cpu fcorr
+* fixed scaling parameter
+* master
+* master
+* cpu run for fcorr
+* threshold change
+* run on mulitple mip
+* fixed threshold
+* MIP 1 Rendering w/ support for different source dirs
+* correct a typo
+* add render at mip1 script
+* fix bugs in cloudsample\_compose
+* render at mip1
+* merge new task queue to master
+* fix bugs
+* Call the displaced alignment
+* Allow running displaced inference in compute\_field\_chunk
+* Add function cloudsample\_compose for composing field CloudVolumes
+* deploy
+* correct printing error
+* set src\_mask\_cv and tgt\_mask\_cv to path
+* fix bugs
+* deploy
+* using new task queue
+* Minnie10 fine model params
+* Update new\_serial\_block\_multimodel\_compose.py
+* Update new\_serial\_block\_multimodel\_compose.py
+* test copy task
+* using cv path instead of cv object
+* get\_hp\_fcorr documentation (#82)
+* Contiguous chunk boundaries with affine transform support (#87)
+* deploy
+* Fcorr new (#86)
+* fcorr post-process value
+* add threshold to fcorr
+* merge fcorr with mater
+* hotfix: pin moviepy (#83)
+* Remove fold detector preprocessor (#81)
+* fcorr: quick edit allowing threshold adjustment
+* fcorr: optional fill\_value argument which can be helpful in noise-removal postprocessing
+* more documentation
+* fix bugs for fcorr and write test scripts
+* New fine net ...\_thinner (#80)
+* modify the code according to Nico's comment
+* expand documentation
+* Update params
+* Add task limit to upsample\_render
+* merge with latest master branch
+* Allow grid sampling in batches
+* Switch to using grid\_sample instead of gridsample\_residual
+* Refactor gridsampling and vector field functions
+* Reformat helpers.py
+* Add params for serial alignment
+* Fix affine to be strictly at MIP0 (#77)
+*  Update encodings\_all\_samples\_mGPU\_c2e through epoch 784 iter 2553 (#76)
+* Updated weights for fine model (#75)
+* Add eps to correct avg\_field divide by zero (#72)
+* Add print statements & chunk sizes to serial alignment
+* Include drosophila bbox csv for test
+* Add z args for serial block compose
+* Increase sleep between counting finished tasks
+* Fix typo in task\_counter logic
+* Add blank image handling in get\_data
+* Update drosophila bboxes
+* Fix bounding box adjustments
+* Update serial block multimodel compose to use z-dependent bboxes
+* Fix args.py to use bbox\_mip
+* Coarse models (#71)
+* New fine model (#70)
+* Faster normalizer for vector\_fixer\_30\_new\_normalizer (#69)
+* New fine model update (#67)
+* Add affine preconditioning to render (#68)
+* Hard-code aligner's vector voting to be 2\*\*mip & require it for vector\_vote helper (#65)
+* New fine MIP2 models (#64)
+* Update mip4 aligner net encodings\_all\_samples\_mGPU\_c2e through epoch 767 (#60)
+* Merging new fine net models. (#63)
+* adding fine model sergiy\_m4m6m8\_zzzz\_02\_07\_mip\_4\_6\_8\_fold\_preproc\_sm1e6\_newmask (#62)
+* merge with master branch
+* Add updated minnie coarse models params (#61)
+* Update docker deploy template (#59)
+* Set fixed padding for cloudsample\_image (#58)
+* Add arg for worker to specify lease time for tasks (#57)
+* Add arg for worker to specify lease time for tasks
+* n5 mdoels (#55)
+* Adjust functions to pass max\_mip to break\_into\_chunks (#56)
+* GPU semaphore (#51)
+* Move SQS creation so only scheduler needs credentials (#54)
+* Free up memory from vector\_fixer30 architecture (#53)
+* Add back the SQS wait until queue is empty (#52)
+* feat: composite target image using alternative images (#50)
+* vectorize fcorr misalignment indicator computation
+* cpu rendering support
+* fix fine
+* Coarse models (#47)
+* fine babynet
+* fine babynet
+* Correct max\_displacement flag to pad for cpc
+* Coarse models (#45)
+* first specialized
+* first specialized
+* Peg cloudvolume (#44)
+* Fix typos
+* fix: DNS timeout (#43)
+* commit info when creat cv
+* commit info when creat cv
+* Check if batch has anything to run at final stage
+* Set chunksize in serial block multimodel compose
+* Peg imageio version (#40)
+* newer models (#41)
+* Add new script to use model lookup & combine block alignment with composition
+* Setup model lookup file for coarse run
+* newer models
+* correction
+* Add NCCnet models (#39)
+* Barebone "fcorr" misalignment indicator (#38)
+* 19 models
+* Fix aligner bugs to use fine net (#35)
+* Add cpc script to run on even & odd blocks (#31)
+* Make compose & cpc parallel across entire stack (#33)
+* remove info file from message
+* fix the upload\_tasks function issue for multi processes (#24)
+* m
+* Fix bug in weight loading for coarse models
+* Multiple coarse models for testing (#34)
+* forgot 1 model
+* models
+* test run for compute field and vector voting
+* modify the script for compute field and vector vote
+* fix bugs
+* multi gpu support for fold detection
+* merge with master branch
+* Add a mip4 fine aligner and defect detector nets (#32)
+* Tweak serial alignment for distributed speed (#30)
+* Update docker
+* Add masks back to compute\_field & fix get\_masked\_image
+* Update poll lease\_seconds in worker
+* new coarse model (#28)
+* new coarse model
+* Add compose decay (#27)
+* load model key verification fixed
+* Resolve deadlock when using  multiple processes (#25)
+* readonly param change
+* bug fixed!
+* add sigmoid to fold model
+* add fold detect function
+* Switch alex\_fold\_detector\_norm\_mip4\_0131 to model66000
+* Add alex\_fold\_detector\_norm\_mip4\_0131
+* Change alex\_fold\_detector\_norm\_0130 to version model68000
+* Bring back model\_exists archive class method
+* Replace tabs with spaces
+* Refactor archive path code
+* Allow commit not to be specified
+* Add alex\_fold\_detector\_norm\_0130
+* using gpu to process vector voting
+* fix bugs for calc res and vvote
+* add res\_and\_vv script
+* add res\_and\_vv function
+* Multi-processing support for inference worker (#23)
+* fix the upload\_tasks function issue for multi processes
+* Include latest distributed serial alignment updates (#21)
+* Int16 field (#20)
+* fix bugs for distributed rechunking (#19)
+* Add distributed regularization (compose, invert, & regularize) (#18)
+* Get short-stretch regularization working
+* multi-gpu code for rechunking
+* rechunking and condsder identity field
+* Add sergiy's inverter net
+* Revert "Merge branch 'pairwise-align-across-archives-muti-gpu' of https://github.com/seung-lab/SEAMLeSS into pairwise-align-across-archives-muti-gpu"
+* Fix bugs in inverting with the aligner
+* Fix inverse task handling
+* Update sergiy\_trans\_minnie\_v1\_m8m10 for multi-model loading
+* Add vector\_fixer30 to output at MIP4
+* Add inverter net
+* Fix python-jsonschema-objects version
+* Add model archiving and fresh training code (#12)
+* Add section batching into multi-match
+* inverter weights
+* inverter module
+* Update docker & kube files to accommodate setup.py
+* Remove neuroglancer link provider to ignore bitly credential handling
+* Allow loading multiple archives simultaneously
+* Remove unnecessary args from worker & aligner for task listening
+* Update gitignore for kube secrets
+* mean value for grid\_sample and multi-gpu functions
+* Kwargs in architecture code
+* using mean value in CV grid\_sample
+* fix bugs in grid\_sample cv
+* Update provenance with more params
+* Adjust z range in render\_low\_mip
+* Fix vector field convention for aligner
+* added coarse aligner net that is trained for vector voting
+* using normal warp by default
+* Cloudvolume grid\_sample
+* changed the default mip for m6m8m10 model to 5
+* removed unneeded models
+* merged plastic masks
+* cleanup
+* gitignore
+* plastic mask working
+* Separate directory classes from aligner & convert vectors to numpy arrays before saving
+* clean code and write new functions for multi-slice vector voting
+* Checkout docker files from multi-gpu-pairwise
+* first attempt and masker code
+* fill\_missing set to True
+* remove black block detection for test
+* add loading black block detection
+* fix print
+* fix print
+* fix bugs
+* clean out garbage files for village internet
+* fix bugs
+* multiple slices vector voting
+* exported plastic detector
+* seperate render and downsample
+* set write fill\_missing to false
+* listen task in listen\_for\_tasks
+* debuging for black blocks
+* modify read\_kwargs
+* set fill\_missing to false
+* remove thread pool from render function
+* remove pool for downsampling
+* Fix bug in pairwise\_alignment
+* Add optimizer, prand, state\_vars, and plot to checkpoint
+* correct mask code for multi-gpu
+* fixed trans
+* Add pairwise\_alignment command for serial start & pairwise finish
+* Fix vector voting bug in aligner for serial\_alignment
+* trans nets
+* one more net
+* even more models
+* moar models
+* Fix mask handling
+* Add provenance commit to mipless\_cloudvolume
+* add flags for multi-gpu regularization in worker.py
+* modify render\_low\_mip.py
 * Add defaults for render\_low\_mip & render\_high\_mip in args.py
 * Fix tgt\_range in aligner for serial\_alignment
 * update upsampling
 * fix
 * new model
+* Flag for toggling encodings
+* random\_one occasionally trains all
+* Factor out mask generation to objective code
+* Move mask library to utilities
+* Correct error in pixel size ratio calculation
+* Remove redundant except clause
+* Separate the stack images in the debug outputs
+* Allow plot to start at non-zero position on time axis
+* Move seed into state\_vars
+* Convert state\_vars to YAML to support slices and other python objects
+* Rewrite submodule and level selection
+* Fix feature\_maps command line arg
+* Add plan argument which can be all, top\_down, bottom\_up, or random\_one
 * add forward and inverse compose flags back
 * clean up
 * multi-GPU interface for regular and invert
@@ -33,6 +477,9 @@ CHANGES
 * Add debug script to compose two fields to test inverse quality
 * Make compose and regularize operate in blocks over z\_range
 * fix bugs
+* Support for top-down or bottom-up training
+* Add support for encodings in architecture
+* Add a feature\_maps command line argument
 * add serial alinger
 * fix bugs
 * Add vector field inverse based on optimization
