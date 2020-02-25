@@ -38,7 +38,6 @@ from threading import Lock
 from pathlib import Path
 from utilities.archive import ModelArchive
 
-import torch.nn as nn
 #from taskqueue import TaskQueue
 import tasks
 import tenacity
