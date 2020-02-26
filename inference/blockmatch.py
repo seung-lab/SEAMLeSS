@@ -184,6 +184,7 @@ def extrapolate_missing_values(array):
 
 def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_px=500,
                 filler="inf", peak_ratio_cutoff=1.1, peak_distance=2):
+    max_disp = 64
     src = src.squeeze()
     tgt = tgt.squeeze()
     tile_alignment_pad = (tile_size - tile_step) // 2
@@ -211,7 +212,8 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
             tgt_tile = padded_tgt[tgt_tile_coord]
 
             if get_black_fraction(src_tile, 0) > 0.3 or get_black_fraction(tgt_tile, 0) > 0.6:
-                match_displacement = [0, 0]
+                # match_displacement = [0, 0]
+                match_displacement = [-10, 0]
                 if get_black_fraction(src_tile, 0) != 1.0 and \
                         get_black_fraction(tgt_tile, 0) != 1.0:
                     #print ('skipping: {} {}'.format(get_black_fraction(src_tile, 0), get_black_fraction(tgt_tile, 0)))
@@ -224,12 +226,17 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
                 if ncc.var() < 1E-16 or ((ncc != ncc).sum() > 0):
                     #match_displacement = [0, 0]
                     #match_displacement = [float(filler), float(filler)]
-                    match_displacement = [0, 0]
+                    # match_displacement = [0, 0]
+                    match_displacement = [-20, 0]
                     #print ("black ncc")
                 else:
                     peak1, peak2 = get_two_peaks(ncc, peak_distance)
                     peaks.append([peak1, peak2])
                     match = np.unravel_index(ncc_np.argmax(), ncc_np.shape)
+                    # match = peak2
+                    # match = tuple(peak2.cpu().numpy()[0]) 
+                    # import ipdb
+                    # ipdb.set_strace()
                     peak_vals.append([ncc_np[peak1[0][0],  peak1[0][1]],
                                       ncc_np[peak2[0][0],  peak2[0][1]],
                                     ])
@@ -240,11 +247,17 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
                         match_tile_start = (tgt_tile_coord[0].start + match[0], tgt_tile_coord[1].start + match[1])
                         src_tile_start   = (src_tile_coord[0].start, src_tile_coord[1].start)
                         match_displacement = np.subtract(src_tile_start, match_tile_start)
+                        # import ipdb
+                        # ipdb.set_trace()
+                    # if abs(match_displacement[0]) > 2:
+                    # import ipdb; ipdb.set_trace()
 
             result[x_tile, y_tile, 0] = -match_displacement[1]
             result[x_tile, y_tile, 1] = -match_displacement[0]
 
     #patched_result = extrapolate_missing_values(result)
+    # import ipdb
+    # ipdb.set_trace()
     patched_result = result
     result_var = torch.cuda.FloatTensor(patched_result).unsqueeze(0)
 
@@ -315,6 +328,7 @@ def compute_tile_coords(x_tile, y_tile, tile_size, tile_step, max_disp, img_size
     src_ys = y_tile * tile_step + y_offset
     src_ye = src_ys + tile_size
 
+    # max_disp = 64
     tgt_xs = max(0, src_xs - max_disp)
     tgt_xe = min(img_size, src_xe + max_disp)
     tgt_ys = max(0, src_ys - max_disp)

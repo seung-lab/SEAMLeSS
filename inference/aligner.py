@@ -1600,6 +1600,60 @@ class Aligner:
 
         return batch
 
+  
+  def misalignment_detection(self, cm, src_cv, dst_cv, src_z, tgt_z, bbox, src_mip, pad=256, 
+                             coarsen_misalign=128, forward_field_cv=None, backwards_field_cv=None,
+                             return_iterator=False):
+    """Warp image in src_cv by field in field_cv and save result to dst_cv
+
+    Args:
+       cm: CloudManager that corresponds to the src_cv, field_cv, & dst_cv
+       src_cv: MiplessCloudVolume where source image is stored
+       field_cv: MiplessCloudVolume where vector field is stored
+       dst_cv: MiplessCloudVolume where destination image will be written
+       src_z: int for section index of source image
+       field_z: int for section index of vector field
+       dst_z: int for section index of destination image
+       bbox: BoundingBox for region where source and target image will be loaded,
+        and where the resulting vector field will be written
+       src_mip: int for MIP level of src images
+       field_mip: int for MIP level of vector field; field_mip >= src_mip
+       mask_cv: MiplessCloudVolume where source mask is stored
+       mask_mip: int for MIP level at which source mask is stored
+       mask_val: int for pixel value in the mask that should be zero-filled
+       wait: bool indicating whether to wait for all tasks must finish before proceeding
+       affine: 2x3 ndarray for preconditioning affine to use (default: None means identity)
+    """
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[src_mip],
+                                    cm.dst_voxel_offsets[src_mip], mip=src_mip,
+                                    max_mip=cm.max_mip)
+    class MisalignmentDetectionTaskIterator():
+        def __init__(self, cl, start, stop):
+          self.chunklist = cl
+          self.start = start
+          self.stop = stop
+        def __len__(self):
+          return self.stop - self.start
+        def __getitem__(self, slc):
+          itr = deepcopy(self)
+          itr.start = slc.start
+          itr.stop = slc.stop
+          return itr
+        def __iter__(self):
+          for i in range(self.start, self.stop):
+            chunk = self.chunklist[i]
+            yield tasks.MisalignmentDetectionTask(src_cv, dst_cv, src_z, tgt_z, chunk,
+                       src_mip, pad, coarsen_misalign, forward_field_cv, backwards_field_cv)
+    if return_iterator:
+        return MisalignmentDetectionTaskIterator(chunks,0, len(chunks))
+    else:
+        batch = []
+        for chunk in chunks:
+          batch.append(tasks.MisalignmentDetectionTask(src_cv, dst_cv, src_z, tgt_z, chunk,
+                       src_mip, pad, coarsen_misalign, forward_field_cv, backwards_field_cv))
+        return batch
+
 
   def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z,
                    bbox, src_mip, field_mip,

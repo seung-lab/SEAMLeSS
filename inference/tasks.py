@@ -251,56 +251,52 @@ class ComputeFieldTask(RegisteredTask):
       diff = end - start
       print('ComputeFieldTask: {:.3f} s'.format(diff))
 
-class SeethroughStitchRenderTask(RegisteredTask):
-  def __init__(self, src_cv, dst_cv, z_start, z_end, patch_bbox, mip, use_cpu=False):
-    assert(z_end > z_start)
-    super(). __init__(src_cv, dst_cv, z_start, z_end, patch_bbox, mip, use_cpu)
+
+class MisalignmentDetectionTask(RegisteredTask):
+  def __init__(self, src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad=256, coarsen_misalign=128, forward_field_cv=None, backwards_field_cv=None):
+    super(). __init__(src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad, coarsen_misalign, forward_field_cv, backwards_field_cv)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
     dst_cv = DCV(self.dst_cv)
-    z_start = self.z_start
-    z_end = self.z_end
+    src_z = self.src_z
+    tgt_z = self.tgt_z
     patch_bbox = deserialize_bbox(self.patch_bbox)
     mip = self.mip
+    pad = self.pad
 
-    print("\nSeethrough Stitch Rendering\n"
-          "src {}\n"
-          "dst {}\n"
-          "z={} to z={}\n"
-          "MIP{}\n"
-          "\n".format(src_cv.path, dst_cv.path, z_start, z_end, mip), flush=True)
+    if self.forward_field_cv:
+      forward_field_cv = DCV(self.forward_field_cv)
+    if self.backwards_field_cv:
+      backwards_field_cv = DCV(self.backwards_field_cv)
 
-    start = time()
-    if not aligner.dry_run:
-      for z in range(z_end, z_start -1, -1):
-        image = aligner.get_masked_image(src_cv, z,
-                                         patch_bbox, mip, masks=[],
-                                         to_tensor=True, normalizer=None)
+    padded_bbox = deepcopy(patch_bbox)
+    padded_bbox.uncrop(pad, mip=mip)
+    image = aligner.get_image(src_cv, src_z, patch_bbox, mip, to_tensor=True, normalizer=None)
+    prev_image = aligner.get_image(src_cv, tgt_z, patch_bbox, mip, to_tensor=True, normalizer=None)
 
-        prev_image = aligner.get_masked_image(dst_cv, z + 1,
-                                              patch_bbox, mip, masks=[],
-                                              to_tensor=True, normalizer=None)
-
-        black_region = image < 0.05
-        image[black_region] = prev_image[black_region]
-
-        if black_region.sum() > 1e4 and ((prev_image[black_region] > 0.05).sum()) > 1e4:
-             original_tissue_mask = black_region == False
-             seethrough_tissue_mask = (prev_image > 0.05) * black_region
-
-             image[seethrough_tissue_mask] *= torch.sqrt(image[original_tissue_mask].var()) / torch.sqrt(image[seethrough_tissue_mask].var())
-             image[seethrough_tissue_mask] += image[original_tissue_mask].mean() - image[seethrough_tissue_mask].mean()
-             image[image < 0] = 0
-             image[seethrough_tissue_mask] += 0.01
-
-        image = image.cpu().numpy()
-
-        aligner.save_image(image, dst_cv, z, patch_bbox, mip)
-
-      end = time()
-      diff = end - start
-      print('RenderTask: {:.3f} s'.format(diff))
+    misalignment_region, forward_field, backwards_field = misalignment_detector(image, prev_image, mip=mip,
+                                                             threshold=80, return_fields=True)
+    # import ipdb
+    # ipdb.set_trace()
+    misalignment_region[image[0,0,:,:] == 0] = 0
+    misalignment_region_coarse = coarsen_mask(misalignment_region, self.coarsen_misalign).byte()
+    prev_image_tissue = get_threshold_tissue_mask(prev_image)
+    misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
+    # seethrough_region[misalignment_fill_in] = True
+    # while len(image.shape) > len(misalignment_fill_in.shape):
+        # misalignment_fill_in.unsqueeze(0)
+    # image[misalignment_fill_in] = prev_image[misalignment_fill_in]
+    # if self.misalignment_mask_cv is not None:
+    misalignment_mask = np.zeros(shape=image.shape, dtype=np.uint8)
+    misalignment_mask[misalignment_fill_in.cpu().numpy() != 0] = 1
+    aligner.save_image(misalignment_mask, dst_cv, src_z, patch_bbox, mip)
+    if self.forward_field_cv:
+      forward_field = forward_field.cpu().numpy()
+      aligner.save_field(forward_field, forward_field_cv, src_z, patch_bbox, mip, relative=False)
+    if self.backwards_field_cv:
+      backwards_field = backwards_field.cpu().numpy()
+      aligner.save_field(backwards_field, backwards_field_cv, src_z, patch_bbox, mip, relative=False)
 
 class RenderMasksTask(RegisteredTask):
   def __init__(self, mask_dst_cv, field_cv, field_z, src_z, dst_z, patch_bbox, dst_mip,
@@ -449,18 +445,8 @@ class RenderTask(RegisteredTask):
          image[preseethru_blackout] = 0
 
          if (prev_image != 0).sum() == 0:
-             #undetected_plastic = ((image * 255.0 > 180.0) + (image * 255.0 < 80)) > 0
-             #undetected_plastic = coarsen_mask(undetected_plastic, 8)
-             #image[undetected_plastic] = 0
              pass
          else:
-             #undetected_plastic = (((image * 255.0) > 180) + \
-             #        ((prev_image == 0) * ((image * 255.0) > 160.0)) + \
-             #        ((image * 255.0) < 80.0)
-             #        ) > 0
-             #undetected_plastic = coarsen_mask(undetected_plastic, 10)
-             #image[undetected_plastic] = 0
-
              # mask values < 0 are the un-seethroughable masks that
              # should be applied before misalignment detection
 
@@ -496,7 +482,6 @@ class RenderTask(RegisteredTask):
                  misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
                                                              threshold=80)
                  misalignment_region[image[0,0,:,:] == 0] = 0
-             #misalignment_region = torch.zeros_like(misalignment_region)
                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
                  misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
                  seethrough_region[misalignment_fill_in] = True
@@ -544,7 +529,6 @@ class RenderTask(RegisteredTask):
                 break
             if success == False:
               raise ValueError('Failed to send task ack')
-          # sqs_obj.send_message(QueueUrl = api_obj._qurl, MessageAttributes={'bbox': { 'DataType': 'String', 'StringValue': self.patch_bbox }, 'task': {'DataType': 'String', 'StringValue': 'RT'}})
       end = time()
       diff = end - start
       print('RenderTask: {:.3f} s'.format(diff))

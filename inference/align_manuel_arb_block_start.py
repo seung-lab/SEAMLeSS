@@ -924,13 +924,13 @@ if __name__ == "__main__":
         def __iter__(self):
           for z in self.z_range:
             bbox = bbox_lookup[z]
-            if z == args.z_start:
-                field = block_pair_fields[0]
-                field_mip = mip
-                # field_mip = coarse_field_mip
-            else:
-                field = compose_field
-                field_mip = mip
+            # if z == args.z_start:
+            #     field = block_pair_fields[0]
+            #     field_mip = mip
+            #     # field_mip = coarse_field_mip
+            # else:
+            field = compose_field
+            field_mip = mip
             t = a.render(cmr, src, field, final_dst, src_z=z,
                          field_z=z, dst_z=z, bbox=bbox,
                          src_mip=final_render_mip, field_mip=field_mip, pad=final_render_pad,
@@ -1178,7 +1178,7 @@ if __name__ == "__main__":
                     check_poll_time = time()
                     if check_poll_time - first_poll_time >= poll_time:
                         first_poll_time = check_poll_time
-                        cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(3600)
+                        cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(4*3600)
                         if len(cf_list) > 0 or len(rt_list) > 0:
                             for cf_i in range(len(cf_list)):
                                 retry_file.write('Timed out: bs {} cf {} time {}\n'.format(cf_block_start[cf_i], cf_list[cf_i], check_poll_time))
