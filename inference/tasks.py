@@ -229,9 +229,22 @@ class RenderTask(RegisteredTask):
       diff = end - start
       print('RenderTask: {:.3f} s'.format(diff))
 
+class FailedInvertTask(RegisteredTask):
+  def __init__(self, txt=''):
+    super(FailedInvertTask, self).__init__(txt)
+    # attributes passed to super().__init__ are automatically assigned
+    # use this space to perform additional processing such as:
+    self.txt = str(txt)
+
+  def execute(self):
+    if self.txt:
+      print(self.txt)
+    else:
+      print(self)
+
 class InvertTask(RegisteredTask):
-  def __init__(self, src_cv, dst_cv, z, patch_bbox, src_mip, pad, use_cpu=False):
-    super(). __init__(src_cv, dst_cv, z, patch_bbox, src_mip, pad, use_cpu=False)
+  def __init__(self, src_cv, dst_cv, z, patch_bbox, src_mip, pad, failed_queue, use_cpu=False):
+    super(). __init__(src_cv, dst_cv, z, patch_bbox, src_mip, pad, failed_queue, use_cpu=False)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
@@ -239,6 +252,7 @@ class InvertTask(RegisteredTask):
     z = self.z
     patch_bbox = deserialize_bbox(self.patch_bbox)
     src_mip = self.src_mip
+    failed_queue = self.failed_queue
     pad = self.pad
     mask_cv = None 
 
@@ -251,10 +265,18 @@ class InvertTask(RegisteredTask):
           "\n".format(src_cv.path, dst_cv.path, z, src_mip, pad), flush=True)
     start = time()
     if not aligner.dry_run:
-      aligner.invert_field(z, src_cv, dst_cv, patch_bbox, src_mip, pad, self.use_cpu)
-      end = time()
-      diff = end - start
-      print('InvertTask: {:.3f} s'.format(diff))
+      try:
+          aligner.invert_field(z, src_cv, dst_cv, patch_bbox, src_mip, pad, self.use_cpu)
+          end = time()
+          diff = end - start
+          print('InvertTask: {:.3f} s'.format(diff))
+      except RuntimeError:
+          print('InvertTask: ' + str(patch_bbox) + ' failed, writing to failure queue')
+          if failed_queue != "":
+            with GreenTaskQueue(queue_name=failed_queue) as tq:
+              tq.insert(FailedInvertTask(txt = str(patch_bbox) + ", " + str(z)))
+          
+
 
 
 class VectorVoteTask(RegisteredTask):

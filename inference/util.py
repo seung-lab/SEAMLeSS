@@ -1,9 +1,12 @@
 import torch
 from cloudvolume import CloudVolume
 from cloudvolume.lib import Bbox, Vec, find_closest_divisor
+from taskqueue import RegisteredTask, TaskQueue, LocalTaskQueue, GreenTaskQueue
+from tasks import FailedInvertTask
 import numpy as np
 from copy import copy
 import torchfields
+import sys
 
 from os.path import join
 
@@ -177,3 +180,14 @@ def add_scale(factor, info):
     info['scales'].append(newscale)
 
   return newscale 
+
+def write_failed_queue(queue_name, file_name):
+    f = open(file_name, "a")
+    orig_stdout = sys.stdout
+    sys.stdout = f
+    with GreenTaskQueue(queue_name=queue_name) as tq:
+      tq.poll(lease_seconds=10)
+    f.close()
+    f = sys.stdout
+
+

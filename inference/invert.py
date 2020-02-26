@@ -52,6 +52,8 @@ if __name__ == '__main__':
     help='bbox origin+shape, 3-element int list')
   parser.add_argument('--bbox_mip', type=int, default=0,
     help='MIP level at which bbox_start & bbox_stop are specified')
+  parser.add_argument('--failed_queue', type=str, default="",
+    help='failed queue to keep track of tasks that do not fit into GPU')
   parser.add_argument('--max_mip', type=int, default=9)
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
@@ -153,7 +155,7 @@ if __name__ == '__main__':
             src_path = src.path
           
           t = a.invert_get_tasks_batch(cm, src_path, dst.path, z, bbox,
-                           src_mip, pad, use_cpu=args.use_cpu) 
+                           src_mip, pad, failed_queue=args.failed_queue, use_cpu=args.use_cpu) 
           yield from t
 
   ptask = []

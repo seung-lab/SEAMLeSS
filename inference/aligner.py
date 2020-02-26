@@ -709,7 +709,6 @@ class Aligner:
                            mask_mip, mask_val, affine, use_cpu))
         return batch
 
-
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, use_cpu=False):
     """Compute the inverse vector field for a given bbox 
 
@@ -735,9 +734,11 @@ class Aligner:
     f = f.field()
     try:
         invf = f.linverse(autopad=False, padded=pad).tensor().permute(0,2,3,1)
-    except:
-        if not use_cpu:
-            invf = (f.to(device='cpu')).linverse(autopad=False, padded=pad).tensor().permute(0,2,3,1)
+    except RuntimeError:
+        print("Task failed.")
+        raise
+        #if not use_cpu:
+        #    invf = (f.to(device='cpu')).linverse(autopad=False, padded=pad).tensor().permute(0,2,3,1)
 
 
     # must convert to abs residuals while padded
@@ -1254,7 +1255,7 @@ class Aligner:
         return batch
 
   def invert_get_tasks_batch(self, cm, src_cv, dst_cv, z, 
-                   bbox, src_mip, pad, use_cpu=False):
+                   bbox, src_mip, pad, failed_queue=None, use_cpu=False):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1296,13 +1297,13 @@ class Aligner:
             chunk = self.chunklist[i]
             yield tasks.InvertTask(src_cv, field_cv, dst_cv, src_z,
                        field_z, dst_z, chunk, src_mip, field_mip, mask_cv,
-                       mask_mip, mask_val, affine, use_cpu)
+                       mask_mip, mask_val, affine, failed_queue, use_cpu)
     batch = []
     print(src_cv)
     for chunk in chunks:
       t=tasks.InvertTask(src_cv, dst_cv, z, chunk, src_mip, pad, use_cpu)
       batch.append(tasks.InvertTask(src_cv, dst_cv, z,
-                       chunk, src_mip, pad, use_cpu))
+                       chunk, src_mip, pad, failed_queue, use_cpu))
     return batch
 
   def vector_vote(self, cm, pairwise_cvs, vvote_cv, z, bbox, mip,
