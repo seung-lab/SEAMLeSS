@@ -183,8 +183,8 @@ def extrapolate_missing_values(array):
     return array
 
 def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_px=500,
-                filler="inf", peak_ratio_cutoff=1.1, peak_distance=2):
-    max_disp = 64
+                filler="inf", peak_ratio_cutoff=1.1, peak_distance=2, pure=False):
+    # max_disp = 128
     src = src.squeeze()
     tgt = tgt.squeeze()
     tile_alignment_pad = (tile_size - tile_step) // 2
@@ -199,6 +199,7 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
     img_size = padded_tgt.shape[-1]
     tile_count = 1 + (img_size - max_disp*2 - tile_size) // tile_step
     result = np.zeros((tile_count, tile_count, 2))
+    # pure_result = np.zeros((tile_count, tile_count, 2))
     peaks = []
     peak_vals = []
     peak_ratios = []
@@ -223,7 +224,13 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
                         min_overlap_count=min_overlap_px)
                 ncc_np = ncc.squeeze().cpu().numpy()
 
+                # import ipdb
+                # ipdb.set_trace()
+
                 if ncc.var() < 1E-16 or ((ncc != ncc).sum() > 0):
+                # if ncc.var() < 1E-29 or ((ncc != ncc).sum() > 0):
+                    # import ipdb
+                    # ipdb.set_trace()
                     #match_displacement = [0, 0]
                     #match_displacement = [float(filler), float(filler)]
                     # match_displacement = [0, 0]
@@ -243,17 +250,26 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
                     peak_ratios.append(peak_vals[-1][0] / (peak_vals[-1][1] + 1e-12))
                     if peak_ratios[-1] < peak_ratio_cutoff:
                         match_displacement = [float(filler), float(filler)]
+                        match_tile_start = (tgt_tile_coord[0].start + match[0], tgt_tile_coord[1].start + match[1])
+                        src_tile_start   = (src_tile_coord[0].start, src_tile_coord[1].start)
+                        if pure:
+                            pure_match_displacement = np.subtract(src_tile_start, match_tile_start)
+                            match_displacement = pure_match_displacement
                     else:
                         match_tile_start = (tgt_tile_coord[0].start + match[0], tgt_tile_coord[1].start + match[1])
                         src_tile_start   = (src_tile_coord[0].start, src_tile_coord[1].start)
                         match_displacement = np.subtract(src_tile_start, match_tile_start)
+                        # pure_match_displacement = match_displacement
                         # import ipdb
                         # ipdb.set_trace()
                     # if abs(match_displacement[0]) > 2:
                     # import ipdb; ipdb.set_trace()
 
+            # pure_match_displacement = match_displacement
             result[x_tile, y_tile, 0] = -match_displacement[1]
             result[x_tile, y_tile, 1] = -match_displacement[0]
+            # pure_result[x_tile, y_tile, 0] = -pure_match_displacement[1]
+            # pure_result[x_tile, y_tile, 1] = -pure_match_displacement[0]
 
     #patched_result = extrapolate_missing_values(result)
     # import ipdb

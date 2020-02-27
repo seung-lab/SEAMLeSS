@@ -253,8 +253,10 @@ class ComputeFieldTask(RegisteredTask):
 
 
 class MisalignmentDetectionTask(RegisteredTask):
-  def __init__(self, src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad=256, coarsen_misalign=128, forward_field_cv=None, backwards_field_cv=None):
-    super(). __init__(src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad, coarsen_misalign, forward_field_cv, backwards_field_cv)
+  def __init__(self, src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad=256, coarsen_misalign=128, 
+              forward_field_cv=None, backwards_field_cv=None, tile_size=256, max_disp=16, pure=False):
+    super(). __init__(src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad, coarsen_misalign,
+                      forward_field_cv, backwards_field_cv, tile_size, max_disp, pure)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -276,7 +278,8 @@ class MisalignmentDetectionTask(RegisteredTask):
     prev_image = aligner.get_image(src_cv, tgt_z, patch_bbox, mip, to_tensor=True, normalizer=None)
 
     misalignment_region, forward_field, backwards_field = misalignment_detector(image, prev_image, mip=mip,
-                                                             threshold=80, return_fields=True)
+                                                             threshold=80, tile_size=self.tile_size,
+                                                             max_disp=self.max_disp, return_fields=True, pure=pure)
     # import ipdb
     # ipdb.set_trace()
     misalignment_region[image[0,0,:,:] == 0] = 0
