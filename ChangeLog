@@ -1,6 +1,10 @@
 CHANGES
 =======
 
+* added failure queue
+* added Tommy's cpu try
+* using 256 block size, and added padding option for linverse
+* Start pairwise alignment method
 * made invert work
 * initial commit for invert
 * Debug training (#117)

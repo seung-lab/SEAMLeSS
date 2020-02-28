@@ -709,6 +709,19 @@ class Aligner:
                            mask_mip, mask_val, affine, use_cpu))
         return batch
 
+  def push_coordinate(self, cv, mip, x, y, z, scale=[4,4,40]):
+    # divide to get pixel locations
+    x_px = x / scale[0]
+    y_px = y / scale[1]
+    z_px = z / scale[2]
+
+    bb = BoundingBox(x_px, x_px + 1, y_px, y_px + 1, 0)
+    f = self.get_field(cv, z_px, bb, mip, relative=False, to_tensor=False, as_int16=True)
+    x_pushed = type(x)(round((x + f[0,0,0,1] * scale[0]) / scale[0]) * scale[0])
+    y_pushed = type(y)(round((y + f[0,0,0,0] * scale[1]) / scale[1]) * scale[1])
+
+    return x_pushed, y_pushed
+
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, use_cpu=False):
     """Compute the inverse vector field for a given bbox 
 

@@ -8,6 +8,9 @@ from copy import copy
 import torchfields
 import sys
 
+import gevent.monkey
+gevent.monkey.patch_all(thread=False)
+
 from os.path import join
 
 def get_cloudvolume(path, mip):
