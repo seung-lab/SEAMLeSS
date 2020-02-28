@@ -16,7 +16,20 @@ from os.path import join
 from cloudmanager import CloudManager
 from tasks import run
 from boundingbox import BoundingBox
+from aligner import Aligner
 import numpy as np
+
+def push_chunks_from_file(src_path, dst_path, index, cv, mip):
+    
+    a = Aligner()
+    cm = CloudManager(cv, 8, 512, None, batch_size=1, size_chunk=512, batch_mip=mip, create_info=False)
+    cv = cm.create(cv, data_type='int16', num_channels=2, fill_missing=False, overwrite=False)
+    chunks = np.loadtxt('{path}/{i}'.format(path = src_path, i = index), dtype='int64')
+    pivots = np.loadtxt('{path}/{i}_chunks'.format(path = src_path, i = index), dtype='int64')
+    pivots = pivots - index
+    chunks_pushed = a.push_coordinate_chunks(cv, mip, chunks, pivots)
+    np.savetxt('{path}/{i}'.format(path = dst_path, i = index), pivot_chunks[i], '%.0f')
+
 
 def get_pivots(array, ran):
     pivots = list()
@@ -39,6 +52,9 @@ def chunk_nparray(array, cv, mip, xyz=[1,2,3], scale=[4,4,40]):
     if not mip in cv.cvs.keys():
         cv.create(mip)
     c = cv.cvs[mip]
+    x_loc = xyz[0]
+    y_loc = xyz[1]
+    z_loc = xyz[2]
     x_chunk = c.chunk_size[0] * (2**mip) * scale[0]
     y_chunk = c.chunk_size[1] * (2**mip) * scale[1]
     z_chunk = c.chunk_size[2] * scale[2]
@@ -46,21 +62,21 @@ def chunk_nparray(array, cv, mip, xyz=[1,2,3], scale=[4,4,40]):
     x_range = range(bb.minpt[0] * scale[0], bb.maxpt[0] * scale[0], x_chunk)
     y_range = range(bb.minpt[1] * scale[1], bb.maxpt[1] * scale[1], y_chunk)
     z_range = range(bb.minpt[2] * scale[2], bb.maxpt[2] * scale[2], z_chunk)
-    sorted_z = array[np.argsort(array[:, xyz[2]])]
-    z_pivots = np.argwhere(sorted_z[:,xyz[2]][0:-1] != sorted_z[:,xyz[2]][1:]).flatten() + 1
+    sorted_z = array[np.argsort(array[:, z_loc])]
+    z_pivots = np.argwhere(sorted_z[:,z_loc][0:-1] != sorted_z[:,z_loc][1:]).flatten() + 1
     z_arrays = np.split(sorted_z, z_pivots)
     l = []
     for z_array in z_arrays:
-        sorted_y = z_array[np.argsort(z_array[:, xyz[1]])]
-        sorted_y_view = sorted_y[:, xyz[1]]
+        sorted_y = z_array[np.argsort(z_array[:, y_loc])]
+        sorted_y_view = sorted_y[:, y_loc]
         #print("y: " + str(sorted_y_view.shape))
         #if sorted_y_view.shape[0] == 5:
         # return sorted_y
         pivots_y = get_pivots(sorted_y_view, y_range)
         y_arrays = np.split(sorted_y, pivots_y)
         for y_array in y_arrays:
-         sorted_x = y_array[np.argsort(y_array[:, xyz[0]])]
-         sorted_x_view = sorted_x[:, xyz[0]]
+         sorted_x = y_array[np.argsort(y_array[:, x_loc])]
+         sorted_x_view = sorted_x[:, x_loc]
          #print("x: " + str(sorted_x_view.shape))
          pivots_x = get_pivots(sorted_x_view, x_range)
          x_arrays = np.split(sorted_x, pivots_x)

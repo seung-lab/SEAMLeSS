@@ -709,6 +709,73 @@ class Aligner:
                            mask_mip, mask_val, affine, use_cpu))
         return batch
 
+  def push_coordinate_chunks(self, cv, mip, chunks, pivots, xyz=[1,2,3], scale=[4,4,40]):
+      print("Pushing {} points across {} chunks".format(len(chunks), len(pivots)))
+      starttime = time()
+      chunks_pushed_list = list()
+      start = 0
+      for p in pivots:
+          chunk = chunks[start:p]
+          start = p
+          chunk_pushed = self.push_coordinate_chunk(cv, mip, chunk, xyz, scale)
+          chunks_pushed_list.append(chunk_pushed)
+
+      chunks_pushed = np.vstack(chunks_pushed_list) 
+
+      endtime = time()
+      print (": {} sec".format(endtime - starttime))
+
+      return chunks_pushed
+
+  def push_coordinate_chunk(self, cv, mip, chunk, xyz=[1,2,3], scale=[4,4,40]):
+    if not mip in cv.cvs.keys():
+        cv.create(mip)
+    #memoisation for speed
+    x_loc = xyz[0]
+    y_loc = xyz[1]
+    z_loc = xyz[2]
+    x_scale = scale[0]
+    y_scale = scale[1]
+    z_scale = scale[2]
+    chunk_pushed = copy(chunk)
+    # divide to get pixel locations
+    x0 = chunk[0, x_loc] / scale[0]
+    y0 = chunk[0, y_loc] / scale[1]
+    z = chunk[0, z_loc] / scale[2]
+    # figure out which chunk to use from the first one
+    bb0 = BoundingBox(x0, x0+1, y0, y0+1, 0)
+    bb0x = bb0.x_range(mip)[0]
+    bb0y = bb0.y_range(mip)[0]
+    offset = cv.cvs[mip].voxel_offset
+    chunk_size = cv.cvs[mip].chunk_size
+    bbx = offset[0]
+    bby = offset[1]
+
+    while bb0x >= bbx + chunk_size[0]:
+        bbx = bbx + chunk_size[0]
+    while bb0y >= bby + chunk_size[1]:
+        bby = bby + chunk_size[1]
+
+    #bbx, bby now contain the location of the chunk at the required mip
+    bb = BoundingBox(bbx, bbx+chunk_size[0], bby, bby+chunk_size[1], mip)
+    f = self.get_field(cv, z, bb, mip, relative=False, to_tensor=False, as_int16=True)
+
+    for i in range(0, len(chunk)):
+        pixel_x = chunk[i, x_loc]
+        pixel_y = chunk[i, y_loc]
+        pixel_x_scaled = pixel_x / x_scale
+        pixel_y_scaled = pixel_y / y_scale
+        pixel_bb = BoundingBox(pixel_x_scaled, pixel_x_scaled+1, pixel_y_scaled, pixel_y_scaled+1, 0)
+        x_px = pixel_bb.x_range(mip)[0] - bbx
+        y_px = pixel_bb.y_range(mip)[0] - bby
+        x_pushed = type(x0)(round((pixel_x + f[0,x_px,y_px,1] * scale[0]) / scale[0]) * scale[0])
+        y_pushed = type(y0)(round((pixel_y + f[0,x_px,y_px,0] * scale[1]) / scale[1]) * scale[1])
+        chunk_pushed[i, x_loc] = x_pushed
+        chunk_pushed[i, y_loc] = y_pushed
+
+    return chunk_pushed
+
+
   def push_coordinate(self, cv, mip, x, y, z, scale=[4,4,40]):
     # divide to get pixel locations
     x_px = x / scale[0]
