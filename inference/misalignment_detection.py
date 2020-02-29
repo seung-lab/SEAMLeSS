@@ -44,9 +44,17 @@ if __name__ == "__main__":
     parser.add_argument("--mip", type=int)
     parser.add_argument("--max_mip", type=int, default=9)
     parser.add_argument("--chunk_size", type=int, default=1024)
-    parser.add_argument("--coarsen_misalign", type=int, default=128)
+    parser.add_argument("--coarsen_misalign", type=int, default=16)
     parser.add_argument('--src_path', type=str)
     parser.add_argument('--pad', type=int, default=1024)
+    parser.add_argument('--tile_size', type=int, default=256)
+    parser.add_argument('--max_disp', type=int, default=16)
+    parser.add_argument('--ma_thresh', type=float, default=8)
+    parser.add_argument(
+        "--pure",
+        action='store_true',
+        help="If True, do not compare two peaks"
+    )
     # parser.add_argument("--pad", type=int, default=1024)
     # parser.add_argument(
         # "--field_path",
@@ -140,7 +148,9 @@ if __name__ == "__main__":
             t = a.misalignment_detection(cm, src, dst, src_z=z+1,
                          tgt_z=z, bbox=bbox,
                          src_mip=mip, pad=args.pad, coarsen_misalign=args.coarsen_misalign,
-                         forward_field_cv=forward_field, backwards_field_cv=backward_field)
+                         forward_field_cv=forward_field, backwards_field_cv=backward_field,
+                         tile_size=args.tile_size, max_disp=args.max_disp, pure=args.pure,
+                         ma_thresh=args.ma_thresh)
             yield from t
 
     compose_range = range(args.z_start, args.z_stop)

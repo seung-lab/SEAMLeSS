@@ -406,7 +406,7 @@ def gridsample_residual(source, residual, padding_mode):
     return grid_sample(source, residual, padding_mode)
 
 
-def grid_sample(input, field, padding_mode, mode='bilinear'):
+def grid_sample(input, field, padding_mode, mode='nearest'):
     """A version of the PyTorch grid sampler that uses size-agnostic residual
     conventions.
 

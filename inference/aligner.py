@@ -1603,7 +1603,7 @@ class Aligner:
   
   def misalignment_detection(self, cm, src_cv, dst_cv, src_z, tgt_z, bbox, src_mip, pad=256, 
                              coarsen_misalign=128, forward_field_cv=None, backwards_field_cv=None,
-                             return_iterator=False, tile_size=256, max_disp=16, pure=False):
+                             return_iterator=False, tile_size=256, max_disp=16, pure=False, ma_thresh=8):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1644,14 +1644,14 @@ class Aligner:
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
             yield tasks.MisalignmentDetectionTask(src_cv, dst_cv, src_z, tgt_z, chunk,
-                       src_mip, pad, coarsen_misalign, forward_field_cv, backwards_field_cv, tile_size, max_disp, pure)
+                       src_mip, pad, coarsen_misalign, forward_field_cv, backwards_field_cv, tile_size, max_disp, pure, ma_thresh)
     if return_iterator:
         return MisalignmentDetectionTaskIterator(chunks,0, len(chunks))
     else:
         batch = []
         for chunk in chunks:
           batch.append(tasks.MisalignmentDetectionTask(src_cv, dst_cv, src_z, tgt_z, chunk,
-                       src_mip, pad, coarsen_misalign, forward_field_cv, backwards_field_cv, tile_size, max_disp, pure))
+                       src_mip, pad, coarsen_misalign, forward_field_cv, backwards_field_cv, tile_size, max_disp, pure, ma_thresh))
         return batch
 
 

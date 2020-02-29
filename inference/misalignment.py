@@ -89,7 +89,7 @@ def rechunck_image(chunk_size, image):
     I = I.split(chunk_size, dim=3)
     return torch.cat(I, dim=1)
 
-def misalignment_detector(img1, img2, mip, np_out=True, threshold=None, tile_size=256, max_disp=16, return_fields=False, pure=False):
+def misalignment_detector(img1, img2, mip, np_out=True, threshold=None, tile_size=256, max_disp=16, return_fields=False, pure=False, ma_thresh=8):
     '''
         img1, img2 -- pytorch tensors, 2D (only X and Y)
         mip -- integer
@@ -137,10 +137,10 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None, tile_siz
         #img2_enc[img2_enc.squeeze().abs() < 0.15] = 0
 
     if return_fields:
-        misalignment_mask, forward_field, backwards_field = compute_fcorr(img1_enc, img2_enc, tile_size, max_disp, True, pure)
+        misalignment_mask, forward_field, backwards_field = compute_fcorr(img1_enc, img2_enc, tile_size, max_disp, True, pure, ma_thresh)
         misalignment_mask = misalignment_mask.squeeze()
         return misalignment_mask, forward_field, backwards_field
-    misalignment_mask = compute_fcorr(img1_enc, img2_enc, tile_size, max_disp, False, pure).squeeze()
+    misalignment_mask = compute_fcorr(img1_enc, img2_enc, tile_size, max_disp, False, pure, ma_thresh).squeeze()
     #img1_bright = ((img1_downs * 255) > 141).squeeze()
     #img2_bright = ((img2_downs * 255) > 141).squeeze()
     #both_img_bright = img1_bright * img2_bright
@@ -153,22 +153,23 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None, tile_siz
     #fcorr_ups_var = torch.Tensor(fcorr_ups, device=img1.device)
     return misalignment_mask
 
-def compute_fcorr(image1, image2, tile_size=128, max_disp=64, return_fields=False, pure=False):
+def compute_fcorr(image1, image2, tile_size=128, max_disp=64, return_fields=False, pure=False, ma_thresh=8):
     while len(image1.shape) < 4:
         image1 = image1.unsqueeze(0)
         image2 = image2.unsqueeze(0)
     s = time.time()
     s = time.time()
     # tile_size = 128 * 2
-    ma_length = 8
+    # ma_length = ma_thresh
+    ma_length = 4
     bm_result1 = block_match(image2, image1, min_overlap_px=4000, tile_step=tile_size//2,
             tile_size=tile_size,
             peak_ratio_cutoff=3.7, peak_distance=ma_length,  max_disp=max_disp, filler=250, pure=pure)
-    nonzero_bm_mask1 = ((bm_result1[..., 0].abs() > ma_length) + (bm_result1[..., 1].abs() > ma_length)) > 0
+    nonzero_bm_mask1 = ((bm_result1[..., 0].abs() > ma_thresh) + (bm_result1[..., 1].abs() > ma_thresh)) > 0
     bm_result2 = block_match(image1, image2, min_overlap_px=4000, tile_step=tile_size//2,
             tile_size=tile_size,
             peak_ratio_cutoff=3.7, peak_distance=ma_length,  max_disp=max_disp, filler=250, pure=pure)
-    nonzero_bm_mask2 = ((bm_result2[..., 0].abs() > ma_length) + (bm_result2[..., 1].abs() > ma_length)) > 0
+    nonzero_bm_mask2 = ((bm_result2[..., 0].abs() > ma_thresh) + (bm_result2[..., 1].abs() > ma_thresh)) > 0
     nonzero_bm_mask = (nonzero_bm_mask1 + nonzero_bm_mask2) > 0
 
     print (time.time() - s, 'Masked misalignments: ', nonzero_bm_mask.sum())
