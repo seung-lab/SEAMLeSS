@@ -86,8 +86,15 @@ if __name__ == '__main__':
     type=int, default=2048)
   parser.add_argument('--preprocessor_path', type=str, default='',
     help='Optional preprocessor to apply to image cutouts')
+  parser.add_argument("--ignore_pix_val", nargs='+', type=int,
+    help='Optional pixel values to ignore, i.e. they will be treated as the same in both images')
   parser.add_argument('--luminance_level_path', type=str,
     help='Optional luminance levels per section, used for per section contrast adjustment')
+  parser.add_argument('--mask_path', type=str,
+    help='Pre-existing masks to apply before running fcorr (e.g. fold masks)')
+  parser.add_argument('--mask_mip', type=int)
+  parser.add_argument('--mask_val', type=int,
+    help='Mask value to use for blackout')
   # parser.add_argument('--save_intermediary', action='store_true')
   args = parse_args(parser)
   args.max_mip = args.dst_mip
@@ -106,15 +113,24 @@ if __name__ == '__main__':
   z_offset = args.z_offset
   fill_value = args.fill_value
   preprocessor_path = args.preprocessor_path
+  ignore_pix_val = args.ignore_pix_val
   luminance_level_path = args.luminance_level_path
+  mask_path = args.mask_path
+  mask_mip = args.mask_mip or src_mip
+  mask_val = args.mask_val or 255
 
   print('src_mip {}'.format(src_mip))
   print('dst_mip {}'.format(dst_mip))
   print('fcorr_chunk_size {}'.format(fcorr_chunk_size))
   # print('chunk_size {}'.format(chunk_size))
   print('z_offset {}'.format(z_offset))
+  print('ignore pix val {}'.format(ignore_pix_val or "None"))
   print('preprocessor: {}'.format(preprocessor_path or "None"))
   print('luminance_level_path: {}'.format(luminance_level_path or "None"))
+  print('mask_path: {}'.format(mask_path or "None"))
+  if mask_path:
+    print('mask_mip {}'.format(mask_mip))
+    print('mask_val {}'.format(mask_val))
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -125,6 +141,11 @@ if __name__ == '__main__':
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False)
+
+  src_mask_path = None
+  if mask_path is not None:
+    src_mask_path = cm.create(args.mask_path, data_type='uint8', num_channels=1,
+                              fill_missing=True, overwrite=False).path
 
   fcorr_dir = 'fcorr/{}_{}/{}'.format(src_mip, dst_mip, z_offset)
   # Create dst CloudVolumes
@@ -159,8 +180,10 @@ if __name__ == '__main__':
                                 src_mip, dst_mip, z, z+args.z_offset, z, 
                                 fcorr_chunk_size, fill_value=fill_value,
                                 preprocessor_path=preprocessor_path,
+                                ignore_pix_val=ignore_pix_val,
                                 lower_bound=(lower_cut/255.0, min_val/255.0),
-                                upper_bound=(upper_cut/255.0, max_val/255.0)
+                                upper_bound=(upper_cut/255.0, max_val/255.0),
+                                mask_cv=src_mask_path, mask_mip=mask_mip, mask_val=mask_val
             )
             yield from t
 

@@ -1909,7 +1909,9 @@ class Aligner:
 
   def compute_fcorr(self, cm, src_cv, dst_pre_cv, dst_post_cv, bbox, src_mip, 
                     dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0,
-                    preprocessor_path='', lower_bound=None, upper_bound=None):
+                    preprocessor_path='',
+                    ignore_pix_val=None, lower_bound=None, upper_bound=None,
+                    mask_cv=None, mask_mip=None, mask_val=None):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[dst_mip], mip=dst_mip,
                                       max_mip=cm.max_mip)
@@ -1919,16 +1921,21 @@ class Aligner:
                                             src_mip, dst_mip, src_z, tgt_z, dst_z, 
                                             fcorr_chunk_size, fill_value,
                                             preprocessor_path,
-                                            lower_bound, upper_bound))
+                                            ignore_pix_val,
+                                            lower_bound, upper_bound,
+                                            mask_cv, mask_mip, mask_val))
       return batch
 
   def get_fcorr(
     self, cv, src_z, tgt_z, bbox, mip, chunk_size=16, fill_value=0,
-    preprocessor_path='', **kwargs
+    preprocessor_path='', ignore_pix_val=None, **kwargs
   ):
       """Perform fcorr for two images
       """
       pad = 8
+      if ignore_pix_val is None:
+        ignore_pix_val = []
+      ignore_pix_val = np.atleast_1d(ignore_pix_val)
 
       if not preprocessor_path:
         normalizer = None
@@ -1936,12 +1943,27 @@ class Aligner:
         archive = self.get_model_archive(preprocessor_path)
         normalizer = partial(archive.preprocessor, **kwargs)
 
+      mask_cv = kwargs.get("mask_cv", None)
+      mask_mip = kwargs["mask_mip"]
+      mask_val = kwargs["mask_val"]
+
       padded_bbox = deepcopy(bbox)
       padded_bbox.uncrop(pad*chunk_size, mip=mip)
-      src = self.get_data(cv, src_z, padded_bbox, src_mip=mip, dst_mip=mip,
-                             to_float=True, to_tensor=True, normalizer=normalizer) * 255.0
-      tgt = self.get_data(cv, tgt_z, padded_bbox, src_mip=mip, dst_mip=mip,
-                             to_float=True, to_tensor=True, normalizer=normalizer) * 255.0
+      src = self.get_masked_image(cv, src_z, padded_bbox, image_mip=mip,
+                            mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val,
+                            to_tensor=True, normalizer=normalizer) * 255.0
+      tgt = self.get_masked_image(cv, tgt_z, padded_bbox, image_mip=mip,
+                            mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val,
+                            to_tensor=True, normalizer=normalizer) * 255.0
+
+      first_ignored_pix_val = ignore_pix_val[0].item() if len(ignore_pix_val) > 0 else None
+      for v in ignore_pix_val:
+        src[src==v.item()] = first_ignored_pix_val
+        tgt[tgt==v.item()] = first_ignored_pix_val
+
+      if first_ignored_pix_val is not None:
+        src[tgt==first_ignored_pix_val] = first_ignored_pix_val
+        tgt[src==first_ignored_pix_val] = first_ignored_pix_val
 
       # std1 = image1[image1!=0].std()
       # std2 = image2[image2!=0].std()
