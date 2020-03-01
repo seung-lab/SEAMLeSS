@@ -158,11 +158,25 @@ class Aligner:
   # Image IO + handlers #
   #######################
 
-  def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True):
+  def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True, op='=='):
     start = time()
     data = self.get_data(cv, z, bbox, src_mip=src_mip, dst_mip=dst_mip, 
                              to_float=False, to_tensor=to_tensor, normalizer=None)
-    mask = data == valid_val
+    if op == '==':
+      mask = data == valid_val
+    elif op == '!=':
+      mask = data != valid_val
+    elif op == '>':
+      mask = data > valid_val
+    elif op == '>=':
+      mask = data >= valid_val
+    elif op == '<':
+      mask = data < valid_val
+    elif op == '<=':
+      mask = data <= valid_val
+    else:
+      raise ValueError("Unsupported mask operator: " + op)
+
     end = time()
     diff = end - start
     print('get_mask: {:.3f}'.format(diff), flush=True) 
@@ -184,7 +198,7 @@ class Aligner:
     return image
 
   def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
-                             to_tensor=True, normalizer=None):
+                             to_tensor=True, normalizer=None, mask_val_op='=='):
     """Get image with mask applied
     """
     start = time()
@@ -193,7 +207,7 @@ class Aligner:
     if mask_cv is not None:
       mask = self.get_mask(mask_cv, z, bbox, 
                            src_mip=mask_mip,
-                           dst_mip=image_mip, valid_val=mask_val)
+                           dst_mip=image_mip, valid_val=mask_val, op=mask_val_op)
       image = image.masked_fill_(mask, 0)
     if not to_tensor:
       image = image.cpu().numpy()
@@ -1951,10 +1965,10 @@ class Aligner:
       padded_bbox.uncrop(pad*chunk_size, mip=mip)
       src = self.get_masked_image(cv, src_z, padded_bbox, image_mip=mip,
                             mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val,
-                            to_tensor=True, normalizer=normalizer) * 255.0
+                            to_tensor=True, normalizer=normalizer, mask_val_op='>=') * 255.0
       tgt = self.get_masked_image(cv, tgt_z, padded_bbox, image_mip=mip,
                             mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val,
-                            to_tensor=True, normalizer=normalizer) * 255.0
+                            to_tensor=True, normalizer=normalizer, mask_val_op='>=') * 255.0
 
       first_ignored_pix_val = ignore_pix_val[0].item() if len(ignore_pix_val) > 0 else None
       for v in ignore_pix_val:
