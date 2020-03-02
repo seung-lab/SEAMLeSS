@@ -1,6 +1,7 @@
 import math
 import torch
 import torchfields
+import numpy as np
 from copy import deepcopy
 from cloudvolume import CloudVolume 
 from mipless_cloudvolume import MiplessCloudVolume
@@ -33,10 +34,30 @@ class Field():
         return self.bbox.size
 
     @property
+    def shape(self):
+        """Size of bbox at MIP0
+        """
+        return self.field.shape
+
+    @property
+    def device(self):
+        return self.field.device
+
+    @property
+    def is_cuda(self):
+        return self.field.is_cuda
+
+    @property
     def mip(self):
         """Current MIP level of field
         """
         return int(math.log2(self.bbox.size[0] / self.field.shape[-2]))
+
+    def cpu(self):
+        return self.field.cpu()
+
+    def numpy(self):
+        return self.field.data.numpy()
 
     def new(self, field):
         """Create new field with same bbox 
@@ -108,54 +129,54 @@ class Field():
         return self.field.is_identity(*args, **kwargs)
 
 
-class FieldCloudVolume(CloudVolume):
-
-    def __new__(cls, *args, **kwargs):
-        as_int16 = kwargs.pop('as_int16')
-        device = kwargs.pop('device')
-        cv = CloudVolume.__new__(cls, *args, **kwargs) 
-        kwargs['as_int16'] = as_int16
-        kwargs['device'] = device
-        return cv
+class FieldCloudVolume():
 
     def __init__(self, *args, **kwargs):
         self.as_int16 = kwargs.pop('as_int16')
         self.device = kwargs.pop('device')
-        super().__init__(*args, **kwargs)
+        self.cv = CloudVolume(*args, **kwargs)
 
-    def __getitem__(self, slices):
+    @classmethod
+    def create_new_info(cls, *args, **kwargs):
+        return CloudVolume.create_new_info(*args, **kwargs)
+
+    def commit_info(self):
+        self.cv.commit_info()
+
+    def __getitem__(self, bcube):
         """Get field cutout as absolute residuals
 
         Args:
-            slices:
+            bcube: BoundingCube (MiplessBoundingBox + z range)
 
         Returns:
-            TorchField with absolute residuals
+            Field object (with absolute residuals)
         """
-        field = super().__getitem__(slices)
-        field = np.transpose(field, (2,0,1,3))
+        slices = bcube.to_slices(mip=self.cv.mip)
+        field = self.cv[slices]
+        field = np.transpose(field, (2,3,0,1))
         if self.as_int16:
           field = np.float32(field) / 4
-        return Field(data=field, device=self.device)
+        return Field(data=field, bbox=bcube.bbox, device=self.device) 
 
-    def __setitem__(self, slices, field):
+    def __setitem__(self, bcube, field):
         """Save field (must be in absolute residuals)
 
         Args:
-            slices: 
-            field: TorchField with absolute residuals
+            bcube: BoundingCube (MiplessBoundingBox + z range)
+            field: Field object
         """
-        field = field.tensor()
-        if field.device.contains('gpu'):
+        if field.is_cuda:
             field = field.cpu()
-        field = np.transpose(field.numpy(), (1,2,0,3))
+        field = np.transpose(field.numpy(), (2,3,0,1))
         if self.as_int16:
             if(np.max(field) > 8192 or np.min(field) < -8191):
                 print('Value in field is out of range of int16 ' \
                       'max: {}, min: {}'.format(np.max(field),
                                                 np.min(field)), flush=True)
             field = np.int16(field * 4)
-        super().__setitem__(slices, field)
+        slices = bcube.to_slices(mip=self.cv.mip)
+        self.cv[slices] = field
 
 
 class MiplessFieldCloudVolume(MiplessCloudVolume):

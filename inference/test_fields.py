@@ -1,6 +1,6 @@
 import pytest
 
-from boundingbox import BoundingBox
+from boundingbox import BoundingBox, BoundingCube
 import numpy as np
 import torch
 from fields import Field, FieldCloudVolume
@@ -8,14 +8,11 @@ from fields import Field, FieldCloudVolume
 import shutil
 import os
 
-def get_field():
+def test_field():
     sz = 16
     bbox = BoundingBox(xs=0, xe=16, ys=0, ye=16, mip=0, max_mip=4)
     data = np.ones((1, 2, sz, sz)) 
-    return Field(data, bbox)
-
-def test_field():
-    f = get_field()
+    f = Field(data, bbox=bbox)
     assert(f.size == f.bbox.size)
     assert(not f.rel)
     assert(f.mip == 0)
@@ -51,13 +48,18 @@ def test_fieldcloudvolume():
              chunk_size=sz,
              )
     path = 'file:///tmp/cloudvolume/empty_volume'
-    import pdb; pdb.set_trace()
     vol = FieldCloudVolume(path, as_int16=True, device='cpu', mip=0, info=info)
     vol.commit_info()
     # create test field
-    f = get_field()
-    vol[:] = f 
-    g = vol[:, :, :]
+    sz = 16
+    bbox = BoundingBox(xs=0, xe=16, ys=0, ye=16, mip=0, max_mip=4)
+    data = np.ones((1, 2, sz, sz)) 
+    f = Field(data, bbox=bbox)
+    bcube = BoundingCube.from_bbox(bbox, 0, 1)
+    f.field.y = -f.field.y 
+    vol[bcube] = f 
+    g = vol[bcube]
+    assert(f == g)
     delete_layer(path)
 
 
