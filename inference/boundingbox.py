@@ -94,7 +94,8 @@ class BoundingBox:
         y_range = self.y_range(mip)
         return int(y_range[1] - y_range[0])
 
-    def size(self, mip):
+    @property
+    def size(self, mip=0):
         return self.x_size(mip=mip), self.y_size(mip=mip)
   
     def check_mips(self):
@@ -141,6 +142,11 @@ class BoundingBox:
         result = np.stack((x_res, y_res), axis=2)
         result = np.expand_dims(result, 0)
         return result
+
+    def __eq__(self, x):
+        if isinstance(x, BoundingBox):
+            return (self.m0_x == x.m0_x) and (self.m0_y == x.m0_y)
+        return False
   
     def __str__(self, mip=0):
         return "{}, {}".format(self.x_range(mip), self.y_range(mip))
@@ -169,3 +175,20 @@ class BoundingBox:
 
     def copy(self):
         return deepcopy(self)
+
+class BoundingCube():
+
+    def __init__(self, xs, xe, ys, ye, zs, ze, mip, max_mip):
+        self.bbox = BoundingBox(xs, xe, ys, ye, mip, max_mip) 
+        self.zs = zs
+        self.ze = ze
+
+    @classmethod
+    def from_bbox(cls, bbox, zs, ze):
+        return cls(*bbox.m0_x, *bbox.m0_y, zs, ze, 0, bbox.max_mip)
+
+    def to_slices(self, mip=0):
+        x_range = self.bbox.x_range(mip=mip)
+        y_range = self.bbox.y_range(mip=mip)
+        return slice(*x_range), slice(*y_range), slice(self.zs, self.ze) 
+
