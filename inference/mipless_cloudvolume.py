@@ -39,10 +39,11 @@ def deserialize_miplessCV(s, cache={}):
 class MiplessCloudVolume():
   """Multi-mip access to CloudVolumes using the same path
   """
-  def __init__(self, path, mkdir, **kwargs):
+  def __init__(self, path, mkdir, obj=CloudVolume, **kwargs):
     self.path = path
     self.mkdir = mkdir 
     self.kwargs = kwargs
+    self.obj = obj
     self.cvs = {}
     if self.mkdir:
         self.store_info()
@@ -60,6 +61,18 @@ class MiplessCloudVolume():
       s = json.dumps(contents)
       return s
 
+  @classmethod
+  def deserialize(cls, s, cache={}):
+      kwargs = {'bounded': False, 'progress': False,
+                   'autocrop': False, 'non_aligned_writes': False,
+                   'cdn_cache': False}
+      if s in cache:
+        return cache[s]
+      else:
+        mcv = cls(s, mkdir=False, fill_missing=True, **kwargs)
+        cache[s] = mcv
+        return mcv
+
   def store_info(self):
     tmp_cv = CloudVolume(self.path, **self.kwargs)
     tmp_cv.commit_info()
@@ -67,7 +80,7 @@ class MiplessCloudVolume():
 
   def create(self, mip):
     print('Creating CloudVolume for {0} at MIP{1}'.format(self.path, mip))
-    self.cvs[mip] = CloudVolume(self.path, mip=mip, **self.kwargs)
+    self.cvs[mip] = self.obj(self.path, mip=mip, **self.kwargs)
     #if self.mkdir:
     #  self.cvs[mip].commit_info()
     #  self.cvs[mip].commit_provenance()

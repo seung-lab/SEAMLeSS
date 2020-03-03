@@ -1,4 +1,4 @@
-from fields import profile_field
+from fields import Field
 
 def cloudsample_compose(f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip,
                         dst_mip, factor=1., affine=None, pad=256):
@@ -27,32 +27,36 @@ def cloudsample_compose(f_cv, g_cv, f_z, g_z, bbox, f_mip, g_mip,
     assert(g_mip >= dst_mip)
     padded_bbox = bbox.copy()
     padded_bbox.max_mip = max(dst_mip, f_mip, g_mip)
-    print('Padding by {} at MIP{}'.format(pad, dst_mip))
     padded_bbox.uncrop(pad, mip=dst_mip)
+    print('Padding by {} at MIP{}'.format(pad, dst_mip))
+    slices = slice(None), slice(pad,-pad), slice(pad,-pad), slice(None)
+    if pad == 0:
+        slices = slice(None), slice(None), slice(None), slice(None)
     # Load warper vector field
-    f = f_cv[f_mip][padded_bbox(f_z)]
+    f = f_cv[f_mip][padded_bbox.to_cube(f_z)]
     f = f * factor
     if f_mip > dst_mip:
         f = f.up(f_mip - dst_mip)
 
     if f.is_identity(magn_eps=1e-6):
         print('field f is the identity')
-        g = g_cv[g_mip][padded_bbox(g_z)]
+        g = g_cv[g_mip][padded_bbox.to_cube(g_z)]
         if g_mip > dst_mip:
-            g = g.up(f_mip - dst_mip)
-        return g[:,pad:-pad,pad:-pad,:]
+            g = g.up(g_mip - dst_mip)
+        g = Field(g.field[slices], bbox)
+        return g
 
-    dist = profile_field(f)
+    dist = f.profile(keepdim=True)
     dist = (dist // (2**g_mip)) * 2**g_mip
-    new_bbox = padded_bbox.translate(dist.flip(0)) 
+    new_bbox = padded_bbox.translate(dist[0,:,0,0]) 
 
     f -= dist
-    g = g_cv[g_mip][new_bbox(g_z)]
+    g = g_cv[g_mip][new_bbox.to_cube(g_z)]
     if g_mip > dst_mip:
         g = g.up(g_mip - dst_mip)
     h = f(g)
     h += dist
-    h = h[:,pad:-pad,pad:-pad,:]
+    h = Field(h.field[slices], bbox)
 
     if affine is not None:
       # PyTorch conventions are column, row order (y, then x) so flip

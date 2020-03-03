@@ -1,6 +1,7 @@
 import numpy as np
 from math import floor, ceil
 from utilities.helpers import crop
+from copy import deepcopy
 import json
 
 def deserialize_bbox(s):
@@ -164,17 +165,28 @@ class BoundingBox:
         return '{0},{1},{2}_{3},{4},{5}'.format(x_start, y_start, z_start, 
                                                 x_stop, y_stop, z_stop)
   
-    def translate(self, dis):
+    def translate(self, dist):
+        """Translate bbox by int vector with shape (2,)
+        """
         x_range = self.x_range(mip=0)
         y_range = self.y_range(mip=0)
-        return BoundingBox(x_range[0] + dis[0], 
-                           x_range[1] + dis[0],
-                           y_range[0] + dis[1], 
-                           y_range[1] + dis[1],
+        return BoundingBox(x_range[0] + dist[0], 
+                           x_range[1] + dist[0],
+                           y_range[0] + dist[1], 
+                           y_range[1] + dist[1],
                            mip=0)
 
     def copy(self):
         return deepcopy(self)
+
+    def to_cube(self, zs, ze=None):
+        if ze is None:
+            ze = zs+1
+        return BoundingCube.from_bbox(self, zs, ze)
+
+    def to_slices(self, zs, ze=None, mip=0):
+        bcube = self.to_cube(zs=zs, ze=ze)
+        return bcube.to_slices(mip=mip)
 
 class BoundingCube():
 

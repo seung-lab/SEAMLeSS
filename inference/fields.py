@@ -59,6 +59,9 @@ class Field():
     def numpy(self):
         return self.field.data.numpy()
 
+    def profile(self, **kwargs):
+        return self.field.mean_finite_vector(**kwargs)
+
     def new(self, field):
         """Create new field with same bbox 
         """
@@ -90,6 +93,10 @@ class Field():
         x.to_abs()
         return g
 
+    # TODO
+    # def __getitem__(self, slices):
+    #     x = self.field[slices]
+
     def equal_field(self, x):
         if isinstance(x, Field):
             return torch.equal(self.field, x.field) 
@@ -99,7 +106,6 @@ class Field():
         return self.equal_field(x) and (self.bbox == x.bbox)
 
     def __mul__(self, c):
-        assert(isinstance(c, (int, float, complex)))
         x = self.field * c 
         return self.new(x)
 
@@ -110,7 +116,6 @@ class Field():
         return self.__mul__(1/c)
 
     def __add__(self, c):
-        assert(isinstance(c, (int, float, complex)))
         x = self.field + c 
         return self.new(x)
 
@@ -177,13 +182,4 @@ class FieldCloudVolume():
             field = np.int16(field * 4)
         slices = bcube.to_slices(mip=self.cv.mip)
         self.cv[slices] = field
-
-
-class MiplessFieldCloudVolume(MiplessCloudVolume):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs, obj=FieldCloudVolume)
-
-def profile_field(field):
-    return field.mean_finite_vector()
 
