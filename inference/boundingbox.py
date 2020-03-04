@@ -23,6 +23,16 @@ class BoundingBox:
         }
         s = json.dumps(contents)
         return s
+    
+    @classmethod
+    def deserialize(cls, s):
+        contents = json.loads(s)
+        return BoundingBox(contents['m0_x'][0], 
+                            contents['m0_x'][1],
+                            contents['m0_y'][0], 
+                            contents['m0_y'][1], 
+                            mip=0, 
+                            max_mip=contents['max_mip'])
   
     def contains(self, other):
         assert type(other) == type(self)
@@ -180,8 +190,6 @@ class BoundingBox:
         return deepcopy(self)
 
     def to_cube(self, zs, ze=None):
-        if ze is None:
-            ze = zs+1
         return BoundingCube.from_bbox(self, zs, ze)
 
     def to_slices(self, zs, ze=None, mip=0):
@@ -196,7 +204,9 @@ class BoundingCube():
         self.ze = ze
 
     @classmethod
-    def from_bbox(cls, bbox, zs, ze):
+    def from_bbox(cls, bbox, zs, ze=None):
+        if ze is None:
+            ze = zs+1
         return cls(*bbox.m0_x, *bbox.m0_y, zs, ze, 0, bbox.max_mip)
 
     def to_slices(self, mip=0):
