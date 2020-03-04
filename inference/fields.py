@@ -148,6 +148,9 @@ class FieldCloudVolume():
     def commit_info(self):
         self.cv.commit_info()
 
+    def commit_provenance(self):
+        self.cv.commit_provenance()
+
     def __getitem__(self, bcube):
         """Get field cutout as absolute residuals
 
