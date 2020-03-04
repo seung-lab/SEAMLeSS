@@ -84,7 +84,6 @@ def test_cloudsample():
                             g_mip=0,
                             dst_mip=0,
                             factor=1.,
-                            affine=None,
                             pad=0)
     o = get_field(sz=4, x_block=0, y_block=0)
     o_cube = BoundingCube.from_bbox(o.bbox, zs=0, ze=1)
