@@ -1,5 +1,5 @@
 import gevent.monkey
-gevent.monkey_patch_all()
+gevent.monkey.patch_all()
 
 import atexit
 import os
