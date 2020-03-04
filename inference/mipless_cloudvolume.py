@@ -62,10 +62,12 @@ class MiplessCloudVolume():
       return s
 
   @classmethod
-  def deserialize(cls, s, cache={}):
-      kwargs = {'bounded': False, 'progress': False,
-                   'autocrop': False, 'non_aligned_writes': False,
-                   'cdn_cache': False}
+  def deserialize(cls, s, cache={}, **kwargs):
+      kwargs['bounded'] = False
+      kwargs['progress'] = False
+      kwargs['autocrop'] = False
+      kwargs['non_aligned_writes'] = False
+      kwargs['cdn_cache'] = False
       if s in cache:
         return cache[s]
       else:
@@ -74,7 +76,7 @@ class MiplessCloudVolume():
         return mcv
 
   def store_info(self):
-    tmp_cv = CloudVolume(self.path, **self.kwargs)
+    tmp_cv = self.obj(self.path, **self.kwargs)
     tmp_cv.commit_info()
     tmp_cv.commit_provenance()
 
