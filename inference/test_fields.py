@@ -30,6 +30,7 @@ def test_field():
     g = f(-f)
     assert(g.size == f.size)
     assert(g.is_identity())
+    assert(torch.equal(g.profile(), torch.tensor([[0.,0.]])))
 
 def delete_layer(path):
     if os.path.exists(path):
@@ -49,18 +50,19 @@ def test_fieldcloudvolume():
              )
     path = 'file:///tmp/cloudvolume/empty_volume'
     vol = FieldCloudVolume(path, as_int16=True, device='cpu', mip=0, info=info)
+    assert(isinstance(vol, FieldCloudVolume))
     vol.commit_info()
     # create test field
     sz = 16
     bbox = BoundingBox(xs=0, xe=16, ys=0, ye=16, mip=0, max_mip=4)
     data = np.ones((1, 2, sz, sz)) 
     f = Field(data, bbox=bbox)
-    bcube = BoundingCube.from_bbox(bbox, 0, 1)
+    bcube = BoundingCube.from_bbox(bbox, zs=0, ze=1)
     f.field.y = -f.field.y 
     vol[bcube] = f 
     g = vol[bcube]
     assert(f == g)
-    delete_layer(path)
+    delete_layer('/tmp/cloudvolume/empty_volume')
 
 
 
