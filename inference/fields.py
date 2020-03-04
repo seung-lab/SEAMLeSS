@@ -101,6 +101,11 @@ class Field():
         if isinstance(x, Field):
             return torch.equal(self.field, x.field) 
         return False
+
+    def allclose(self, x, **kwargs):
+        if isinstance(x, Field):
+            return torch.allclose(self.field, x.field, **kwargs) and (self.bbox == x.bbox)
+        return False
         
     def __eq__(self, x):
         return self.equal_field(x) and (self.bbox == x.bbox)
