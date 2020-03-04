@@ -1,3 +1,6 @@
+import gevent.monkey
+gevent.monkey_patch_all()
+
 import atexit
 import os
 import signal
