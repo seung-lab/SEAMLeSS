@@ -828,8 +828,11 @@ class Aligner:
     print (": {} sec".format(end - start))
     invf = invf.data.cpu().numpy()
     print('invert_field shape: {0}'.format(invf.shape))
-  
-    self.save_field(invf, dst_cv, z, bbox, mip, relative=False, as_int16=True) 
+    try: 
+       self.save_field(invf, dst_cv, z, bbox, mip, relative=False, as_int16=True) 
+    except:
+        print("unaligned chunk")
+        raise
 
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
                         bbox, image_mip, field_mip, mask_cv=None,

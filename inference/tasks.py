@@ -270,7 +270,7 @@ class InvertTask(RegisteredTask):
           end = time()
           diff = end - start
           print('InvertTask: {:.3f} s'.format(diff))
-      except RuntimeError:
+      except:
           print('InvertTask: ' + str(patch_bbox) + ' failed, writing to failure queue')
           if failed_queue != "":
             with GreenTaskQueue(queue_name=failed_queue) as tq:
