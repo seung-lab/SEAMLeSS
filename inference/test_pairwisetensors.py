@@ -6,20 +6,22 @@ import torch
 from boundingbox import BoundingBox, BoundingCube
 from cloudvolume.lib import Vec
 
-from fields import Field, FieldCloudVolume
-from pairwise_fields import PairwiseFields, PairwiseVoteTask 
+from fields import Field
+from cloudtensor import CloudField
+from pairwisetensors import PairwiseTensors, PairwiseFields, PairwiseVoteTask 
 
 import shutil
 import os
+from copy import deepcopy
 
 def delete_layer(path):
     if os.path.exists(path):
         shutil.rmtree(path)  
 
-def test_pairwise_fields():
+def test_pairwisetensors():
     mip=0
     sz = Vec(*[4, 4, 1])
-    info = FieldCloudVolume.create_new_info(
+    info = CloudField.create_new_info(
              num_channels=2, 
              layer_type='image', 
              data_type='int16', 
@@ -43,11 +45,10 @@ def test_pairwise_fields():
                        bbox=g.bbox,
                        mip=mip,
                        pad=0,
-                       mkdir=True,
-                       as_int16=True,
                        device='cpu',
                        info=info,
                        fill_missing=True)
+    F.mkdir()
     assert(F.cvs[-2].path == 'file:///tmp/cloudvolume/empty_volume/-2')
     assert(F.cvs[-1].path == 'file:///tmp/cloudvolume/empty_volume/-1')
     assert(F.cvs[1].path == 'file:///tmp/cloudvolume/empty_volume/1')
@@ -91,7 +92,7 @@ def test_pairwise_fields():
 def test_pairwise_vote_task():
     mip=0
     sz = Vec(*[4, 4, 1])
-    info = FieldCloudVolume.create_new_info(
+    info = CloudField.create_new_info(
              num_channels=2, 
              layer_type='image', 
              data_type='float32', 
@@ -101,6 +102,9 @@ def test_pairwise_vote_task():
              volume_size=[8,8,4],
              chunk_size=sz,
              )
+
+    weights_info = deepcopy(info)
+    weights_info['num_channels'] = 1
 
     def get_field(sz, x_block, y_block):
         bbox = BoundingBox(xs=x_block*sz, xe=(x_block+1)*sz, 
@@ -117,22 +121,30 @@ def test_pairwise_vote_task():
                        bbox=f.bbox,
                        mip=mip,
                        pad=0,
-                       mkdir=True,
-                       as_int16=False,
                        device='cpu',
                        info=info,
                        fill_missing=False)
+    F.mkdir()
     corrected_path = 'file:///tmp/cloudvolume/corrected'
     C = PairwiseFields(path=corrected_path,
                        offsets=offsets,
                        bbox=f.bbox,
                        mip=mip,
                        pad=0,
-                       mkdir=True,
-                       as_int16=False,
                        device='cpu',
                        info=info,
                        fill_missing=False)
+    C.mkdir()
+    weights_path = 'file:///tmp/cloudvolume/weights'
+    W = PairwiseTensors(path=weights_path,
+                       offsets=offsets,
+                       bbox=f.bbox,
+                       mip=mip,
+                       pad=0,
+                       device='cpu',
+                       info=weights_info,
+                       fill_missing=False)
+    W.mkdir()
 
     # Want vector voting to be on three vectors that are each rotated by 2*\pi / 3
     # Translate so that average is (0, 1)
@@ -168,14 +180,13 @@ def test_pairwise_vote_task():
     f = get_field(sz=4, x_block=0, y_block=0)
     VoteTask = PairwiseVoteTask(estimates_path=estimates_path,
                                  corrected_path=corrected_path,
-                                 weights_path='',
+                                 weights_path=weights_path,
                                  offsets=offsets,
                                  src_z=0,
                                  tgt_offsets=[1,2,3],
                                  bbox=f.bbox.serialize(),
                                  mip=mip,
                                  pad=0,
-                                 as_int16=False,
                                  device='cpu',
                                  softmin_temp=10000, # make all vectors equal
                                  blur_sigma=1)
@@ -183,12 +194,16 @@ def test_pairwise_vote_task():
     # with pytest.raises(ValueError) as e:
     VoteTask.execute()
 
-    o = get_field(sz=4, x_block=0, y_block=0)
-    o.field.x = 0 
-    o.field.y = 2/3
+    cx = get_field(sz=4, x_block=0, y_block=0)
+    cx.field.x = 0 
+    cx.field.y = 2/3
     x = C[(1,0)]
-    assert(o.allclose(x, atol=1e-3))
+    assert(cx.allclose(x, atol=1e-3))
+    cw = torch.ones((1, 1, 4, 4))*2
+    w = W[(1,0)]
+    assert(torch.allclose(w, cw))
 
     delete_layer('/tmp/cloudvolume/estimates')
     delete_layer('/tmp/cloudvolume/corrected')
+    delete_layer('/tmp/cloudvolume/weights')
 

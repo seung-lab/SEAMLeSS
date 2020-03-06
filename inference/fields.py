@@ -3,8 +3,6 @@ import torch
 import torchfields
 import numpy as np
 from copy import deepcopy
-from cloudvolume import CloudVolume 
-from mipless_cloudvolume import MiplessCloudVolume
 
 class Field():
     """Wrapper to maintain Field with absolute displacements at MIP0
@@ -138,56 +136,4 @@ class Field():
     def is_identity(self, *args, **kwargs):
         return self.field.is_identity(*args, **kwargs)
 
-
-class FieldCloudVolume():
-
-    def __init__(self, *args, **kwargs):
-        self.as_int16 = kwargs.pop('as_int16')
-        self.device = kwargs.pop('device')
-        self.cv = CloudVolume(*args, **kwargs)
-
-    @classmethod
-    def create_new_info(cls, *args, **kwargs):
-        return CloudVolume.create_new_info(*args, **kwargs)
-
-    def commit_info(self):
-        self.cv.commit_info()
-
-    def commit_provenance(self):
-        self.cv.commit_provenance()
-
-    def __getitem__(self, bcube):
-        """Get field cutout as absolute residuals
-
-        Args:
-            bcube: BoundingCube (MiplessBoundingBox + z range)
-
-        Returns:
-            Field object (with absolute residuals)
-        """
-        slices = bcube.to_slices(mip=self.cv.mip)
-        field = self.cv[slices]
-        field = np.transpose(field, (2,3,0,1))
-        if self.as_int16:
-          field = np.float32(field) / 4
-        return Field(data=field, bbox=bcube.bbox, device=self.device) 
-
-    def __setitem__(self, bcube, field):
-        """Save field (must be in absolute residuals)
-
-        Args:
-            bcube: BoundingCube (MiplessBoundingBox + z range)
-            field: Field object
-        """
-        if field.is_cuda:
-            field = field.cpu()
-        field = np.transpose(field.numpy(), (2,3,0,1))
-        if self.as_int16:
-            if(np.max(field) > 8192 or np.min(field) < -8191):
-                print('Value in field is out of range of int16 ' \
-                      'max: {}, min: {}'.format(np.max(field),
-                                                np.min(field)), flush=True)
-            field = np.int16(field * 4)
-        slices = bcube.to_slices(mip=self.cv.mip)
-        self.cv[slices] = field
 

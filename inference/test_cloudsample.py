@@ -5,9 +5,10 @@ import torch
 
 from boundingbox import BoundingBox, BoundingCube
 from cloudvolume.lib import Vec
-from mipless_cloudvolume import MiplessCloudVolume
 
-from fields import Field, FieldCloudVolume
+
+from fields import Field
+from cloudtensor import CloudField, MiplessCloudField
 from cloudsample import cloudsample_compose
 
 import shutil
@@ -19,7 +20,7 @@ def delete_layer(path):
 
 def test_cloudsample():
     sz = Vec(*[4, 4, 1])
-    info = FieldCloudVolume.create_new_info(
+    info = CloudField.create_new_info(
              num_channels=2, 
              layer_type='image', 
              data_type='int16', 
@@ -30,16 +31,14 @@ def test_cloudsample():
              chunk_size=sz,
              )
     f_path = 'file:///tmp/cloudvolume/empty_volume_f'
-    f_vol = FieldCloudVolume(f_path, 
-                            as_int16=True, 
+    f_vol = CloudField(f_path, 
                             device='cpu', 
                             mip=0, 
                             info=info, 
                             fill_missing=True)
     f_vol.commit_info()
     g_path = 'file:///tmp/cloudvolume/empty_volume_g'
-    g_vol = FieldCloudVolume(g_path, 
-                            as_int16=True, 
+    g_vol = CloudField(g_path, 
                             device='cpu', 
                             mip=0, 
                             info=info, 
@@ -63,17 +62,9 @@ def test_cloudsample():
     g.field.y = -4
     g_vol[g_cube] = g 
 
-    mfcv = MiplessCloudVolume(f_path, 
-                            mkdir=False, 
-                            obj=FieldCloudVolume,
-                            fill_missing=True,
-                            as_int16=True,
+    mfcv = MiplessCloudField(f_path, 
                             device='cpu')
-    mgcv = MiplessCloudVolume(g_path, 
-                            mkdir=False, 
-                            obj=FieldCloudVolume,
-                            fill_missing=True,
-                            as_int16=True,
+    mgcv = MiplessCloudField(g_path, 
                             device='cpu')
     h = cloudsample_compose(f_cv=mfcv,
                             g_cv=mgcv,
