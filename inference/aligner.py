@@ -713,19 +713,25 @@ class Aligner:
       print("Pushing {} points across {} chunks".format(len(chunks), len(pivots)))
       starttime = time()
       chunks_pushed_list = list()
+      chunks_failed_list = list()
       start = 0
       for p in pivots:
           chunk = chunks[start:p]
           start = p
-          chunk_pushed = self.push_coordinate_chunk(cv, mip, chunk, xyz, scale)
-          chunks_pushed_list.append(chunk_pushed)
+          try:
+              chunk_pushed = self.push_coordinate_chunk(cv, mip, chunk, xyz, scale)
+              chunks_pushed_list.append(chunk_pushed)
+          except:
+              chunks_failed_list.append(chunk)
+
 
       chunks_pushed = np.vstack(chunks_pushed_list) 
+      chunks_failed = np.vstack(chunks_failed_list) 
 
       endtime = time()
       print (": {} sec".format(endtime - starttime))
 
-      return chunks_pushed
+      return chunks_pushed, chunks_failed
 
   def push_coordinate_chunk(self, cv, mip, chunk, xyz=[1,2,3], scale=[4,4,40]):
     if not mip in cv.cvs.keys():

@@ -19,7 +19,7 @@ from boundingbox import BoundingBox
 from aligner import Aligner
 import numpy as np
 
-def push_chunks_from_file(src_path, dst_path, index, cv, mip):
+def push_chunks_from_file(src_path, dst_path, failed_path, index, cv, mip):
     
     a = Aligner()
     cm = CloudManager(cv, 8, 512, None, batch_size=1, size_chunk=512, batch_mip=mip, create_info=False)
@@ -28,7 +28,8 @@ def push_chunks_from_file(src_path, dst_path, index, cv, mip):
     pivots = np.loadtxt('{path}/{i}_chunks'.format(path = src_path, i = index), dtype='int64')
     pivots = pivots - index
     chunks_pushed = a.push_coordinate_chunks(cv, mip, chunks, pivots)
-    np.savetxt('{path}/{i}'.format(path = dst_path, i = index), pivot_chunks[i], '%.0f')
+    np.savetxt('{path}/{i}'.format(path = dst_path, i = index), chunks_pushed, '%.0f')
+    np.savetxt('{path}/{i}'.format(path = failed_path, i = index), chunks_failed, '%.0f')
 
 
 def get_pivots(array, ran):
