@@ -244,7 +244,7 @@ class FailedInvertTask(RegisteredTask):
 
 class InvertTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, z, patch_bbox, src_mip, pad, failed_queue, use_cpu=False):
-    super(). __init__(src_cv, dst_cv, z, patch_bbox, src_mip, pad, failed_queue, use_cpu=False)
+    super(). __init__(src_cv, dst_cv, z, patch_bbox, src_mip, pad, failed_queue, use_cpu=use_cpu)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv) 
