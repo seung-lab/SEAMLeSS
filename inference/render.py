@@ -1,5 +1,5 @@
-import gevent.monkey
-gevent.monkey.patch_all()
+# import gevent.monkey
+# gevent.monkey.patch_all(thread=False)
 
 from concurrent.futures import ProcessPoolExecutor
 import taskqueue
@@ -32,17 +32,115 @@ def make_range(block_range, part_num):
     range_list.append(block_range[(part-1)*srange:])
     return range_list
 
+def render(a,
+           cm,
+           src, 
+           field, 
+           dst, 
+           bbox,
+           src_mip,
+           field_mip,
+           z_range,
+           queue_name=None, 
+           affine_lookup=None,
+           src_lookup=None):
+  """Render sections
+
+  Args:
+    a: Aligner object
+    cm: CloudManager object
+    src: MiplessCloudVolume with source image
+    field: MiplessCloudVolume with field as float32
+    dst: MiplessCloudVolume where to write destination image
+    bbox: BoundingBox for region to render
+    src_mip: int for MIP level of source (& destination) image
+    field_mip: int for MIP level of field 
+    z_range: iterable of ints for sections to be rendered
+    queue_name: str for queue to use
+    affine_lookup: dict with per section affine to use
+    src_lookup: dict with per section CloudVolume to use for source image
+  """
+
+  def remote_upload(tasks):
+      with GreenTaskQueue(queue_name=queue_name) as tq:
+          tq.insert_all(tasks)
+
+  class RenderTaskIterator(object):
+      def __init__(self, zrange):
+        self.zrange = zrange
+      def __iter__(self):
+        print("range is ", self.zrange)
+        for z in self.zrange:
+          affine = None
+          if affine_lookup:
+            try:
+              affine = affine_lookup[z]
+            except KeyError:
+              affine = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+
+          src_path = src.path
+          if src_lookup: 
+            if z in src_lookup:
+              src_path = src_lookup[z].path
+              if src_path != src.path:
+                print("Overriding {} source dir with path {}".format(z, src_path))
+          
+          t = a.render(cm=cm, 
+                       src_cv=src_path, 
+                       field_cv=field.path, 
+                       dst_cv=dst.path, 
+                       src_z=z, 
+                       field_z=z, 
+                       dst_z=z, 
+                       bbox=bbox,
+                       src_mip=src_mip, 
+                       field_mip=field_mip, 
+                       affine=affine) 
+          yield from t
+
+  ptask = []
+  range_list = make_range(z_range, a.threads)
+  start = time()
+  for irange in range_list:
+      ptask.append(RenderTaskIterator(irange))
+
+  if a.distributed:
+    with ProcessPoolExecutor(max_workers=a.threads) as executor:
+        executor.map(remote_upload, ptask)
+  else:
+    for t in ptask:
+     tq = LocalTaskQueue(parallel=1, progress=False)
+     tq.insert_all(t, args=[a], progress=False)
+  
+  end = time()
+  diff = end - start
+  print("Sending Render Tasks use time:", diff)
+  print('Running Render Tasks')
+  # wait 
+  start = time()
+  # a.wait_for_sqs_empty()
+  end = time()
+  diff = end - start
+  print("Executing Render Tasks use time:", diff)
+  return True
+
 
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--downsample_shift', type=int, default=0,
     help='temporary hack to account for half pixel shifts caused by downsampling')
-  parser.add_argument('--section_lookup', type=str, 
+  parser.add_argument('--section_lookup', 
+    type=str, 
+    default=None,
     help='path to json file with section specific settings')
-  parser.add_argument('--z_range_path', type=str, 
+  parser.add_argument('--z_range_path', 
+    type=str, 
+    default=None,
     help='path to csv file with list of z indices to use')
   parser.add_argument('--src_path', type=str)
-  parser.add_argument('--info_path', type=str,
+  parser.add_argument('--info_path', 
+    type=str,
+    default=None,
     help='path to CloudVolume to use as template info file')
   parser.add_argument('--field_path', type=str)
   parser.add_argument('--field_mip', type=int)
@@ -99,7 +197,7 @@ if __name__ == '__main__':
   # Create src CloudVolumes
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False)
-  field = cm.create(args.field_path, data_type='int16', num_channels=2,
+  field = cm.create(args.field_path, data_type='float32', num_channels=2,
                          fill_missing=True, overwrite=False)
   dst = cm.create(args.dst_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=True)
@@ -109,7 +207,7 @@ if __name__ == '__main__':
 
   # compile model lookup per z index
   affine_lookup = None
-  source_lookup = {}
+  src_lookup = {}
   if args.section_lookup:
     affine_lookup = {}
     with open(args.section_lookup) as f:
@@ -128,58 +226,15 @@ if __name__ == '__main__':
           src_path_to_cv[src_path] = cm.create(src_path,
               data_type='uint8', num_channels=1, fill_missing=True,
               overwrite=False)
-        source_lookup[z] = src_path_to_cv[src_path]
+        src_lookup[z] = src_path_to_cv[src_path]
 
-  def remote_upload(tasks):
-      with GreenTaskQueue(queue_name=args.queue_name) as tq:
-          tq.insert_all(tasks)
-
-  class RenderTaskIterator(object):
-      def __init__(self, zrange):
-        self.zrange = zrange
-      def __iter__(self):
-        print("range is ", self.zrange)
-        for z in self.zrange:
-          affine = None
-          if affine_lookup:
-            try:
-              affine = affine_lookup[z]
-            except KeyError:
-              affine = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
-
-          try:
-            src_path = source_lookup[z].path
-            if src_path != src.path:
-              print("Overriding {} source dir with path {}".format(z, src_path))
-          except KeyError:
-            src_path = src.path
-          
-          t = a.render(cm, src_path, field.path, dst.path, z, z, z, bbox,
-                           src_mip, field_mip, affine=affine) 
-          yield from t
-
-  ptask = []
-  range_list = make_range(z_range, a.threads)
-  start = time()
-  for irange in range_list:
-      ptask.append(RenderTaskIterator(irange))
-
-  if a.distributed:
-    with ProcessPoolExecutor(max_workers=a.threads) as executor:
-        executor.map(remote_upload, ptask)
-  else:
-    for t in ptask:
-     tq = LocalTaskQueue(parallel=1)
-     tq.insert_all(t, args=[a])
-
-  end = time()
-  diff = end - start
-  print("Sending Render Tasks use time:", diff)
-  print('Running Render Tasks')
-  # wait 
-  start = time()
-  # a.wait_for_sqs_empty()
-  end = time()
-  diff = end - start
-  print("Executing Render Tasks use time:", diff)
-
+  render(a=a,
+         src=src, 
+         field=field, 
+         dst=dst, 
+         src_mip=src_mip,
+         field_mip=field_mip,
+         z_range=z_range,
+         queue_name=args.queue_name, 
+         affine_lookup=affine_lookup,
+         src_lookup=src_lookup)

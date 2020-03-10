@@ -1,6 +1,7 @@
 import numpy as np
 from math import floor, ceil
 from utilities.helpers import crop
+from cloudvolume.lib import Bbox
 import json
 
 def deserialize_bbox(s):
@@ -151,6 +152,27 @@ class BoundingBox:
   
   def __repr__(self):
     return self.__str__(mip=0)
+  
+  @classmethod
+  def from_bbox(cls, bbox, mip, max_mip):
+    """Create BoundingBox from CloudVolume.lib Bbox
+    """
+    return cls(xs=bbox.minpt[0], 
+               xe=bbox.maxpt[0], 
+               ys=bbox.minpt[1], 
+               ye=bbox.maxpt[1], 
+               mip=mip,
+               max_mip=max_mip)
+  
+  def to_bbox(self, z_start, z_stop=None, mip=0):
+    x_start = self.x_range(mip)[0]    
+    x_stop = self.x_range(mip)[1]    
+    y_start = self.y_range(mip)[0]    
+    y_stop = self.y_range(mip)[1]    
+    if not z_stop:
+      z_stop = z_start+ 1
+    return Bbox([x_start, y_start, z_start],
+                [x_stop, y_stop, z_stop])
 
   def stringify(self, z_start, z_stop=None, mip=0):
     x_start = self.x_range(mip)[0]    
