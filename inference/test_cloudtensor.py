@@ -94,5 +94,6 @@ def test_miplesscloudfield():
     mcv[0].cv.add_scale([2,2,1])
     mcv.mkdir()
     mcv = MiplessCloudField(path, device='cpu')
+    assert(mcv.info() == info)
     assert(isinstance(mcv[1], CloudField))
     delete_layer('/tmp/cloudvolume/empty_volume')

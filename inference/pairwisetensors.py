@@ -42,9 +42,19 @@ class PairwiseTensors():
     def cloudtype(self):
         return MiplessCloudTensor
 
+    @property
+    def info(self):
+        """Get info file of first MiplessTensor in self.cvs. This info file
+        should be identical across all MiplessTensors for this object.
+        """
+        return self.cvs.get(list(self.cvs.keys())[0]).info(mip=self.mip)
+
     def mkdir(self):
         for cv in self.cvs.values():
             cv.mkdir()
+
+    def exists(self):
+        raise NotImplementedError
 
     def __setitem__(self, tgt_to_src, field):
         """Save pairwise object at ./{OFFSET}[:,:,z]
@@ -246,3 +256,5 @@ class PairwiseVoteTask(RegisteredTask):
         diff = end - start
         print('FieldsVoteTask: {:.3f} s'.format(diff))
 
+# class PairwiseComputeField:
+#     raise NotImplementedError

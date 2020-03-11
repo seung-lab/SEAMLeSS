@@ -125,6 +125,8 @@ def test_pairwise_vote_task():
                        info=info,
                        fill_missing=False)
     F.mkdir()
+    assert(F.info == info)
+
     corrected_path = 'file:///tmp/cloudvolume/corrected'
     C = PairwiseFields(path=corrected_path,
                        offsets=offsets,

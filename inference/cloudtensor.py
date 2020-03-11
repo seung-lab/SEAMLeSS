@@ -36,6 +36,10 @@ class CloudTensor():
     def dtype(self):
         return self.cv.dtype
 
+    @property
+    def info(self):
+        return self.cv.info
+
     def commit_info(self):
         self.cv.commit_info()
 
@@ -165,7 +169,7 @@ class MiplessCloudTensor():
             return self.cvs.get(list(self.cvs.keys())[0]).info
         info = self.kwargs.get('info')
         if info is None:
-            cv = self.cloudtype(self.path, mip=mip)
+            cv = self.cloudtype(self.path, mip=mip, **self.kwargs)
             info = cv.info
         return info
 
