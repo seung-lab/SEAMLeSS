@@ -61,7 +61,7 @@ class CloudTensor():
         if self.dtype == 'uint8':
             img = np.divide(img, float(255.0), dtype=np.float32)
         img = torch.from_numpy(img)
-        return img.to(device=self.device)
+        return img.to(device=torch.device(self.device))
 
     def __setitem__(self, bcube, img):
         """Save image
@@ -95,7 +95,8 @@ class CloudField(CloudTensor):
         field = np.transpose(field, (2,3,0,1))
         if self.cv.dtype == 'int16':
           field = np.float32(field) / 4
-        return Field(data=field, bbox=bcube.bbox, device=self.device) 
+        f = Field(data=field, bbox=bcube.bbox)
+        return f.to(device=torch.device(self.device))
 
     def __setitem__(self, bcube, field):
         """Save field (must be in absolute residuals)
