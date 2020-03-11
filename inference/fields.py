@@ -57,6 +57,9 @@ class Field():
     def numpy(self):
         return self.field.data.numpy()
 
+    def to(self, device):
+        return self.new(self.field.to(device=device))
+
     def profile(self, **kwargs):
         return self.field.mean_finite_vector(**kwargs)
 
