@@ -173,6 +173,7 @@ if __name__ == "__main__":
         default='none'
     )
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
+    parser.add_argument('--compose_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--final_render_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--status_output_file', type=str, default=None)
     parser.add_argument('--recover_status_from_file', type=str, default=None)
@@ -183,7 +184,11 @@ if __name__ == "__main__":
     parser.add_argument('--pin_second_starting_section', type=int, default=None)
     parser.add_argument('--write_misalignment_masks', action='store_true')
     parser.add_argument('--write_other_masks', action='store_true')
-
+    parser.add_argument(
+        "--new_compose",
+        action='store_true',
+        help="If True, new compose"
+    )
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -212,6 +217,7 @@ if __name__ == "__main__":
     do_final_render = not args.skip_final_render and not ind_block_align
     blackout_op = args.blackout_op
     stitch_suffix = args.stitch_suffix
+    compose_suffix = args.compose_suffix
     output_field_dtype = args.output_field_dtype
     write_composing_field = args.write_composing_field
     write_misalignment_masks = args.write_misalignment_masks
@@ -536,7 +542,7 @@ if __name__ == "__main__":
         overwrite=do_stitching,
     ).path
     overlap_image = cm.create(
-        join(args.dst_path, "field", "stitch", "vvote", "image"),
+        join(args.dst_path, "field", "stitch{}".format(stitch_suffix), "vvote", "image"),
         data_type=args.img_dtype,
         num_channels=1,
         fill_missing=True,
@@ -545,14 +551,14 @@ if __name__ == "__main__":
     stitch_fields = {}
     for z_offset in offset_range:
         stitch_fields[z_offset] = cm.create(
-            join(args.dst_path, "field", "stitch", "vvote", str(z_offset)),
+            join(args.dst_path, "field", "stitch{}".format(stitch_suffix), "vvote", str(z_offset)),
             data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
             overwrite=do_stitching,
         ).path
     broadcasting_field = cm.create(
-        join(args.dst_path, "field", "stitch", "broadcasting"),
+        join(args.dst_path, "field", "stitch{}".format(stitch_suffix), "broadcasting"),
         data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
@@ -560,9 +566,19 @@ if __name__ == "__main__":
     ).path
 
     compose_field = cm.create(join(args.dst_path, 'field',
-                        'stitch{}'.format(args.stitch_suffix), 'compose'),
+                        'stitch{}'.format(args.compose_suffix), 'compose'),
                         data_type=output_field_dtype, num_channels=2,
                         fill_missing=True, overwrite=do_compose).path
+
+    if new_compose:
+        cmr_new_compose = CloudManager(
+            args.src_path,
+            math.log2(chunk_size) + mip,
+            provenance,
+            batch_size=1,
+            size_chunk=1,
+            batch_mip=math.log2(chunk_size) + mip
+        )
 
     if do_final_render:
         # Create CloudVolume Manager
@@ -591,7 +607,7 @@ if __name__ == "__main__":
 
     if write_composing_field:
         composing_field = cm.create(join(args.dst_path, 'field',
-                        'stitch{}'.format(args.stitch_suffix), 'compose_diff'),
+                        'stitch{}'.format(args.compose_suffix), 'compose_diff'),
                         data_type=output_field_dtype, num_channels=2,
                         fill_missing=True, overwrite=do_compose).path
 

@@ -126,6 +126,71 @@ class CopyTask(RegisteredTask):
       diff = end - start
       print(':{:.3f} s'.format(diff))
 
+class AverageFieldTask(RegisteredTask):
+  def __init__(self, field_cv, field_mip, dst_field_cv, dst_field_mip, patch_bbox, image_check, pad, src_z, dst_z):
+    super().__init__(field_cv, field_mip, dst_field_cv, dst_field_mip, patch_bbox, image_check, pad, src_z, dst_z)
+
+  def execute(self, aligner):
+    dst_field_cv = DCV(self.dst_field_cv)
+    field_cv = DCV(self.field_cv)
+    src_z = self.src_z
+    dst_z = self.dst_z
+    field_mip = self.field_mip
+    dst_field_mip = self.dst_field_mip
+    pad = self.pad
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    padded_bbox = deepcopy(patch_bbox)
+    padded_bbox.uncrop(pad, mip=field_mip)
+    if self.image_check is not None:
+      field = aligner.get_field(field_cv, src_z, padded_bbox, field_mip, relative=True)
+      image_check_cv = DCV(self.image_check)
+      src_raw_patch = aligner.get_masked_image(image_check_cv, src_z, padded_bbox, field_mip,
+                                masks=[],
+                                to_tensor=True, normalizer=None)
+      src_rendered_image = grid_sample(src_raw_patch, field, padding_mode='zeros')
+      field = aligner.rel_to_abs_residual(field, field_mip)
+      distance = aligner.profile_field(field, [src_rendered_image], 0.2)
+    else:
+      field = aligner.get_field(field_cv, src_z, patch_bbox, field_mip)
+      distance = aligner.profile_field(field)
+    x_size = patch_bbox.x_range(field_mip)[1] - patch_bbox.x_range(field_mip)[0]
+    y_size = patch_bbox.y_range(field_mip)[1] - patch_bbox.y_range(field_mip)[0]
+    # x_total_size = field_cv[field_mip].info['scales'][field_mip]['size'][0] - field_cv[field_mip].info['scales'][field_mip]['voxel_offset'][0]
+    # y_total_size = field_cv[field_mip].info['scales'][field_mip]['size'][1] - field_cv[field_mip].info['scales'][field_mip]['voxel_offset'][1]
+    x_pos = patch_bbox.x_range(field_mip)[0] - field_cv[field_mip].info['scales'][field_mip]['voxel_offset'][0]
+    y_pos = patch_bbox.y_range(field_mip)[0] - field_cv[field_mip].info['scales'][field_mip]['voxel_offset'][1]
+    x_ind = x_pos // x_size
+    y_ind = y_pos // y_size
+    zzz = np.zeros(shape=[1,1,1,2], dtype=np.float32)
+    zzz[0][0][0] = distance.cpu().numpy()
+    dst_field_cv[0][x_ind,y_ind,src_z] = zzz
+
+# class 
+
+class SplitFieldTask(RegisteredTask):
+  def __init__(self, field_cv, field_mip, rigid_x, rigid_y, high_freq_field_cv, high_freq_field_mip, 
+               patch_bbox, src_z, dst_z):
+    super().__init__(field_cv, field_mip, rigid_x, rigid_y, high_freq_field_cv, 
+                     high_freq_field_mip, patch_bbox, src_z, dst_z)
+
+  def execute(self, aligner):
+    # low_freq_field_cv = DCV(self.low_freq_field_cv)
+    high_freq_field_cv = DCV(self.high_freq_field_cv)
+    field_cv = DCV(self.field_cv)
+    src_z = self.src_z
+    field_z = self.field_z
+    dst_z = self.dst_z
+    field_mip = self.field_mip
+    # low_freq_field_mip = self.low_freq_field_mip
+    rigid_x = self.rigid_x
+    rigid_y = self.rigid_y
+    high_freq_field_mip = self.high_freq_field_mip
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+
+    field = aligner.get_field(field_cv, src_z, patch_bbox, field_mip)
+    import ipdb
+    ipdb.set_trace()
+
 class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
                      patch_bbox, mip, pad, src_masks, tgt_masks,
@@ -214,6 +279,7 @@ class ComputeFieldTask(RegisteredTask):
                                             src_masks, tgt_masks,
                                             None, prev_field_cv, prev_field_z,
                                             prev_field_inverse, cur_field_cv=cur_field_cv, coarse_field_cv=coarse_field_cv,coarse_field_mip=coarse_field_mip,unaligned_cv=unaligned_cv)
+        # import ipdb; ipdb.set_trace()
         aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       else:
         field = aligner.compute_field_chunk(model_path, src_cv=src_cv, tgt_cv=tgt_cv, src_z=src_z, tgt_z=tgt_z,

@@ -547,7 +547,7 @@ class Aligner:
     favg = field.sum() / (torch.nonzero(field).size(0) + self.eps)
     return favg
 
-  def profile_field(self, field, images=None):
+  def profile_field(self, field, images=None, thresh=None):
     if images is None:
       nonzero = field[(field[...,0] != 0) & (field[...,1] != 0)]
       if len(nonzero) == 0:
@@ -568,8 +568,14 @@ class Aligner:
         image = image.squeeze(0)
         field_mask[image == 0] = 0
 
-      if field_mask.sum() == 0:
+      field_mask_sum = field_mask.sum()
+      
+      if field_mask_sum == 0:
         return torch.Tensor([0, 0])
+
+      if thresh is not None:
+        if field.shape[1] * field.shape[2] * thresh > field_mask_sum:
+          return torch.Tensor([0, 0])
 
       profile_subset = field[field_mask != 0, ...]
       low_l = percentile(profile_subset, 25)
@@ -1545,6 +1551,68 @@ class Aligner:
                                               tgt_masks,
                                               prev_field_cv, prev_field_z, prev_field_inverse,
                                               coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start,cur_field_cv,unaligned_cv))
+        return batch
+
+  def split_field(self, cm, bbox, field_cv, field_mip, rigid_x, rigid_y, high_freq_field_cv, high_freq_field_mip, 
+                src_z, dst_z):
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.max_mip)
+    class SplitFieldTaskIterator():
+        def __init__(self, cl, start, stop):
+          self.chunklist = cl
+          self.start = start
+          self.stop = stop
+        def __len__(self):
+          return self.stop - self.start
+        def __getitem__(self, slc):
+          itr = deepcopy(self)
+          itr.start = slc.start
+          itr.stop = slc.stop
+          return itr
+        def __iter__(self):
+          for i in range(self.start, self.stop):
+            chunk = self.chunklist[i]
+            yield tasks.SplitFieldTask(field_cv, field_mip, rigid_x, rigid_y, high_freq_field_cv, high_freq_field_mip, 
+                                      chunk, src_z, dst_z)
+    if return_iterator:
+        return SplitFieldTaskIterator(chunks,0, len(chunks))
+    else:
+        batch = []
+        for chunk in chunks:
+          batch.append(tasks.SplitFieldTask(field_cv, field_mip, rigid_x, rigid_y, high_freq_field_cv, high_freq_field_mip, 
+                                      chunk, src_z, dst_z))
+        return batch
+
+  def average_field(self, cm, bbox, field_cv, field_mip, dst_field_cv, dst_field_mip, patch_bbox, image_check, pad, src_z, dst_z, return_iterator=False):
+    start = time()
+    mip = field_mip
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.max_mip)
+    class AverageFieldTaskIterator():
+        def __init__(self, cl, start, stop):
+          self.chunklist = cl
+          self.start = start
+          self.stop = stop
+        def __len__(self):
+          return self.stop - self.start
+        def __getitem__(self, slc):
+          itr = deepcopy(self)
+          itr.start = slc.start
+          itr.stop = slc.stop
+          return itr
+        def __iter__(self):
+          for i in range(self.start, self.stop):
+            chunk = self.chunklist[i]
+            yield tasks.AverageFieldTask(field_cv, field_mip, dst_field_cv, dst_field_mip, chunk, image_check, pad, src_z, dst_z)
+    if return_iterator:
+        return AverageFieldTaskIterator(chunks,0, len(chunks))
+    else:
+        batch = []
+        for chunk in chunks:
+          batch.append(tasks.AverageFieldTask(field_cv, field_mip, dst_field_cv, dst_field_mip, chunk, image_check, pad, src_z, dst_z))
         return batch
 
   def seethrough_stitch_render(self, cm, src_cv, dst_cv, z_start, z_end,
