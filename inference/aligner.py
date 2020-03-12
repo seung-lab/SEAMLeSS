@@ -1554,8 +1554,9 @@ class Aligner:
         return batch
 
   def split_field(self, cm, bbox, field_cv, field_mip, rigid_x, rigid_y, high_freq_field_cv, high_freq_field_mip, 
-                src_z, dst_z):
+                src_z, dst_z, return_iterator=False):
     start = time()
+    mip = field_mip
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.max_mip)
@@ -1961,7 +1962,7 @@ class Aligner:
         return batch
 
   def multi_compose(self, cm, cv_list, dst_cv, z_list, dst_z, bbox,
-                                mip_list, dst_mip, factors, pad,
+                                mip_list, dst_mip, factors, pad, x_mov, y_mov,
                                 return_iterator=False):
     """Compose a list of field CloudVolumes
 
@@ -2002,7 +2003,7 @@ class Aligner:
                     chunk = self.chunklist[i]
                     yield tasks.CloudMultiComposeTask(cv_list, dst_cv, z_list,
                                                       dst_z, chunk, mip_list,
-                                                      dst_mip, factors, pad)
+                                                      dst_mip, factors, pad, x_mov, y_mov)
 
         return CloudMultiComposeIterator(chunks, 0, len(chunks))
     else:
@@ -2010,7 +2011,7 @@ class Aligner:
         for chunk in chunks:
             batch.append(tasks.CloudMultiComposeTask(cv_list, dst_cv, z_list,
                                                 dst_z, chunk, mip_list,
-                                                dst_mip, factors, pad))
+                                                dst_mip, factors, pad, x_mov, y_mov))
         return batch
 
   def cloud_upsample_field(self, cm, src_cv, dst_cv, src_z, dst_z,

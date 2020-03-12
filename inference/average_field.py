@@ -107,6 +107,11 @@ if __name__ == "__main__":
     parser.add_argument('--generate_params_from_skip_file', type=str, default=None)
     parser.add_argument('--render_dst', type=str)
     parser.add_argument('--pad', type=int, default=512)
+    parser.add_argument(
+        "--skip_average",
+        action='store_true',
+        help="If True, skip compute field and vector voting"
+    )
     # parser.add_argument("--chunk_size", type=int, default=1024)
 
     args = parse_args(parser)
@@ -125,6 +130,7 @@ if __name__ == "__main__":
     field_dtype = args.field_dtype
     output_field_path = args.output_field_path
     render_dst = args.render_dst
+    do_average = not args.skip_average
 
     # Create CloudVolume Manager
     cm = CloudManager(
@@ -146,6 +152,14 @@ if __name__ == "__main__":
         num_channels=2,
         fill_missing=True,
         overwrite=False,
+    ).path
+
+    high_freq_field = cm.create(
+        join(field_path, 'high_freq'),
+        data_type=field_dtype,
+        num_channels=2,
+        fill_missing=True,
+        overwrite=True,
     ).path
 
     # import ipdb
@@ -325,24 +339,33 @@ if __name__ == "__main__":
                 yield tasks.AverageFieldTask(avg_field_path, 0, avg_field_section_path, 
                                             0, avg_chunk_bbox, None, 
                                             pad, z, z)
-                # t = a.average_field(
-                #     cm,
-                #     bbox,
-                #     field,
-                #     mip,
-                #     avg_field_path,
-                #     0,
-                #     bbox,
-                #     block_dst,
-                #     pad,
-                #     src_z=z,
-                #     dst_z=z,
-                # )
-                # yield from t
+
+    class SplitField:
+        def __init__(self, z_range):
+            print(z_range)
+            self.z_range = z_range
+
+        def __iter__(self):
+            for z in self.z_range:
+                temp = avg_field_section_vol[:,:,z].squeeze()
+                t = a.split_field(
+                    cm,
+                    bbox,
+                    field,
+                    mip,
+                    float(temp[0]),
+                    float(temp[1]),
+                    high_freq_field,
+                    mip,
+                    src_z=z,
+                    dst_z=z,
+                )
+                yield from t
 
 
     begin_test = 22354
     end_test = 23354
+    # end_test = 22454
 
     avg_range = range(begin_test, end_test, 25)
 
@@ -353,5 +376,8 @@ if __name__ == "__main__":
     #     execute(AverageFieldChunk, z_range)
     # execute(AverageFieldChunk, [22654])
     # execute(AverageFieldSection, [22654])
-    execute(AverageFieldChunk, avg_range)
-    execute(AverageFieldSection, avg_range)
+    if do_average:
+        execute(AverageFieldChunk, avg_range)
+        execute(AverageFieldSection, avg_range)
+    execute(SplitField, avg_range)
+    

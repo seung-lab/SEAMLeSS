@@ -472,11 +472,12 @@ if __name__ == "__main__":
         assert len(v) % 2 == 1
 
 
-    compose_range = range(args.z_start, args.z_stop)
-    render_range = range(args.z_start+1, args.z_stop)
+    compose_range = range(args.z_start+decay_dist, args.z_stop)
+    render_range = range(args.z_start, args.z_stop)
     if do_compose:
         decay_dist = args.decay_dist
-        influencing_blocks_lookup = {z: [] for z in compose_range}
+        # influencing_blocks_lookup = {z: [] for z in compose_range}
+        influencing_blocks_lookup = {z: [] for z in render_range}
         for b_start in block_starts:
             b_stitch = b_start + args.block_overlap
             for z in range(b_stitch, b_stitch+decay_dist+1):
@@ -904,6 +905,9 @@ if __name__ == "__main__":
                 t = a.multi_compose(cm, cv_list, composing_field, z_list, z, bbox,
                                 mip, mip, factors, pad)
                 yield from t
+
+    total_x_mov = 0
+    total_y_mov = 0
     
     class StitchCompose(object):
         def __init__(self, z_range):

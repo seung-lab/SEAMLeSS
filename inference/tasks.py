@@ -165,7 +165,8 @@ class AverageFieldTask(RegisteredTask):
     zzz[0][0][0] = distance.cpu().numpy()
     dst_field_cv[0][x_ind,y_ind,src_z] = zzz
 
-# class 
+# class AdjustFieldTask(RegisteredTask):
+
 
 class SplitFieldTask(RegisteredTask):
   def __init__(self, field_cv, field_mip, rigid_x, rigid_y, high_freq_field_cv, high_freq_field_mip, 
@@ -178,7 +179,7 @@ class SplitFieldTask(RegisteredTask):
     high_freq_field_cv = DCV(self.high_freq_field_cv)
     field_cv = DCV(self.field_cv)
     src_z = self.src_z
-    field_z = self.field_z
+    # field_z = self.field_z
     dst_z = self.dst_z
     field_mip = self.field_mip
     # low_freq_field_mip = self.low_freq_field_mip
@@ -188,8 +189,9 @@ class SplitFieldTask(RegisteredTask):
     patch_bbox = deserialize_bbox(self.patch_bbox)
 
     field = aligner.get_field(field_cv, src_z, patch_bbox, field_mip)
-    import ipdb
-    ipdb.set_trace()
+    transform = torch.tensor([rigid_x, rigid_y], device=aligner.device)
+    high_freq_field = (field - transform).cpu().numpy()
+    aligner.save_field(high_freq_field, high_freq_field_cv, dst_z, patch_bbox, high_freq_field_mip, False)
 
 class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
@@ -696,9 +698,9 @@ class CloudComposeTask(RegisteredTask):
 
 class CloudMultiComposeTask(RegisteredTask):
     def __init__(self, cv_list, dst_cv, z_list, dst_z, patch_bbox, mip_list,
-                 dst_mip, factors, pad):
+                 dst_mip, factors, pad, x_mov, y_mov):
         super().__init__(cv_list, dst_cv, z_list, dst_z, patch_bbox, mip_list,
-                         dst_mip, factors, pad)
+                         dst_mip, factors, pad, x_mov, y_mov)
 
     def execute(self, aligner):
         cv_list = [DCV(f) for f in self.cv_list]
@@ -724,6 +726,8 @@ class CloudMultiComposeTask(RegisteredTask):
             h = aligner.cloudsample_multi_compose(cv_list, z_list, patch_bbox,
                                                   mip_list, dst_mip, factors,
                                                   pad)
+            add_factor = torch.tensor([x_mov, y_mov], device=aligner.device)
+            h = h + add_factor
             h = h.data.cpu().numpy()
             aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip,
                                relative=False)
