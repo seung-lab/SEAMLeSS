@@ -726,7 +726,7 @@ class CloudMultiComposeTask(RegisteredTask):
             h = aligner.cloudsample_multi_compose(cv_list, z_list, patch_bbox,
                                                   mip_list, dst_mip, factors,
                                                   pad)
-            add_factor = torch.tensor([x_mov, y_mov], device=aligner.device)
+            add_factor = torch.tensor([self.x_mov, self.y_mov], device=aligner.device)
             h = h + add_factor
             h = h.data.cpu().numpy()
             aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip,

@@ -14,6 +14,7 @@ from taskqueue import GreenTaskQueue, LocalTaskQueue, MockTaskQueue, TaskQueue
 from args import get_aligner, get_argparser, get_provenance, parse_args
 from boundingbox import BoundingBox
 from cloudmanager import CloudManager
+from cloudvolume import CloudVolume
 import numpy as np
 
 import json
@@ -184,11 +185,8 @@ if __name__ == "__main__":
     parser.add_argument('--pin_second_starting_section', type=int, default=None)
     parser.add_argument('--write_misalignment_masks', action='store_true')
     parser.add_argument('--write_other_masks', action='store_true')
-    parser.add_argument(
-        "--new_compose",
-        action='store_true',
-        help="If True, new compose"
-    )
+    parser.add_argument('--low_freq', type=str, default=None)
+    parser.add_argument('--high_freq', type=str, default=None)
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -222,6 +220,7 @@ if __name__ == "__main__":
     write_composing_field = args.write_composing_field
     write_misalignment_masks = args.write_misalignment_masks
     write_other_masks = args.write_other_masks
+    decay_dist = args.decay_dist
 
     if write_misalignment_masks:
         # Need composing field to produce misalignment masks
@@ -239,6 +238,18 @@ if __name__ == "__main__":
         size_chunk=chunk_size,
         batch_mip=mip,
     )
+
+    alt_compose = False
+    if args.low_freq is not None and args.high_freq is not None:
+        alt_compose = True
+        high_freq = cm.create(
+            join(args.high_freq),
+            data_type=output_field_dtype,
+            num_channels=2,
+            fill_missing=True,
+            overwrite=False,
+        ).path
+        low_freq = CloudVolume(args.low_freq)
 
     # Create src CloudVolumes
     print("Create src & align image CloudVolumes")
@@ -319,7 +330,8 @@ if __name__ == "__main__":
                 bbox_mip = int(r[6])
                 model_path = join("..", "models", r[7])
                 tgt_radius = int(r[8])
-                bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
+                # bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
+                bbox = BoundingBox(220000, 240000, 150000, 170000, bbox_mip, max_mip)
                 for z in range(z_start, z_stop):
                     bbox_lookup[z] = bbox
                     model_lookup[z] = model_path
@@ -571,16 +583,6 @@ if __name__ == "__main__":
                         data_type=output_field_dtype, num_channels=2,
                         fill_missing=True, overwrite=do_compose).path
 
-    if new_compose:
-        cmr_new_compose = CloudManager(
-            args.src_path,
-            math.log2(chunk_size) + mip,
-            provenance,
-            batch_size=1,
-            size_chunk=1,
-            batch_mip=math.log2(chunk_size) + mip
-        )
-
     if do_final_render:
         # Create CloudVolume Manager
         cmr = CloudManager(
@@ -611,6 +613,9 @@ if __name__ == "__main__":
                         'stitch{}'.format(args.compose_suffix), 'compose_diff'),
                         data_type=output_field_dtype, num_channels=2,
                         fill_missing=True, overwrite=do_compose).path
+
+    # import ipdb
+    # ipdb.set_trace()
 
     # Task scheduling functions
     def remote_upload(tasks):
@@ -906,8 +911,9 @@ if __name__ == "__main__":
                                 mip, mip, factors, pad)
                 yield from t
 
-    total_x_mov = 0
-    total_y_mov = 0
+    # total_x_mov = 0
+    # total_y_mov = 0
+    influencing_block_dict = {}
     
     class StitchCompose(object):
         def __init__(self, z_range):
@@ -931,10 +937,25 @@ if __name__ == "__main__":
                                 mip, mip, [1., 1.], pad)
                 yield from t
             else:
-                cv_list = [broadcasting_field]*len(influencing_blocks) + [field]
+                # global total_x_mov
+                # global total_y_mov
+                if alt_compose:
+                    total_x_mov = 0
+                    total_y_mov = 0
+                    for inf_block_z in influencing_blocks:
+                        if not inf_block_z in influencing_block_dict:
+                            influencing_block_dict[inf_block_z] = low_freq[:,:,inf_block_z].squeeze()
+                        total_x_mov = total_x_mov + float(influencing_block_dict[inf_block_z][0])
+                        total_y_mov = total_y_mov + float(influencing_block_dict[inf_block_z][1])
+                    cv_list = [high_freq]*len(influencing_blocks) + [field]
+                    # avg_for_section = low_freq[:,:,z].squeeze()
+                    # total_x_mov = total_x_mov + float(avg_for_section[0])
+                    # total_y_mov = total_y_mov + float(avg_for_section[1])
+                else:
+                    cv_list = [broadcasting_field]*len(influencing_blocks) + [field]
                 z_list = list(influencing_blocks) + [z]
                 t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
-                                    mip, mip, factors, pad)
+                                    mip, mip, factors, pad, total_x_mov, total_y_mov)
                 yield from t
 
     class StitchFinalRender(object):
