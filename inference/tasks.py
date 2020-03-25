@@ -253,7 +253,7 @@ class ComputeFieldTask(RegisteredTask):
 
 
 class MisalignmentDetectionTask(RegisteredTask):
-  def __init__(self, src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad=256, coarsen_misalign=128, 
+  def __init__(self, src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad=256, coarsen_misalign=128,
               forward_field_cv=None, backwards_field_cv=None, tile_size=256, max_disp=16, pure=False, ma_thresh=8):
     super(). __init__(src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad, coarsen_misalign,
                       forward_field_cv, backwards_field_cv, tile_size, max_disp, pure, ma_thresh)
@@ -496,7 +496,7 @@ class RenderTask(RegisteredTask):
                    misalignment_mask = np.zeros(shape=image.shape, dtype=np.uint8)
                    misalignment_mask[misalignment_fill_in.cpu().numpy() != 0] = 1
                    aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
-             
+
              if self.seethrough_black:
                  seethrough_region[(image_tissue == False) * prev_image_tissue] = True
                  image[seethrough_region] = prev_image[seethrough_region]
@@ -538,12 +538,14 @@ class RenderTask(RegisteredTask):
       print('RenderTask: {:.3f} s'.format(diff))
 
 
-def get_threshold_tissue_mask(image, low_threshold=10, high_threshold=160):
+def get_threshold_tissue_mask(image, low_threshold=10, high_threshold=180):
     if image.max() > 5:
-        return (image > low_threshold) * (image < high_threshold)
+        result = (image > low_threshold) * (image < high_threshold)
     else:
-        return ((image * 255) > low_threshold) * ((image * 255) < high_threshold)
+        result = ((image * 255) > low_threshold) * ((image * 255) < high_threshold)
 
+    result = coarsen_mask(result, 3).byte()
+    return result
 
 class VectorVoteTask(RegisteredTask):
   def __init__(self, pairwise_cvs, vvote_cv, z, patch_bbox, mip, inverse, serial,
