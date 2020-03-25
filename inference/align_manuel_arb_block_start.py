@@ -298,8 +298,8 @@ if __name__ == "__main__":
 
     # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius
     block_dsts = {}
-    # block_types = ["even", "odd"]
-    block_types = ["odd", "even"]
+    block_types = ["even", "odd"]
+    # block_types = ["odd", "even"]
     for i, block_type in enumerate(block_types):
         block_dst = cm.create(
             join(render_dst, "image_blocks", block_type),
@@ -1412,6 +1412,8 @@ if __name__ == "__main__":
     if a.distributed:
         if do_alignment:
             cf_list, rt_list, cf_block_start, rt_block_start = generate_first_releases()
+            # import ipdb
+            # ipdb.set_trace()
             executionLoop(cf_list, rt_list, cf_block_start, rt_block_start)
     else:
         for z_offset in sorted(block_offset_to_z_range.keys()):
