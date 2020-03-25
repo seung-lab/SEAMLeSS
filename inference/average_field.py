@@ -264,6 +264,11 @@ if __name__ == "__main__":
             if i > 0:
                 block_dst_lookup[z] = block_dsts[even_odd]
 
+    
+    stitching_sections = []
+    for cur_block_start in block_starts:
+        stitching_sections.append(cur_block_start + args.block_overlap)
+    
     # Task scheduling functions
     def remote_upload(tasks):
         with GreenTaskQueue(queue_name=args.queue_name) as tq:
@@ -363,11 +368,14 @@ if __name__ == "__main__":
                 yield from t
 
 
-    begin_test = 22354
-    end_test = 23354
+    # begin_test = 22354
+    # end_test = 23354
     # end_test = 22454
 
-    avg_range = range(begin_test, end_test, 25)
+    # avg_range = range(args.z_start, args.z_stop, args.block_size)
+
+    # import ipdb
+    # ipdb.set_trace()
 
     # for z_offset in sorted(stitch_offset_to_z_range.keys()):
     #     z_range = list(stitch_offset_to_z_range[z_offset])
@@ -377,7 +385,7 @@ if __name__ == "__main__":
     # execute(AverageFieldChunk, [22654])
     # execute(AverageFieldSection, [22654])
     if do_average:
-        execute(AverageFieldChunk, avg_range)
-        execute(AverageFieldSection, avg_range)
-    execute(SplitField, avg_range)
+        execute(AverageFieldChunk, stitching_sections)
+        execute(AverageFieldSection, stitching_sections)
+    execute(SplitField, stitching_sections)
     

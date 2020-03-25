@@ -298,7 +298,8 @@ if __name__ == "__main__":
 
     # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius
     block_dsts = {}
-    block_types = ["even", "odd"]
+    # block_types = ["even", "odd"]
+    block_types = ["odd", "even"]
     for i, block_type in enumerate(block_types):
         block_dst = cm.create(
             join(render_dst, "image_blocks", block_type),
@@ -330,8 +331,10 @@ if __name__ == "__main__":
                 bbox_mip = int(r[6])
                 model_path = join("..", "models", r[7])
                 tgt_radius = int(r[8])
-                # bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
-                bbox = BoundingBox(220000, 240000, 150000, 170000, bbox_mip, max_mip)
+                bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
+                # bbox = BoundingBox(200000, 260000, 130000, 190000, bbox_mip, max_mip)
+                # bbox = BoundingBox(210000, 250000, 145000, 185000, bbox_mip, max_mip)
+                # bbox = BoundingBox(226000, 230000, 161000, 168000, bbox_mip, max_mip)
                 for z in range(z_start, z_stop):
                     bbox_lookup[z] = bbox
                     model_lookup[z] = model_path
@@ -486,6 +489,12 @@ if __name__ == "__main__":
 
     compose_range = range(args.z_start+decay_dist, args.z_stop)
     render_range = range(args.z_start, args.z_stop)
+    # all_blocks_lookup = [cur_block_start + args.block_overlap for cur_block_start in block_starts]
+    all_blocks_lookup = {}
+    for cur_block_start in block_starts:
+        stitch_cbs = cur_block_start + args.block_overlap
+        if stitch_cbs in compose_range:
+            all_blocks_lookup[stitch_cbs] = low_freq[:,:,stitch_cbs].squeeze()
     if do_compose:
         decay_dist = args.decay_dist
         # influencing_blocks_lookup = {z: [] for z in compose_range}
@@ -596,7 +605,7 @@ if __name__ == "__main__":
         )
         final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.final_render_suffix)),
                             data_type='uint8', num_channels=1, fill_missing=True,
-                            overwrite=do_final_render).path
+                            overwrite=False).path
         
         if write_misalignment_masks:
             final_misalignment_masks = cm.create(join(args.dst_path, 'misalignment_stitch{}'.format(args.final_render_suffix)),
@@ -614,22 +623,22 @@ if __name__ == "__main__":
                         data_type=output_field_dtype, num_channels=2,
                         fill_missing=True, overwrite=do_compose).path
 
-    # import ipdb
-    # ipdb.set_trace()
-
     # Task scheduling functions
     def remote_upload(tasks):
         with GreenTaskQueue(queue_name=args.queue_name) as tq:
             tq.insert_all(tasks)
 
-    def execute(task_iterator, z_range):
+    def execute(task_iterator, z_range, z_range2=None):
         if len(z_range) > 0:
             ptask = []
             range_list = make_range(z_range, a.threads)
             start = time()
 
             for irange in range_list:
-                ptask.append(task_iterator(irange))
+                if z_range2 is None:
+                    ptask.append(task_iterator(irange))
+                else:
+                    ptask.append(task_iterator(irange, irange))
             if args.dry_run:
                 for t in ptask:
                     tq = MockTaskQueue(parallel=1)
@@ -923,9 +932,10 @@ if __name__ == "__main__":
           for z in self.z_range:
             influencing_blocks = influencing_blocks_lookup[z]
             factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
+            # factors = [0. for bs in influencing_blocks]
             factors += [1.]
-            print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
-                                                                   factors))
+            # print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
+            #                                                        factors))
             bbox = bbox_lookup[z]
             field = block_vvote_field
             if z in block_start_lookup:
@@ -940,23 +950,87 @@ if __name__ == "__main__":
                 # global total_x_mov
                 # global total_y_mov
                 if alt_compose:
-                    total_x_mov = 0
-                    total_y_mov = 0
+                    prev_x_mov = 0
+                    prev_y_mov = 0
+                    new_x_mov = 0
+                    new_y_mov = 0
+                    # first_counter = 0
+                    # any_high_freq = False
+                    cv_list = []
+                    curr_low = []
                     for inf_block_z in influencing_blocks:
-                        if not inf_block_z in influencing_block_dict:
-                            influencing_block_dict[inf_block_z] = low_freq[:,:,inf_block_z].squeeze()
-                        total_x_mov = total_x_mov + float(influencing_block_dict[inf_block_z][0])
-                        total_y_mov = total_y_mov + float(influencing_block_dict[inf_block_z][1])
-                    cv_list = [high_freq]*len(influencing_blocks) + [field]
+                        if inf_block_z in all_blocks_lookup:
+                            cur_vec = all_blocks_lookup[inf_block_z]
+                            cur_x_low = float(cur_vec[0])
+                            cur_y_low = float(cur_vec[1])
+                            curr_low.append((cur_x_low, cur_y_low))
+                        else:
+                            curr_low.append((0,0))
+                        if inf_block_z in render_range and not inf_block_z in compose_range:
+                            cv_list.append(broadcasting_field)
+                            # first_counter = first_counter + 1
+                            # continue
+                        else:
+                        # any_high_freq = True
+                            cv_list.append(high_freq)
+                        # if not inf_block_z in influencing_block_dictjjjkli:
+                    # largest_block_start = None
+                    for cur_block_start in all_blocks_lookup:
+                        if cur_block_start <= z - decay_dist:
+                            # if largest_block_start is None or largest_block_start < cur_block_start:
+                                # largest_block_start = cur_block_start
+                            cur_vec = all_blocks_lookup[cur_block_start]
+                            # if cur_block_start in influencing_blocks:
+                                # cur_x_low = float(cur_vec[0])
+                                # cur_y_low = float(cur_vec[1]) 
+                                # curr_low.append((cur_x_low, cur_y_low))
+                            # else:
+                            # try:
+                            # cur_vec = low_freq[:,:,cur_block_start].squeeze()
+                            prev_x_mov = prev_x_mov + float(cur_vec[0])
+                            prev_y_mov = prev_y_mov + float(cur_vec[1])
+                    # if largest_block_start is not None:
+                    # if influencing_blocks[-1] in all_blocks_lookup:
+                    #     new_vec = all_blocks_lookup[influencing_blocks[-1]]
+                    #     new_x_mov = float(new_vec[0])
+                    #     new_y_mov = float(new_vec[1])
+                        # total_x_mov = total_x_mov - new_x_mov
+                        # total_y_mov = total_y_mov - new_y_mov
+                    # for inf_block_z in influencing_block_dict:
+                        # if inf_block_z <= z:
+                            # total_x_mov = total_x_mov + float(influencing_block_dict[inf_block_z][0])
+                            # total_x_mov = total_x_mov + int(influencing_block_dict[inf_block_z][0])
+                            # total_y_mov = total_y_mov + float(influencing_block_dict[inf_block_z][1])
+                            # total_y_mov = total_y_mov + int(influencing_block_dict[inf_block_z][1])
+                    cv_list = cv_list + [field]
+                    z_list = list(influencing_blocks) + [z]
+                    if factors[0] == 0:
+                        factors = factors[1:]
+                        cv_list = cv_list[1:]
+                        z_list = z_list[1:]
+                        curr_low = curr_low[1:]
                     # avg_for_section = low_freq[:,:,z].squeeze()
                     # total_x_mov = total_x_mov + float(avg_for_section[0])
                     # total_y_mov = total_y_mov + float(avg_for_section[1])
                 else:
                     cv_list = [broadcasting_field]*len(influencing_blocks) + [field]
-                z_list = list(influencing_blocks) + [z]
+                    z_list = list(influencing_blocks) + [z]
+                # if any_high_freq:
+                #     for i in range(first_counter, len(cv_list)-1):
+                #         if factors[i] == 0:
+                #             first_counter = first_counter + 1
+                    # first_counter = len(cv_list) - 1
+                # if not any_high_freq:
+                #     first_counter = len(cv_list) - 1
                 t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
-                                    mip, mip, factors, pad, total_x_mov, total_y_mov)
+                                    mip, mip, factors, pad, None, None, prev_x_mov, prev_y_mov, curr_low)
+                # if  z == 19204:
+                    # import ipdb
+                    # ipdb.set_trace()
                 yield from t
+                    # import ipdb
+                    # ipdb.set_trace()
+                # yield from t
 
     class StitchFinalRender(object):
         def __init__(self, z_range):
@@ -998,6 +1072,7 @@ if __name__ == "__main__":
                                 dst_mip=cur_mask_cv_mip, pad=args.pad,
                                 masks=mask_dict[cur_mask_cv], blackout_op='none')
                         tasks = tasks + t_other_masks
+            # if z >= 22750 and z <= 22755:
             yield from tasks
 
 
@@ -1015,6 +1090,7 @@ if __name__ == "__main__":
         """
         chunks = []
         z_to_number_of_chunks = {}
+        number_of_chunks_in_z = 0
         for z in z_list:
             bbox = bbox_lookup[z]
             raw_x_range = bbox.x_range(mip=mip)
@@ -1340,12 +1416,15 @@ if __name__ == "__main__":
     else:
         for z_offset in sorted(block_offset_to_z_range.keys()):
             z_range = list(block_offset_to_z_range[z_offset])
+            if min(z_range) < 15365:
+                continue
+            z_range = [min(z_range)]
             if do_alignment:
                 print("ALIGN BLOCK OFFSET {}".format(z_offset))
-                execute(BlockAlignComputeField, z_range)
+                execute(BlockAlignComputeField, z_range, z_range)
             if do_alignment:
                 print("RENDER BLOCK OFFSET {}".format(z_offset))
-                execute(BlockAlignRender, z_range)
+                execute(BlockAlignRender, z_range, z_range)
 
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")

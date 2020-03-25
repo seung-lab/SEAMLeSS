@@ -1273,7 +1273,8 @@ class Aligner:
       return h
 
   def cloudsample_multi_compose(self, field_list, z_list, bbox, mip_list,
-                                dst_mip, factors=None, pad=256):
+                                dst_mip, factors=None, pad=256, x_mov=None, y_mov=None,
+                                prev_x_mov=None, prev_y_mov=None, curr_low=None):
     """Compose a list of field CloudVolumes
 
     This takes a list of fields
@@ -1293,6 +1294,7 @@ class Aligner:
     Returns:
        composed field
     """
+    # cur_counter = 0
     if isinstance(z_list, int):
         z_list = [z_list] * len(field_list)
     else:
@@ -1311,6 +1313,10 @@ class Aligner:
     print('Padding by {} at MIP{}'.format(pad, dst_mip))
     padded_bbox.uncrop(pad, mip=dst_mip)
 
+    # import copy
+    # copy_fl = copy.deepcopy(field_list)
+    # copy_fac = copy.deepcopy(factors)
+
     # load the first vector field
     f_cv, *field_list = field_list
     f_z, *z_list = z_list
@@ -1318,12 +1324,206 @@ class Aligner:
     f_factor, *factors = factors
     f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
                        relative=False, to_tensor=True)
+    current_low, *curr_low = curr_low
+    # import ipdb
+    # ipdb.set_trace()
+
+    # import ipdb
+    # ipdb.set_trace()
+    
+    # f = f * f_factor
+    # if first_counter == cur_counter and x_mov is not None and y_mov is not None:
+    #   add_factor = torch.tensor([x_mov, y_mov], device=self.device)
+    #   f = f + add_factor
+    
+    # if len(field_list) == 0:
+    #     return f[:, pad:-pad, pad:-pad, :]
+
+    # skip any empty / identity fields
+    # while is_identity(f):
+    #     cur_counter = cur_counter + 1
+    #     f_cv, *field_list = field_list
+    #     f_z, *z_list = z_list
+    #     f_mip, *mip_list = mip_list
+    #     f_factor, *factors = factors
+    #     f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
+    #                        relative=False, to_tensor=True)
+    #     f = f * f_factor
+    #     if first_counter == cur_counter and x_mov is not None and y_mov is not None:
+    #       add_factor = torch.tensor([x_mov, y_mov], device=self.device)
+    #       f = f + add_factor
+    #     if len(field_list) == 0:
+    #         return f[:, pad:-pad, pad:-pad, :]
+
+
+    # if f_mip > dst_mip:
+    #     f = upsample_field(f, f_mip, dst_mip)
+
+    # if prev_x_mov > 0 or prev_y_mov > 0 or (x_mov is not None and y_mov is not None):
+    # if prev_x_mov > 0 or prev_y_mov > 0:
+    temp_f = f.clone()
+    add_factor = torch.tensor([prev_x_mov + current_low[0], prev_y_mov + current_low[1]], device=self.device)
+    temp_f[:,:,:] = add_factor
+
+    distance = self.profile_field(temp_f)
+    distance = (distance // (2 ** f_mip)) * 2 ** f_mip
+    new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+
+    temp_f -= distance.to(device=self.device)
+    temp_f = self.abs_to_rel_residual(temp_f, padded_bbox, dst_mip)
+    temp_f = temp_f.to(device=self.device)
+
+    f = self.get_field(f_cv, f_z, new_bbox, f_mip,
+                      relative=False, to_tensor=True)
+
     f = f * f_factor
+    # add_factor = torch.tensor([current_low[0], current_low[1]], device=self.device)
+    # f = f + add_factor
+    # if first_counter == cur_counter and x_mov is not None and y_mov is not None:
+    #   add_factor = torch.tensor([x_mov, y_mov], device=self.device)
+    #   f = f + add_factor
+
+    f = self.abs_to_rel_residual(f, padded_bbox, dst_mip)
+    h = compose_fields(temp_f, f)
+    h = self.rel_to_abs_residual(h, dst_mip)
+    h += distance.to(device=self.device)
+    f = h
+
+    # [L_{0} + \cdots + L_{z-k}, d_{k}*H_{z-k}, L_{z-k+1}, d_{k-1}*H_{z-k+1}, ..., L_{z}, 1*H_{z}]
+
+    # compose with the remaining fields
+    while len(field_list) > 0:
+        # cur_counter = cur_counter + 1
+        g_cv, *field_list = field_list
+        g_z, *z_list = z_list
+        g_mip, *mip_list = mip_list
+        g_factor, *factors = factors
+        current_low = None
+        if len(curr_low) > 0:
+          current_low, *curr_low = curr_low
+
+        temp_f = f.clone()
+
+        distance = self.profile_field(f)
+        distance = (distance // (2 ** g_mip)) * 2 ** g_mip
+        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+
+        f -= distance.to(device=self.device)
+        f = self.abs_to_rel_residual(f, padded_bbox, dst_mip)
+        f = f.to(device=self.device)
+
+        # if current_low is not None and
+        if current_low is not None:
+          add_factor = torch.tensor([current_low[0], current_low[1]], device=self.device)
+          # add_factor = torch.tensor([prev_x_mov, prev_y_mov], device=self.device)
+          temp_f[:,:,:] = add_factor
+
+          # distance = self.profile_field(temp_f)
+          # distance = (distance // (2 ** f_mip)) * 2 ** f_mip
+          # new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+
+          # temp_f -= distance.to(device=self.device)
+          temp_f = self.abs_to_rel_residual(temp_f, new_bbox, dst_mip)
+          # temp_f = temp_f.to(device=self.device)
+          h = compose_fields(f, temp_f)
+          h = self.rel_to_abs_residual(h, dst_mip)
+          h += distance.to(device=self.device)
+          f = h
+          distance = self.profile_field(f)
+          distance = (distance // (2 ** g_mip)) * 2 ** g_mip
+          new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+          f -= distance.to(device=self.device)
+          f = self.abs_to_rel_residual(f, padded_bbox, dst_mip)
+          f = f.to(device=self.device)
+          # add_factor = torch.tensor([current_low[0], current_low[1]], device=self.device)
+        # if first_counter == cur_counter and x_mov is not None and y_mov is not None:
+          # add_factor = torch.tensor([x_mov, y_mov], device=self.device)
+        g = self.get_field(g_cv, g_z, new_bbox, g_mip,
+                  relative=False, to_tensor=True)
+        g = g * g_factor
+        # g = g + add_factor
+          # import ipdb
+          # ipdb.set_trace()
+        if g_mip > dst_mip:
+            g = upsample_field(g, g_mip, dst_mip)
+        g = self.abs_to_rel_residual(g, padded_bbox, dst_mip)
+        h = compose_fields(f, g)
+        h = self.rel_to_abs_residual(h, dst_mip)
+        h += distance.to(device=self.device)
+        f = h
+
+    # ipdb.set_trace()
+    return f[:, pad:-pad, pad:-pad, :]
+
+  def cloudsample_multi_compose_split(self, field_list, z_list, bbox, mip_list,
+                                dst_mip, factors=None, pad=256, x_mov=None, y_mov=None,
+                                first_counter=None):
+    """Compose a list of field CloudVolumes
+
+    This takes a list of fields
+    field_list = [f_0, f_1, ..., f_n]
+    and composes them to get
+    f_0 ⚬ f_1 ⚬ ... ⚬ f_n ~= f_0(f_1(...(f_n)))
+
+    Args:
+       field_list: list of MiplessCloudVolume storing the vector fields
+       z_list: int or list of ints for section indices to read fields
+       bbox: BoundingBox for output region to be warped
+       mip_list: int or list of ints for MIPs of the input fields
+       dst_mip: int for MIP of the desired output field
+       pad: number of pixels to pad at dst_mip
+       factors: floats to multiply/reweight the fields by before composing
+
+    Returns:
+       composed field
+    """
+    cur_counter = 0
+    if isinstance(z_list, int):
+        z_list = [z_list] * len(field_list)
+    else:
+        assert(len(z_list) == len(field_list))
+    if isinstance(mip_list, int):
+        mip_list = [mip_list] * len(field_list)
+    else:
+        assert(len(mip_list) == len(field_list))
+    assert(min(mip_list) >= dst_mip)
+    if factors is None:
+        factors = [1.0] * len(field_list)
+    else:
+        assert(len(factors) == len(field_list))
+    padded_bbox = deepcopy(bbox)
+    padded_bbox.max_mip = dst_mip
+    print('Padding by {} at MIP{}'.format(pad, dst_mip))
+    padded_bbox.uncrop(pad, mip=dst_mip)
+
+    # import copy
+    # copy_fl = copy.deepcopy(field_list)
+    # copy_fac = copy.deepcopy(factors)
+
+    # load the first vector field
+    f_cv, *field_list = field_list
+    f_z, *z_list = z_list
+    f_mip, *mip_list = mip_list
+    f_factor, *factors = factors
+    f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
+                       relative=False, to_tensor=True)
+    # import ipdb
+    # ipdb.set_trace()
+
+    # import ipdb
+    # ipdb.set_trace()
+    
+    f = f * f_factor
+    if first_counter == cur_counter and x_mov is not None and y_mov is not None:
+      add_factor = torch.tensor([x_mov, y_mov], device=self.device)
+      f = f + add_factor
+    
     if len(field_list) == 0:
         return f[:, pad:-pad, pad:-pad, :]
 
     # skip any empty / identity fields
     while is_identity(f):
+        cur_counter = cur_counter + 1
         f_cv, *field_list = field_list
         f_z, *z_list = z_list
         f_mip, *mip_list = mip_list
@@ -1331,14 +1531,21 @@ class Aligner:
         f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
                            relative=False, to_tensor=True)
         f = f * f_factor
+        if first_counter == cur_counter and x_mov is not None and y_mov is not None:
+          add_factor = torch.tensor([x_mov, y_mov], device=self.device)
+          f = f + add_factor
         if len(field_list) == 0:
             return f[:, pad:-pad, pad:-pad, :]
+
+    # import ipdb
+    # ipdb.set_trace()
 
     if f_mip > dst_mip:
         f = upsample_field(f, f_mip, dst_mip)
 
     # compose with the remaining fields
     while len(field_list) > 0:
+        cur_counter = cur_counter + 1
         g_cv, *field_list = field_list
         g_z, *z_list = z_list
         g_mip, *mip_list = mip_list
@@ -1355,6 +1562,11 @@ class Aligner:
         g = self.get_field(g_cv, g_z, new_bbox, g_mip,
                            relative=False, to_tensor=True)
         g = g * g_factor
+        if first_counter == cur_counter and x_mov is not None and y_mov is not None:
+          add_factor = torch.tensor([x_mov, y_mov], device=self.device)
+          g = g + add_factor
+          # import ipdb
+          # ipdb.set_trace()
         if g_mip > dst_mip:
             g = upsample_field(g, g_mip, dst_mip)
         g = self.abs_to_rel_residual(g, padded_bbox, dst_mip)
@@ -1362,6 +1574,8 @@ class Aligner:
         h = self.rel_to_abs_residual(h, dst_mip)
         h += distance.to(device=self.device)
         f = h
+
+    # ipdb.set_trace()
     return f[:, pad:-pad, pad:-pad, :]
 
   def cloudsample_image_batch(self, z_range, image_cv, field_cv,
@@ -1963,6 +2177,7 @@ class Aligner:
 
   def multi_compose(self, cm, cv_list, dst_cv, z_list, dst_z, bbox,
                                 mip_list, dst_mip, factors, pad, x_mov, y_mov,
+                                prev_x_mov, prev_y_mov, curr_low,
                                 return_iterator=False):
     """Compose a list of field CloudVolumes
 
@@ -2003,7 +2218,8 @@ class Aligner:
                     chunk = self.chunklist[i]
                     yield tasks.CloudMultiComposeTask(cv_list, dst_cv, z_list,
                                                       dst_z, chunk, mip_list,
-                                                      dst_mip, factors, pad, x_mov, y_mov)
+                                                      dst_mip, factors, pad, x_mov, y_mov,
+                                                      prev_x_mov, prev_y_mov, curr_low)
 
         return CloudMultiComposeIterator(chunks, 0, len(chunks))
     else:
@@ -2011,7 +2227,8 @@ class Aligner:
         for chunk in chunks:
             batch.append(tasks.CloudMultiComposeTask(cv_list, dst_cv, z_list,
                                                 dst_z, chunk, mip_list,
-                                                dst_mip, factors, pad, x_mov, y_mov))
+                                                dst_mip, factors, pad, x_mov, y_mov,
+                                                prev_x_mov, prev_y_mov, curr_low))
         return batch
 
   def cloud_upsample_field(self, cm, src_cv, dst_cv, src_z, dst_z,
