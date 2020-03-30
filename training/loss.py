@@ -23,10 +23,10 @@ def lap(fields, device='cuda'):
 def jacob(fields):
     def dx(f):
         p = Variable(torch.zeros((f.size(0),1,f.size(1),2), device='cuda'))
-        return torch.cat((p, f[:,2:,:,:] - f[:,:-2,:,:], p), 1)
+        return torch.cat((f[:,1:,:,:] - f[:,:-1,:,:], p), 1)
     def dy(f):
         p = Variable(torch.zeros((f.size(0),f.size(1),1,2), device='cuda'))
-        return torch.cat((p, f[:,:,2:,:] - f[:,:,:-2,:], p), 2)
+        return torch.cat((f[:,:,1:,:] - f[:,:,:-1,:], p), 2)
     fields = sum(map(lambda f: [dx(f), dy(f)], fields), [])
     field = torch.sum(torch.cat(fields, -1) ** 2, -1)
     return field
