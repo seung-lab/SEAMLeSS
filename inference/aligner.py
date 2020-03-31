@@ -818,6 +818,12 @@ class Aligner:
       tgt_field = self.rel_to_abs_residual(tgt_field, mip)
       tgt_distance = self.profile_field(tgt_field)
       tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
+
+
+      #coarse_distance_fine_snap = torch.Tensor([0, 0])
+      #drift_distance_fine_snap = torch.Tensor([0, 0])
+      #drift_distance_coarse_snap = torch.Tensor([0, 0])
+
       tgt_field -= tgt_distance_fine_snap.to(device=self.device)
       tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
       tgt_field = torch.zeros_like(tgt_field)
@@ -1600,8 +1606,8 @@ class Aligner:
 
         return batch
 
-  
-  def misalignment_detection(self, cm, src_cv, dst_cv, src_z, tgt_z, bbox, src_mip, pad=256, 
+
+  def misalignment_detection(self, cm, src_cv, dst_cv, src_z, tgt_z, bbox, src_mip, pad=256,
                              coarsen_misalign=128, forward_field_cv=None, backwards_field_cv=None,
                              return_iterator=False, tile_size=256, max_disp=16, pure=False, ma_thresh=8):
     """Warp image in src_cv by field in field_cv and save result to dst_cv

@@ -264,7 +264,7 @@ if __name__ == "__main__":
     # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius
     block_dsts = {}
     block_types = ["even", "odd"]
-    # block_types = ["odd", "even"]
+    #block_types = ["odd", "even"]
     for i, block_type in enumerate(block_types):
         block_dst = cm.create(
             join(render_dst, "image_blocks", block_type),
@@ -863,7 +863,8 @@ if __name__ == "__main__":
                         z = block_start_lookup[z]
                     else:
                         field = stitch_pair_fields[tgt_offset]
-                    t = a.compute_field(cm, model_path, block_dst, overlap_image, field,
+                    t = a.compute_field(cm, model_path, block_dst,
+                                        overlap_image, field,
                                         z, tgt_z, bbox, mip, pad,
                                         src_masks=[],
                                         tgt_masks=[],

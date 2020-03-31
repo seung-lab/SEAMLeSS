@@ -1,0 +1,82 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "11"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1beta1","kind":"Deployment","metadata":{"annotations":{},"creationTimestamp":null,"labels":{"run":"sergiy-fafb"},"name":"sergiy-fafb","namespace":"default"},"spec":{"replicas":1,"selector":{"matchLabels":{"run":"sergiy-fafb"}},"strategy":{"rollingUpdate":{"maxSurge":"100%","maxUnavailable":"100%"},"type":"RollingUpdate"},"template":{"metadata":{"creationTimestamp":null,"labels":{"run":"sergiy-fafb"}},"spec":{"containers":[{"args":["-c","python inference/worker.py --processes 1 --gpu_processes 1 --queue_name manuel-seamless-work --completed_queue_name manuel-seamless-complete --lease_seconds 90"],"command":["/bin/sh"],"image":"seunglab/seamless:manuel-drift-correction-task-0212","imagePullPolicy":"Always","name":"sergiy-fafb","resources":{"limits":{"nvidia.com/gpu":1}},"volumeMounts":[{"mountPath":"/root/.cloudvolume/secrets","name":"secrets","readOnly":true}]}],"dnsPolicy":"Default","volumes":[{"name":"secrets","secret":{"secretName":"secrets"}}]}}},"status":{}}
+  creationTimestamp: "2020-02-13T21:56:42Z"
+  generation: 32
+  labels:
+    run: sergiy-fafb
+  name: sergiy-fafb
+  namespace: default
+  resourceVersion: "81864738"
+  selfLink: /apis/extensions/v1beta1/namespaces/default/deployments/sergiy-fafb
+  uid: 4ab96fc9-a72d-497b-8130-966d55466634
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 200
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      run: sergiy-fafb
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        run: sergiy-fafb
+    spec:
+      containers:
+      - args:
+        - -c
+        - python inference/worker.py --processes 1 --gpu_processes 1 --queue_name
+          sergiy-fly-2 --lease_seconds
+          240
+        command:
+        - /bin/sh
+        image: seunglab/seamless:sergiy-march-25
+        imagePullPolicy: Always
+        name: sergiy-fafb
+        resources:
+          limits:
+            nvidia.com/gpu: "1"
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /root/.cloudvolume/secrets
+          name: secrets-fafb
+          readOnly: true
+      dnsPolicy: Default
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: secrets-fafb
+        secret:
+          defaultMode: 420
+          secretName: secrets-fafb
+status:
+  conditions:
+  - lastTransitionTime: "2020-02-13T21:56:42Z"
+    lastUpdateTime: "2020-02-13T21:56:42Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2020-03-22T13:43:11Z"
+    lastUpdateTime: "2020-03-25T14:44:45Z"
+    message: ReplicaSet "sergiy-fafb-5d86474f96" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  observedGeneration: 32
+  replicas: 200
+  unavailableReplicas: 200
+  updatedReplicas: 200
