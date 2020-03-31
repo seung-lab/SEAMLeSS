@@ -64,7 +64,7 @@ def cloudsample_multicompose(field_list, z_list, bbox, mip_list,
     padded_bbox = bbox.copy()
     padded_bbox.max_mip = dst_mip
     print('Padding by {} at MIP{}'.format(pad, dst_mip))
-    slices = slice(None), slice(pad,-pad), slice(pad,-pad), slice(None)
+    slices = slice(None), slice(None), slice(pad,-pad), slice(pad,-pad)
     if pad == 0:
         slices = slice(None), slice(None), slice(None), slice(None)
     padded_bbox.uncrop(pad, mip=dst_mip)
