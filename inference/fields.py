@@ -13,12 +13,29 @@ class Field():
         """Fields in Eulerian (pull) format with absolute displacements at MIP0
 
         Args:
-            data: sequence of data (
+            data: sequence of data 
             bbox: BoundingBox of field 
         """
-        self.field = torch.Field(data, *args, **kwargs)
+        self.field = None
+        if isinstance(data, torch.Field):
+            self.field = data
+        elif data is not None:
+            self.field = torch.Field(data, *args, **kwargs)
         self.bbox = bbox
         self.rel = False 
+
+    @classmethod
+    def from_torchfield(cls, field, bbox):
+        return cls(data=field, bbox=bbox)
+
+    def new(self, field):
+        """Create new field with same bbox 
+        """
+        return Field.from_torchfield(field=field, bbox=self.bbox)
+
+    def copy(self):
+        return deepcopy(self)
+
 
     def __repr__(self):
         return 'data:\t{}\n' \
@@ -63,16 +80,6 @@ class Field():
     def profile(self, **kwargs):
         return self.field.mean_finite_vector(**kwargs)
 
-    def new(self, field):
-        """Create new field with same bbox 
-        """
-        x = self.copy()
-        x.field = field
-        return x
-
-    def copy(self):
-        return deepcopy(self)
-
     def to_rel(self):
         if not self.rel:
             self.field = self.field.from_pixels(size=self.size)
@@ -89,6 +96,7 @@ class Field():
             x.to_rel()
         g = self.field(x.field)
         g = self.new(g)
+        g.rel = True
         g.to_abs()
         self.to_abs()
         x.to_abs()
