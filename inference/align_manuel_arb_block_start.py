@@ -487,14 +487,16 @@ if __name__ == "__main__":
         assert len(v) % 2 == 1
 
 
-    compose_range = range(args.z_start+decay_dist, args.z_stop)
+    # compose_range = range(args.z_start+decay_dist, args.z_stop)
     render_range = range(args.z_start, args.z_stop)
+    compose_range = range(args.z_start, args.z_stop)
     # all_blocks_lookup = [cur_block_start + args.block_overlap for cur_block_start in block_starts]
-    all_blocks_lookup = {}
-    for cur_block_start in block_starts:
-        stitch_cbs = cur_block_start + args.block_overlap
-        if stitch_cbs in compose_range:
-            all_blocks_lookup[stitch_cbs] = low_freq[:,:,stitch_cbs].squeeze()
+    if args.low_freq is not None and args.high_freq is not None:
+        all_blocks_lookup = {}
+        for cur_block_start in block_starts:
+            stitch_cbs = cur_block_start + args.block_overlap
+            if stitch_cbs in compose_range:
+                all_blocks_lookup[stitch_cbs] = low_freq[:,:,stitch_cbs].squeeze()
     if do_compose:
         decay_dist = args.decay_dist
         # influencing_blocks_lookup = {z: [] for z in compose_range}
@@ -605,7 +607,7 @@ if __name__ == "__main__":
         )
         final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.final_render_suffix)),
                             data_type='uint8', num_channels=1, fill_missing=True,
-                            overwrite=False).path
+                            overwrite=True).path
         
         if write_misalignment_masks:
             final_misalignment_masks = cm.create(join(args.dst_path, 'misalignment_stitch{}'.format(args.final_render_suffix)),
@@ -1027,6 +1029,7 @@ if __name__ == "__main__":
                 # if  z == 19204:
                     # import ipdb
                     # ipdb.set_trace()
+                # if z >= 19899 and z <= 20104:
                 yield from t
                     # import ipdb
                     # ipdb.set_trace()
@@ -1072,7 +1075,7 @@ if __name__ == "__main__":
                                 dst_mip=cur_mask_cv_mip, pad=args.pad,
                                 masks=mask_dict[cur_mask_cv], blackout_op='none')
                         tasks = tasks + t_other_masks
-            # if z >= 22750 and z <= 22755:
+            # if z >= 19899 and z <= 20104:
             yield from tasks
 
 
@@ -1448,6 +1451,8 @@ if __name__ == "__main__":
             execute(StitchPreCompose, compose_range)
         print("FINAL COMPOSING")
         execute(StitchCompose, compose_range)
+    # import ipdb
+    # ipdb.set_trace()
     if do_final_render:
         print("FINAL RENDERING")
         execute(StitchFinalRender, compose_range)
