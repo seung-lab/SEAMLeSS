@@ -144,6 +144,7 @@ models/
 # !models/nk_vf_30_minnie_jit_mip3_opt/**
 # !models/nk_vf_30_minnie_jit_mip4_v3_opt/**
 # !models/nk_vf_30_minnie_jit_mip*
- !models/sergiy_blockmatch_clean/**
+!models/sergiy_blockmatch_clean/**
+!models/sergiy_blockmatch_fly/**
 !inference/models/**
 !inference/models/ncc_m4/**

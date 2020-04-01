@@ -263,8 +263,8 @@ if __name__ == "__main__":
 
     # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius
     block_dsts = {}
-    block_types = ["even", "odd"]
-    #block_types = ["odd", "even"]
+    #block_types = ["even", "odd"]
+    block_types = ["odd", "even"]
     for i, block_type in enumerate(block_types):
         block_dst = cm.create(
             join(render_dst, "image_blocks", block_type),
