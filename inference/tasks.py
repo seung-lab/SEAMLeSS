@@ -174,9 +174,9 @@ class AverageFieldTask(RegisteredTask):
 
 
 class SplitFieldTask(RegisteredTask):
-  def __init__(self, field_cv, field_mip, rigid_x, rigid_y, high_freq_field_cv, high_freq_field_mip, 
+  def __init__(self, field_cv, field_mip, rigid_x, rigid_y, high_freq_field_cv, high_freq_field_mip,
                patch_bbox, src_z, dst_z):
-    super().__init__(field_cv, field_mip, rigid_x, rigid_y, high_freq_field_cv, 
+    super().__init__(field_cv, field_mip, rigid_x, rigid_y, high_freq_field_cv,
                      high_freq_field_mip, patch_bbox, src_z, dst_z)
 
   def execute(self, aligner):
@@ -264,9 +264,13 @@ class ComputeFieldTask(RegisteredTask):
 
     if self.cur_field_cv:
       cur_field_cv = DCV(self.cur_field_cv)
+    else:
+      cur_field_cv = None
 
     if self.unaligned_cv:
       unaligned_cv = DCV(self.unaligned_cv)
+    else:
+      unaligned_cv = None
 
     print("\nCompute field\n"
           "model {}\n"
@@ -326,7 +330,7 @@ class ComputeFieldTask(RegisteredTask):
 
 
 class MisalignmentDetectionTask(RegisteredTask):
-  def __init__(self, src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad=256, coarsen_misalign=128, 
+  def __init__(self, src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad=256, coarsen_misalign=128,
               forward_field_cv=None, backwards_field_cv=None, tile_size=256, max_disp=16, pure=False, ma_thresh=8):
     super(). __init__(src_cv, dst_cv, src_z, tgt_z, patch_bbox, mip, pad, coarsen_misalign,
                       forward_field_cv, backwards_field_cv, tile_size, max_disp, pure, ma_thresh)
@@ -572,7 +576,7 @@ class RenderTask(RegisteredTask):
                    misalignment_mask = np.zeros(shape=image.shape, dtype=np.uint8)
                    misalignment_mask[misalignment_fill_in.cpu().numpy() != 0] = 1
                    aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
-             
+
              if self.seethrough_black:
                  seethrough_region[(image_tissue == False) * prev_image_tissue] = True
                  image[seethrough_region] = prev_image[seethrough_region]
