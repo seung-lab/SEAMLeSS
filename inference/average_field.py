@@ -176,12 +176,13 @@ if __name__ == "__main__":
         resolution=cm.info['scales'][mip]['resolution'],
         voxel_offset=[0,0,0],
         chunk_size=[1, 1, 1],
-        volume_size=[*volume_size, 28000],
+        # volume_size=[*volume_size, 28000],
+        volume_size=[*volume_size, 4500],
     )
     avg_field_vol = CloudVolume(avg_field_path, info=avg_field_info)
     avg_field_vol.commit_info()
-    bbox = BoundingBox(0, 491520, 0, 491520, 0, args.max_mip)
-    # bbox = BoundingBox(150000, 200000, 200000, 250000, 0, args.max_mip)
+    # bbox = BoundingBox(0, 491520, 0, 491520, 0, args.max_mip)
+    bbox = BoundingBox(150000, 180000, 50000, 80000, 0, args.max_mip)
     avg_chunk_bbox = BoundingBox(0, volume_size[0], 0, volume_size[1], 0, 0)
 
     avg_field_section_path = join(output_field_path, "_avg_section")
@@ -212,7 +213,8 @@ if __name__ == "__main__":
 
     alignment_z_starts = [args.z_start]
     if args.generate_params_from_skip_file is None:
-        while min(z_stop, args.z_stop) - last_alignment_start > block_size:
+        last_alignment_start = args.z_start
+        while args.z_stop - last_alignment_start > block_size:
             last_alignment_start = last_alignment_start + block_size
             alignment_z_starts.append(last_alignment_start)
     else:
@@ -266,8 +268,16 @@ if __name__ == "__main__":
 
     
     stitching_sections = []
+    skip_first = True
+    got_first = True
     for cur_block_start in block_starts:
-        stitching_sections.append(cur_block_start + args.block_overlap)
+        if skip_first and got_first:
+            got_first = False
+            continue
+        block_overlap = args.block_overlap
+        if skip_first:
+            block_overlap = block_overlap - 1
+        stitching_sections.append(cur_block_start + block_overlap)
     
     # Task scheduling functions
     def remote_upload(tasks):
@@ -310,6 +320,7 @@ if __name__ == "__main__":
     # Task Scheduling Iterators
     print("Creating task scheduling iterators")
 
+
     class AverageFieldChunk:
         def __init__(self, z_range):
             print(z_range)
@@ -327,6 +338,7 @@ if __name__ == "__main__":
                     0,
                     bbox,
                     block_dst,
+                    # None,
                     pad,
                     src_z=z,
                     dst_z=z,

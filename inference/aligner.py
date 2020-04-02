@@ -100,6 +100,9 @@ class Aligner:
        mip: int for MIP level at which bbox is defined
        max_mip: int for the maximum MIP level at which the bbox is valid
     """
+    # import ipdb
+    # ipdb.set_trace()
+
     if chunk_size[0] > self.chunk_size[0] or chunk_size[1] > self.chunk_size[1]:
       chunk_size = self.chunk_size
 
@@ -1324,7 +1327,10 @@ class Aligner:
     f_factor, *factors = factors
     f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
                        relative=False, to_tensor=True)
-    current_low, *curr_low = curr_low
+    if len(curr_low) == 0:
+      current_low = (0, 0)
+    else:
+      current_low, *curr_low = curr_low
     # import ipdb
     # ipdb.set_trace()
 
@@ -1803,6 +1809,8 @@ class Aligner:
   def average_field(self, cm, bbox, field_cv, field_mip, dst_field_cv, dst_field_mip, patch_bbox, image_check, pad, src_z, dst_z, return_iterator=False):
     start = time()
     mip = field_mip
+    # import ipdb
+    # ipdb.set_trace()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                     cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.max_mip)

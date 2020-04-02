@@ -13,6 +13,7 @@ from taskqueue import GreenTaskQueue, LocalTaskQueue, MockTaskQueue
 from args import get_aligner, get_argparser, get_provenance, parse_args
 from boundingbox import BoundingBox
 from cloudmanager import CloudManager
+from cloudvolume import CloudVolume
 
 import json
 from mask import Mask
@@ -144,11 +145,6 @@ if __name__ == "__main__":
         help="If True, skip composition"
     )
     parser.add_argument(
-        "--skip_render",
-        action='store_true',
-        help="If True, skip rendering"
-    )
-    parser.add_argument(
         "--skip_vv",
         action='store_true',
         help="If True, skip vv"
@@ -180,7 +176,10 @@ if __name__ == "__main__":
     )
     parser.add_argument('--skip_list_lookup', type=str, help='relative path to file identifying list of skip sections')
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
+    parser.add_argument('--compose_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--final_render_suffix', type=str, default='', help='string to append to directory names')
+    parser.add_argument('--low_freq', type=str, default=None)
+    parser.add_argument('--high_freq', type=str, default=None)
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -202,12 +201,12 @@ if __name__ == "__main__":
 
     block_size = args.block_size
     do_alignment = not args.skip_alignment
-    do_render = not args.skip_render
     do_stitching = not args.skip_stitching
     do_compose = not args.skip_compose
     do_final_render = not args.skip_final_render
     blackout_op = args.blackout_op
     stitch_suffix = args.stitch_suffix
+    compose_suffix = args.compose_suffix
     skip_vv = args.skip_vv
     output_field_dtype = args.output_field_dtype
 
@@ -222,6 +221,18 @@ if __name__ == "__main__":
         size_chunk=chunk_size,
         batch_mip=mip,
     )
+
+    alt_compose = False
+    if args.low_freq is not None and args.high_freq is not None:
+        alt_compose = True
+        high_freq = cm.create(
+            join(args.high_freq),
+            data_type=output_field_dtype,
+            num_channels=2,
+            fill_missing=True,
+            overwrite=False,
+        ).path
+        low_freq = CloudVolume(args.low_freq)
 
     # Create src CloudVolumes
     print("Create src & align image CloudVolumes")
@@ -454,6 +465,12 @@ if __name__ == "__main__":
 
     compose_range = range(args.z_start, args.z_stop)
     render_range = range(args.z_start+1, args.z_stop)
+    if args.low_freq is not None and args.high_freq is not None:
+        all_blocks_lookup = {}
+        for cur_block_start in block_starts:
+            stitch_cbs = cur_block_start
+            if stitch_cbs in compose_range and stitch_cbs != args.z_start:
+                all_blocks_lookup[stitch_cbs] = low_freq[:,:,stitch_cbs].squeeze()
     if do_compose:
         decay_dist = args.decay_dist
         influencing_blocks_lookup = {z: [] for z in compose_range}
@@ -522,7 +539,7 @@ if __name__ == "__main__":
     ).path
 
     compose_field = cm.create(join(args.dst_path, 'field',
-                        'stitch{}'.format(args.stitch_suffix), 'compose'),
+                        'stitch{}'.format(args.compose_suffix), 'compose'),
                         data_type=output_field_dtype, num_channels=2,
                         fill_missing=True, overwrite=do_compose).path
     if do_final_render:
@@ -536,13 +553,13 @@ if __name__ == "__main__":
             size_chunk=chunk_size,
             batch_mip=final_render_mip,
         )
-        final_dst = cmr.create(join(args.dst_path, 'image_stitch{}{}'.format(args.stitch_suffix,
+        final_dst = cmr.create(join(args.dst_path, 'image_stitch{}{}'.format(args.compose_suffix,
                             args.final_render_suffix)),
                             data_type=args.img_dtype, num_channels=1, fill_missing=True,
                             overwrite=do_final_render).path
 
     compose_range = range(args.z_start, args.z_stop)
-    render_range = range(args.z_start+1, args.z_stop)
+    render_range = range(args.z_start, args.z_stop)
     decay_dist = args.decay_dist
     influencing_blocks_lookup = {z: [] for z in compose_range}
     for b_start in block_starts:
@@ -977,11 +994,52 @@ if __name__ == "__main__":
             print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
                                                                    factors))
             bbox = bbox_lookup[z]
-            cv_list = [broadcasting_field]*len(influencing_blocks) + [block_vvote_field]
-            z_list = list(influencing_blocks) + [z]
-            t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
-                                mip, mip, factors, pad)
-            yield from t
+            # alt_compose = False
+            if alt_compose:
+                prev_x_mov = 0
+                prev_y_mov = 0
+                cv_list = []
+                curr_low = []
+                for inf_block_z in influencing_blocks:
+                    if inf_block_z in all_blocks_lookup:
+                        cur_vec = all_blocks_lookup[inf_block_z]
+                        cur_x_low = float(cur_vec[0])
+                        cur_y_low = float(cur_vec[1])
+                        curr_low.append((cur_x_low, cur_y_low))
+                    else:
+                        curr_low.append((0,0))
+                    if inf_block_z in render_range and not inf_block_z in compose_range:
+                        cv_list.append(broadcasting_field)
+                    else:
+                        cv_list.append(high_freq)
+                for cur_block_start in all_blocks_lookup:
+                    if cur_block_start <= z - decay_dist:
+                        cur_vec = all_blocks_lookup[cur_block_start]
+                        prev_x_mov = prev_x_mov + float(cur_vec[0])
+                        prev_y_mov = prev_y_mov + float(cur_vec[1])
+                cv_list = cv_list + [block_vvote_field]
+                z_list = list(influencing_blocks) + [z]
+                if factors[0] == 0:
+                    factors = factors[1:]
+                    cv_list = cv_list[1:]
+                    z_list = z_list[1:]
+                    curr_low = curr_low[1:]
+                # if z == 2520 or z == 3150 or z == 3151:
+                # if z == 3150 or z == 3151:
+                #     import ipdb
+                #     ipdb.set_trace()
+                t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
+                                mip, mip, factors, pad, None, None, prev_x_mov, prev_y_mov, curr_low)
+                yield from t
+            else:
+                cv_list = [broadcasting_field]*len(influencing_blocks) + [block_vvote_field]
+                z_list = list(influencing_blocks) + [z]
+                # if z == 3150 or z == 3151:
+                #     import ipdb
+                #     ipdb.set_trace()
+                t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
+                                    mip, mip, factors, pad)
+                yield from t
 
     class StitchFinalRender(object):
         def __init__(self, z_range):
@@ -998,7 +1056,7 @@ if __name__ == "__main__":
 
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
-    if do_render:
+    if do_alignment:
         print("COPY STARTING SECTION OF ALL BLOCKS")
         execute(StarterCopy, copy_range)
     if do_alignment:
@@ -1007,7 +1065,7 @@ if __name__ == "__main__":
             execute(StarterUpsampleField, copy_range)
         print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
         execute(StarterComputeField, starter_range)
-    if do_render:
+    if do_alignment:
         execute(StarterRender, starter_range)
     for z_offset in sorted(block_offset_to_z_range.keys()):
         z_range = list(block_offset_to_z_range[z_offset])
@@ -1017,7 +1075,7 @@ if __name__ == "__main__":
             if not skip_vv:
                 print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
                 execute(BlockAlignVectorVote, z_range)
-        if do_render:
+        if do_alignment:
             print("RENDER BLOCK OFFSET {}".format(z_offset))
             execute(BlockAlignRender, z_range)
     print("END BLOCK ALIGNMENT")
@@ -1027,21 +1085,21 @@ if __name__ == "__main__":
     #    z_range = list(stitch_offset_to_z_range[z_offset])
     #    execute(SeethroughStitchRender, z_range=z_range)
 
-    if do_render:
+    if do_stitching:
         execute(StitchOverlapCopy, overlap_copy_range)
     for z_offset in sorted(stitch_offset_to_z_range.keys()):
         z_range = list(stitch_offset_to_z_range[z_offset])
-        if do_alignment:
+        if do_stitching:
             print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
             execute(StitchAlignComputeField, z_range)
             if not skip_vv:
                 print("VECTOR VOTE OVERLAPPING OFFSET {}".format(z_offset))
                 execute(StitchAlignVectorVote, z_range)
-        if do_render and not skip_vv:
+        if do_stitching and not skip_vv:
             print("RENDER OVERLAPPING OFFSET {}".format(z_offset))
             execute(StitchAlignRender, z_range)
 
-    if do_alignment and not skip_vv:
+    if do_stitching and not skip_vv:
         print("COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING")
         execute(StitchBroadcastCopy, stitch_range)
         print("VECTOR VOTE STITCHING FIELDS")

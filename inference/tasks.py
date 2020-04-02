@@ -149,7 +149,10 @@ class AverageFieldTask(RegisteredTask):
                                 to_tensor=True, normalizer=None)
       src_rendered_image = grid_sample(src_raw_patch, field, padding_mode='zeros')
       field = aligner.rel_to_abs_residual(field, field_mip)
-      distance = aligner.profile_field(field, [src_rendered_image], 0.2)
+      # distance = aligner.profile_field(field, [src_rendered_image], 0.2)
+      distance = aligner.profile_field(field, [src_rendered_image], None)
+      # import ipdb
+      # ipdb.set_trace()
     else:
       field = aligner.get_field(field_cv, src_z, patch_bbox, field_mip)
       distance = aligner.profile_field(field)
