@@ -282,7 +282,7 @@ if __name__ == "__main__":
             data_type=args.img_dtype,
             num_channels=1,
             fill_missing=True,
-            overwrite=do_render,
+            overwrite=do_alignment,
         )
         block_dsts[i] = block_dst.path
 
@@ -292,7 +292,7 @@ if __name__ == "__main__":
             data_type=args.img_dtype,
             num_channels=1,
             fill_missing=True,
-            overwrite=do_render,
+            overwrite=do_alignment,
         ).path
     # import ipdb
     # ipdb.set_trace
@@ -505,21 +505,21 @@ if __name__ == "__main__":
             data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
-            overwrite=do_alignment,
+            overwrite=do_stitching,
         ).path
     overlap_vvote_field = cm.create(
         join(args.dst_path, "field", "stitch", "vvote", "field"),
         data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
-        overwrite=do_alignment,
+        overwrite=do_stitching,
     ).path
     overlap_image = cm.create(
         join(args.dst_path, "field", "stitch", "vvote", "image"),
         data_type=args.img_dtype,
         num_channels=1,
         fill_missing=True,
-        overwrite=do_render,
+        overwrite=do_stitching,
     ).path
     stitch_fields = {}
     for z_offset in offset_range:
@@ -528,14 +528,14 @@ if __name__ == "__main__":
             data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
-            overwrite=do_alignment,
+            overwrite=do_stitching,
         ).path
     broadcasting_field = cm.create(
         join(args.dst_path, "field", "stitch", "broadcasting"),
         data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
-        overwrite=do_alignment,
+        overwrite=do_stitching,
     ).path
 
     compose_field = cm.create(join(args.dst_path, 'field',
