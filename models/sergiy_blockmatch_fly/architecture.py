@@ -31,7 +31,7 @@ class Model(nn.Module):
                                    tile_step=self.tile_step, max_disp=self.max_disp,
                                    min_overlap_px=700,
                                    min_overlap_ratio=0.95,
-                                   cutoff_peak_ratio=1.3)
+                                   cutoff_peak_ratio=1.4)
         if pred_res.shape[1] == 2:
             pred_res = pred_res.permute(0, 2, 3, 1)
 
