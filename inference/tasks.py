@@ -706,13 +706,9 @@ class CloudComposeTask(RegisteredTask):
 
 class CloudMultiComposeTask(RegisteredTask):
     def __init__(self, cv_list, dst_cv, z_list, dst_z, patch_bbox, mip_list,
-                 dst_mip, factors, pad, x_mov, y_mov, prev_x_mov, prev_y_mov, curr_low):
-        # if dst_z >= 22629 and dst_z <= 22630:
-          # print("XM {} YM {}".format(x_mov, y_mov))
-        # import ipdb
-        # ipdb.set_trace()
+                 dst_mip, factors, pad, prev_x_mov, prev_y_mov, curr_low):
         super().__init__(cv_list, dst_cv, z_list, dst_z, patch_bbox, mip_list,
-                         dst_mip, factors, pad, x_mov, y_mov, prev_x_mov, prev_y_mov, curr_low)
+                         dst_mip, factors, pad, prev_x_mov, prev_y_mov, curr_low)
 
     def execute(self, aligner):
         cv_list = [DCV(f) for f in self.cv_list]
@@ -724,8 +720,6 @@ class CloudMultiComposeTask(RegisteredTask):
         dst_mip = self.dst_mip
         factors = self.factors
         pad = self.pad
-
-        print("XM {} YM {}".format(self.x_mov, self.y_mov))
 
         print("\nCompose\n"
               "cv {}\n"
@@ -739,17 +733,15 @@ class CloudMultiComposeTask(RegisteredTask):
         if not aligner.dry_run:
             h = aligner.cloudsample_multi_compose(cv_list, z_list, patch_bbox,
                                                   mip_list, dst_mip, factors,
-                                                  pad, x_mov=self.x_mov, y_mov=self.y_mov,
-                                                  curr_low=self.curr_low,
+                                                  pad, curr_low=self.curr_low,
                                                   prev_x_mov=self.prev_x_mov, prev_y_mov=self.prev_y_mov)
-            # add_factor = torch.tensor([self.x_mov, self.y_mov], device=aligner.device)
-            # h = h + add_factor
             h = h.data.cpu().numpy()
             aligner.save_field(h, dst_cv, dst_z, patch_bbox, dst_mip,
                                relative=False)
             end = time()
             diff = end - start
             print('MultiComposeTask: {:.3f} s'.format(diff))
+
 
 class CloudUpsampleFieldTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, src_mip, dst_mip):

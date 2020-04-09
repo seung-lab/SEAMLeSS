@@ -223,6 +223,7 @@ if __name__ == "__main__":
     )
 
     alt_compose = False
+    skip_low_freq = False
     if args.low_freq is not None and args.high_freq is not None:
         alt_compose = True
         high_freq = cm.create(
@@ -233,6 +234,16 @@ if __name__ == "__main__":
             overwrite=False,
         ).path
         low_freq = CloudVolume(args.low_freq)
+    elif args.high_freq is not None:
+        alt_compose = True
+        high_freq = cm.create(
+            join(args.high_freq),
+            data_type=output_field_dtype,
+            num_channels=2,
+            fill_missing=True,
+            overwrite=False,
+        ).path
+        skip_low_freq = True
 
     # Create src CloudVolumes
     print("Create src & align image CloudVolumes")
@@ -336,7 +347,8 @@ if __name__ == "__main__":
                     last_alignment_start = z_start
                     alignment_z_starts.append(z_start)
                 if tgt_radius > 1 and skip_vv:
-                    raise ValueError('Cannot have both a tgt_radius greater than 1 and skip vv.')
+                    tgt_radius = 1
+                    # raise ValueError('Cannot have both a tgt_radius greater than 1 and skip vv.')
                 skip = bool(int(r[9]))
                 bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
                 # print('{},{}'.format(z_start, z_stop))
@@ -465,12 +477,16 @@ if __name__ == "__main__":
 
     compose_range = range(args.z_start, args.z_stop)
     render_range = range(args.z_start+1, args.z_stop)
-    if args.low_freq is not None and args.high_freq is not None:
+    # if args.low_freq is not None and args.high_freq is not None:
+    if alt_compose:
         all_blocks_lookup = {}
         for cur_block_start in block_starts:
             stitch_cbs = cur_block_start
             if stitch_cbs in compose_range and stitch_cbs != args.z_start:
-                all_blocks_lookup[stitch_cbs] = low_freq[:,:,stitch_cbs].squeeze()
+                if skip_low_freq:
+                    all_blocks_lookup[stitch_cbs] = (0.0, 0.0)
+                else:
+                    all_blocks_lookup[stitch_cbs] = low_freq[:,:,stitch_cbs].squeeze()
     if do_compose:
         decay_dist = args.decay_dist
         influencing_blocks_lookup = {z: [] for z in compose_range}
@@ -563,9 +579,14 @@ if __name__ == "__main__":
     decay_dist = args.decay_dist
     influencing_blocks_lookup = {z: [] for z in compose_range}
     for b_start in block_starts:
+        if b_start == block_starts[0]:
+            continue
         for z in range(b_start+1, b_start+decay_dist+1):
             if z < args.z_stop:
                 influencing_blocks_lookup[z].append(b_start)
+
+    # import ipdb
+    # ipdb.set_trace()
 
 
     # Task scheduling functions
@@ -982,6 +1003,8 @@ if __name__ == "__main__":
                 )
                 yield from t
 
+    
+
     class StitchCompose(object):
         def __init__(self, z_range):
           self.z_range = z_range
@@ -1025,18 +1048,20 @@ if __name__ == "__main__":
                     z_list = z_list[1:]
                     curr_low = curr_low[1:]
                 # if z == 2520 or z == 3150 or z == 3151:
-                # if z == 3150 or z == 3151:
-                #     import ipdb
-                #     ipdb.set_trace()
+                # if z == 3176 or z == 3175:
+                    # cv_list[1] = 'gs://fafb_test_cutouts/middle_a/alignment/ncc_m6_norm_align_run_x5/field/stitch/broadcasting/'
+                    # curr_low[1] = (0,0)
+                    # import ipdb
+                    # ipdb.set_trace()
                 t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
-                                mip, mip, factors, pad, None, None, prev_x_mov, prev_y_mov, curr_low)
+                                mip, mip, factors, pad, prev_x_mov, prev_y_mov, curr_low)
                 yield from t
             else:
                 cv_list = [broadcasting_field]*len(influencing_blocks) + [block_vvote_field]
                 z_list = list(influencing_blocks) + [z]
                 # if z == 3150 or z == 3151:
-                #     import ipdb
-                #     ipdb.set_trace()
+                    # import ipdb
+                    # ipdb.set_trace()
                 t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
                                     mip, mip, factors, pad)
                 yield from t
@@ -1048,6 +1073,8 @@ if __name__ == "__main__":
         def __iter__(self):
           for z in self.z_range:
             bbox = bbox_lookup[z]
+            # if z != 3176:
+                # continue
             t = a.render(cm, src, compose_field, final_dst, src_z=z,
                          field_z=z, dst_z=z, bbox=bbox,
                          src_mip=final_render_mip, field_mip=mip, pad=final_render_pad,
