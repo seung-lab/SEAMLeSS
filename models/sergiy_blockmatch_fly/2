@@ -1,0 +1,14 @@
+from residuals import combine_residuals, upsample, downsample
+import torch
+import sys
+
+size = int(sys.argv[1])
+x = torch.zeros([1, size, size, 2], dtype=torch.float32)
+y = torch.zeros([1, size, size, 2], dtype=torch.float32)
+
+x[...] = 1
+y[...] = 0
+
+z = combine_residuals(x, y, is_pix_res=True, rollback=3)
+print (z.mean())
+import pdb; pdb.set_trace()
