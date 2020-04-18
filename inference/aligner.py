@@ -28,9 +28,9 @@ from scipy.special import binom
 from temporal_regularization import create_field_bump
 from training.loss import lap
 from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
-                              np_downsample, invert, compose_fields, upsample_field, \
+                              np_downsample, invert, compose_fields, upsample_field, downsample_field, \
                               is_identity, cpc, vector_vote, get_affine_field, is_blank, \
-                              identity_grid
+                              identity_grid, percentile
 from boundingbox import BoundingBox, deserialize_bbox
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
@@ -46,13 +46,13 @@ import boto3
 from fcorr import get_fft_power2, get_hp_fcorr
 
 retry = tenacity.retry(
-  reraise=True, 
-  stop=tenacity.stop_after_attempt(7), 
+  reraise=True,
+  stop=tenacity.stop_after_attempt(7),
   wait=tenacity.wait_full_jitter(0.5, 60.0),
 )
 
 class Aligner:
-  def __init__(self, threads=1, queue_name=None, task_batch_size=1, 
+  def __init__(self, threads=1, queue_name=None, task_batch_size=1,
                device='cuda', dry_run=False, **kwargs):
     print('Creating Aligner object')
 
@@ -63,13 +63,13 @@ class Aligner:
     self.queue_url = None
     if queue_name:
       self.task_queue = TaskQueue(queue_name=queue_name, n_threads=0)
-    
+
     # self.chunk_size = (1024, 1024)
     self.chunk_size = (4096, 4096)
     self.device = torch.device(device)
 
     self.model_archives = {}
-    
+
     # self.pool = None #ThreadPool(threads)
     self.threads = threads
     self.task_batch_size = task_batch_size
@@ -83,7 +83,7 @@ class Aligner:
   ##########################
 
   def break_into_chunks(self, bbox, chunk_size, offset, mip, max_mip=12):
-    """Break bbox into list of chunks with chunk_size, given offset for all data 
+    """Break bbox into list of chunks with chunk_size, given offset for all data
 
     Args:
        bbox: BoundingBox for region to be broken into chunks
@@ -95,14 +95,14 @@ class Aligner:
        max_mip: int for the maximum MIP level at which the bbox is valid
     """
     if chunk_size[0] > self.chunk_size[0] or chunk_size[1] > self.chunk_size[1]:
-      chunk_size = self.chunk_size 
+      chunk_size = self.chunk_size
 
     raw_x_range = bbox.x_range(mip=mip)
     raw_y_range = bbox.y_range(mip=mip)
-    
+
     x_chunk = chunk_size[0]
     y_chunk = chunk_size[1]
-    
+
     x_offset = offset[0]
     y_offset = offset[1]
     x_remainder = ((raw_x_range[0] - x_offset) % x_chunk)
@@ -126,6 +126,7 @@ class Aligner:
       new_bbox = BoundingBox(x_range[0] + dis[0], x_range[1] + dis[0],
                              y_range[0] + dis[1], y_range[1] + dis[1],
                              mip=0)
+      new_bbox.max_mip = bbox.max_mip
       return new_bbox
 
   ##############
@@ -160,12 +161,12 @@ class Aligner:
 
   def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True):
     start = time()
-    data = self.get_data(cv, z, bbox, src_mip=src_mip, dst_mip=dst_mip, 
+    data = self.get_data(cv, z, bbox, src_mip=src_mip, dst_mip=dst_mip,
                              to_float=False, to_tensor=to_tensor, normalizer=None)
     mask = data == valid_val
     end = time()
     diff = end - start
-    print('get_mask: {:.3f}'.format(diff), flush=True) 
+    print('get_mask: {:.3f}'.format(diff), flush=True)
     return mask
 
   def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None,
@@ -176,11 +177,11 @@ class Aligner:
         d_mip = mip
     else:
         d_mip = dst_mip
-    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=d_mip, to_float=True, 
+    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=d_mip, to_float=True,
                              to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
-    print('get_image: {:.3f}'.format(diff), flush=True) 
+    print('get_image: {:.3f}'.format(diff), flush=True)
     return image
 
   def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
@@ -191,7 +192,7 @@ class Aligner:
     image = self.get_image(image_cv, z, bbox, image_mip,
                            to_tensor=True, normalizer=normalizer)
     if mask_cv is not None:
-      mask = self.get_mask(mask_cv, z, bbox, 
+      mask = self.get_mask(mask_cv, z, bbox,
                            src_mip=mask_mip,
                            dst_mip=image_mip, valid_val=mask_val)
       image = image.masked_fill_(mask, 0)
@@ -199,7 +200,7 @@ class Aligner:
       image = image.cpu().numpy()
     end = time()
     diff = end - start
-    print('get_masked_image: {:.3f}'.format(diff), flush=True) 
+    print('get_masked_image: {:.3f}'.format(diff), flush=True)
     return image
 
   def get_composite_image(self, image_cv, z_list, bbox, image_mip,
@@ -238,10 +239,10 @@ class Aligner:
 
     return combined
 
-  def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True, 
+  def get_data(self, cv, z, bbox, src_mip, dst_mip, to_float=True,
                      to_tensor=True, normalizer=None):
     """Retrieve CloudVolume data. Returns 4D ndarray or tensor, BxCxWxH
-    
+
     Args:
        cv_key: string to lookup CloudVolume
        bbox: BoundingBox defining data range
@@ -253,7 +254,7 @@ class Aligner:
 
     Returns:
        image from CloudVolume in region bbox at dst_mip, with contrast adjusted,
-       if normalizer is specified, and as a uint8 or float32 torch tensor or numpy, 
+       if normalizer is specified, and as a uint8 or float32 torch tensor or numpy,
        as specified
     """
     x_range = bbox.x_range(mip=src_mip)
@@ -270,7 +271,7 @@ class Aligner:
       data = normalizer(data).reshape(data.shape)
       end = time()
       diff = end - start
-      print('normalizer: {:.3f}'.format(diff), flush=True) 
+      print('normalizer: {:.3f}'.format(diff), flush=True)
     # convert to tensor if requested, or if up/downsampling required
     if to_tensor | (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
@@ -280,7 +281,7 @@ class Aligner:
         if src_mip != dst_mip:
           # k = 2**(src_mip - dst_mip)
           size = (bbox.y_size(dst_mip), bbox.x_size(dst_mip))
-          if not isinstance(data, torch.cuda.ByteTensor): 
+          if not isinstance(data, torch.cuda.ByteTensor):
             data = interpolate(data, size=size, mode='bilinear')
           else:
             data = data.type('torch.cuda.DoubleTensor')
@@ -298,12 +299,12 @@ class Aligner:
           data = data.type(torch.ByteTensor)
       if not to_tensor:
         data = data.cpu().numpy()
-    
+
     return data
-  
+
   def get_data_range(self, cv, z_range, bbox, src_mip, dst_mip, to_tensor=True):
     """Retrieve CloudVolume data. Returns 4D tensor, BxCxWxH
-    
+
     Args:
        cv_key: string to lookup CloudVolume
        bbox: BoundingBox defining data range
@@ -330,7 +331,7 @@ class Aligner:
         data = data.type('torch.cuda.ByteTensor')
     if not to_tensor:
       data = data.cpu().numpy()
-    
+
     return data
 
   def save_image(self, float_patch, cv, z, bbox, mip, to_uint8=True):
@@ -390,7 +391,7 @@ class Aligner:
 
     Returns
       FIELD: vector field with dimensions of BBOX at MIP, with RELATIVE residuals &
-        as TO_TENSOR, using convention (Z,Y,X,2) 
+        as TO_TENSOR, using convention (Z,Y,X,2)
 
     Note that the grid convention for torch.grid_sample is (N,H,W,2), where the
     components in the final dimension are (x,y). We are NOT altering it here.
@@ -409,26 +410,26 @@ class Aligner:
       field = torch.from_numpy(field)
       return field.to(device=self.device)
     else:
-      return field 
+      return field
 
   def save_field(self, field, cv, z, bbox, mip, relative, as_int16=True):
     """Save vector field to CloudVolume.
 
     Args
-      field: ndarray vector field with dimensions of bbox at mip with absolute MIP0 
-        residuals, using grid_sample convention of (Z,Y,X,2), where the components in 
+      field: ndarray vector field with dimensions of bbox at mip with absolute MIP0
+        residuals, using grid_sample convention of (Z,Y,X,2), where the components in
         the final dimension are (x,y).
       cv: MiplessCloudVolume to store vector field as MIP0 residuals in X,Y,Z,2 order
       z: int for section index
       bbox: BoundingBox for X & Y extent of the field to be stored
       mip: int for resolution at which to store the vector field
       relative: bool indicating whether to convert MIP0 residuals to relative residuals
-        from [-1,1] based on residual location within shape of the bbox 
+        from [-1,1] based on residual location within shape of the bbox
       as_int16: bool indicating whether vectors should be saved as int16
     """
-    if relative: 
+    if relative:
       field = field * (field.shape[-2] / 2) * (2**mip)
-    # field = field.data.cpu().numpy() 
+    # field = field.data.cpu().numpy()
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     field = np.transpose(field, (1,2,0,3))
@@ -442,7 +443,7 @@ class Aligner:
     #print("**********field shape is ", field.shape, type(field[0,0,0,0]))
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = field
 
-  def rel_to_abs_residual(self, field, mip):    
+  def rel_to_abs_residual(self, field, mip):
     """Convert vector field from relative space [-1,1] to absolute MIP0 space
     """
     return field * (field.shape[-2] / 2) * (2**mip)
@@ -462,19 +463,45 @@ class Aligner:
     return favg
 
   def profile_field(self, field):
-    avg_x = self.avg_field(field[0,...,0])
-    avg_y = self.avg_field(field[0,...,1])
-    return torch.Tensor([avg_x, avg_y])
+    nonzero = field[(field[...,0] != 0) & (field[...,1] != 0)]
+    if len(nonzero) == 0:
+      return torch.Tensor([0, 0])
+
+    low_l = percentile(nonzero, 25)
+    high_l = percentile(nonzero, 75)
+    mid = 0.5*(low_l + high_l)
+
+    print("MID:", mid[0].item(), mid[1].item())
+    return mid.cpu()
 
   #############################
   # CloudVolume chunk methods #
   #############################
 
-  def compute_field_chunk(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad, 
-                          src_mask_cv=None, src_mask_mip=0, src_mask_val=0,
-                          tgt_mask_cv=None, tgt_mask_mip=0, tgt_mask_val=0,
-                          tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
-                          prev_field_inverse=False):
+  def compute_field_chunk(
+    self,
+    model_path,
+    *,
+    bbox,
+    pad,
+    src_cv,
+    src_z,
+    tgt_cv,
+    tgt_z,
+    mip,
+    src_mask_cv=None,
+    src_mask_mip=0,
+    src_mask_val=0,
+    tgt_mask_cv=None,
+    tgt_mask_mip=0,
+    tgt_mask_val=0,
+    tgt_alt_z=None,
+    prev_field_cv=None,
+    prev_field_z=None,
+    coarse_field_cv=None,
+    coarse_field_mip=None,
+    tgt_field_cv=None
+  ):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
     Args:
@@ -497,25 +524,123 @@ class Aligner:
     archive = self.get_model_archive(model_path)
     model = archive.model
     normalizer = archive.preprocessor
-    print('compute_field for {0} to {1}'.format(bbox.stringify(src_z),
-                                                bbox.stringify(tgt_z)))
-    print('pad: {}'.format(pad))
-    padded_bbox = deepcopy(bbox)
-    padded_bbox.max_mip = mip
-    padded_bbox.uncrop(pad, mip=mip)
+    print(
+      "compute_field for {0} to {1}".format(
+        bbox.stringify(src_z), bbox.stringify(tgt_z)
+      )
+    )
+    print("pad: {}".format(pad))
 
-    if prev_field_cv is not None:
-        field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
-                           relative=False, to_tensor=True)
-        if prev_field_inverse:
-          field = -field
-        distance = self.profile_field(field)
-        print('Displacement adjustment: {} px'.format(distance))
-        distance = (distance // (2 ** mip)) * 2 ** mip
-        new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
-    else:
-        distance = torch.Tensor([0, 0])
-        new_bbox = padded_bbox
+    if coarse_field_mip is None:
+      coarse_field_mip = bbox.mip
+
+    # Find the target patch (Coarse+Fine vector field)
+    coarse_field = None
+    coarse_distance_fine_snap = torch.Tensor([0, 0])
+    drift_distance_fine_snap = torch.Tensor([0, 0])
+    drift_distance_coarse_snap = torch.Tensor([0, 0])
+
+    tgt_field = None
+    padded_tgt_bbox_fine = deepcopy(bbox)
+    padded_tgt_bbox_fine.uncrop(pad, mip)
+    if tgt_field_cv is not None:
+      # Fetch vector field of target section
+      tgt_field = self.get_field(
+        tgt_field_cv,
+        tgt_z,
+        padded_tgt_bbox_fine,
+        mip,
+        relative=True,
+        to_tensor=True,
+      ).to(device=self.device)
+
+      if coarse_field_cv is not None and not is_identity(tgt_field):
+        # Alignment with coarse field: Need to subtract the coarse field out of
+        # the tgt_field to get the current alignment drift
+        tgt_coarse_field = self.get_field(
+          coarse_field_cv,
+          tgt_z,
+          padded_tgt_bbox_fine,
+          coarse_field_mip,
+          relative=True,
+          to_tensor=True,
+        ).to(device=self.device)
+
+        tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_()
+        tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
+
+        tgt_drift_field = tgt_coarse_field_inv.compose_with(tgt_field.permute(0, 3, 1, 2).field_())
+        tgt_drift_field = tgt_drift_field.permute(0, 2, 3, 1)
+      else:
+        # Alignment without coarse field: tgt_field contains only the drift
+        # or prev_field is identity
+        tgt_drift_field = tgt_field
+
+      tgt_drift_field = self.rel_to_abs_residual(tgt_drift_field, mip)
+      drift_distance = self.profile_field(tgt_drift_field)
+      drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
+      drift_distance_coarse_snap = (
+        drift_distance // (2 ** coarse_field_mip)
+      ) * 2 ** coarse_field_mip
+
+      tgt_field = self.rel_to_abs_residual(tgt_field, mip)
+      tgt_distance = self.profile_field(tgt_field)
+      tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
+      tgt_field -= tgt_distance_fine_snap.to(device=self.device)
+      tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
+
+    print(
+      "Displacement adjustment TGT: {} px".format(
+        drift_distance_fine_snap,
+      )
+    )
+
+    padded_tgt_bbox_fine = self.adjust_bbox(padded_tgt_bbox_fine, tgt_distance_fine_snap.flip(0))
+
+    if coarse_field_cv is not None:
+      # Fetch coarse alignment
+      padded_src_bbox_coarse = self.adjust_bbox(bbox, drift_distance_coarse_snap.flip(0))
+      padded_src_bbox_coarse.max_mip = coarse_field_mip
+      padded_src_bbox_coarse.uncrop(pad, mip)
+
+      padded_src_bbox_coarse_field = deepcopy(padded_src_bbox_coarse)
+      padded_src_bbox_coarse_field.uncrop(2**coarse_field_mip, 0)
+
+      coarse_field = self.get_field(
+        coarse_field_cv,
+        src_z,
+        padded_src_bbox_coarse_field,
+        coarse_field_mip,
+        relative=False,
+        to_tensor=True,
+      ).to(device=self.device)
+      coarse_field = coarse_field.permute(0, 3, 1, 2)
+      coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bilinear')(coarse_field)
+      coarse_field = coarse_field.permute(0, 2, 3, 1)
+
+      crop = 2 ** (coarse_field_mip - mip)
+      offset = np.array((drift_distance_fine_snap - drift_distance_coarse_snap) // 2 ** mip, dtype=np.int)
+      coarse_field = coarse_field[:, crop+offset[1]:-crop+offset[1], crop+offset[0]:-crop+offset[0], :]
+
+      coarse_distance = self.profile_field(coarse_field)
+      coarse_distance_fine_snap = (coarse_distance // (2 ** mip)) * 2 ** mip
+      coarse_field -= coarse_distance_fine_snap.to(device=self.device)
+      coarse_field = self.abs_to_rel_residual(coarse_field, padded_src_bbox_coarse, mip)
+
+    combined_distance_fine_snap = (
+      coarse_distance_fine_snap + drift_distance_fine_snap
+    )
+
+    print(
+      "Displacement adjustment SRC: {} + {} --> {} px".format(
+        coarse_distance_fine_snap,
+        drift_distance_fine_snap,
+        combined_distance_fine_snap,
+      )
+    )
+
+    padded_src_bbox_fine = self.adjust_bbox(bbox, combined_distance_fine_snap.flip(0))
+    padded_src_bbox_fine.uncrop(pad, mip)
 
     tgt_z = [tgt_z]
     if tgt_alt_z is not None:
@@ -523,18 +648,32 @@ class Aligner:
         tgt_z.extend(tgt_alt_z)
       except TypeError:
         tgt_z.append(tgt_alt_z)
-      print('alternative target slices:', tgt_alt_z)
+      print("alternative target slices:", tgt_alt_z)
 
-    src_patch = self.get_masked_image(src_cv, src_z, new_bbox, mip,
-                                mask_cv=src_mask_cv, mask_mip=src_mask_mip,
-                                mask_val=src_mask_val,
-                                to_tensor=True, normalizer=normalizer)
-    tgt_patch = self.get_composite_image(tgt_cv, tgt_z, padded_bbox, mip,
-                                mask_cv=tgt_mask_cv, mask_mip=tgt_mask_mip,
-                                mask_val=tgt_mask_val,
-                                to_tensor=True, normalizer=normalizer)
-    print('src_patch.shape {}'.format(src_patch.shape))
-    print('tgt_patch.shape {}'.format(tgt_patch.shape))
+    src_patch = self.get_masked_image(
+      src_cv,
+      src_z,
+      padded_src_bbox_fine,
+      mip,
+      mask_cv=src_mask_cv,
+      mask_mip=src_mask_mip,
+      mask_val=src_mask_val,
+      to_tensor=True,
+      normalizer=normalizer,
+    )
+    tgt_patch = self.get_composite_image(
+      src_cv,
+      tgt_z,
+      padded_tgt_bbox_fine,
+      mip,
+      mask_cv=tgt_mask_cv,
+      mask_mip=tgt_mask_mip,
+      mask_val=tgt_mask_val,
+      to_tensor=True,
+      normalizer=normalizer,
+    )
+    print("src_patch.shape {}".format(src_patch.shape))
+    print("tgt_patch.shape {}".format(tgt_patch.shape))
 
     # Running the model is the only part that will increase memory consumption
     # significantly - only incrementing the GPU lock here should be sufficient.
@@ -543,25 +682,45 @@ class Aligner:
       print("Process {} acquired GPU lock".format(os.getpid()))
 
     try:
-      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+      print(
+        "GPU memory allocated: {}, cached: {}".format(
+          torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+        )
+      )
 
       # model produces field in relative coordinates
-      field = model(src_patch, tgt_patch)
-      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
-      field = self.rel_to_abs_residual(field, mip)
-      field = field[:,pad:-pad,pad:-pad,:]
-      field += distance.to(device=self.device)
-      field = field.data.cpu().numpy()
+      accum_field, fine_field = model(
+        src_patch,
+        tgt_patch,
+        tgt_field=tgt_field,
+        src_field=coarse_field,
+      )
+
+      print(
+        "GPU memory allocated: {}, cached: {}".format(
+          torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+        )
+      )
+
+      accum_field = self.rel_to_abs_residual(accum_field, mip)
+      accum_field = accum_field[:, pad:-pad, pad:-pad, :]
+      accum_field += combined_distance_fine_snap.to(device=self.device)
+      accum_field = accum_field.data.cpu().numpy()
+
       # clear unused, cached memory so that other processes can allocate it
       torch.cuda.empty_cache()
 
-      print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
+      print(
+        "GPU memory allocated: {}, cached: {}".format(
+          torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+        )
+      )
     finally:
       if self.gpu_lock is not None:
         print("Process {} releasing GPU lock".format(os.getpid()))
         self.gpu_lock.release()
 
-    return field
+    return accum_field
 
   def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
                     chunk_size):
@@ -591,13 +750,13 @@ class Aligner:
     return new_image
 
 
-  def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip, 
+  def vector_vote_chunk(self, pairwise_cvs, vvote_cv, z, bbox, mip,
                         inverse=False, serial=True, softmin_temp=None,
                         blur_sigma=None):
-    """Compute consensus vector field using pairwise vector fields with earlier sections. 
+    """Compute consensus vector field using pairwise vector fields with earlier sections.
 
     Vector voting requires that vector fields be composed to a common section
-    before comparison: inverse=False means that the comparison will be based on 
+    before comparison: inverse=False means that the comparison will be based on
     composed vector fields F_{z,compose_start}, while inverse=True will be
     F_{compose_start,z}.
 
@@ -606,19 +765,19 @@ class Aligner:
 
     Args:
        pairwise_cvs: dict of MiplessCloudVolumes, indexed by their z_offset
-       vvote_cv: MiplessCloudVolume where vector-voted field will be stored 
-       z: int for section index to be vector voted 
+       vvote_cv: MiplessCloudVolume where vector-voted field will be stored
+       z: int for section index to be vector voted
        bbox: BoundingBox for region where all fields will be loaded/written
        mip: int for MIP level of fields
        softmin_temp: softmin temperature (default will be 2**mip)
-       inverse: bool indicating if pairwise fields are to be treated as inverse fields 
-       serial: bool indicating to if a previously composed field is 
+       inverse: bool indicating if pairwise fields are to be treated as inverse fields
+       serial: bool indicating to if a previously composed field is
         not necessary
        softmin_temp: temperature to use for the softmin in vector voting; default None
         will use formula based on MIP level
        blur_sigma: std dev of Gaussian kernel by which to blur the vector vote inputs;
         default None means no blurring
-       
+
     """
     fields = []
     for z_offset, f_cv in pairwise_cvs.items():
@@ -635,6 +794,8 @@ class Aligner:
           G_z = z+z_offset
           F = self.get_composed_field(G_cv, f_cv, G_z, f_z, bbox, mip, mip, mip)
       fields.append(F)
+    if len(fields) == 1:
+      return fields[0]
     # assign weight w if the difference between majority vector similarities are d
     if not softmin_temp:
       w = 0.99
@@ -645,7 +806,7 @@ class Aligner:
     return vector_vote(fields, softmin_temp=softmin_temp, blur_sigma=blur_sigma)
 
   def invert_field(self, z, src_cv, dst_cv, bbox, mip, pad, model_path):
-    """Compute the inverse vector field for a given bbox 
+    """Compute the inverse vector field for a given bbox
 
     Args:
        z: int for section index to be processed
@@ -671,11 +832,11 @@ class Aligner:
       # use optimizer if no model provided
       invf = invert(f)
     invf = self.rel_to_abs_residual(invf, mip=mip)
-    invf = invf[:,pad:-pad, pad:-pad,:]    
+    invf = invf[:,pad:-pad, pad:-pad,:]
     end = time()
     print (": {} sec".format(end - start))
-    invf = invf.data.cpu().numpy() 
-    self.save_field(dst_cv, z, invf, bbox, mip, relative=True, as_int16=as_int16) 
+    invf = invf.data.cpu().numpy()
+    self.save_field(dst_cv, z, invf, bbox, mip, relative=True, as_int16=as_int16)
 
   def cloudsample_image(self, image_cv, field_cv, image_z, field_z,
                         bbox, image_mip, field_mip, mask_cv=None,
@@ -789,6 +950,7 @@ class Aligner:
       print('Padding by {} at MIP{}'.format(pad, dst_mip))
       padded_bbox.uncrop(pad, mip=dst_mip)
       # Load warper vector field
+
       f = self.get_field(f_cv, f_z, padded_bbox, f_mip,
                              relative=False, to_tensor=True)
       f = f * factor
@@ -800,7 +962,7 @@ class Aligner:
                            relative=False, to_tensor=True)
         if g_mip > dst_mip:
             g = upsample_field(g, g_mip, dst_mip)
-        return g
+        return g[:,pad:-pad,pad:-pad,:]
 
       distance = self.profile_field(f)
       distance = (distance // (2 ** g_mip)) * 2 ** g_mip
@@ -934,12 +1096,12 @@ class Aligner:
         f = h
     return f[:, pad:-pad, pad:-pad, :]
 
-  def cloudsample_image_batch(self, z_range, image_cv, field_cv, 
+  def cloudsample_image_batch(self, z_range, image_cv, field_cv,
                               bbox, image_mip, field_mip,
                               mask_cv=None, mask_mip=0, mask_val=0,
                               as_int16=True):
-    """Warp a batch of sections using the cloudsampler 
-   
+    """Warp a batch of sections using the cloudsampler
+
     Args:
        z_range: list of ints for section indices to process
        image_cv: MiplessCloudVolume of source image
@@ -949,15 +1111,15 @@ class Aligner:
        field_mip: int for MIP of the vector field
 
     Returns:
-       torch tensor of all images, concatenated along axis=0 
+       torch tensor of all images, concatenated along axis=0
     """
     start = time()
     batch = []
     print("cloudsample_image_batch for z_range={0}".format(z_range))
-    for z in z_range: 
-      image = self.cloudsample_image(z, z, image_cv, field_cv, bbox, 
-                                  image_mip, field_mip, 
-                                  mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val, 
+    for z in z_range:
+      image = self.cloudsample_image(z, z, image_cv, field_cv, bbox,
+                                  image_mip, field_mip,
+                                  mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val,
                                   as_int16=as_int16)
       batch.append(image)
     return torch.cat(batch, axis=0)
@@ -984,9 +1146,9 @@ class Aligner:
        img for bbox at dst_mip containing pearson r at each pixel for the chunks
        in src & tgt images at src_mip
     """
-    print('Compute CPC for {4} at MIP{0} to MIP{1}, {2}<-({2},{3})'.format(src_mip, 
-                                                                   dst_mip, src_z, 
-                                                                   tgt_z, 
+    print('Compute CPC for {4} at MIP{0} to MIP{1}, {2}<-({2},{3})'.format(src_mip,
+                                                                   dst_mip, src_z,
+                                                                   tgt_z,
                                                                    bbox.__str__(mip=0)))
     scale_factor = 2**(dst_mip - src_mip)
     src = self.get_image(src_cv, src_z, bbox, src_mip, normalizer=None,
@@ -1010,13 +1172,13 @@ class Aligner:
        model_path: str for relative path to ModelArchive
        src_z: int for section index of source image
        dst_z: int for section index of destination image
-       src_cv: MiplessCloudVolume where source image is stored 
-       dst_cv: MiplessCloudVolume where destination image will be stored 
+       src_cv: MiplessCloudVolume where source image is stored
+       dst_cv: MiplessCloudVolume where destination image will be stored
        bbox: BoundingBox for region where source and target image will be loaded,
         and where the resulting vector field will be written
        mip: int for MIP level images will be loaded and field will be stored at
        is_field: bool indicating whether this is a field CloudVolume to copy
-       to_uint8: bool indicating whether this image should be saved as float 
+       to_uint8: bool indicating whether this image should be saved as float
        mask_cv: MiplessCloudVolume where source mask is stored
        mask_mip: int for MIP level at which source mask is stored
        mask_val: int for pixel value in the mask that should be zero-filled
@@ -1043,7 +1205,7 @@ class Aligner:
                                  is_field, to_uint8, mask_cv, mask_mip, mask_val)
 
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
-                                    cm.dst_voxel_offsets[mip], mip=mip, 
+                                    cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.max_mip)
     if return_iterator:
         return CopyTaskIterator(chunks,0, len(chunks))
@@ -1051,19 +1213,20 @@ class Aligner:
     #tq.insert_all(ptasks, parallel=2)
     else:
         batch = []
-        for chunk in chunks: 
-          batch.append(tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
+        for chunk in chunks:
+          batch.append(tasks.CopyTask(src_cv, dst_cv, src_z, dst_z, chunk, mip,
                                       is_field, to_uint8, mask_cv, mask_mip, mask_val))
         return batch
-  
+
   def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv,
                     src_z, tgt_z, bbox, mip, pad=2048, src_mask_cv=None,
                     src_mask_mip=0, src_mask_val=0, tgt_mask_cv=None,
                     tgt_mask_mip=0, tgt_mask_val=0,
                     return_iterator=False, prev_field_cv=None, prev_field_z=None,
-                    prev_field_inverse=False):
-    """Compute field to warp src section to tgt section 
-  
+                    prev_field_inverse=False, coarse_field_cv=None,
+                    coarse_field_mip=0,tgt_field_cv=None):
+    """Compute field to warp src section to tgt section
+
     Args:
        cm: CloudManager that corresponds to the src_cv, tgt_cv, and field_cv
        model_path: str for relative path to ModelArchive
@@ -1077,16 +1240,16 @@ class Aligner:
        mip: int for MIP level images will be loaded and field will be stored at
        pad: int for amount of padding to add to bbox before processing
        wait: bool indicating whether to wait for all tasks must finish before proceeding
-       prev_field_cv: MiplessCloudVolume where field prior is stored. Field will be used 
+       prev_field_cv: MiplessCloudVolume where field prior is stored. Field will be used
         to apply initial translation to target image. If None, will ignore.
        prev_field_z: int for section index of previous field
        prev_field_inverse: bool indicating whether the inverse of the previous field
         should be used.
-       
+
     """
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
-                                    cm.dst_voxel_offsets[mip], mip=mip, 
+                                    cm.dst_voxel_offsets[mip], mip=mip,
                                     max_mip=cm.max_mip)
     class ComputeFieldTaskIterator():
         def __init__(self, cl, start, stop):
@@ -1105,9 +1268,10 @@ class Aligner:
             chunk = self.chunklist[i]
             yield tasks.ComputeFieldTask(model_path, src_cv, tgt_cv, field_cv,
                                           src_z, tgt_z, chunk, mip, pad,
-                                          src_mask_cv, src_mask_val, src_mask_mip, 
-                                          tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
-                                          prev_field_cv, prev_field_z, prev_field_inverse)
+                                          src_mask_cv, src_mask_val, src_mask_mip,
+                                          tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
+                                          prev_field_cv, prev_field_z, prev_field_inverse,
+                                          coarse_field_cv, coarse_field_mip, tgt_field_cv)
     if return_iterator:
         return ComputeFieldTaskIterator(chunks,0, len(chunks))
     else:
@@ -1115,28 +1279,29 @@ class Aligner:
         for chunk in chunks:
           batch.append(tasks.ComputeFieldTask(model_path, src_cv, tgt_cv, field_cv,
                                               src_z, tgt_z, chunk, mip, pad,
-                                              src_mask_cv, src_mask_val, src_mask_mip, 
-                                              tgt_mask_cv, tgt_mask_val, tgt_mask_mip, 
-                                              prev_field_cv, prev_field_z, prev_field_inverse))
+                                              src_mask_cv, src_mask_val, src_mask_mip,
+                                              tgt_mask_cv, tgt_mask_val, tgt_mask_mip,
+                                              prev_field_cv, prev_field_z, prev_field_inverse,
+                                              coarse_field_cv, coarse_field_mip, tgt_field_cv))
         return batch
-  
-  def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z, 
-                   bbox, src_mip, field_mip, mask_cv=None, mask_mip=0, 
+
+  def render(self, cm, src_cv, field_cv, dst_cv, src_z, field_z, dst_z,
+                   bbox, src_mip, field_mip, mask_cv=None, mask_mip=0,
                    mask_val=0, affine=None, use_cpu=False,
              return_iterator= False):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
        cm: CloudManager that corresponds to the src_cv, field_cv, & dst_cv
-       src_cv: MiplessCloudVolume where source image is stored 
-       field_cv: MiplessCloudVolume where vector field is stored 
-       dst_cv: MiplessCloudVolume where destination image will be written 
+       src_cv: MiplessCloudVolume where source image is stored
+       field_cv: MiplessCloudVolume where vector field is stored
+       dst_cv: MiplessCloudVolume where destination image will be written
        src_z: int for section index of source image
-       field_z: int for section index of vector field 
+       field_z: int for section index of vector field
        dst_z: int for section index of destination image
        bbox: BoundingBox for region where source and target image will be loaded,
         and where the resulting vector field will be written
-       src_mip: int for MIP level of src images 
+       src_mip: int for MIP level of src images
        field_mip: int for MIP level of vector field; field_mip >= src_mip
        mask_cv: MiplessCloudVolume where source mask is stored
        mask_mip: int for MIP level at which source mask is stored
@@ -1146,7 +1311,7 @@ class Aligner:
     """
     start = time()
     chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[src_mip],
-                                    cm.dst_voxel_offsets[src_mip], mip=src_mip, 
+                                    cm.dst_voxel_offsets[src_mip], mip=src_mip,
                                     max_mip=cm.max_mip)
     class RenderTaskIterator():
         def __init__(self, cl, start, stop):
@@ -1181,18 +1346,18 @@ class Aligner:
                   softmin_temp=None, blur_sigma=None):
     """Compute consensus field from a set of vector fields
 
-    Note: 
+    Note:
        tgt_z = src_z + z_offset
 
     Args:
        cm: CloudManager that corresponds to the src_cv, field_cv, & dst_cv
        pairwise_cvs: dict of MiplessCloudVolumes, indexed by their z_offset
-       vvote_cv: MiplessCloudVolume where vector-voted field will be stored 
-       z: int for section index to be vector voted 
+       vvote_cv: MiplessCloudVolume where vector-voted field will be stored
+       z: int for section index to be vector voted
        bbox: BoundingBox for region where all fields will be loaded/written
        mip: int for MIP level of fields
-       inverse: bool indicating if pairwise fields are to be treated as inverse fields 
-       serial: bool indicating to if a previously composed field is 
+       inverse: bool indicating if pairwise fields are to be treated as inverse fields
+       serial: bool indicating to if a previously composed field is
         not necessary
        wait: bool indicating whether to wait for all tasks must finish before proceeding
     """
@@ -1215,7 +1380,7 @@ class Aligner:
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
             yield tasks.VectorVoteTask(deepcopy(pairwise_cvs), vvote_cv, z,
-                                        chunk, mip, inverse, serial, 
+                                        chunk, mip, inverse, serial,
                                         softmin_temp=softmin_temp, blur_sigma=blur_sigma)
     if return_iterator:
         return VvoteTaskIterator(chunks,0, len(chunks))
@@ -1223,20 +1388,20 @@ class Aligner:
         batch = []
         for chunk in chunks:
           batch.append(tasks.VectorVoteTask(deepcopy(pairwise_cvs), vvote_cv, z,
-                                            chunk, mip, inverse, serial, 
-                                            softmin_temp=softmin_temp, 
+                                            chunk, mip, inverse, serial,
+                                            softmin_temp=softmin_temp,
                                             blur_sigma=blur_sigma))
         return batch
 
-  def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox, 
+  def compose(self, cm, f_cv, g_cv, dst_cv, f_z, g_z, dst_z, bbox,
                           f_mip, g_mip, dst_mip, factor, affine, pad,
                           return_iterator=False):
     """Compose two vector field CloudVolumes
 
     For coarse + fine composition:
-      f = fine 
-      g = coarse 
-    
+      f = fine
+      g = coarse
+
     Args:
        cm: CloudManager that corresponds to the f_cv, g_cv, dst_cv
        f_cv: MiplessCloudVolume of vector field f
@@ -1254,7 +1419,7 @@ class Aligner:
     """
     start = time()
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
-                                    cm.vec_voxel_offsets[dst_mip], 
+                                    cm.vec_voxel_offsets[dst_mip],
                                     mip=dst_mip)
     class CloudComposeIterator():
         def __init__(self, cl, start, stop):
@@ -1271,7 +1436,7 @@ class Aligner:
         def __iter__(self):
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
-            yield tasks.CloudComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
+            yield tasks.CloudComposeTask(f_cv, g_cv, dst_cv, f_z, g_z,
                                      dst_z, chunk, f_mip, g_mip, dst_mip,
                                      factor, affine, pad)
     if return_iterator:
@@ -1279,12 +1444,12 @@ class Aligner:
     else:
         batch = []
         for chunk in chunks:
-          batch.append(tasks.CloudComposeTask(f_cv, g_cv, dst_cv, f_z, g_z, 
+          batch.append(tasks.CloudComposeTask(f_cv, g_cv, dst_cv, f_z, g_z,
                                          dst_z, chunk, f_mip, g_mip, dst_mip,
                                          factor, affine, pad))
         return batch
 
-  def multi_compose(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, 
+  def multi_compose(self, cm, cv_list, dst_cv, z_list, dst_z, bbox,
                                 mip_list, dst_mip, factors, pad,
                                 return_iterator=False):
     """Compose a list of field CloudVolumes
@@ -1306,7 +1471,7 @@ class Aligner:
        pad: padding size
     """
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
-                                    cm.vec_voxel_offsets[dst_mip], 
+                                    cm.vec_voxel_offsets[dst_mip],
                                     mip=dst_mip)
     if return_iterator:
         class CloudMultiComposeIterator():
@@ -1327,7 +1492,7 @@ class Aligner:
                     yield tasks.CloudMultiComposeTask(cv_list, dst_cv, z_list,
                                                       dst_z, chunk, mip_list,
                                                       dst_mip, factors, pad)
-                                                      
+
         return CloudMultiComposeIterator(chunks, 0, len(chunks))
     else:
         batch = []
@@ -1337,7 +1502,51 @@ class Aligner:
                                                 dst_mip, factors, pad))
         return batch
 
-  def cpc(self, cm, src_cv, tgt_cv, dst_cv, src_z, tgt_z, bbox, src_mip, dst_mip, 
+  def cloud_upsample_field(self, cm, src_cv, dst_cv, src_z, dst_z,
+      bbox, src_mip, dst_mip, return_iterator=False):
+    """Upsample Vector Field
+
+    Args:
+       cm: CloudManager that corresponds to the f_cv, g_cv, dst_cv
+       src_cv: MiplessCloudVolume of (low res) source field
+       dst_cv: MiplessCloudVolume of (higher res) destination field
+       src_z: int of section index to process
+       dst_z: int of section index to process
+       bbox: BoundingBox of region to process
+       src_mip: MIP of source vector field
+       dst_mip: MIP of upsampled vector field
+    """
+    start = time()
+    chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
+                                    cm.vec_voxel_offsets[dst_mip],
+                                    mip=dst_mip)
+    class CloudUpsampleFieldIterator():
+        def __init__(self, cl, start, stop):
+          self.chunklist = cl
+          self.start = start
+          self.stop = stop
+        def __len__(self):
+          return self.stop - self.start
+        def __getitem__(self, slc):
+          itr = deepcopy(self)
+          itr.start = slc.start
+          itr.stop = slc.stop
+          return itr
+        def __iter__(self):
+          for i in range(self.start, self.stop):
+            chunk = self.chunklist[i]
+            yield tasks.CloudUpsampleFieldTask(src_cv, dst_cv, src_z, dst_z,
+                                     chunk, src_mip, dst_mip)
+    if return_iterator:
+        return CloudUpsampleFieldIterator(chunks,0, len(chunks))
+    else:
+        batch = []
+        for chunk in chunks:
+          batch.append(tasks.CloudUpsampleFieldTask(src_cv, dst_cv, src_z, dst_z,
+                                         chunk, src_mip, dst_mip))
+        return batch
+
+  def cpc(self, cm, src_cv, tgt_cv, dst_cv, src_z, tgt_z, bbox, src_mip, dst_mip,
                 norm=True, return_iterator=False):
     """Chunked Pearson Correlation between two CloudVolume images
 
@@ -1356,7 +1565,7 @@ class Aligner:
     """
     start = time()
     chunks = self.break_into_chunks(bbox, cm.vec_chunk_sizes[dst_mip],
-                                    cm.vec_voxel_offsets[dst_mip], 
+                                    cm.vec_voxel_offsets[dst_mip],
                                     mip=dst_mip)
     class CpcIterator():
         def __init__(self, cl, start, stop):
@@ -1373,14 +1582,14 @@ class Aligner:
         def __iter__(self):
           for i in range(self.start, self.stop):
             chunk = self.chunklist[i]
-            yield tasks.CPCTask(src_cv, tgt_cv, dst_cv, src_z, tgt_z, 
+            yield tasks.CPCTask(src_cv, tgt_cv, dst_cv, src_z, tgt_z,
                                  chunk, src_mip, dst_mip, norm)
     if return_iterator:
         return CpcIterator(chunks,0, len(chunks))
     else:
         batch = []
         for chunk in chunks:
-          batch.append(tasks.CPCTask(src_cv, tgt_cv, dst_cv, src_z, tgt_z, 
+          batch.append(tasks.CPCTask(src_cv, tgt_cv, dst_cv, src_z, tgt_z,
                                      chunk, src_mip, dst_mip, norm))
         return batch
 
@@ -1388,12 +1597,12 @@ class Aligner:
                    batch):
     """Chunkwise render
 
-    Warp the image in BBOX at MIP and SRC_Z in CloudVolume dir at SRC_Z_OFFSET, 
-    using the field at FIELD_Z in CloudVolume dir at FIELD_Z_OFFSET, and write 
-    the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX 
+    Warp the image in BBOX at MIP and SRC_Z in CloudVolume dir at SRC_Z_OFFSET,
+    using the field at FIELD_Z in CloudVolume dir at FIELD_Z_OFFSET, and write
+    the result to DST_Z in CloudVolume dir at DST_Z_OFFSET. Chunk BBOX
     appropriately.
     """
-    
+
     print('Rendering src_z={0} @ MIP{1} to dst_z={2}'.format(src_z, mip, dst_z), flush=True)
     start = time()
     print("chunk_size: ", cm.dst_chunk_sizes[mip], cm.dst_voxel_offsets[mip])
@@ -1405,8 +1614,8 @@ class Aligner:
             task_patches = []
             for j in range(i, min(len(chunks), i + self.task_batch_size)):
                 task_patches.append(chunks[j].serialize())
-            batch.append(tasks.RenderLowMipTask(src_z, field_cv, field_z, 
-                                                           task_patches, image_mip, 
+            batch.append(tasks.RenderLowMipTask(src_z, field_cv, field_z,
+                                                           task_patches, image_mip,
                                                            vector_mip, dst_cv, dst_z))
             self.upload_tasks(batch)
         self.wait_for_queue_empty(dst_cv.path, 'render_done/'+str(mip)+'_'+str(dst_z)+'/', len(chunks))
@@ -1452,7 +1661,7 @@ class Aligner:
     self.render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip, wait=wait)
     # self.render_grid_cv(src_z, field_cv, field_z, dst_cv, dst_z, bbox, self.render_low_mip)
     self.downsample(dst_cv, dst_z, bbox, self.render_low_mip, self.render_high_mip, wait=wait)
-  
+
   def render_to_low_mip(self, src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip):
       self.low_mip_render(src_z, field_cv, field_z, dst_cv, dst_z, bbox, image_mip, vector_mip)
       self.downsample(dst_cv, dst_z, bbox, image_mip, self.render_high_mip)
@@ -1493,8 +1702,8 @@ class Aligner:
       self.pool.map(chunkwise, chunks)
     end = time()
     print (": {} sec".format(end - start))
-    
-  def count_box(self, bbox, mip):    
+
+  def count_box(self, bbox, mip):
     chunks = self.break_into_chunks(bbox, self.dst[0].dst_chunk_sizes[mip],
                                       self.dst[0].dst_voxel_offsets[mip], mip=mip, render=True)
     total_chunks = len(chunks)
@@ -1502,8 +1711,8 @@ class Aligner:
     self.field_sf_sum =np.zeros((total_chunks, 2), dtype=np.float32)
 
   def invert_field_chunkwise(self, z, src_cv, dst_cv, bbox, mip, optimizer=False):
-    """Chunked-processing of vector field inversion 
-    
+    """Chunked-processing of vector field inversion
+
     Args:
        z: section of fields to weight
        src_cv: CloudVolume for forward field
@@ -1520,10 +1729,10 @@ class Aligner:
     if self.distributed:
         batch = []
         for patch_bbox in chunks:
-          batch.append(tasks.InvertFieldTask(z, src_cv, dst_cv, patch_bbox, 
+          batch.append(tasks.InvertFieldTask(z, src_cv, dst_cv, patch_bbox,
                                                       mip, optimizer))
         self.upload_tasks(batch)
-    else: 
+    else:
     #for patch_bbox in chunks:
         def chunkwise(patch_bbox):
           self.invert_field(z, src_cv, dst_cv, patch_bbox, mip)
@@ -1553,7 +1762,7 @@ class Aligner:
   def downsample_range(self, cv, z_range, bbox, source_mip, target_mip):
     """Downsample a range of sections, downsampling a given MIP across all sections
        before proceeding to the next higher MIP level.
-    
+
     Args:
        cv: MiplessCloudVolume where images will be loaded and written
        z_range: list of ints for section indices that will be downsampled
@@ -1567,23 +1776,23 @@ class Aligner:
         self.downsample(cv, z, bbox, mip, mip+1, wait=False)
       if self.distributed:
         self.task_handler.wait_until_ready()
-    
+
 
   def generate_pairwise_and_compose(self, z_range, compose_start, bbox, mip, forward_match,
                                     reverse_match, batch_size=1):
     """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in TGT_RADIUS
-  
+
     Args:
-        z_range: list of z indices to be matches 
+        z_range: list of z indices to be matches
         bbox: BoundingBox object for bounds of 2D region
         forward_match: bool indicating whether to match from z to z-i
           for i in range(tgt_radius)
         reverse_match: bool indicating whether to match from z to z+i
           for i in range(tgt_radius)
-        batch_size: (for distributed only) int describing how many sections to issue 
+        batch_size: (for distributed only) int describing how many sections to issue
           multi-match tasks for, before waiting for all tasks to complete
     """
-    
+
     m = mip
     batch_count = 0
     start = 0
@@ -1625,7 +1834,7 @@ class Aligner:
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
-    # report on remaining sections after batch 
+    # report on remaining sections after batch
     if batch_count > 0 and self.distributed:
       print('generate_pairwise waiting for {batch} sections'.format(batch=batch_size))
       self.task_queue.block_until_empty()
@@ -1649,12 +1858,12 @@ class Aligner:
                                             vvote_field, pad, softmin_temp))
     return batch
 
-  def generate_pairwise(self, z_range, bbox, forward_match, reverse_match, 
+  def generate_pairwise(self, z_range, bbox, forward_match, reverse_match,
                               render_match=False, batch_size=1, wait=True):
     """Create all pairwise matches for each SRC_Z in Z_RANGE to each TGT_Z in TGT_RADIUS
-  
+
     Args:
-        z_range: list of z indices to be matches 
+        z_range: list of z indices to be matches
         bbox: BoundingBox object for bounds of 2D region
         forward_match: bool indicating whether to match from z to z-i
           for i in range(tgt_radius)
@@ -1663,19 +1872,19 @@ class Aligner:
         render_match: bool indicating whether to separately render out
           each aligned section before compiling vector fields with voting
           (useful for debugging)
-        batch_size: (for distributed only) int describing how many sections to issue 
+        batch_size: (for distributed only) int describing how many sections to issue
           multi-match tasks for, before waiting for all tasks to complete
         wait: (for distributed only) bool to wait after batch_size for all tasks
           to finish
     """
-    
+
     mip = self.process_low_mip
     batch_count = 0
     start = 0
     for z in z_range:
       start = time()
-      batch_count += 1 
-      self.multi_match(z, forward_match=forward_match, reverse_match=reverse_match, 
+      batch_count += 1
+      self.multi_match(z, forward_match=forward_match, reverse_match=reverse_match,
                        render=render_match)
       if batch_count == batch_size and self.distributed and wait:
         print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
@@ -1683,7 +1892,7 @@ class Aligner:
         end = time()
         print (": {} sec".format(end - start))
         batch_count = 0
-    # report on remaining sections after batch 
+    # report on remaining sections after batch
     if batch_count > 0 and self.distributed and wait:
       print('generate_pairwise waiting for {batch} section(s)'.format(batch=batch_size))
       self.task_queue.block_until_empty()
@@ -1691,9 +1900,9 @@ class Aligner:
     print (": {} sec".format(end - start))
     #if self.p_render:
     #    self.task_queue.block_until_empty()
- 
+
   def compose_pairwise(self, z_range, compose_start, bbox, mip,
-                             forward_compose=True, inverse_compose=True, 
+                             forward_compose=True, inverse_compose=True,
                              negative_offsets=False, serial_operation=False):
     """Combine pairwise vector fields in TGT_RADIUS using vector voting, while composing
     with earliest section at COMPOSE_START.
@@ -1706,10 +1915,10 @@ class Aligner:
        forward_compose: bool, indicating whether to compose with forward transforms
        inverse_compose: bool, indicating whether to compose with inverse transforms
        negative_offsets: bool indicating whether to use offsets less than 0 (z-i <-- z)
-       serial_operation: bool indicating to if a previously composed field is 
+       serial_operation: bool indicating to if a previously composed field is
         not necessary
     """
-    
+
     T = 2**mip
     print('softmin temp: {0}'.format(T))
     if forward_compose:
@@ -1722,17 +1931,17 @@ class Aligner:
     write_invF_k = cm.get_composed_key(compose_start, inverse=True)
     read_F_k = write_F_k
     read_invF_k = write_invF_k
-     
+
     if forward_compose:
       read_F_cv = cm.for_read(read_F_k)
       write_F_cv = cm.for_write(write_F_k)
-      self.vector_vote_chunkwise(z_range, read_F_cv, write_F_cv, bbox, mip, 
+      self.vector_vote_chunkwise(z_range, read_F_cv, write_F_cv, bbox, mip,
                                  inverse=False, T=T, negative_offsets=negative_offsets,
                                  serial_operation=serial_operation)
     if inverse_compose:
       read_F_cv = cm.for_read(read_invF_k)
       write_F_cv = cm.for_write(write_invF_k)
-      self.vector_vote_chunkwise(z_range, read_F_cv, write_F_cv, bbox, mip, 
+      self.vector_vote_chunkwise(z_range, read_F_cv, write_F_cv, bbox, mip,
                                  inverse=False, T=T, negative_offsets=negative_offsets,
                                  serial_operation=serial_operation)
 
@@ -1741,7 +1950,7 @@ class Aligner:
 
     Args
        z: int for index of SRC section
-       F_cv: CloudVolume with fields 
+       F_cv: CloudVolume with fields
        bbox: BoundingBox defining chunk region
        mip: int for MIP level of data
     """
@@ -1752,14 +1961,14 @@ class Aligner:
                         as_int16=as_int16)
       fields.append(F)
     return torch.cat(fields, 0)
- 
-  def shift_neighborhood(self, Fs, z, F_cv, bbox, mip, keep_first=False): 
+
+  def shift_neighborhood(self, Fs, z, F_cv, bbox, mip, keep_first=False):
     """Shift field neighborhood by dropping earliest z & appending next z
-  
+
     Args
        invFs: 4D torch tensor of inverse composed vector vote fields
        z: int representing the z of the input invFs. invFs will be shifted to z+1.
-       F_cv: CloudVolume where next field will be loaded 
+       F_cv: CloudVolume where next field will be loaded
        bbox: BoundingBox representing xy extent of invFs
        mip: int for data resolution of the field
     """
@@ -1773,7 +1982,7 @@ class Aligner:
 
   def regularize_z(self, z_range, dir_z, bbox, mip, sigma=1.4):
     """For a given chunk, temporally regularize each Z in Z_RANGE
-    
+
     Make Z_RANGE as large as possible to avoid IO: self.shift_field
     is called to add and remove the newest and oldest sections.
 
@@ -1803,7 +2012,7 @@ class Aligner:
     bump_dims = np.asarray(invFs.shape)
     bump_dims[0] = len(self.tgt_range)
     full_bump = create_field_bump(bump_dims, sigma)
-    bump_z = 3 
+    bump_z = 3
 
     for z in z_range:
       composed = []
@@ -1815,22 +2024,22 @@ class Aligner:
                          as_int16=as_int16)
       avg_invF = torch.sum(torch.mul(bump, invFs), dim=0, keepdim=True)
       regF = compose_fields(avg_invF, F)
-      regF = regF.data.cpu().numpy() 
+      regF = regF.data.cpu().numpy()
       self.save_field(next_cv, z, regF, bbox, mip, relative=True, as_int16=as_int16)
       if z != z_range[-1]:
-        invFs = self.shift_neighborhood(invFs, z, invF_cv, bbox, mip, 
+        invFs = self.shift_neighborhood(invFs, z, invF_cv, bbox, mip,
                                         keep_first=bump_z > 0)
       bump_z = max(bump_z - 1, 0)
 
   def regularize_z_chunkwise(self, z_range, dir_z, bbox, mip, sigma=1.4):
-    """Chunked-processing of temporal regularization 
-    
+    """Chunked-processing of temporal regularization
+
     Args:
-       z_range: int list, range of sections over which to regularize 
+       z_range: int list, range of sections over which to regularize
        dir_z: int indicating the z index of the CloudVolume dir
        bbox: BoundingBox of region to process
        mip: field MIP level
-       sigma: float for std of the bump function 
+       sigma: float for std of the bump function
     """
     start = time()
     # cm.add_composed_cv(compose_start, inverse=False)
@@ -1867,7 +2076,7 @@ class Aligner:
                                       max_mip=cm.max_mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.SumPoolTask(src_cv, dst_cv, src_z, 
+        batch.append(tasks.SumPoolTask(src_cv, dst_cv, src_z,
                                      dst_z, chunk, src_mip, dst_mip))
       return batch
 
@@ -1877,7 +2086,7 @@ class Aligner:
                                       max_mip=cm.max_mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.Dilation(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
+        batch.append(tasks.Dilation(src_cv, dst_cv, src_z, dst_z, chunk, mip,
                                     radius))
       return batch
 
@@ -1887,7 +2096,7 @@ class Aligner:
                                       max_mip=cm.max_mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.Threshold(src_cv, dst_cv, src_z, dst_z, chunk, mip, 
+        batch.append(tasks.Threshold(src_cv, dst_cv, src_z, dst_z, chunk, mip,
                                      threshold, op))
       return batch
 
@@ -1901,21 +2110,21 @@ class Aligner:
       return batch
 
   def compute_smoothness_chunk(self, cv, z, bbox, mip, pad):
-      padded_bbox = deepcopy(bbox) 
+      padded_bbox = deepcopy(bbox)
       padded_bbox.max_mip = mip
       padded_bbox.uncrop(pad, mip=mip)
       field = self.get_field(cv, z, padded_bbox, mip, relative=False, to_tensor=True)
       return lap([field], device=self.device).unsqueeze(0)
 
-  def compute_fcorr(self, cm, src_cv, dst_pre_cv, dst_post_cv, bbox, src_mip, 
+  def compute_fcorr(self, cm, src_cv, dst_pre_cv, dst_post_cv, bbox, src_mip,
                     dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[dst_mip], mip=dst_mip,
                                       max_mip=cm.max_mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.ComputeFcorrTask(src_cv, dst_pre_cv, dst_post_cv, chunk, 
-                                            src_mip, dst_mip, src_z, tgt_z, dst_z, 
+        batch.append(tasks.ComputeFcorrTask(src_cv, dst_pre_cv, dst_post_cv, chunk,
+                                            src_mip, dst_mip, src_z, tgt_z, dst_z,
                                             fcorr_chunk_size, fill_value))
       return batch
 
@@ -1957,20 +2166,20 @@ class Aligner:
       return np.ones([x_range[1]-x_range[0], y_range[1]-y_range[0]])
 
   def mask_conjunction_chunk(self, cv_list, z_list, bbox, mip_list, dst_mip):
-      mask = self.get_data(cv_list[0], z_list[0], bbox, src_mip=mip_list[0], 
+      mask = self.get_data(cv_list[0], z_list[0], bbox, src_mip=mip_list[0],
                            dst_mip=dst_mip, to_float=False, to_tensor=False)
       for cv, z, mip in zip(cv_list[1:], z_list[1:], mip_list[1:]):
-        mask = np.logical_and(mask, self.get_data(cv, z, bbox, src_mip=mip, 
-                                                  dst_mip=dst_mip, to_float=False, 
+        mask = np.logical_and(mask, self.get_data(cv, z, bbox, src_mip=mip,
+                                                  dst_mip=dst_mip, to_float=False,
                                                   to_tensor=False))
       return mask
 
   def mask_disjunction_chunk(self, cv_list, z_list, bbox, mip_list, dst_mip):
-      mask = self.get_data(cv_list[0], z_list[0], bbox, src_mip=mip_list[0], 
+      mask = self.get_data(cv_list[0], z_list[0], bbox, src_mip=mip_list[0],
                            dst_mip=dst_mip, to_float=False, to_tensor=False)
       for cv, z, mip in zip(cv_list[1:], z_list[1:], mip_list[1:]):
-        mask = np.logical_or(mask, self.get_data(cv, z, bbox, src_mip=mip, 
-                                                  dst_mip=dst_mip, to_float=False, 
+        mask = np.logical_or(mask, self.get_data(cv, z, bbox, src_mip=mip,
+                                                  dst_mip=dst_mip, to_float=False,
                                                   to_tensor=False))
       return mask
 
@@ -1994,25 +2203,25 @@ class Aligner:
       return batch
 
 
-  def make_fcorr_masks(self, cm, cv_list, dst_pre, dst_post, z_list, dst_z, 
+  def make_fcorr_masks(self, cm, cv_list, dst_pre, dst_post, z_list, dst_z,
                        bbox, mip, operators, threshold, dilate_radius=0):
       chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
                                       cm.dst_voxel_offsets[mip], mip=mip,
                                       max_mip=cm.max_mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.FcorrMaskTask(cv_list, dst_pre, dst_post, z_list, dst_z, 
+        batch.append(tasks.FcorrMaskTask(cv_list, dst_pre, dst_post, z_list, dst_z,
                                          chunk, mip, operators, threshold, dilate_radius))
       return batch
 
-  def mask_logic(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, mip_list, 
+  def mask_logic(self, cm, cv_list, dst_cv, z_list, dst_z, bbox, mip_list,
                  dst_mip, op='or'):
       chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[dst_mip],
                                       cm.dst_voxel_offsets[dst_mip],
                                       mip=dst_mip, max_mip=cm.max_mip)
       batch = []
       for chunk in chunks:
-        batch.append(tasks.MaskLogicTask(cv_list, dst_cv, z_list, dst_z, chunk, 
+        batch.append(tasks.MaskLogicTask(cv_list, dst_cv, z_list, dst_z, chunk,
                                          mip_list, dst_mip, op))
       return batch
 

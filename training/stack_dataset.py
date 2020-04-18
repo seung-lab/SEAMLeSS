@@ -44,6 +44,8 @@ class StackDataset(Dataset):
             assert "images" in h5f.keys()
             if "masks" in h5f.keys():
                 assert h5f["masks"].shape[-4:-2] == h5f["images"].shape[-4:-2]
+            if "fields" in h5f.keys():
+                assert h5f["fields"].shape == (*(h5f["images"].shape), 2)
             self.N = (
                 num_samples
                 if num_samples and num_samples < len(h5f["images"])
@@ -64,18 +66,26 @@ class StackDataset(Dataset):
                 self.masks = h5f["masks"]
             else:
                 self.masks = np.zeros_like(self.images)
+            if "fields" in h5f.keys():
+                self.fields = h5f["fields"]
+            else:
+                self.fields = np.zeros((*(h5f["images"].shape), 2), dtype=np.float32)
 
         img_id = id % self.N
-        perm_id = id % len(self.permutations)
+        perm_id = (id // self.N) % len(self.permutations)
         s, t = self.images[img_id][self.permutations[perm_id], ...]
         sm, tm = self.masks[img_id][self.permutations[perm_id], ...]
+        sf, tf = self.fields[img_id][self.permutations[perm_id], ...] * 2.0 / 6144.0
 
-        X = np.zeros_like(s, shape=(4, s.shape[-2], s.shape[-1]))
+        X = {
+            'base': np.zeros_like(s, shape=(4, s.shape[-2], s.shape[-1])),
+            'field': np.zeros_like(sf, shape=(2, sf.shape[-3], sf.shape[-2], sf.shape[-1])),
+        }
         if sm.shape[0] != s.shape[0]:
-            sm = resize(sm, s.shape)
-            tm = resize(tm, t.shape)
-
-        X[0:4] = s, t, sm, tm
+            sm = resize(sm, s.shape, preserve_range=True)
+            tm = resize(tm, t.shape, preserve_range=True)
+        X['base'][0:4] = s, t, sm, tm
+        X['field'][0:2] = sf, tf
         if self.transform:
             X = self.transform(X)
         return X, id
@@ -106,7 +116,9 @@ class ToFloatTensor(object):
     """
 
     def __call__(self, X):
-        return torch.from_numpy(X).to(torch.float)
+        X['base'] = torch.from_numpy(X['base']).to(torch.float)
+        X['field'] = torch.from_numpy(X['field']).to(torch.float)
+        return X
 
 
 class Preprocess(object):
@@ -118,7 +130,7 @@ class Preprocess(object):
 
     def __call__(self, X):
         if self.preprocessor is not None:
-            X[..., 0:2, :, :] = self.preprocessor(X[..., 0:2, :, :])
+            X['base'][..., 0:2, :, :] = self.preprocessor(X['base'][..., 0:2, :, :])
         return X
 
 
@@ -151,12 +163,14 @@ class Split(object):
     def __call__(self, X):
         return dotdict({
             'src': {
-                'image': X[0:1],
-                'mask': X[2:3],
+                'image': X['base'][0:1],
+                'mask': X['base'][2:3],
+                'field': X['field'][0],
             },
             'tgt': {
-                'image': X[1:2],
-                'mask': X[3:4], 
+                'image': X['base'][1:2],
+                'mask': X['base'][3:4],
+                'field': X['field'][1],
             },
         })
 

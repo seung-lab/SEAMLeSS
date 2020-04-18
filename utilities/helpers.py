@@ -505,6 +505,12 @@ def upsample_field(field, src_mip, dst_mip):
     upsampled_field = upsample(src_mip-dst_mip)(field)
     return upsampled_field.permute(0, 2, 3, 1)
 
+def downsample_field(field, src_mip, dst_mip):
+    """Downsample vector field from src_mip to dst_mip
+    """
+    field = field.permute(0, 3, 1, 2)
+    downsampled_field = downsample(dst_mip - src_mip, type='average')(field)
+    return downsampled_field.permute(0, 2, 3, 1)
 
 def is_identity(field, eps=0.):
     """Check if field is the identity, up to some error `eps` (0 by default)
@@ -1003,3 +1009,24 @@ def list_tensors(gpu_only=False, combine_cuda=False, namespace=None):
             ])
             )
         )
+
+def percentile(field, q):
+    # https://gist.github.com/spezold/42a451682422beb42bc43ad0c0967a30
+    """
+    Return the ``q``-th percentile of the flattened input tensor's data.
+    
+    CAUTION:
+     * Needs PyTorch >= 1.1.0, as ``torch.kthvalue()`` is used.
+     * Values are not interpolated, which corresponds to
+       ``numpy.percentile(..., interpolation="nearest")``.
+       
+    :param field: Input tensor.
+    :param q: Percentile to compute, which must be between 0 and 100 inclusive.
+    :return: Resulting value (scalar).
+    """
+    # Note that ``kthvalue()`` works one-based, i.e. the first sorted value
+    # indeed corresponds to k=1, not k=0! Use float(q) instead of q directly,
+    # so that ``round()`` returns an integer, even if q is a np.float32.
+    k = 1 + round(.01 * float(q) * (len(field) - 1))
+    result = field.kthvalue(k, dim=0).values
+    return result

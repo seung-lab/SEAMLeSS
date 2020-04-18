@@ -1,4 +1,4 @@
-apiVersion: apps/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   creationTimestamp: null
@@ -22,11 +22,11 @@ spec:
         run: seamless
     spec:
       containers:
-      - image: seunglab/seamless:sergiy_fine
+      - image: seunglab/seamless:nkem-minnie-fine
         name: seamless
         imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/worker.py --processes 8 --gpu_processes 1 --queue_name deepalign_sergiy --lease_seconds 40"]
+        args: ["-c", "python inference/worker.py --processes 8 --gpu_processes 3 --queue_name nkem-seamless-1 --lease_seconds 40"]
         resources: 
           limits:
             nvidia.com/gpu: 1

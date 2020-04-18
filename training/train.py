@@ -221,10 +221,12 @@ def train(train_loader, archive, epoch):
         if torch.cuda.device_count() == 1:
             sample = stack_dataset.ToDevice('cuda')(sample)
         src = sample.src.image if sample.src.aug is None else sample.src.aug
+        src_field = sample.src.field
         tgt = sample.tgt.image if sample.tgt.aug is None else sample.tgt.aug
-        prediction = submodule(src, tgt)
+        tgt_field = sample.tgt.field
+        prediction = submodule(src, tgt, src_field=src_field, tgt_field=tgt_field)
 
-        loss = archive.loss(sample, prediction=prediction)
+        loss = archive.loss(sample, prediction=prediction, tgt_field=tgt_field)
         try:
             for k,v in loss.items():
                 loss[k] = v.mean()
@@ -296,8 +298,14 @@ def validate(val_loader, archive, epoch):
         print('{0}\t'
               'Validation: [{1}/{2}]\t'
               .format(state_vars.name, i, len(val_loader)), end='\r')
-        prediction = submodule(sample.src.image, sample.tgt.image)
-        loss = archive.val_loss(sample, prediction=prediction)
+
+        src = sample.src.image
+        tgt = sample.tgt.image
+        src_field = sample.src.field
+        tgt_field = sample.tgt.field
+        prediction = submodule(src, tgt, src_field=src_field, tgt_field=tgt_field)
+
+        loss = archive.val_loss(sample, prediction=prediction, tgt_field=tgt_field)
         try:
             for k,v in loss.items():
                 losses[k].update(v.item())
@@ -393,7 +401,7 @@ def create_debug_outputs(archive, sample, prediction, id=0):
         src, tgt = sample.src.image, sample.tgt.image
         save_chunk(src[0:1, ...], str(debug_dir / 'src_{}'.format(id)))
         # cp(debug_dir / 'src_{}.png'.format(id), stack_dir)
-        save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt_{}'.format(id)))
+        # save_chunk(tgt[0:1, ...], str(debug_dir / 'tgt_{}'.format(id)))
         # cp(debug_dir / 'tgt_{}.png'.format(id), stack_dir)
         src_aug, tgt_aug = sample.src.aug, sample.tgt.aug
         if src_aug is not None:
@@ -402,17 +410,21 @@ def create_debug_outputs(archive, sample, prediction, id=0):
             cp(debug_dir / 'src_aug_{}.png'.format(id), stack_dir)
         else:
             cp(debug_dir / 'src_{}.png'.format(id), stack_dir)
-        if tgt_aug is not None:
-            save_chunk(tgt_aug[0:1, ...],
-                       str(debug_dir / 'tgt_aug_{}'.format(id)))
-            cp(debug_dir / 'tgt_aug_{}.png'.format(id), stack_dir)
-        else:
-            cp(debug_dir / 'tgt_{}.png'.format(id), stack_dir)
+        # if tgt_aug is not None:
+        #     save_chunk(tgt_aug[0:1, ...],
+        #                str(debug_dir / 'tgt_aug_{}'.format(id)))
+        #     cp(debug_dir / 'tgt_aug_{}.png'.format(id), stack_dir)
+        # else:
+        #     cp(debug_dir / 'tgt_{}.png'.format(id), stack_dir)
         prediction = prediction.field_()
         warped_src = prediction[0:1, ...].detach().to(src.device).sample(
             src[0:1, ...])
         save_chunk(warped_src[0:1, ...], str(debug_dir / 'warped_src'))
         cp(debug_dir / 'warped_src.png', stack_dir)
+        tgt_field = sample.tgt.field.permute(0,3,1,2).field_()
+        warped_tgt = tgt_field.sample(tgt)
+        save_chunk(warped_tgt[0:1, ...], str(debug_dir / 'warped_tgt'))
+        cp(debug_dir / 'warped_tgt.png', stack_dir)
         archive.visualize_loss('Training Loss', 'Validation Loss')
         cp(archive.paths['plot'], debug_dir)  # make copy of the training curve
         save_vectors(prediction[0:1, ...].detach().permute(0, 2, 3, 1),
