@@ -409,7 +409,7 @@ class Aligner:
     #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
     if to_uint8 and cv[mip].dtype != np.float32:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
-    hacks = False
+    hacks = True
     if hacks:
       if cv[mip].bounds.maxpt[1] < y_range[1]:
         diff = y_range[1] - cv[mip].bounds.maxpt[1]

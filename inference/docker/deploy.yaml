@@ -3,13 +3,13 @@ kind: Deployment
 metadata:
   creationTimestamp: null
   labels:
-    run: seamless-manuel-100
-  name: seamless-manuel-100
+    run: seamless-manuel
+  name: seamless-manuel
 spec:
   replicas: 1 
   selector:
     matchLabels:
-      run: seamless-manuel-100
+      run: seamless-manuel
   strategy:
     rollingUpdate:
       maxSurge: 100%
@@ -19,14 +19,14 @@ spec:
     metadata:
       creationTimestamp: null
       labels:
-        run: seamless-manuel-100
+        run: seamless-manuel
     spec:
       containers:
-      - image: seunglab/seamless:jit-100-test-p
-        name: seamless-manuel-100
+      - image: seunglab/seamless:manuel-copy-0713
+        name: seamless-manuel
         imagePullPolicy: Always
         command: ["/bin/sh"]
-        args: ["-c", "python inference/worker.py --processes 8 --device cpu --queue_name manuel-seamless --lease_seconds 40"]
+        args: ["-c", "python inference/worker.py --processes 4 --device cpu --queue_name manuel-seamless --lease_seconds 10"]
         resources: 
           limits:
             nvidia.com/gpu: 1

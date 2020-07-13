@@ -29,11 +29,11 @@ items:
         containers:
         - args:
           - -c
-          - python inference/worker.py --processes 8 --queue_name deepalign0 --lease_seconds
-            60
+          - python inference/worker.py --processes 4 --queue_name manuel-seamless --lease_seconds
+            20
           command:
           - /bin/sh
-          image: seunglab/seamless:fcorr
+          image: seunglab/seamless:manuel-copy-0713
           imagePullPolicy: Always
           name: seamless
           resources: {}
@@ -41,7 +41,7 @@ items:
           terminationMessagePolicy: File
           resources:
             limits:
-              cpu: 7
+              cpu: 3
           volumeMounts:
           - mountPath: /root/.cloudvolume/secrets
             name: secrets
