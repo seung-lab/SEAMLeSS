@@ -30,7 +30,7 @@ class Model(nn.Module):
         Loads saved weights into the model
         """
         with path.open('rb') as f:
-            weights = torch.load(f)
+            weights = torch.load(f, map_location='cpu')
         load_model_from_dict(self.encode, weights)
         return self
 

@@ -386,7 +386,8 @@ class ModelArchive(object):
         if self.readonly:
             for p in self._model.parameters():
                 p.requires_grad = False
-            self._model.eval().cuda()
+            # self._model.eval().cuda()
+            self._model.eval()
         else:
             for p in self._model.parameters():
                 p.requires_grad = True

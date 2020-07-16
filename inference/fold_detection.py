@@ -67,7 +67,8 @@ def defect_detect(model, image, chunk_size, overlap):
   overlap = np.array(overlap)
   bboxes = chunk_bboxes(img_size, chunk_size, 2*overlap)
 
-  pred = torch.zeros(image.shape).cuda()
+  # pred = torch.zeros(image.shape).cuda()
+  pred = torch.zeros(image.shape)
 
   for b in bboxes:
     bs = b[0]
@@ -79,7 +80,8 @@ def defect_detect(model, image, chunk_size, overlap):
     img = patch.cpu().numpy().reshape((chunk_size[0],chunk_size[1]))
 
     if np.sum(img)==0:
-      pred_patch = torch.zeros((1,1,chunk_size[0],chunk_size[1])).cuda()
+      # pred_patch = torch.zeros((1,1,chunk_size[0],chunk_size[1])).cuda()
+      pred_patch = torch.zeros((1,1,chunk_size[0],chunk_size[1]))
 
     else:
       img_rowl = np.cumsum(np.sum(img,axis=1))
