@@ -25,3 +25,5 @@ moviepy==0.2.3.5
 imageio==2.4.1
 six>=1.12.0
 python-dateutil==2.8.0
+fastremap
+connected-components-3d

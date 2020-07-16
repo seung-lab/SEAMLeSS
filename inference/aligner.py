@@ -1663,6 +1663,66 @@ class Aligner:
                                       is_field, to_uint8, masks))
         return batch
 
+  def thresholdLol(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, low_threshold, high_threshold):
+    class ThresholdTaskIterator():
+        def __init__(self, cl, start, stop):
+          self.chunklist = cl
+          self.start = start
+          self.stop = stop
+        def __len__(self):
+          return self.stop - self.start
+        def __getitem__(self, slc):
+          itr = deepcopy(self)
+          itr.start = slc.start
+          itr.stop = slc.stop
+          return itr
+        def __iter__(self):
+          for i in range(self.start, self.stop):
+            chunk = self.chunklist[i]
+            yield tasks.ThresholdTask(src_cv, dst_cv, src_z, dst_z, chunk, mip,
+                                 low_threshold, high_threshold)
+
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.max_mip)
+    #tq = GreenTaskQueue('deepalign_zhen')
+    #tq.insert_all(ptasks, parallel=2)
+    batch = []
+    for chunk in chunks:
+      batch.append(tasks.ThresholdTask(src_cv, dst_cv, src_z, dst_z, chunk, mip,
+                                  low_threshold, high_threshold))
+    return batch
+
+  def plastic_masker(self, cm, src_cv, dst_cv, src_z, dst_z, bbox, mip, plastic_size_threshold, tissue_size_threshold):
+    class ThresholdTaskIterator():
+        def __init__(self, cl, start, stop):
+          self.chunklist = cl
+          self.start = start
+          self.stop = stop
+        def __len__(self):
+          return self.stop - self.start
+        def __getitem__(self, slc):
+          itr = deepcopy(self)
+          itr.start = slc.start
+          itr.stop = slc.stop
+          return itr
+        def __iter__(self):
+          for i in range(self.start, self.stop):
+            chunk = self.chunklist[i]
+            yield tasks.PlasticMaskTask(src_cv, dst_cv, src_z, dst_z, chunk, mip,
+                                 plastic_size_threshold, tissue_size_threshold)
+
+    chunks = self.break_into_chunks(bbox, cm.dst_chunk_sizes[mip],
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.max_mip)
+    #tq = GreenTaskQueue('deepalign_zhen')
+    #tq.insert_all(ptasks, parallel=2)
+    batch = []
+    for chunk in chunks:
+      batch.append(tasks.PlasticMaskTask(src_cv, dst_cv, src_z, dst_z, chunk, mip,
+                                  plastic_size_threshold, tissue_size_threshold))
+    return batch
+
   def compute_field(self, cm, model_path, src_cv, tgt_cv, field_cv,
                     src_z, tgt_z, bbox, mip, pad=2048,
                     src_masks=[],

@@ -24,6 +24,10 @@ from mask import Mask
 from misalignment import misalignment_detector
 # from taskqueue.taskqueue import _scatter as scatter
 
+import cc3d
+import cv2
+import fastremap
+
 def remote_upload(queue_name, ptasks):
   with TaskQueue(queue_name=queue_name) as tq:
     for task in ptasks:
@@ -122,6 +126,139 @@ class CopyTask(RegisteredTask):
         image = aligner.get_data(src_cv, src_z, patch_bbox, mip, mip, to_float=False,
                                  to_tensor=False, normalizer=None)
         aligner.save_image(image, dst_cv, dst_z, patch_bbox, mip, to_uint8=False)
+      end = time()
+      diff = end - start
+      print(':{:.3f} s'.format(diff))
+
+class PlasticMaskTask(RegisteredTask):
+  def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, plastic_size_threshold, tissue_size_threshold):
+    super().__init__(src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, plastic_size_threshold, tissue_size_threshold)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
+    src_z = self.src_z
+    dst_z = self.dst_z
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    mip = self.mip
+    plastic_size_threshold = self.plastic_size_threshold
+    tissue_size_threshold = self.tissue_size_threshold
+
+    print("\nCopy\n"
+          "src {}\n"
+          "dst {}\n"
+          # "mask {}, val {}, MIP{}\n"
+          "z={} to z={}\n"
+          "MIP{}\n".format(src_cv, dst_cv, src_z, dst_z, mip), flush=True)
+    start = time()
+    if not aligner.dry_run:
+      if mip == 6:
+        # MIP 6 PARAMETERS
+        final_black_filter_size = 600
+        final_white_filter_size = 1400
+        # final_white_filter_size = 400
+        connectivity = 26
+        final_conn = 26
+        final_black_filter_size_v2 = 300
+      elif mip == 7:
+        # MIP 7 PARAMETERS
+        final_black_filter_size = 600
+        final_white_filter_size = 100
+        connectivity = 26
+        final_conn = 26
+        final_black_filter_size_v2 = 300
+
+      src_image = np.array(aligner.get_data(src_cv, src_z, patch_bbox, mip, mip).cpu().numpy(), dtype=np.uint8)
+      src_sq = src_image.squeeze()
+      cc_labels = cc3d.connected_components(src_sq, connectivity=connectivity)
+      uni_labels, uni_count = fastremap.unique(cc_labels, return_counts=True)
+      size_mask = np.isin(cc_labels, uni_labels[uni_count >= plastic_size_threshold])
+      inverse_sq = 1 - src_sq
+      inverse_cc_labels = cc3d.connected_components(
+          inverse_sq, connectivity=connectivity
+      )
+      inv_labels, inv_count = fastremap.unique(inverse_cc_labels, return_counts=True)
+      inverse_size_mask = np.isin(
+          inverse_cc_labels, inv_labels[inv_count <= tissue_size_threshold]
+      )
+
+      filtered_labels = (size_mask & src_sq) | (inverse_size_mask & inverse_sq)
+
+      invert_filter = 1 - filtered_labels
+      final_black_labels = cc3d.connected_components(
+          invert_filter, connectivity=final_conn
+      )
+      uni_final_black_labels, uni_final_black_count = fastremap.unique(
+          final_black_labels, return_counts=True
+      )
+      final_black_mask = np.isin(
+          final_black_labels,
+          uni_final_black_labels[uni_final_black_count <= final_black_filter_size],
+      )
+
+      final_white_labels = cc3d.connected_components(
+          filtered_labels, connectivity=final_conn
+      )
+      uni_final_white_labels, uni_final_white_count = fastremap.unique(
+          final_white_labels, return_counts=True
+      )
+      final_white_mask = np.isin(
+          final_white_labels,
+          uni_final_white_labels[uni_final_white_count <= final_white_filter_size],
+      )       
+      final_labels = (filtered_labels | final_black_mask) ^ final_white_mask
+
+      kernel = np.ones((5,5),np.uint8)
+      dilation = cv2.dilate(final_labels,kernel,iterations = 1)
+
+      invert_filter = 1 - dilation
+      final_black_labels = cc3d.connected_components(
+          invert_filter, connectivity=6
+      )
+      uni_final_black_labels, uni_final_black_count = fastremap.unique(
+          final_black_labels, return_counts=True
+      )
+      final_black_mask = np.isin(
+          final_black_labels,
+          uni_final_black_labels[uni_final_black_count <= final_black_filter_size_v2],
+      )
+      final_labels = dilation | final_black_mask
+
+      erosion = cv2.erode(final_labels,kernel,iterations = 1)
+      dst_image = np.zeros(src_image.shape, dtype=np.uint8)
+      dst_image[0, 0, :, :] = erosion
+      # dst_image[0, 0, :, :] = filtered_labels
+      aligner.save_image(dst_image, dst_cv, dst_z, patch_bbox, mip, to_uint8=True)
+      end = time()
+      diff = end - start
+      print(':{:.3f} s'.format(diff))
+
+class ThresholdTask(RegisteredTask):
+  def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, low_threshold, high_threshold):
+    super().__init__(src_cv, dst_cv, src_z, dst_z, patch_bbox, mip, low_threshold, high_threshold)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst_cv = DCV(self.dst_cv)
+    src_z = self.src_z
+    dst_z = self.dst_z
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    mip = self.mip
+    low_threshold = self.low_threshold
+    high_threshold = self.high_threshold
+
+
+    print("\nCopy\n"
+          "src {}\n"
+          "dst {}\n"
+          # "mask {}, val {}, MIP{}\n"
+          "z={} to z={}\n"
+          "MIP{}\n".format(src_cv, dst_cv, src_z, dst_z, mip), flush=True)
+    start = time()
+    if not aligner.dry_run:
+      image = aligner.get_data(src_cv, src_z, patch_bbox, mip, mip).cpu().numpy()
+      thresholded_image = (image > low_threshold) * (image < high_threshold)
+      aligner.save_image(thresholded_image, dst_cv, dst_z, patch_bbox, mip, to_uint8=True)
       end = time()
       diff = end - start
       print(':{:.3f} s'.format(diff))
