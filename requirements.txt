@@ -20,7 +20,7 @@ pandas
 opencv-python
 setuptools>=34.0.0
 pyyaml==5.1.2
-task-queue>=0.14.3
+task-queue==1.0.0
 moviepy==0.2.3.5
 imageio==2.4.1
 six>=1.12.0
