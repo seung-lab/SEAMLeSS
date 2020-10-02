@@ -22,7 +22,6 @@ import torch
 from torch.nn.functional import interpolate
 import torch.nn as nn
 
-from normalizer import Normalizer
 from temporal_regularization import create_field_bump
 from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               np_downsample, invert, compose_fields, upsample_field, \
@@ -321,15 +320,32 @@ class Aligner:
     
     return data
 
-  def save_image(self, float_patch, cv, z, bbox, mip, to_uint8=True, render_mip=None):
+  def save_image(self, float_patch, cv, z, bbox, mip, to_uint8=True):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
     patch = np.transpose(float_patch, (2,3,0,1))
-    if to_uint8:
+    #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
+    if to_uint8 and cv[mip].dtype != np.float32:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
-    if render_mip is None:
-      render_mip = mip
-    cv[render_mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
+    hacks = True
+    if hacks:
+      if cv[mip].bounds.maxpt[1] < y_range[1]:
+        diff = y_range[1] - cv[mip].bounds.maxpt[1]
+        patch = patch[:,:y_range[1]-y_range[0]-diff,:,:]
+        y_range = (y_range[0], cv[mip].bounds.maxpt[1])
+      if cv[mip].bounds.minpt[1] > y_range[0]:
+        diff = cv[mip].bounds.minpt[1] - y_range[0]
+        patch = patch[:,diff:,:,:]
+        y_range = (cv[mip].bounds.minpt[1], y_range[1])
+      if cv[mip].bounds.maxpt[0] < x_range[1]:
+        diff = x_range[1] - cv[mip].bounds.maxpt[0]
+        patch = patch[:x_range[1]-x_range[0]-diff,:,:,:]
+        x_range = (x_range[0], cv[mip].bounds.maxpt[0])
+      if cv[mip].bounds.minpt[0] > x_range[0]:
+        diff = cv[mip].bounds.minpt[0] - x_range[0]
+        patch = patch[diff:,:,:,:]
+        x_range = (cv[mip].bounds.minpt, x_range[1])
+    cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
 
   def save_image_batch(self, cv, z_range, float_patch, bbox, mip, to_uint8=True):
     x_range = bbox.x_range(mip=mip)
