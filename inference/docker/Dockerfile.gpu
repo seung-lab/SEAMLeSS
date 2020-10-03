@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:1.0-cuda10.0-cudnn7-runtime
+FROM pytorch/pytorch:1.6.0-cuda10.1-cudnn7-runtime
 
 RUN apt-get clean && apt-get -y update && apt-get install -y locales && locale-gen en_US.UTF-8
 ENV LC_CTYPE en_US.UTF-8
@@ -10,17 +10,18 @@ WORKDIR /opt/SEAMLeSS
 RUN apt-get update \
   # Install SEAMLeSS dependencies
   && apt-get install -y --no-install-recommends \
-      libgtk2.0-dev language-pack-en \
+      libgtk2.0-dev language-pack-en build-essential git \
   && pip install --no-cache-dir -r requirements.txt \
   && python -c "import imageio; imageio.plugins.ffmpeg.download();" \
   # Register SEAMLeSS
   && git init \
   && python setup.py develop \
   # Cleanup apt
+  && apt-get purge -y build-essential \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* \
   # Cleanup temporary python files
-  && find /opt/conda/lib/python3.6 -depth \
+  && find /opt/conda/lib/python3.7 -depth \
       \( \
         \( -type d -a \( -name __pycache__ \) \) \
         -o \
