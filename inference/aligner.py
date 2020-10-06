@@ -3020,14 +3020,14 @@ class Aligner:
     # hashtag hackerlife
     attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
     responses = []
-    for i in range(3):
+    for i in range(10):
       response = self.sqs.get_queue_attributes(QueueUrl=self.queue_url,
                                                AttributeNames=attribute_names)
       for a in attribute_names:
         responses.append(int(response['Attributes'][a]))
       print('{}     '.format(responses[-2:]), end="\r", flush=True)
-      if i < 2:
-        sleep(2)
+      if i < 9:
+        sleep(0.5)
     return all(i == 0 for i in responses)
 
   def sqs_is_empty_fast(self):
@@ -3037,15 +3037,15 @@ class Aligner:
         self.sqs = boto3.client('sqs', region_name='us-east-1')
         self.queue_url  = self.sqs.get_queue_url(QueueName=self.queue_name)["QueueUrl"]
 
-    for i in range(3):
+    for i in range(10):
       response = self.sqs.get_queue_attributes(QueueUrl=self.queue_url,
                                                AttributeNames=attribute_names)
       for a in attribute_names:
         num_attrs = int(response['Attributes'][a])
         if num_attrs != 0:
           return False
-      if i < 2:
-        sleep(2)
+      if i < 9:
+        sleep(0.5)
     # return all(i == 0 for i in responses)
     return True
 

@@ -147,3 +147,6 @@ models/
  !models/sergiy_blockmatch_clean/**
 !inference/models/**
 !inference/models/ncc_m4/**
+!models/vector_fixer30_faster_v01/**
+!models/vector_fixer30/**
+# !models/
