@@ -915,18 +915,19 @@ class Aligner:
 
     # Running the model is the only part that will increase memory consumption
     # significantly - only incrementing the GPU lock here should be sufficient.
-    if self.gpu_lock is not None:
+    if torch.cuda.is_available() and self.gpu_lock is not None:
       start = time()
       self.gpu_lock.acquire()
       end = time()
       # print("Process {} acquired GPU lock. Locked time: {0:.2f} sec".format(os.getpid(), end - start))
 
     try:
-      print(
-        "GPU memory allocated: {}, cached: {}".format(
-          torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+      if torch.cuda.is_available():
+        print(
+          "GPU memory allocated: {}, cached: {}".format(
+            torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+          )
         )
-      )
 
       # model produces field in relative coordinates
       accum_field = model(
@@ -940,11 +941,12 @@ class Aligner:
       if not isinstance(accum_field, torch.Tensor):
           accum_field = accum_field[0]
 
-      print(
-        "GPU memory allocated: {}, cached: {}".format(
-          torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+      if torch.cuda.is_available():
+        print(
+          "GPU memory allocated: {}, cached: {}".format(
+            torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+          )
         )
-      )
 
       accum_field = self.rel_to_abs_residual(accum_field, mip)
       accum_field = accum_field[:, pad:-pad, pad:-pad, :]
@@ -952,15 +954,16 @@ class Aligner:
       accum_field = accum_field.data.cpu().numpy()
 
       # clear unused, cached memory so that other processes can allocate it
-      torch.cuda.empty_cache()
+      if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
-      print(
-        "GPU memory allocated: {}, cached: {}".format(
-          torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+        print(
+          "GPU memory allocated: {}, cached: {}".format(
+            torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+          )
         )
-      )
     finally:
-      if self.gpu_lock is not None:
+      if torch.cuda.is_available() and self.gpu_lock is not None:
         print("Process {} releasing GPU lock".format(os.getpid()))
         self.gpu_lock.release()
     return accum_field
