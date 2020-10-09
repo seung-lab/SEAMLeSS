@@ -386,14 +386,15 @@ class ModelArchive(object):
             self._model.load(self.paths['weights'])
 
         # set model to eval or train mode
+        device = kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
         if self.readonly:
             for p in self._model.parameters():
                 p.requires_grad = False
-            self._model.eval().cuda()
+            self._model.eval().to(device=device)
         else:
             for p in self._model.parameters():
                 p.requires_grad = True
-            self._model.train().cuda()
+            self._model.train().to(device=device)
             self._model = torch.nn.DataParallel(self._model)
         return self._model
 

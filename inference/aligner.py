@@ -139,7 +139,7 @@ class Aligner:
   # IO methods #
   ##############
 
-  def get_model_archive(self, model_path):
+  def get_model_archive(self, model_path, device='cuda'):
     """Load a model stored in the repo with its relative path
 
     TODO: evict old models from self.models
@@ -157,7 +157,7 @@ class Aligner:
       print('Adding model {0} to the cache'.format(model_path), flush=True)
       path = Path(model_path)
       model_name = path.stem
-      archive = ModelArchive(model_name)
+      archive = ModelArchive(model_name, device=device)
       self.model_archives[model_path] = archive
       return archive
 
@@ -743,7 +743,7 @@ class Aligner:
     Returns:
       field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
-    archive = self.get_model_archive(model_path)
+    archive = self.get_model_archive(model_path, device=self.device)
     model = archive.model
     normalizer = archive.preprocessor
     print(

@@ -26,8 +26,9 @@ class Model(nn.Module):
         self.height = height
         self.mips = mips
         self.range_adjust = False
+        self.device = kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
 
-        a = artificery.Artificery()
+        a = artificery.Artificery(device=self.device)
         path = os.path.dirname(os.path.abspath(__file__))
         checkpoint_folder_path = os.path.join(path, 'checkpoint')
         spec_path = os.path.join(checkpoint_folder_path, "model_spec.json")
@@ -35,7 +36,7 @@ class Model(nn.Module):
         name = 'model'
         checkpoint_path = os.path.join(checkpoint_folder_path, "{}.state.pth.tar".format(name))
         if os.path.isfile(checkpoint_path):
-            my_p.load_state_dict(torch.load(checkpoint_path))
+            my_p.load_state_dict(torch.load(checkpoint_path, map_location=self.device))
         else:
             raise Exception("Weights are missing")
         my_p.name = name

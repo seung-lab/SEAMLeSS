@@ -124,7 +124,7 @@ def pix_identity(size, batch=1, device='cuda'):
     return result
 
 def rigidity(field, power=2):
-    identity = pix_identity(size=field.shape[-2])
+    identity = pix_identity(size=field.shape[-2], device=field.device)
     field_abs = field + identity
 
     result = rigidity_score(field_dx(field_abs, forward=False), 1, power=power)
@@ -322,7 +322,7 @@ def unsupervised_loss(smoothness_factor, smoothness_type='rig', use_defect_mask=
         loss_dict['similarity'] = similarity
         loss_dict['smoothness'] = smoothness * smoothness_factor * smoothness_mult
         loss_dict['vec_magnitude'] = torch.mean(torch.abs(bundle['pred_res']))
-        loss_dict['vec_sim'] = torch.cuda.FloatTensor([0])
+        loss_dict['vec_sim'] = torch.FloatTensor([0]).to(device=similarity.device)
         if 'res' in bundle:
             loss_dict['vec_sim'] = torch.mean(torch.abs(bundle['pred_res'] - bundle['res']))
         return loss_dict
