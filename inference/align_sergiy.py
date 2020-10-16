@@ -715,6 +715,7 @@ if __name__ == "__main__":
                 tgt_offsets = vvote_lookup[src_z]
                 for tgt_offset in tgt_offsets:
                     tgt_z = src_z + tgt_offset
+                    # if tgt_z != 8055:
                     if skip_vv:
                         fine_field = block_vvote_field
                     else:
@@ -1004,7 +1005,7 @@ if __name__ == "__main__":
     if do_alignment:
         if coarse_field_cv is not None:
             print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
-            execute(StarterUpsampleField, copy_range)
+            # execute(StarterUpsampleField, copy_range)
         print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
         execute(StarterComputeField, starter_range)
     if do_render:

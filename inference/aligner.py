@@ -789,13 +789,17 @@ class Aligner:
           coarse_field_mip,
           relative=True,
           to_tensor=True,
-        ).to(device=self.device)
+        ).to(device='cpu')
 
         #HACKS
         # tgt_coarse_field = torch.zeros_like(tgt_coarse_field)
 
         tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_()
-        tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
+        if coarse_field_mip >= mip:
+          tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
+        else:
+          tgt_coarse_field_inv = tgt_coarse_field.inverse().down(mip - coarse_field_mip)
+        tgt_coarse_field_inv = tgt_coarse_field_inv.to(device='cuda')
 
         tgt_drift_field = tgt_coarse_field_inv.compose_with(tgt_field.permute(0, 3, 1, 2).field_())
         tgt_drift_field = tgt_drift_field.permute(0, 2, 3, 1)
@@ -812,8 +816,8 @@ class Aligner:
       drift_distance = self.profile_field(tgt_drift_field, [tgt_rendered_image])
       drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
       drift_distance_coarse_snap = (
-        drift_distance // (2 ** coarse_field_mip)
-      ) * 2 ** coarse_field_mip
+        drift_distance // (2 ** max(mip, coarse_field_mip))
+      ) * 2 ** max(mip, coarse_field_mip)
 
       tgt_field = self.rel_to_abs_residual(tgt_field, mip)
       tgt_distance = self.profile_field(tgt_field)
@@ -834,11 +838,11 @@ class Aligner:
     if coarse_field_cv is not None:
       # Fetch coarse alignment
       padded_src_bbox_coarse = self.adjust_bbox(bbox, drift_distance_coarse_snap.flip(0))
-      padded_src_bbox_coarse.max_mip = coarse_field_mip
+      padded_src_bbox_coarse.max_mip = max(mip, coarse_field_mip)
       padded_src_bbox_coarse.uncrop(pad, mip)
 
       padded_src_bbox_coarse_field = deepcopy(padded_src_bbox_coarse)
-      padded_src_bbox_coarse_field.uncrop(2**coarse_field_mip, 0)
+      padded_src_bbox_coarse_field.uncrop(2**max(mip, coarse_field_mip), 0)
 
       coarse_field = self.get_field(
         coarse_field_cv,
@@ -850,10 +854,14 @@ class Aligner:
       ).to(device=self.device)
       coarse_field = coarse_field.permute(0, 3, 1, 2)
       # coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bilinear')(coarse_field)
-      coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bicubic')(coarse_field)
+      if coarse_field_mip >= mip:
+        coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bicubic')(coarse_field)
+      else:
+        coarse_field = nn.functional.interpolate(coarse_field, scale_factor=1./2**(mip - coarse_field_mip),
+          mode='bicubic', align_corners=False)
       coarse_field = coarse_field.permute(0, 2, 3, 1)
 
-      crop = 2 ** (coarse_field_mip - mip)
+      crop = max(2 ** (coarse_field_mip - mip), 1)
       offset = np.array((drift_distance_fine_snap - drift_distance_coarse_snap) // 2 ** mip, dtype=np.int)
       coarse_field = coarse_field[:, crop+offset[1]:-crop+offset[1], crop+offset[0]:-crop+offset[0], :]
 
