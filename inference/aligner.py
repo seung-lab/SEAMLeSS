@@ -42,7 +42,7 @@ import tenacity
 import boto3
 from fcorr import get_fft_power2, get_hp_fcorr
 from fold_detec_post import postprocess, postprocess_length_filter, filter_mask
-from fold_detection import defect_detect
+from em_detection import defect_detect
 
 retry = tenacity.retry(
   reraise=True, 

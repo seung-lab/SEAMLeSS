@@ -54,7 +54,7 @@ class PredictImageTask(RegisteredTask):
           "MIP{}\n".format(src_cv, dst_cv, z, mip), flush=True)
     start = time()
 
-    chunk_size = (256,256)
+    chunk_size = (320,320)
     image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox_in, chunk_size, overlap)
     image = image.cpu().numpy()
     min_bound = src_cv[mip].bounds.minpt
