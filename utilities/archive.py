@@ -465,7 +465,7 @@ class ModelArchive(object):
         self._state_vars = dotdict({'name': self._name})  # default state_vars
         if self.paths['state_vars'].exists():
             with self.paths['state_vars'].open(mode='r') as f:
-                self._state_vars = dotdict(yaml.load(f))
+                self._state_vars = dotdict(yaml.load(f, Loader=yaml.Loader))
         if self._seed is not None:
             self._state_vars.seed = self._seed
         return self._state_vars

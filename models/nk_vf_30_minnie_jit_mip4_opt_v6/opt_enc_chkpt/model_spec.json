@@ -85,7 +85,7 @@
                     "type": "split_processor",
                     "processors": [
                         {"fm_range": [0, 1], "module": {"path": "average_pool.json"}},
-                        {"fm_range": [0, 4], "module": {"path": "embedder_fms2to3.json"}}
+                        {"fm_range": [0, 2], "module": {"path": "embedder_fms2to3.json"}}
                     ]
                   
               },
