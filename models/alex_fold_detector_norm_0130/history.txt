@@ -1,3 +1,0 @@
-Model: alex_fold_detector_norm_0130
-
-

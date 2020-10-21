@@ -1,5 +1,0 @@
-Model: inverter_v3
-Time: 2018-12-20 20:50:39.390934
-Commit: e2997afdbe04a6ff6a0ab48aca0e1405d2566c22
-./train.py start inverter_v3 --training_set /usr/people/bnehoran/training_data/minnie_sniped_mip8_640px_train.h5 --feature_maps 3 6 12 --seed 4568 --plan random_one -s --lr 0.0000002
-
