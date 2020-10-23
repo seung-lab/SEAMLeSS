@@ -53,7 +53,7 @@ def defect_detect(model, image, chunk_size, overlap):
 
     patch = image[0,0,bs[0]:be[0],bs[1]:be[1]]
 
-    if np.sum(patch)==0:
+    if torch.sum(patch)==0:
       pred_patch = torch.zeros((1,1,chunk_size[0],chunk_size[1])).cuda()
 
     else:
