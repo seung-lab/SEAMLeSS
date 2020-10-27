@@ -221,9 +221,6 @@ def optimize_pre_post_multiscale_ups(model, pred_res_start, src, tgt, mips, tgt_
             tgt_defects_downs = torch.nn.functional.max_pool2d(tgt_defects_downs, 2)
             src_small_defects_downs = torch.nn.functional.max_pool2d(src_small_defects_downs, 2)
             src_large_defects_downs = torch.nn.functional.max_pool2d(src_large_defects_downs, 2)
-            pred_res_downs = downsample_residuals(pred_res_downs)
-        #for i in range(m - bot_mip):
-
 
         '''if m == 6:
             src_downs = test_pyramid.state['up'][str(6)]['output'][0:1, 0:4]
