@@ -1,0 +1,17 @@
+x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
+0,0,0,524288,524288,3109,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,3159,524288,524288,3210,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,3210,524288,524288,3259,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,3259,524288,524288,5760,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,5760,524288,524288,5809,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,5809,524288,524288,5861,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,5861,524288,524288,5909,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,5909,524288,524288,8610,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,8610,524288,524288,8659,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,8659,524288,524288,11710,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,11710,524288,524288,11759,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,11759,524288,524288,14861,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,14861,524288,524288,14909,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,14909,524288,524288,14960,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,14960,524288,524288,15009,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing
+0,0,15009,524288,524288,17608,0,sergiy_m8m10_net_opt_v2,5,0,nkem_testing

@@ -48,9 +48,11 @@ class Model(nn.Module):
         warped_src = src
         with torch.no_grad():
             if (src_field != 0).sum() > 0:
+                src_field *= 0.5 * src.shape[-2]
                 warped_src = res_warp_img(src, src_field, is_pix_res=True)
             warped_tgt = tgt
             if (tgt_field != 0).sum() > 0:
+                tgt_field *= 0.5 * tgt.shape[-2]
                 warped_tgt = res_warp_img(tgt, tgt_field, is_pix_res=True)
 
             model_run_params = {'level_in': 8}
@@ -100,6 +102,7 @@ class Model(nn.Module):
         for k in list(self.align.state.keys()):
             del self.align.state[k]
         #final_res = pred_res
+        pred_res = combine_residuals(pred_res, src_field, is_pix_res=True)
         final_res = optimize_metric(None, src, tgt, pred_res,
                     src_small_defects=torch.zeros_like(src),
                     src_large_defects=src_folds.float(),
