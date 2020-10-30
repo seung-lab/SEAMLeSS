@@ -1,2 +1,9 @@
 x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
-0,0,1000,524288,524288,8000,0,sergiy_blockmatch_clean,5,0,nkem_testing
+0,0,1000,524288,524288,2020,0,sergiy_blockmatch_clean,5,0,nkem_testing
+0,0,2020,524288,524288,2071,0,sergiy_blockmatch_clean,5,0,nkem_testing
+0,0,2071,524288,524288,2120,0,sergiy_blockmatch_clean,5,0,nkem_testing
+0,0,2120,524288,524288,6820,0,sergiy_blockmatch_clean,5,0,nkem_testing
+0,0,6820,524288,524288,6871,0,sergiy_blockmatch_clean,5,0,nkem_testing
+0,0,6871,524288,524288,6920,0,sergiy_blockmatch_clean,5,0,nkem_testing
+0,0,6920,524288,524288,7918,0,sergiy_blockmatch_clean,5,0,nkem_testing
+0,0,7918,524288,524288,8000,0,sergiy_blockmatch_clean,5,0,nkem_testing
