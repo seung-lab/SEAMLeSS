@@ -40,6 +40,8 @@ class Model(nn.Module):
     def __init__(self, feature_maps=None, encodings=True, *args, **kwargs):
         super().__init__()
         self.feature_maps = feature_maps
+        self.device = torch.device(kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu'))
+
         self.encode = (EncodingPyramid(self.feature_maps, **kwargs)
                        if encodings else None)
         self.align = AligningPyramid(self.feature_maps if encodings
@@ -48,20 +50,20 @@ class Model(nn.Module):
         self.clahe = CLAHEPreprocessor()
 
     def load_opt_encoder(self):
-        a = artificery.Artificery()
+        a = artificery.Artificery(device=self.device)
         path = os.path.dirname(os.path.abspath(__file__))
         checkpoint_folder_path = os.path.join(path, 'opt_enc_chkpt')
         spec_path = os.path.join(checkpoint_folder_path, "model_spec.json")
-        my_p = a.parse(spec_path).cuda()
+        my_p = a.parse(spec_path)
         name = 'model'
         checkpoint_path = os.path.join(checkpoint_folder_path, "{}.state.pth.tar".format(name))
         if os.path.isfile(checkpoint_path):
-            checkpoint_params = torch.load(checkpoint_path)
+            checkpoint_params = torch.load(checkpoint_path, map_location=self.device)
             my_p.load_state_dict(checkpoint_params)
         else:
             raise Exception("Weights are missing")
         my_p.name = name
-        return my_p
+        return my_p.to(device=self.device)
 
 
     def forward(self, src, tgt, src_field=None, tgt_field=None, **kwargs):
@@ -75,7 +77,9 @@ class Model(nn.Module):
                 src_enc, tgt_enc = src_clahe, tgt_clahe
             with torch.no_grad():
                 accum_field, fine_field = self.align(src_enc, tgt_enc, src_field=src_field, **kwargs)
-        torch.cuda.empty_cache()
+
+        if 'cuda' in self.device.type:
+            torch.cuda.empty_cache()
 
         accum_field = accum_field.permute(0, 2, 3, 1)
 
@@ -110,7 +114,8 @@ class Model(nn.Module):
                 opt_enc(stack, **model_run_params)
 
             del opt_enc.state['down']
-            torch.cuda.empty_cache()
+            if 'cuda' in self.device.type:
+                torch.cuda.empty_cache()
 
             pred_res = optimize_metric(opt_enc, src, tgt, accum_field,
                     src_small_defects=src_small_defects.float(),
@@ -129,7 +134,7 @@ class Model(nn.Module):
         Loads saved weights into the model
         """
         with path.open('rb') as f:
-            weights = torch.load(f)
+            weights = torch.load(f, map_location=self.device)
         load_model_from_dict(self, weights)
         return self
 

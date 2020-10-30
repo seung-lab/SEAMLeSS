@@ -40,35 +40,35 @@ def get_raw_defect_mask(img, threshold=-1):
     #result_np = np.logical_or((img_np > threshold), (img_np < -0.15))
     #result = torch.FloatTensor(result_np.astype(int)).cuda()
     result = 1 - ((img < threshold) * (img > RAW_WHITE_THRESHOLD))
-    return result.type(torch.cuda.FloatTensor)
+    return result.to(device=img.device, dtype=torch.float32)
 
 def get_raw_white_mask(img):
     result = img >= RAW_WHITE_THRESHOLD
-    return result.type(torch.cuda.FloatTensor)
+    return result.to(device=img.device, dtype=torch.float32)
 
 def get_defect_mask(img, threshold=-3.5):
     #img_np = img.cpu().detach().numpy()
     #result_np = np.logical_or((img_np > threshold), (img_np < -3.99))
     #result = torch.FloatTensor(result_np.astype(int)).cuda()
     result = 1 - ((img < threshold) * (img > -3.9999))
-    return result.type(torch.cuda.FloatTensor)
+    return result.to(device=img.device, dtype=torch.float32)
 
 def get_brightness_mask(img, low_cutoff, high_cutoff):
     result = (img >= low_cutoff)* (img <= high_cutoff)
-    return result.type(torch.cuda.FloatTensor)
+    return result.to(device=img.device, dtype=torch.float32)
 
 def get_blood_vessel_mask(img, threshold=2.5):
     result = img >= threshold
-    return result.type(torch.cuda.FloatTensor)
+    return result.to(device=img.device, dtype=torch.float32)
 
 def get_white_mask(img, threshold=-3.5):
     result = img >= threshold
-    return result.type(torch.cuda.FloatTensor)
+    return result.to(device=img.device, dtype=torch.float32)
 
 
 def get_black_mask(img):
     result = img < 3.55
-    return result.type(torch.cuda.FloatTensor)
+    return result.to(device=img.device, dtype=torch.float32)
 
 
 # Numpy masks
@@ -188,7 +188,7 @@ def find_image_edge_np(img):
     return coarsen_mask(edges1)
 
 def coarsen_mask_pool(mask, n=1, flip=True):
-    mask = mask.type(torch.cuda.FloatTensor)
+    mask = mask.to(dtype=torch.float32)
     if flip:
         mask = 1 - mask
 
@@ -206,13 +206,13 @@ def coarsen_mask(mask, n=1, flip=True):
             mask = convolve(mask, kernel) > 0
             mask = mask.astype(np.int16) > 1
         else:
-            mask = mask.type(torch.cuda.FloatTensor)
-            kernel_var = torch.cuda.FloatTensor(kernel).unsqueeze(0).unsqueeze(0)
+            mask = mask.to(dtype=torch.float32)
+            kernel_var = torch.FloatTensor(kernel).to(device=mask.device).unsqueeze(0).unsqueeze(0)
             k = torch.nn.Parameter(data=kernel_var, requires_grad=False)
             if flip:
                 mask = 1 - mask
-            mask =  (torch.nn.functional.conv2d(mask.unsqueeze(0),
-                kernel_var, padding=1) > 1).squeeze(0).type(torch.cuda.FloatTensor)
+            mask = (torch.nn.functional.conv2d(mask.unsqueeze(0),
+                kernel_var, padding=1) > 1).squeeze(0).to(dtype=torch.float32, device=mask.device)
             if flip:
                 mask = 1 - mask
     return mask
@@ -262,7 +262,7 @@ def get_warped_mask_set_old(bundle, res, keys_to_apply):
         mask_warp_threshold = 0.8
         if (res != 0).sum() > 0:
             mask = res_warp_img(mask.float(), res, is_pix_res=True)
-            mask = (mask > mask_warp_threshold).type(torch.cuda.FloatTensor)
+            mask = (mask > mask_warp_threshold).to(dtype=torch.float32, device=result.device)
 
         if 'mask_value' in settings:
             result[mask != 1.0] = settings['mask_value']
