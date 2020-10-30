@@ -16,9 +16,9 @@ class Model(nn.Module):
 
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.tile_size = 256
-        self.tile_step = 96
-        self.max_disp = 128
+        self.tile_size = 64
+        self.tile_step = 24
+        self.max_disp = 48
 
     def __getitem__(self, index):
         return None
@@ -32,12 +32,12 @@ class Model(nn.Module):
         if pred_res.shape[1] == 2:
             pred_res = pred_res.permute(0, 2, 3, 1)
 
-        '''if src.var() > 1e-4:
+        if src.var() > 1e-4:
             pred_res = optimize(src, tgt, pred_res, torch.zeros_like(src),
                                     torch.zeros_like(tgt), max_iter=100)
             pass
         else:
-            print ("skipping fucking shit")
+            print ("Skipping low variance region")
         warped_tgt = res_warp_img(src, pred_res, is_pix_res=True)
         with torch.no_grad():
             refinement_res = block_match(warped_tgt, tgt, tile_size=self.tile_size,
@@ -47,7 +47,7 @@ class Model(nn.Module):
             refinement_res = optimize(warped_tgt, tgt, refinement_res, torch.zeros_like(src),
                                     torch.zeros_like(tgt), max_iter=70)
             pass
-        final_res = combine_residuals(pred_res, refinement_res, is_pix_res=True)'''
+        final_res = combine_residuals(pred_res, refinement_res, is_pix_res=True)
         final_res = pred_res
         #final_res = filter_black_field(final_res, tgt, 0.05)
         final_res = final_res * 2 / src.shape[-2]
