@@ -69,10 +69,7 @@ if __name__ == "__main__":
         type=str,
         help="relative path to CSV file identifying params to use per z range",
     )
-    # parser.add_argument('--z_range_path', type=str,
-    #   help='path to csv file with list of z indices to use')
     parser.add_argument("--src_path", type=str)
-    parser.add_argument("--seethrough_stitch_path", type=str)
     parser.add_argument("--chunk_size", type=int, default=1024)
     parser.add_argument('--src_mask', action='append',
             help='Pass string that contains a JSON dict. Fields: "cv", "mip", "val", "op"',
@@ -144,11 +141,6 @@ if __name__ == "__main__":
         help="If True, skip composition"
     )
     parser.add_argument(
-        "--skip_render",
-        action='store_true',
-        help="If True, skip rendering"
-    )
-    parser.add_argument(
         "--skip_vv",
         action='store_true',
         help="If True, skip vv"
@@ -180,6 +172,7 @@ if __name__ == "__main__":
     )
     parser.add_argument('--skip_list_lookup', type=str, help='relative path to file identifying list of skip sections')
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
+    parser.add_argument('--compose_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--final_render_suffix', type=str, default='', help='string to append to directory names')
 
     args = parse_args(parser)
@@ -202,7 +195,6 @@ if __name__ == "__main__":
 
     block_size = args.block_size
     do_alignment = not args.skip_alignment
-    do_render = not args.skip_render
     do_stitching = not args.skip_stitching
     do_compose = not args.skip_compose
     do_final_render = not args.skip_final_render
@@ -255,8 +247,6 @@ if __name__ == "__main__":
         coarse_field_mip = mip
 
 
-
-
     render_dst = args.dst_path
     if args.render_dst is not None:
         render_dst = args.render_dst
@@ -271,20 +261,9 @@ if __name__ == "__main__":
             data_type=args.img_dtype,
             num_channels=1,
             fill_missing=True,
-            overwrite=do_render,
+            overwrite=do_alignment,
         )
         block_dsts[i] = block_dst.path
-
-    if args.seethrough_stitch_path is not None:
-        seethrough_stitch_dst = cm.create(
-            args.seethrough_stitch_path,
-            data_type=args.img_dtype,
-            num_channels=1,
-            fill_missing=True,
-            overwrite=do_render,
-        ).path
-    # import ipdb
-    # ipdb.set_trace
 
     secret_skip_list = []
     if args.skip_list_lookup is not None:
@@ -301,7 +280,6 @@ if __name__ == "__main__":
     tgt_radius_lookup = {}
     vvote_lookup = {}
     skip_list = []
-    # skip_list = [17491, 17891]
     alignment_z_starts = [args.z_start]
     last_alignment_start = args.z_start
     minimum_block_size = 5
@@ -484,45 +462,45 @@ if __name__ == "__main__":
     stitch_pair_fields = {}
     for z_offset in offset_range:
         stitch_pair_fields[z_offset] = cm.create(
-            join(args.dst_path, "field", "stitch", str(z_offset)),
+            join(args.dst_path, "field", 'stitch{}'.format(args.stitch_suffix), str(z_offset)),
             data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
-            overwrite=do_alignment,
+            overwrite=do_stitching,
         ).path
     overlap_vvote_field = cm.create(
-        join(args.dst_path, "field", "stitch", "vvote", "field"),
+        join(args.dst_path, "field", 'stitch{}'.format(args.stitch_suffix), "vvote", "field"),
         data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
-        overwrite=do_alignment,
+        overwrite=do_stitching,
     ).path
     overlap_image = cm.create(
-        join(args.dst_path, "field", "stitch", "vvote", "image"),
+        join(args.dst_path, "field", 'stitch{}'.format(args.stitch_suffix), "vvote", "image"),
         data_type=args.img_dtype,
         num_channels=1,
         fill_missing=True,
-        overwrite=do_render,
+        overwrite=do_stitching,
     ).path
     stitch_fields = {}
     for z_offset in offset_range:
         stitch_fields[z_offset] = cm.create(
-            join(args.dst_path, "field", "stitch", "vvote", str(z_offset)),
+            join(args.dst_path, "field", 'stitch{}'.format(args.stitch_suffix), "vvote", str(z_offset)),
             data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
-            overwrite=do_alignment,
+            overwrite=do_stitching,
         ).path
     broadcasting_field = cm.create(
-        join(args.dst_path, "field", "stitch", "broadcasting"),
+        join(args.dst_path, "field", 'stitch{}'.format(args.stitch_suffix), "broadcasting"),
         data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
-        overwrite=do_alignment,
+        overwrite=do_stitching,
     ).path
 
     compose_field = cm.create(join(args.dst_path, 'field',
-                        'stitch{}'.format(args.stitch_suffix), 'compose'),
+                        'stitch{}'.format(args.stitch_suffix), 'compose{}'.format(args.compose_suffix)),
                         data_type=output_field_dtype, num_channels=2,
                         fill_missing=True, overwrite=do_compose).path
     if do_final_render:
@@ -536,7 +514,7 @@ if __name__ == "__main__":
             size_chunk=chunk_size,
             batch_mip=final_render_mip,
         )
-        final_dst = cmr.create(join(args.dst_path, 'image_stitch{}{}'.format(args.stitch_suffix,
+        final_dst = cmr.create(join(args.dst_path, 'image_stitch{}{}{}'.format(args.stitch_suffix, args.compose_suffix,
                             args.final_render_suffix)),
                             data_type=args.img_dtype, num_channels=1, fill_missing=True,
                             overwrite=do_final_render).path
@@ -858,17 +836,19 @@ if __name__ == "__main__":
                 for tgt_offset in tgt_offsets:
                     tgt_z = z + tgt_offset
                     if skip_vv:
-                        # field = overlap_vvote_field
                         field = broadcasting_field
                         z = block_start_lookup[z]
                     else:
                         field = stitch_pair_fields[tgt_offset]
                     t = a.compute_field(cm, model_path, block_dst, overlap_image, field,
                                         z, tgt_z, bbox, mip, pad,
-                                        src_masks=[],
-                                        tgt_masks=[],
-                                        prev_field_cv=None,
-                                        prev_field_z=tgt_z,stitch=True)
+                                        src_masks=src_masks,
+                                        tgt_masks=tgt_masks,
+                                        prev_field_cv=block_vvote_field,
+                                        cur_field_cv=block_vvote_field,
+                                        coarse_field_cv=coarse_field_cv,
+                                        coarse_field_mip=coarse_field_mip,
+                                        prev_field_z=tgt_z,stitch=True,unaligned_cv=src)
                     yield from t
 
     class StitchAlignVectorVote(object):
@@ -998,16 +978,14 @@ if __name__ == "__main__":
 
     # # Serial alignment with block stitching
     print("START BLOCK ALIGNMENT")
-    if do_render:
-        print("COPY STARTING SECTION OF ALL BLOCKS")
-        execute(StarterCopy, copy_range)
+    print("COPY STARTING SECTION OF ALL BLOCKS")
     if do_alignment:
+        execute(StarterCopy, copy_range)
         if coarse_field_cv is not None:
             print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
             execute(StarterUpsampleField, copy_range)
         print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
         execute(StarterComputeField, starter_range)
-    if do_render:
         execute(StarterRender, starter_range)
     for z_offset in sorted(block_offset_to_z_range.keys()):
         z_range = list(block_offset_to_z_range[z_offset])
@@ -1017,31 +995,26 @@ if __name__ == "__main__":
             if not skip_vv:
                 print("VECTOR VOTE BLOCK OFFSET {}".format(z_offset))
                 execute(BlockAlignVectorVote, z_range)
-        if do_render:
             print("RENDER BLOCK OFFSET {}".format(z_offset))
             execute(BlockAlignRender, z_range)
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")
     print("COPY OVERLAPPING IMAGES & FIELDS OF BLOCKS")
-    #for z_offset in sorted(stitch_offset_to_z_range.keys()):
-    #    z_range = list(stitch_offset_to_z_range[z_offset])
-    #    execute(SeethroughStitchRender, z_range=z_range)
 
-    if do_render:
+    if do_stitching:
         execute(StitchOverlapCopy, overlap_copy_range)
     for z_offset in sorted(stitch_offset_to_z_range.keys()):
         z_range = list(stitch_offset_to_z_range[z_offset])
-        if do_alignment:
+        if do_stitching:
             print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
             execute(StitchAlignComputeField, z_range)
             if not skip_vv:
                 print("VECTOR VOTE OVERLAPPING OFFSET {}".format(z_offset))
                 execute(StitchAlignVectorVote, z_range)
-        if do_render and not skip_vv:
-            print("RENDER OVERLAPPING OFFSET {}".format(z_offset))
-            execute(StitchAlignRender, z_range)
+                print("RENDER OVERLAPPING OFFSET {}".format(z_offset))
+                execute(StitchAlignRender, z_range)
 
-    if do_alignment and not skip_vv:
+    if do_stitching and not skip_vv:
         print("COPY OVERLAP ALIGNED FIELDS FOR VECTOR VOTING")
         execute(StitchBroadcastCopy, stitch_range)
         print("VECTOR VOTE STITCHING FIELDS")
