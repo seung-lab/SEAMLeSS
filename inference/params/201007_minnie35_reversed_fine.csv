@@ -1,2 +1,9 @@
 x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
-0,0,1000,524288,524288,8000,0,nk_vf_30_minnie_jit_mip4_opt_v6,1,0,nkem_testing
+0,0,1000,523775,523775,2020,0,nk_vf_30_minnie_jit_mip4_opt_v6,1,0,nkem_testing
+0,0,2020,523775,523775,2071,0,nk_vf_30_minnie_jit_mip4_opt_v6,1,0,nkem_testing
+0,0,2071,523775,523775,2120,0,nk_vf_30_minnie_jit_mip4_opt_v6,1,0,nkem_testing
+0,0,2120,523775,523775,6820,0,nk_vf_30_minnie_jit_mip4_opt_v6,1,0,nkem_testing
+0,0,6820,523775,523775,6871,0,nk_vf_30_minnie_jit_mip4_opt_v6,1,0,nkem_testing
+0,0,6871,523775,523775,6920,0,nk_vf_30_minnie_jit_mip4_opt_v6,1,0,nkem_testing
+0,0,6920,523775,523775,7918,0,nk_vf_30_minnie_jit_mip4_opt_v6,1,0,nkem_testing
+0,0,7918,523775,523775,8000,0,nk_vf_30_minnie_jit_mip4_opt_v6,1,0,nkem_testing
