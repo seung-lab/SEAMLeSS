@@ -4,7 +4,7 @@ import shutil
 import warnings
 import math
 from pathlib import Path
-from moviepy.editor import ImageSequenceClip
+# from moviepy.editor import ImageSequenceClip
 import numpy as np
 import collections
 import numbers
