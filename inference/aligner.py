@@ -606,9 +606,15 @@ class Aligner:
     Returns:
       field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
-    archive = self.get_model_archive(model_path)
-    model = archive.model
-    normalizer = archive.preprocessor
+    # archive = self.get_model_archive(model_path)
+    # model = archive.model
+    # normalizer = archive.preprocessor
+    model = modelhouse.load_model_simple(model_path,
+            finetune=True,
+            pass_field=True,
+            finetune_iter=600,
+            checkpoint_name='test')
+    normalizer = None
     print('compute_field for {0} to {1}'.format(bbox.stringify(src_z),
                                                 bbox.stringify(tgt_z)))
     print('pad: {}'.format(pad))
@@ -678,13 +684,15 @@ class Aligner:
       # zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,2048,2048])))
       # zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
 
-      # model produces field in relative coordinates
+      zero_fieldC = zero_fieldC.permute((0,3,1,2)).field().pixels()
+      # metroem model returns absolute residuals at MIP-level of input image
       field = model(
-        src_patch,
-        tgt_patch,
-        tgt_field=zero_fieldC,
-        src_field=zero_fieldC,
-      )
+        src_img=src_patch,
+        tgt_img=tgt_patch,
+        src_agg_field=zero_fieldC,
+        tgt_agg_field=zero_fieldC,
+        train=False
+      ).from_pixels().permute(0,2,3,1)
 
       if not isinstance(field, torch.Tensor):
           field = field[0]
