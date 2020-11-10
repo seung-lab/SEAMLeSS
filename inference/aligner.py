@@ -38,6 +38,7 @@ from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
 from pathlib import Path
 from utilities.archive import ModelArchive
+import modelhouse
 
 import torch.nn as nn
 #from taskqueue import TaskQueue
@@ -743,9 +744,14 @@ class Aligner:
     Returns:
       field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
-    archive = self.get_model_archive(model_path)
-    model = archive.model
-    normalizer = archive.preprocessor
+    # archive = self.get_model_archive(model_path)
+    # model = archive.model
+    model = modelhouse.load_model_simple(model_path,
+            finetune=True,
+            pass_field=True,
+            finetune_iter=600,
+            checkpoint_name='test')
+    normalizer = None
     print(
       "compute_field for {0} to {1}".format(
         bbox.stringify(src_z), bbox.stringify(tgt_z)
@@ -936,14 +942,16 @@ class Aligner:
         )
       )
 
-      # model produces field in relative coordinates
+      coarse_field = coarse_field.permute((0,3,1,2)).field().pixels()
+      tgt_field = tgt_field.permute((0,3,1,2)).field().pixels()
+      # metroem model returns absolute residuals at MIP-level of input image
       accum_field = model(
-        src_patch,
-        tgt_patch,
-        tgt_field=tgt_field,
-        src_field=coarse_field,
-        src_mask=src_mask
-      )
+        src_img=src_patch,
+        tgt_img=tgt_patch,
+        src_agg_field=coarse_field,
+        tgt_agg_field=tgt_field,
+        train=False
+      ).from_pixels().permute(0,2,3,1)
 
       if not isinstance(accum_field, torch.Tensor):
           accum_field = accum_field[0]
