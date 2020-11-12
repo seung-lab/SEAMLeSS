@@ -89,12 +89,12 @@ def rechunck_image(chunk_size, image):
     I = I.split(chunk_size, dim=3)
     return torch.cat(I, dim=1)
 
-def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
+def misalignment_detector(img1, img2, mip, np_out=True, threshold=None, TARGET_MIP=4):
     '''
         img1, img2 -- pytorch tensors, 2D (only X and Y)
         mip -- integer
     '''
-    TARGET_MIP = 4
+    # TARGET_MIP = 4
     if mip > TARGET_MIP:
         raise Exception("Misalignment detector only works for images with MIP <= 4")
     if img1.max() > 10:

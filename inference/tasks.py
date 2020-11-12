@@ -498,7 +498,7 @@ class RenderTask(RegisteredTask):
              if self.seethrough_misalign:
                  prev_image_md = prev_image.clone()
                  misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
-                                                             threshold=80)
+                                                             threshold=80, TARGET_MIP=src_mip)
                  misalignment_region[image[0,0,:,:] == 0] = 0
              #misalignment_region = torch.zeros_like(misalignment_region)
                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()

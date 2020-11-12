@@ -311,7 +311,7 @@ if __name__ == "__main__":
                 y_stop = int(r[4])
                 z_stop = int(r[5])
                 bbox_mip = int(r[6])
-                model_path = join("..", "models", r[7])
+                model_path = "./models/" + r[7]
                 tgt_radius = int(r[8])
                 bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
                 for z in range(z_start, z_stop):
@@ -594,6 +594,9 @@ if __name__ == "__main__":
                         'stitch{}'.format(args.stitch_suffix), 'compose_diff'),
                         data_type=output_field_dtype, num_channels=2,
                         fill_missing=True, overwrite=do_compose).path
+
+    # import ipdb
+    # ipdb.set_trace()
 
     # Task scheduling functions
     def remote_upload(tasks):
@@ -1044,6 +1047,9 @@ if __name__ == "__main__":
             chunks, z_to_number_of_chunks, number_of_chunks_in_z = break_into_chunks(cm.dst_chunk_sizes[mip], cm.dst_voxel_offsets[mip], mip=mip, z_list=zs_for_cur_block, max_mip=cm.max_mip)
             block_chunk_to_compute_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
             block_chunk_to_render_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
+
+    import ipdb
+    ipdb.set_trace()
 
     def recover_status_from_file(filename):
         global total_sections_aligned
