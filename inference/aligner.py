@@ -613,6 +613,8 @@ class Aligner:
             finetune=True,
             pass_field=True,
             finetune_iter=600,
+            finetune_lr=3e-1,
+            finetune_sm=30e0,
             checkpoint_name='test')
     normalizer = None
     print('compute_field for {0} to {1}'.format(bbox.stringify(src_z),
@@ -758,6 +760,8 @@ class Aligner:
             finetune=True,
             pass_field=True,
             finetune_iter=600,
+            finetune_lr=3e-1,
+            finetune_sm=30e0,
             checkpoint_name='test')
     normalizer = None
     print(
@@ -952,6 +956,18 @@ class Aligner:
 
       coarse_field = coarse_field.permute((0,3,1,2)).field().pixels()
       tgt_field = tgt_field.permute((0,3,1,2)).field().pixels()
+      # src_black = src_patch == 0
+      # src_px = src_patch[~src_black]
+      # src_mean = src_px.mean()
+      # src_var = src_px.var()
+      # src_patch = (src_patch - src_mean) / src_var.sqrt()
+      # src_patch[src_black] = 0
+      # tgt_black = tgt_patch == 0
+      # tgt_px = tgt_patch[~tgt_black]
+      # tgt_mean = tgt_px.mean()
+      # tgt_var = tgt_px.var()
+      # tgt_patch = (tgt_patch - tgt_mean) / tgt_var.sqrt()
+      # tgt_patch[tgt_black] = 0
       # metroem model returns absolute residuals at MIP-level of input image
       accum_field = model(
         src_img=src_patch,
