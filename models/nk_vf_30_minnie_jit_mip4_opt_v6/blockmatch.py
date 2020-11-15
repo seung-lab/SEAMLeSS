@@ -245,7 +245,7 @@ def block_match(tgt, src, tile_size=16, tile_step=16, max_disp=10, min_overlap_p
             result[x_tile, y_tile, 1] = -match_displacement[0]
 
     patched_result = extrapolate_missing_values(result)
-    result_var = torch.cuda.FloatTensor(patched_result).unsqueeze(0)
+    result_var = torch.FloatTensor(patched_result).to(device=src.device).unsqueeze(0)
 
     scale = tgt.shape[-2] / result_var.shape[-2]
     result_ups_var = torch.nn.functional.interpolate(result_var.permute(0, 3, 1, 2),

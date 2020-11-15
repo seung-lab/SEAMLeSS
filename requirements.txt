@@ -19,3 +19,4 @@ imageio==2.4.1
 kimimaro
 simplejson
 -e git+https://github.com/seung-lab/artificery.git@nkem-config-device#egg=artificery
+-e git+https://github.com/seung-lab/scalenet.git#egg=scalenet

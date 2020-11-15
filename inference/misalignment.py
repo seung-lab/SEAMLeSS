@@ -71,17 +71,18 @@ def normalize(img,
     return img_out
 
 
-def create_model(name, checkpoint_folder):
-    a = artificery.Artificery()
+def create_model(name, checkpoint_folder, **kwargs):
+    device = torch.device(kwargs.get('device', 'cuda' if torch.cuda.is_available() else 'cpu'))
+    a = artificery.Artificery(device=device)
 
     spec_path = os.path.join(checkpoint_folder, "model_spec.json")
     my_p = a.parse(spec_path)
 
     checkpoint_path = os.path.join(checkpoint_folder, "{}.state.pth.tar".format(name))
     if os.path.isfile(checkpoint_path):
-        my_p.load_state_dict(torch.load(checkpoint_path))
+        my_p.load_state_dict(torch.load(checkpoint_path, map_location=device))
     my_p.name = name
-    return my_p.cuda()
+    return my_p.to(device=device)
 
 def rechunck_image(chunk_size, image):
     I = image.split(chunk_size, dim=2)
@@ -125,7 +126,7 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
     pyramid_name = 'ncc_m4'
     ncc_model_path = os.path.join(mypath, "models/{}".format('ncc_m4'))
     encoder = create_model(
-        "model", checkpoint_folder=ncc_model_path
+        "model", checkpoint_folder=ncc_model_path, device=img1.device
     )
 
     with torch.no_grad():
