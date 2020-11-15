@@ -615,17 +615,19 @@ class Aligner:
     padded_bbox.uncrop(pad, mip=mip)
 
     if prev_field_cv is not None and cur_field_cv is not None:
-        prev_coarse_field = self.get_field(coarse_field_cv, prev_field_z, padded_bbox, coarse_field_mip,
-                           relative=False, to_tensor=True)
-        prev_coarse_field = upsample_field(prev_coarse_field, coarse_field_mip, mip)
+        if coarse_field_cv is not None:
+            prev_coarse_field = self.get_field(coarse_field_cv, prev_field_z, padded_bbox, coarse_field_mip,
+                              relative=False, to_tensor=True)
+            prev_coarse_field = upsample_field(prev_coarse_field, coarse_field_mip, mip)
         prev_field = self.get_field(prev_field_cv, prev_field_z, padded_bbox, mip,
                            relative=True, to_tensor=True)
         if prev_field_inverse:
           prev_field = -prev_field
         cur_field = self.get_field(cur_field_cv, src_z, padded_bbox, mip,
                            relative=True, to_tensor=True)
-        cur_coarse_field = self.get_field(coarse_field_cv, src_z, padded_bbox, coarse_field_mip, relative=False, to_tensor=True)
-        cur_coarse_field = upsample_field(cur_coarse_field, coarse_field_mip, mip)
+        if coarse_field_cv is not None:
+            cur_coarse_field = self.get_field(coarse_field_cv, src_z, padded_bbox, coarse_field_mip, relative=False, to_tensor=True)
+            cur_coarse_field = upsample_field(cur_coarse_field, coarse_field_mip, mip)
         src_raw_patch = self.get_masked_image(unaligned_cv, src_z, padded_bbox, mip,
                                 masks=[],
                                 to_tensor=True, normalizer=None)
@@ -636,7 +638,10 @@ class Aligner:
         tgt_rendered_image = grid_sample(tgt_raw_patch, prev_field, padding_mode='zeros')
         cur_field = self.rel_to_abs_residual(cur_field, mip)
         prev_field = self.rel_to_abs_residual(prev_field, mip)
-        field = (prev_field - prev_coarse_field) - (cur_field - cur_coarse_field)
+        if coarse_field_cv is not None:
+            field = (prev_field - prev_coarse_field) - (cur_field - cur_coarse_field)
+        else:
+            field = prev_field - cur_field
         distance = self.profile_field(field, [src_rendered_image, tgt_rendered_image])
         print('Displacement adjustment: {} px'.format(distance))
         distance = (distance // (2 ** mip)) * 2 ** mip
