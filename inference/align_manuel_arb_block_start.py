@@ -763,7 +763,7 @@ if __name__ == "__main__":
                     fine_field = block_vvote_field
                     if self.block_starts[i] != block_start_lookup[src_z]:
                         fine_field = block_overlap_field
-                    if tgt_z in copy_range:
+                    if tgt_z == self.block_starts[i]:
                         tgt_field = block_pair_fields[0]
                     elif block_start_lookup[tgt_z] != self.block_starts[i]:
                         tgt_field = block_overlap_field
