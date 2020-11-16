@@ -311,7 +311,7 @@ if __name__ == "__main__":
                 y_stop = int(r[4])
                 z_stop = int(r[5])
                 bbox_mip = int(r[6])
-                model_path = "./models/" + r[7]
+                model_path = "../models/" + r[7]
                 tgt_radius = int(r[8])
                 bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
                 for z in range(z_start, z_stop):
@@ -576,7 +576,7 @@ if __name__ == "__main__":
             batch_mip=final_render_mip,
         )
         final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.final_render_suffix)),
-                            data_type='uint8', num_channels=1, fill_missing=True,
+                            data_type=args.img_dtype, num_channels=1, fill_missing=True,
                             overwrite=do_final_render).path
         
         if write_misalignment_masks:
@@ -1301,6 +1301,8 @@ if __name__ == "__main__":
     if a.distributed:
         if do_alignment:
             cf_list, rt_list, cf_block_start, rt_block_start = generate_first_releases()
+            # import ipdb
+            # ipdb.set_trace()
             executionLoop(cf_list, rt_list, cf_block_start, rt_block_start)
     else:
         for z_offset in sorted(block_offset_to_z_range.keys()):

@@ -617,6 +617,7 @@ class Aligner:
     # archive = self.get_model_archive(model_path)
     # model = archive.model
     # normalizer = archive.preprocessor
+    normalizer = None
     model = modelhouse.load_model_simple(model_path,
             finetune=True,
             pass_field=True,
@@ -969,39 +970,31 @@ class Aligner:
 
       coarse_field = coarse_field.permute((0,3,1,2)).field().pixels()
       tgt_field = tgt_field.permute((0,3,1,2)).field().pixels()
-      # src_black = src_patch == 0
-      # src_px = src_patch[~src_black]
-      # src_mean = src_px.mean()
-      # src_var = src_px.var()
-      # src_patch = (src_patch - src_mean) / src_var.sqrt()
-      # src_patch[src_black] = 0
-      # tgt_black = tgt_patch == 0
-      # tgt_px = tgt_patch[~tgt_black]
-      # tgt_mean = tgt_px.mean()
-      # tgt_var = tgt_px.var()
-      # tgt_patch = (tgt_patch - tgt_mean) / tgt_var.sqrt()
-      # tgt_patch[tgt_black] = 0
-      # metroem model returns absolute residuals at MIP-level of input image
-      accum_field = model(
-        src_img=src_patch,
-        tgt_img=tgt_patch,
-        src_agg_field=coarse_field,
-        tgt_agg_field=tgt_field,
-        train=False
-      ).from_pixels().permute(0,2,3,1)
+      if torch.sum(src_patch) == 0:
+        accum_field = torch.zeros_like(tgt_field).permute(0,2,3,1)
+        accum_field = accum_field[:, pad:-pad, pad:-pad, :]
+      else:
+        # metroem model returns absolute residuals at MIP-level of input image
+        accum_field = model(
+          src_img=src_patch,
+          tgt_img=tgt_patch,
+          src_agg_field=coarse_field,
+          tgt_agg_field=tgt_field,
+          train=False
+        ).from_pixels().permute(0,2,3,1)
 
-      if not isinstance(accum_field, torch.Tensor):
-          accum_field = accum_field[0]
+        if not isinstance(accum_field, torch.Tensor):
+            accum_field = accum_field[0]
 
-      print(
-        "GPU memory allocated: {}, cached: {}".format(
-          torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+        print(
+          "GPU memory allocated: {}, cached: {}".format(
+            torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+          )
         )
-      )
-      accum_field[accum_field != accum_field] = 0
-      accum_field = self.rel_to_abs_residual(accum_field, mip)
-      accum_field = accum_field[:, pad:-pad, pad:-pad, :]
-      accum_field += combined_distance_fine_snap.to(device=self.device)
+        accum_field[accum_field != accum_field] = 0
+        accum_field = self.rel_to_abs_residual(accum_field, mip)
+        accum_field = accum_field[:, pad:-pad, pad:-pad, :]
+        accum_field += combined_distance_fine_snap.to(device=self.device)
       accum_field = accum_field.data.cpu().numpy()
 
       # clear unused, cached memory so that other processes can allocate it

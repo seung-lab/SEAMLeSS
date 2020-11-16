@@ -48,7 +48,7 @@ class Model(nn.Module):
         self.clahe = CLAHEPreprocessor()
 
     def load_opt_encoder(self):
-        a = artificery.Artificery()
+        a = artificery.Artificery(batchnorm=False)
         path = os.path.dirname(os.path.abspath(__file__))
         checkpoint_folder_path = os.path.join(path, 'opt_enc_chkpt')
         spec_path = os.path.join(checkpoint_folder_path, "model_spec.json")

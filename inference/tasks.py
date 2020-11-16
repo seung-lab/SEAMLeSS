@@ -510,7 +510,7 @@ class RenderTask(RegisteredTask):
                      if self.brighten_misalign:
                          image[seethrough_tissue_mask] += 0.12
 
-             if self.seethrough_misalign:
+             if self.seethrough_misalign and src_var != 0:
                  if adjust_norm:
                   prev_image_md = prev_image.clone() * np.sqrt(prev_var) + prev_mean
                   image_md = image.clone() * np.sqrt(src_var) + src_mean
@@ -554,7 +554,10 @@ class RenderTask(RegisteredTask):
                 #  seethrough_region[(image_tissue == False) * prev_image_tissue] = True
                  seethrough_region[image == 0] = True
                 #  prev_image_md = prev_image.clone()
-                 image[seethrough_region] = prev_image_md[seethrough_region]
+                 if src_var == 0:
+                  image[seethrough_region] = prev_image[seethrough_region]
+                 else:
+                  image[seethrough_region] = prev_image_md[seethrough_region]
              preseethru_blackout_fill = preseethru_blackout * prev_image_tissue
              image[preseethru_blackout_fill] = prev_image[preseethru_blackout_fill]
          if self.seethrough_folds:
