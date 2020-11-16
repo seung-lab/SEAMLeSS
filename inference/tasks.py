@@ -356,11 +356,11 @@ class RenderTask(RegisteredTask):
                masks=[],
                affine=None, use_cpu=False, pad=256,
                seethrough=False, coarsen_small_folds=1, coarsen_big_folds=15,
-               coarsen_misalign=128, seethrough_cv=None,
+               coarsen_misalign=64, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=False,
                blackout_op='none', report=False, brighten_misalign=False, block_start=None,
-               misalignment_mask_cv=None):
+               misalignment_mask_cv=None, mean_cv=None, var_cv=None, stats_mip=None):
     if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
@@ -368,7 +368,7 @@ class RenderTask(RegisteredTask):
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
                       seethrough_folds, seethrough_misalign, seethrough_black,
                       big_fold_threshold, seethrough_renormalize, blackout_op, report,
-                      brighten_misalign, block_start, misalignment_mask_cv)
+                      brighten_misalign, block_start, misalignment_mask_cv, mean_cv, var_cv, stats_mip)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -377,6 +377,21 @@ class RenderTask(RegisteredTask):
     src_z = self.src_z
     field_z = self.field_z
     dst_z = self.dst_z
+
+    adjust_norm = False
+    # if self.mean_cv is not None and self.var_cv is not None and self.stats_mip is not None:
+    self.stats_mip = 5
+    self.mean_cv = 'gs://zetta_aibs_mouse_unaligned/normalization/mip5_run/mean_norm'
+    self.var_cv = 'gs://zetta_aibs_mouse_unaligned/normalization/mip5_run/var_norm'
+    mean_cv = DCV(self.mean_cv)
+    var_cv = DCV(self.var_cv)
+    stats_mip = self.stats_mip
+    adjust_norm = True
+    prev_var = float(var_cv[stats_mip][0,0,dst_z-1].squeeze())
+    prev_mean = float(mean_cv[stats_mip][0,0,dst_z-1].squeeze())
+    src_var = float(var_cv[stats_mip][0,0,src_z].squeeze())
+    src_mean = float(mean_cv[stats_mip][0,0,src_z].squeeze())
+
     patch_bbox = deserialize_bbox(self.patch_bbox)
     message = {
       "x": patch_bbox.x_range(mip=self.src_mip)[0],
@@ -496,25 +511,50 @@ class RenderTask(RegisteredTask):
                          image[seethrough_tissue_mask] += 0.12
 
              if self.seethrough_misalign:
-                 prev_image_md = prev_image.clone()
-                 misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
-                                                             threshold=80, TARGET_MIP=src_mip)
-                 misalignment_region[image[0,0,:,:] == 0] = 0
-             #misalignment_region = torch.zeros_like(misalignment_region)
-                 misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
-                 misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
-                 seethrough_region[misalignment_fill_in] = True
-                 while len(image.shape) > len(misalignment_fill_in.shape):
-                     misalignment_fill_in.unsqueeze(0)
-                 image[misalignment_fill_in] = prev_image[misalignment_fill_in]
-                 if self.misalignment_mask_cv is not None:
-                   misalignment_mask = np.zeros(shape=image.shape, dtype=np.uint8)
-                   misalignment_mask[misalignment_fill_in.cpu().numpy() != 0] = 1
-                   aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
+                 if adjust_norm:
+                  prev_image_md = prev_image.clone() * np.sqrt(prev_var) + prev_mean
+                  image_md = image.clone() * np.sqrt(src_var) + src_mean
+                  prev_image_md[prev_image == 0] = 0
+                  image_md[image == 0] = 0
+                  misalignment_region = misalignment_detector(image_md, prev_image_md, mip=src_mip,
+                                                              threshold=80, TARGET_MIP=src_mip)
+                  misalignment_region[image[0,0,:,:] == 0] = 0
+                  #misalignment_region = torch.zeros_like(misalignment_region)
+                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
+                  misalignment_fill_in = misalignment_region_coarse * (prev_image != 0)
+                  seethrough_region[misalignment_fill_in] = True
+                  while len(image.shape) > len(misalignment_fill_in.shape):
+                      misalignment_fill_in.unsqueeze(0)
+                  prev_image_md = prev_image.clone() * np.sqrt(prev_var) + prev_mean
+                  prev_image_md = (prev_image_md - src_mean) / np.sqrt(src_var)
+                  prev_image_md[prev_image == 0] = 0
+                  image[misalignment_fill_in] = prev_image_md[misalignment_fill_in]
+                  if self.misalignment_mask_cv is not None:
+                    misalignment_mask = np.zeros(shape=image.shape, dtype=np.uint8)
+                    misalignment_mask[misalignment_fill_in.cpu().numpy() != 0] = 1
+                    aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
+                 else:
+                  prev_image_md = prev_image.clone()
+                  misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
+                                                              threshold=80, TARGET_MIP=src_mip)
+                  misalignment_region[image[0,0,:,:] == 0] = 0
+                  #misalignment_region = torch.zeros_like(misalignment_region)
+                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
+                  misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
+                  seethrough_region[misalignment_fill_in] = True
+                  while len(image.shape) > len(misalignment_fill_in.shape):
+                      misalignment_fill_in.unsqueeze(0)
+                  image[misalignment_fill_in] = prev_image[misalignment_fill_in]
+                  if self.misalignment_mask_cv is not None:
+                    misalignment_mask = np.zeros(shape=image.shape, dtype=np.uint8)
+                    misalignment_mask[misalignment_fill_in.cpu().numpy() != 0] = 1
+                    aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
              
              if self.seethrough_black:
-                 seethrough_region[(image_tissue == False) * prev_image_tissue] = True
-                 image[seethrough_region] = prev_image[seethrough_region]
+                #  seethrough_region[(image_tissue == False) * prev_image_tissue] = True
+                 seethrough_region[image == 0] = True
+                #  prev_image_md = prev_image.clone()
+                 image[seethrough_region] = prev_image_md[seethrough_region]
              preseethru_blackout_fill = preseethru_blackout * prev_image_tissue
              image[preseethru_blackout_fill] = prev_image[preseethru_blackout_fill]
          if self.seethrough_folds:

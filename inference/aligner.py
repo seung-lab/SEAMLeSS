@@ -581,6 +581,14 @@ class Aligner:
     return mid.cpu()
 
 
+  def norm_patch(self, patch):
+    patch_copy = patch.clone()
+    std = torch.std(patch[patch != 0])
+    mean = torch.mean(patch[patch != 0])
+    patch_copy = (patch - mean) / std
+    patch_copy[patch == 0] = 0
+    return patch_copy
+
   #############################
   # CloudVolume chunk methods #
   #############################
@@ -616,7 +624,6 @@ class Aligner:
             finetune_lr=3e-1,
             finetune_sm=30e0,
             checkpoint_name='test')
-    normalizer = None
     print('compute_field for {0} to {1}'.format(bbox.stringify(src_z),
                                                 bbox.stringify(tgt_z)))
     print('pad: {}'.format(pad))
@@ -668,6 +675,8 @@ class Aligner:
     tgt_patch = self.get_composite_image(tgt_cv, tgt_z, padded_bbox, mip,
                                 masks=[],
                                 to_tensor=True, normalizer=normalizer)
+    src_patch = self.norm_patch(src_patch)
+    tgt_patch = self.norm_patch(tgt_patch)
     print('src_patch.shape {}'.format(src_patch.shape))
     print('tgt_patch.shape {}'.format(tgt_patch.shape))
 
@@ -794,6 +803,7 @@ class Aligner:
         relative=True,
         to_tensor=True,
       ).to(device=self.device)
+      tgt_field[tgt_field != tgt_field] = 0
       #HACKS
       # tgt_field = torch.zeros_like(tgt_field)
 
@@ -808,6 +818,7 @@ class Aligner:
           relative=True,
           to_tensor=True,
         ).to(device='cpu')
+        tgt_coarse_field[tgt_coarse_field != tgt_coarse_field] = 0
 
         #HACKS
         # tgt_coarse_field = torch.zeros_like(tgt_coarse_field)
@@ -936,6 +947,8 @@ class Aligner:
       to_tensor=True,
       normalizer=normalizer,
     )
+    src_patch = self.norm_patch(src_patch)
+    tgt_patch = self.norm_patch(tgt_patch)
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
 
@@ -985,7 +998,7 @@ class Aligner:
           torch.cuda.memory_allocated(), torch.cuda.memory_cached()
         )
       )
-
+      accum_field[accum_field != accum_field] = 0
       accum_field = self.rel_to_abs_residual(accum_field, mip)
       accum_field = accum_field[:, pad:-pad, pad:-pad, :]
       accum_field += combined_distance_fine_snap.to(device=self.device)
@@ -1166,6 +1179,8 @@ class Aligner:
                                to_tensor=True, normalizer=None)
         field = torch.zeros((image.shape[1], image.shape[2], image.shape[3], 2),
                 device=image.device)
+
+      field[field != field] = 0
 
       if affine is not None:
         # PyTorch conventions are column, row order (y, then x) so flip

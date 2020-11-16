@@ -72,7 +72,8 @@ def normalize(img,
 
 
 def create_model(name, checkpoint_folder):
-    a = artificery.Artificery()
+    a = artificery.Artificery(batchnorm=False)
+
 
     spec_path = os.path.join(checkpoint_folder, "model_spec.json")
     my_p = a.parse(spec_path)

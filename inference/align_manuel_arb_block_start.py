@@ -766,7 +766,7 @@ if __name__ == "__main__":
                     fine_field = block_vvote_field
                     if self.block_starts[i] != block_start_lookup[src_z]:
                         fine_field = block_overlap_field
-                    if tgt_z in copy_range:
+                    if tgt_z == self.block_starts[i]:
                         tgt_field = block_pair_fields[0]
                     elif block_start_lookup[tgt_z] != self.block_starts[i]:
                         tgt_field = block_overlap_field
@@ -1048,8 +1048,8 @@ if __name__ == "__main__":
             block_chunk_to_compute_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
             block_chunk_to_render_processed[cur_bs] = dict(zip(chunks, [False] * len(chunks)))
 
-    import ipdb
-    ipdb.set_trace()
+    # import ipdb
+    # ipdb.set_trace()
 
     def recover_status_from_file(filename):
         global total_sections_aligned
@@ -1184,7 +1184,7 @@ if __name__ == "__main__":
                     check_poll_time = time()
                     if check_poll_time - first_poll_time >= poll_time:
                         first_poll_time = check_poll_time
-                        cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(3600)
+                        cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(60000)
                         if len(cf_list) > 0 or len(rt_list) > 0:
                             for cf_i in range(len(cf_list)):
                                 retry_file.write('Timed out: bs {} cf {} time {}\n'.format(cf_block_start[cf_i], cf_list[cf_i], check_poll_time))
@@ -1197,7 +1197,7 @@ if __name__ == "__main__":
                     receive_time = receive_time + time() - before_receive_time
                     if 'Messages' not in msgs:
                         empty_in_a_row = empty_in_a_row + 1
-                        if empty_in_a_row >= 5:
+                        if empty_in_a_row >= 10:
                             if a.sqs_is_empty_fast():
                                 cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(0)
                                 for cf_i in range(len(cf_list)):

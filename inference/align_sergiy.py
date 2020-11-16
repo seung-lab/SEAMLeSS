@@ -316,7 +316,8 @@ if __name__ == "__main__":
                 y_stop = int(r[4])
                 z_stop = int(r[5])
                 bbox_mip = int(r[6])
-                model_path = join("..", "models", r[7])
+                # model_path = join("..", "models", r[7])
+                model_path = "./models/" + r[7]
                 tgt_radius = int(r[8])
                 while z_start - last_alignment_start > (block_size + minimum_block_size):
                     last_alignment_start = last_alignment_start + block_size
