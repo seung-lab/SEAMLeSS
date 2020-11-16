@@ -311,7 +311,7 @@ if __name__ == "__main__":
                 y_stop = int(r[4])
                 z_stop = int(r[5])
                 bbox_mip = int(r[6])
-                model_path = "../models/" + r[7]
+                model_path = "./models/" + r[7]
                 tgt_radius = int(r[8])
                 bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
                 for z in range(z_start, z_stop):
