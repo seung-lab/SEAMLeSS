@@ -9,6 +9,7 @@ from os.path import join
 from time import time, sleep
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
+from mipless_cloudvolume import deserialize_miplessCV as DCV
 from threading import Lock
 
 from cloudvolume import Storage
@@ -902,7 +903,10 @@ class Aligner:
       return_mask=True,
       blackout=False
     )
-
+    norm_image_cv = DCV('gs://zetta_aibs_mouse_unaligned/normalization/mip5_run/img/img_norm')
+    norm_patch = self.get_composite_image(norm_image_cv, src_z, padded_src_bbox_fine, mip,
+                                masks=[],
+                                to_tensor=True, normalizer=None)
 
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
@@ -940,7 +944,7 @@ class Aligner:
         tgt_patch,
         tgt_field=tgt_field,
         src_field=coarse_field,
-        src_mask=src_mask
+        src_mask=norm_patch == 0
       )
 
       if not isinstance(accum_field, torch.Tensor):

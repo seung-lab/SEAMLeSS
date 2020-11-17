@@ -422,6 +422,14 @@ class RenderTask(RegisteredTask):
                         field_mip_print, src_mip), flush=True)
     start = time()
     if not aligner.dry_run:
+      norm_image_cv = DCV('gs://zetta_aibs_mouse_unaligned/normalization/mip5_run/img/img_norm')
+      norm_image = aligner.cloudsample_image(norm_image_cv, field_cv, src_z, field_z,
+                                     patch_bbox, src_mip, field_mip,
+                                     masks=masks,
+                                     affine=affine,
+                                     use_cpu=self.use_cpu, pad=self.pad,
+                                     return_mask=False,
+                                     blackout_mask_op=self.blackout_op)
       if not seethrough:
          image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
                                      patch_bbox, src_mip, field_mip,
@@ -513,7 +521,8 @@ class RenderTask(RegisteredTask):
                    aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
              
              if self.seethrough_black:
-                 seethrough_region[(image_tissue == False) * prev_image_tissue] = True
+                 seeethrough_region[norm_image==0] = True
+                 #seethrough_region[(image_tissue == False) * prev_image_tissue] = True
                  image[seethrough_region] = prev_image[seethrough_region]
              preseethru_blackout_fill = preseethru_blackout * prev_image_tissue
              image[preseethru_blackout_fill] = prev_image[preseethru_blackout_fill]
