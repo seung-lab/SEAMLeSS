@@ -782,6 +782,20 @@ class Aligner:
         relative=True,
         to_tensor=True,
       ).to(device=self.device)
+      left_sum = torch.sum(tgt_field[0,0:pad,:,:])
+      right_sum = torch.sum(tgt_field[0,-pad:,:,:])
+      top_sum = torch.sum(tgt_field[0,:,0:pad,:])
+      bot_sum = torch.sum(tgt_field[0,:,-pad:,:])
+      if left_sum == 0 or right_sum == 0 or top_sum == 0 or bot_sum == 0:
+        padded_tgt_bbox_fine = deepcopy(bbox)
+        tgt_field = self.get_field(
+          tgt_field_cv,
+          tgt_z,
+          padded_tgt_bbox_fine,
+          mip,
+          relative=True,
+          to_tensor=True,
+        ).to(device=self.device)
       #HACKS
       # tgt_field = torch.zeros_like(tgt_field)
 
@@ -821,12 +835,12 @@ class Aligner:
         drift_distance // (2 ** coarse_field_mip)
       ) * 2 ** coarse_field_mip
 
-      tgt_field = self.rel_to_abs_residual(tgt_field, mip)
-      tgt_distance = self.profile_field(tgt_field)
-      tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
-      tgt_field -= tgt_distance_fine_snap.to(device=self.device)
-      tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
-      tgt_field = torch.zeros_like(tgt_field)
+      # tgt_field = self.rel_to_abs_residual(tgt_field, mip)
+      # tgt_distance = self.profile_field(tgt_field)
+      # tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
+      # tgt_field -= tgt_distance_fine_snap.to(device=self.device)
+      # tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
+      # tgt_field = torch.zeros_like(tgt_field)
 
     print(
       "Displacement adjustment TGT: {} px".format(
@@ -834,7 +848,7 @@ class Aligner:
       )
     )
 
-    padded_tgt_bbox_fine = self.adjust_bbox(padded_tgt_bbox_fine, tgt_distance_fine_snap.flip(0))
+    # padded_tgt_bbox_fine = self.adjust_bbox(padded_tgt_bbox_fine, tgt_distance_fine_snap.flip(0))
     # padded_tgt_bbox_fine.uncrop(pad, mip)
 
     if coarse_field_cv is not None:
@@ -904,7 +918,7 @@ class Aligner:
       blackout=False
     )
     norm_image_cv = DCV('gs://zetta_aibs_mouse_unaligned/normalization/mip5_run/img/img_norm')
-    norm_patch = self.get_composite_image(norm_image_cv, src_z, padded_src_bbox_fine, mip,
+    norm_patch = self.get_composite_image(norm_image_cv, [src_z], padded_src_bbox_fine, mip,
                                 masks=[],
                                 to_tensor=True, normalizer=None)
 
@@ -942,9 +956,9 @@ class Aligner:
       accum_field = model(
         src_patch,
         tgt_patch,
-        tgt_field=tgt_field,
+        tgt_field=torch.zeros_like(coarse_field),
         src_field=coarse_field,
-        src_mask=norm_patch == 0
+        src_mask=norm_patch
       )
 
       if not isinstance(accum_field, torch.Tensor):
@@ -1620,7 +1634,7 @@ class Aligner:
              return_iterator= False, pad=256, seethrough=False,
              seethrough_misalign=False,
              blackout_op='none', report=False, brighten_misalign=False, block_start=None,
-             misalignment_mask_cv=None):
+             misalignment_mask_cv=None, orig_image_cv=None):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1669,7 +1683,8 @@ class Aligner:
                        seethrough_misalign=seethrough_misalign,
                        blackout_op=blackout_op,
                        report=report, block_start=block_start,
-                       misalignment_mask_cv=misalignment_mask_cv)
+                       misalignment_mask_cv=misalignment_mask_cv,
+                       orig_image_cv=orig_image_cv)
     if return_iterator:
         return RenderTaskIterator(chunks,0, len(chunks))
     else:
@@ -1684,7 +1699,8 @@ class Aligner:
                            seethrough_misalign=seethrough_misalign,
                            blackout_op=blackout_op,
                            report=report, block_start=block_start,
-                           misalignment_mask_cv=misalignment_mask_cv))
+                           misalignment_mask_cv=misalignment_mask_cv,
+                           orig_image_cv=orig_image_cv))
         return batch
 
   def render_masks(self, cm, mask_dst_cv, field_cv, field_z, src_z, dst_z, bbox, dst_mip,

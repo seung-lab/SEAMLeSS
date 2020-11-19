@@ -11,6 +11,7 @@ RUN apt-get update \
   # Install SEAMLeSS dependencies
   && apt-get install -y --no-install-recommends \
       libgtk2.0-dev language-pack-en build-essential git \
+  && pip install pip==20.0.2 \
   && pip install --no-cache-dir -r requirements.txt \
   && python -c "import imageio; imageio.plugins.ffmpeg.download();" \
   # Register SEAMLeSS

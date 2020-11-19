@@ -183,6 +183,11 @@ if __name__ == "__main__":
     parser.add_argument('--pin_second_starting_section', type=int, default=None)
     parser.add_argument('--write_misalignment_masks', action='store_true')
     parser.add_argument('--write_other_masks', action='store_true')
+    parser.add_argument(
+        "--write_orig_cv",
+        action='store_true',
+        help="If True,brightens misalignments seenthrough"
+    )
 
 
     args = parse_args(parser)
@@ -216,6 +221,7 @@ if __name__ == "__main__":
     write_composing_field = args.write_composing_field
     write_misalignment_masks = args.write_misalignment_masks
     write_other_masks = args.write_other_masks
+    write_orig_cv = args.write_orig_cv
 
     if write_misalignment_masks:
         # Need composing field to produce misalignment masks
@@ -519,6 +525,21 @@ if __name__ == "__main__":
             fill_missing=True,
             overwrite=do_alignment,
         ).path
+    if write_orig_cv:
+        orig_cv = cm.create(
+            join(args.dst_path, "image_blocks", "no_st"),
+            data_type=args.img_dtype,
+            num_channels=1,
+            fill_missing=True,
+            overwrite=do_alignment
+        ).path
+        orig_overlap_cv = cm.create(
+            join(args.dst_path, "image_blocks", "no_st_overlap"),
+            data_type=args.img_dtype,
+            num_channels=1,
+            fill_missing=True,
+            overwrite=do_alignment
+        ).path
     stitch_pair_fields = {}
     for z_offset in offset_range:
         stitch_pair_fields[z_offset] = cm.create(
@@ -804,14 +825,19 @@ if __name__ == "__main__":
                 dst = block_dst_lookup[self.block_starts[i]+1]
                 bbox = bbox_lookup[z]
                 misalignment_mask_cv_to_use = None
+                orig_image_cv = None
                 if block_start_lookup[z] != self.block_starts[i]:
                     field = block_overlap_field
                     if write_misalignment_masks:
                         misalignment_mask_cv_to_use = misalignment_mask_overlap_cv
+                    if write_orig_cv:
+                        orig_image_cv = orig_overlap_cv
                 else:
                     field = block_vvote_field
                     if write_misalignment_masks:
-                        misalignment_mask_cv_to_use = misalignment_mask_cv                        
+                        misalignment_mask_cv_to_use = misalignment_mask_cv
+                    if write_orig_cv:
+                        orig_image_cv = orig_cv                                  
                 t = a.render(
                     cm,
                     src,
@@ -830,7 +856,8 @@ if __name__ == "__main__":
                     brighten_misalign=args.brighten_misalign,
                     report=True,
                     block_start=block_start,
-                    misalignment_mask_cv=misalignment_mask_cv_to_use
+                    misalignment_mask_cv=misalignment_mask_cv_to_use,
+                    orig_image_cv=orig_image_cv
                 )
                 yield from t
 
@@ -1178,7 +1205,7 @@ if __name__ == "__main__":
                     check_poll_time = time()
                     if check_poll_time - first_poll_time >= poll_time:
                         first_poll_time = check_poll_time
-                        cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(3600)
+                        cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(72000)
                         if len(cf_list) > 0 or len(rt_list) > 0:
                             for cf_i in range(len(cf_list)):
                                 retry_file.write('Timed out: bs {} cf {} time {}\n'.format(cf_block_start[cf_i], cf_list[cf_i], check_poll_time))
@@ -1191,7 +1218,7 @@ if __name__ == "__main__":
                     receive_time = receive_time + time() - before_receive_time
                     if 'Messages' not in msgs:
                         empty_in_a_row = empty_in_a_row + 1
-                        if empty_in_a_row >= 5:
+                        if empty_in_a_row >= 20:
                             if a.sqs_is_empty_fast():
                                 cf_list, rt_list, cf_block_start, rt_block_start = get_lagged_tasks(0)
                                 for cf_i in range(len(cf_list)):

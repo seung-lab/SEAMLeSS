@@ -91,11 +91,14 @@ class Model(nn.Module):
             if 'src_mask' in kwargs:
                 large_defect_threshold = 400
                 small_defect_threshold = 25
-                src_large_defects = (kwargs['src_mask'] >= large_defect_threshold).float()
-                src_small_defects = (kwargs['src_mask'] >= small_defect_threshold).float()
+                # src_large_defects = (kwargs['src_mask'] >= large_defect_threshold).float()
+                src_large_defects = (kwargs['src_mask'] == 0.0).float()
+                # src_small_defects = (kwargs['src_mask'] >= small_defect_threshold).float()
+                src_small_defects = None
 
                 tgt_defects = (tgt < 0.005).float()
-                src_defects = (src < 0.005).float() + src_large_defects + src_small_defects
+                # src_defects = (src < 0.005).float() + src_large_defects + src_small_defects
+                src_defects = (src < 0.005).float() + src_large_defects
 
             else:
                 src_large_defects = torch.zeros_like(src)
@@ -118,7 +121,8 @@ class Model(nn.Module):
                 torch.cuda.empty_cache()
 
             pred_res = optimize_metric(opt_enc, src, tgt, accum_field,
-                    src_small_defects=src_small_defects.float(),
+                    # src_small_defects=src_small_defects.float(),
+                    src_small_defects=None,
                     src_large_defects=src_large_defects.float(),
                     src_defects=src_defects.float(),
                     tgt_defects=tgt_defects.float(),

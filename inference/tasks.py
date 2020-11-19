@@ -360,7 +360,7 @@ class RenderTask(RegisteredTask):
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=False,
                blackout_op='none', report=False, brighten_misalign=False, block_start=None,
-               misalignment_mask_cv=None):
+               misalignment_mask_cv=None, orig_image_cv=None):
     if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
@@ -368,7 +368,7 @@ class RenderTask(RegisteredTask):
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
                       seethrough_folds, seethrough_misalign, seethrough_black,
                       big_fold_threshold, seethrough_renormalize, blackout_op, report,
-                      brighten_misalign, block_start, misalignment_mask_cv)
+                      brighten_misalign, block_start, misalignment_mask_cv, orig_image_cv)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -438,6 +438,8 @@ class RenderTask(RegisteredTask):
                                      use_cpu=self.use_cpu, pad=self.pad,
                                      return_mask=False,
                                      blackout_mask_op=self.blackout_op)
+         if self.orig_image_cv is not None:
+           orig_image = None
       else:
          image, mask_data = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
                                      patch_bbox, src_mip, field_mip,
@@ -447,6 +449,8 @@ class RenderTask(RegisteredTask):
                                      return_mask=True,
                                      blackout_mask_op=self.blackout_op,
                                      return_mask_op='data')
+         if self.orig_image_cv is not None:
+           orig_image = torch.clone(image)
 
          prev_image = aligner.get_masked_image(seethrough_cv, dst_z-1,
                                        patch_bbox, src_mip,
@@ -505,7 +509,7 @@ class RenderTask(RegisteredTask):
 
              if self.seethrough_misalign:
                  prev_image_md = prev_image.clone()
-                 misalignment_region = misalignment_detector(image, prev_image, mip=src_mip,
+                 misalignment_region = misalignment_detector(image, prev_image, mip=4,
                                                              threshold=80)
                  misalignment_region[image[0,0,:,:] == 0] = 0
              #misalignment_region = torch.zeros_like(misalignment_region)
@@ -521,7 +525,7 @@ class RenderTask(RegisteredTask):
                    aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
              
              if self.seethrough_black:
-                 seeethrough_region[norm_image==0] = True
+                 seethrough_region[norm_image==0] = True
                  #seethrough_region[(image_tissue == False) * prev_image_tissue] = True
                  image[seethrough_region] = prev_image[seethrough_region]
              preseethru_blackout_fill = preseethru_blackout * prev_image_tissue
@@ -540,6 +544,9 @@ class RenderTask(RegisteredTask):
 
       image = image.cpu().numpy()
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
+      if self.orig_image_cv is not None and orig_image is not None:
+        orig_image_cv = DCV(self.orig_image_cv)
+        aligner.save_image(orig_image.cpu().numpy(), orig_image_cv, dst_z, patch_bbox, src_mip)
       if self.report and aligner.completed_task_queue is not None:
           api_obj = aligner.completed_task_queue._api
           sqs_obj = aligner.completed_task_queue._api._sqs

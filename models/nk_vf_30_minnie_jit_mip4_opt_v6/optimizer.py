@@ -417,7 +417,7 @@ def optimize_metric(model, src, tgt, pred_res_start, tgt_defects=None, src_defec
             src_small_defects=src_small_defects,
             src_large_defects=src_large_defects,
             mips=mips, crop=128, bot_mip=4, img_mip=4,
-            max_iter=max_iter,
+            max_iter=int(max_iter*1.3),
             sm_keys_to_apply=sm_keys_to_apply,
             mse_keys_to_apply=mse_keys_to_apply,
             sm_val=180e0)
