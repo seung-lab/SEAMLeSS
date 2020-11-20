@@ -113,8 +113,10 @@ def misalignment_detector(img1, img2, mip, np_out=True, threshold=None):
         img1_downs = torch.nn.functional.avg_pool2d(img1_downs, 2)
         img2_downs = torch.nn.functional.avg_pool2d(img2_downs, 2)
 
-    img1_downs_tissue_mask = (img1_downs > 0.05) * (img1_downs < (180.0/255.0))
-    img2_downs_tissue_mask = (img2_downs > 0.05) * (img2_downs < (180.0/255.0))
+    # img1_downs_tissue_mask = (img1_downs > 0.05) * (img1_downs < (180.0/255.0))
+    img1_downs_tissue_mask = img1_downs > 0.05
+    img2_downs_tissue_mask = img2_downs > 0.05
+    # img2_downs_tissue_mask = (img2_downs > 0.05) * (img2_downs < (180.0/255.0))
 
     img1_downs_tissue_mask *= img2_downs_tissue_mask
     img2_downs_tissue_mask *= img1_downs_tissue_mask
