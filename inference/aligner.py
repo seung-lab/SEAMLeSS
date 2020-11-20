@@ -769,7 +769,7 @@ class Aligner:
     model = modelhouse.load_model_simple(model_path,
             finetune=True,
             pass_field=True,
-            finetune_iter=600,
+            finetune_iter=300,
             finetune_lr=3e-1,
             finetune_sm=30e0,
             checkpoint_name='test')
@@ -804,6 +804,20 @@ class Aligner:
         relative=True,
         to_tensor=True,
       ).to(device=self.device)
+      left_sum = torch.sum(tgt_field[0,0:pad,:,:])
+      right_sum = torch.sum(tgt_field[0,-pad:,:,:])
+      top_sum = torch.sum(tgt_field[0,:,0:pad,:])
+      bot_sum = torch.sum(tgt_field[0,:,-pad:,:])
+      if left_sum == 0 or right_sum == 0 or top_sum == 0 or bot_sum == 0:
+        padded_tgt_bbox_fine = deepcopy(bbox)
+        tgt_field = self.get_field(
+          tgt_field_cv,
+          tgt_z,
+          padded_tgt_bbox_fine,
+          mip,
+          relative=True,
+          to_tensor=True,
+        ).to(device=self.device)
       tgt_field[tgt_field != tgt_field] = 0
       #HACKS
       # tgt_field = torch.zeros_like(tgt_field)
