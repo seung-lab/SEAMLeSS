@@ -772,6 +772,7 @@ class Aligner:
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
     tgt_field = None
+    do_pad = True
     if tgt_field_cv is not None:
       # Fetch vector field of target section
       tgt_field = self.get_field(
@@ -787,6 +788,7 @@ class Aligner:
       top_sum = torch.sum(tgt_field[0,:,0:pad,:])
       bot_sum = torch.sum(tgt_field[0,:,-pad:,:])
       if left_sum == 0 or right_sum == 0 or top_sum == 0 or bot_sum == 0:
+        do_pad = False
         padded_tgt_bbox_fine = deepcopy(bbox)
         tgt_field = self.get_field(
           tgt_field_cv,
@@ -952,29 +954,36 @@ class Aligner:
           )
         )
 
-      # model produces field in relative coordinates
-      accum_field = model(
-        src_patch,
-        tgt_patch,
-        tgt_field=torch.zeros_like(coarse_field),
-        src_field=coarse_field,
-        src_mask=norm_patch
-      )
-
-      if not isinstance(accum_field, torch.Tensor):
-          accum_field = accum_field[0]
-
-      if torch.cuda.is_available():
-        print(
-          "GPU memory allocated: {}, cached: {}".format(
-            torch.cuda.memory_allocated(), torch.cuda.memory_cached()
-          )
+      if torch.sum(src_patch) == 0:
+        accum_field = torch.zeros_like(tgt_field).permute(0,2,3,1)
+        if do_pad:
+          accum_field = accum_field[:, pad:-pad, pad:-pad, :]
+        accum_field += combined_distance_fine_snap.to(device=self.device)
+        accum_field = accum_field.data.cpu().numpy()
+      else:
+        # model produces field in relative coordinates
+        accum_field = model(
+          src_patch,
+          tgt_patch,
+          tgt_field=torch.zeros_like(coarse_field),
+          src_field=coarse_field,
+          src_mask=norm_patch
         )
 
-      accum_field = self.rel_to_abs_residual(accum_field, mip)
-      accum_field = accum_field[:, pad:-pad, pad:-pad, :]
-      accum_field += combined_distance_fine_snap.to(device=self.device)
-      accum_field = accum_field.data.cpu().numpy()
+        if not isinstance(accum_field, torch.Tensor):
+            accum_field = accum_field[0]
+
+        if torch.cuda.is_available():
+          print(
+            "GPU memory allocated: {}, cached: {}".format(
+              torch.cuda.memory_allocated(), torch.cuda.memory_cached()
+            )
+          )
+
+        accum_field = self.rel_to_abs_residual(accum_field, mip)
+        accum_field = accum_field[:, pad:-pad, pad:-pad, :]
+        accum_field += combined_distance_fine_snap.to(device=self.device)
+        accum_field = accum_field.data.cpu().numpy()
 
       # clear unused, cached memory so that other processes can allocate it
       if torch.cuda.is_available():
