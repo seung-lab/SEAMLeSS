@@ -647,6 +647,16 @@ class Aligner:
         print('Displacement adjustment: {} px'.format(distance))
         distance = (distance // (2 ** mip)) * 2 ** mip
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+        del prev_coarse_field
+        del prev_field
+        del cur_field
+        del cur_coarse_field
+        del src_raw_patch
+        del tgt_raw_patch
+        del src_rendered_image
+        del tgt_rendered_image
+        del field
+
     else:
         distance = torch.Tensor([0, 0])
         new_bbox = padded_bbox
@@ -675,6 +685,7 @@ class Aligner:
       print("Process {} acquired GPU lock".format(os.getpid()))
 
     try:
+      torch.cuda.empty_cache()
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       zero_fieldC = torch.zeros([1, src_patch.size()[2], src_patch.size()[3], 2], dtype=torch.float32, device=self.device)
       # import ipdb
@@ -959,7 +970,6 @@ class Aligner:
         if do_pad:
           accum_field = accum_field[:, pad:-pad, pad:-pad, :]
         accum_field += combined_distance_fine_snap.to(device=self.device)
-        accum_field = accum_field.data.cpu().numpy()
       else:
         # model produces field in relative coordinates
         accum_field = model(
@@ -983,7 +993,7 @@ class Aligner:
         accum_field = self.rel_to_abs_residual(accum_field, mip)
         accum_field = accum_field[:, pad:-pad, pad:-pad, :]
         accum_field += combined_distance_fine_snap.to(device=self.device)
-        accum_field = accum_field.data.cpu().numpy()
+      accum_field = accum_field.data.cpu().numpy()
 
       # clear unused, cached memory so that other processes can allocate it
       if torch.cuda.is_available():
