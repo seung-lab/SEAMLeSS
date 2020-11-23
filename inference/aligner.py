@@ -1002,6 +1002,7 @@ class Aligner:
         accum_field = torch.zeros_like(tgt_field).permute(0,2,3,1)
         if do_pad:
           accum_field = accum_field[:, pad:-pad, pad:-pad, :]
+        accum_field += combined_distance_fine_snap.to(device=self.device)
       else:
         # metroem model returns absolute residuals at MIP-level of input image
         accum_field = model(
