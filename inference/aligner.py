@@ -658,6 +658,17 @@ class Aligner:
         print('Displacement adjustment: {} px'.format(distance))
         distance = (distance // (2 ** mip)) * 2 ** mip
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
+        del cur_coarse_field
+        del cur_field
+        del prev_field
+        del prev_coarse_field
+        del src_raw_patch
+        del tgt_raw_patch
+        del src_rendered_image
+        del tgt_rendered_image
+        del cur_field
+        del prev_field
+        del field
     else:
         distance = torch.Tensor([0, 0])
         new_bbox = padded_bbox
@@ -688,6 +699,7 @@ class Aligner:
       print("Process {} acquired GPU lock".format(os.getpid()))
 
     try:
+      torch.cuda.empty_cache()
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       zero_fieldC = torch.zeros([1, src_patch.size()[2], src_patch.size()[3], 2], dtype=torch.float32, device=self.device)
       # import ipdb
@@ -769,7 +781,7 @@ class Aligner:
     model = modelhouse.load_model_simple(model_path,
             finetune=True,
             pass_field=True,
-            finetune_iter=300,
+            finetune_iter=400,
             finetune_lr=3e-1,
             finetune_sm=30e0,
             checkpoint_name='test')
@@ -794,6 +806,7 @@ class Aligner:
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
     tgt_field = None
+    do_pad = True
     if tgt_field_cv is not None:
       # Fetch vector field of target section
       tgt_field = self.get_field(
@@ -809,6 +822,7 @@ class Aligner:
       top_sum = torch.sum(tgt_field[0,:,0:pad,:])
       bot_sum = torch.sum(tgt_field[0,:,-pad:,:])
       if left_sum == 0 or right_sum == 0 or top_sum == 0 or bot_sum == 0:
+        do_pad = False
         padded_tgt_bbox_fine = deepcopy(bbox)
         tgt_field = self.get_field(
           tgt_field_cv,
@@ -986,7 +1000,8 @@ class Aligner:
       tgt_field = tgt_field.permute((0,3,1,2)).field().pixels()
       if torch.sum(src_patch) == 0:
         accum_field = torch.zeros_like(tgt_field).permute(0,2,3,1)
-        accum_field = accum_field[:, pad:-pad, pad:-pad, :]
+        if do_pad:
+          accum_field = accum_field[:, pad:-pad, pad:-pad, :]
       else:
         # metroem model returns absolute residuals at MIP-level of input image
         accum_field = model(
