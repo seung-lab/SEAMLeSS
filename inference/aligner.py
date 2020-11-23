@@ -666,8 +666,6 @@ class Aligner:
         del tgt_raw_patch
         del src_rendered_image
         del tgt_rendered_image
-        del cur_field
-        del prev_field
         del field
     else:
         distance = torch.Tensor([0, 0])
