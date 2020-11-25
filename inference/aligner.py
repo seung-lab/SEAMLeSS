@@ -776,13 +776,6 @@ class Aligner:
     """
     # archive = self.get_model_archive(model_path)
     # model = archive.model
-    model = modelhouse.load_model_simple(model_path,
-            finetune=True,
-            pass_field=True,
-            finetune_iter=400,
-            finetune_lr=3e-1,
-            finetune_sm=30e0,
-            checkpoint_name='test')
     normalizer = None
     print(
       "compute_field for {0} to {1}".format(
@@ -804,24 +797,13 @@ class Aligner:
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
     tgt_field = None
-    do_pad = True
     if tgt_field_cv is not None:
-      # Fetch vector field of target section
-      tgt_field = self.get_field(
-        tgt_field_cv,
-        tgt_z,
-        padded_tgt_bbox_fine,
-        mip,
-        relative=True,
-        to_tensor=True,
-      ).to(device=self.device)
-      left_sum = torch.sum(tgt_field[0,0:pad,:,:])
-      right_sum = torch.sum(tgt_field[0,-pad:,:,:])
-      top_sum = torch.sum(tgt_field[0,:,0:pad,:])
-      bot_sum = torch.sum(tgt_field[0,:,-pad:,:])
-      if left_sum == 0 or right_sum == 0 or top_sum == 0 or bot_sum == 0:
-        do_pad = False
-        padded_tgt_bbox_fine = deepcopy(bbox)
+      if bbox.m0_x[0] < -512 or bbox.m0_y[0] < -512:
+        greater_dist = max(-512 - bbox.m0_x[0], -512 - bbox.m0_y[0])
+        bbox_small = deepcopy(bbox)
+        bbox_small.m0_x = (bbox_small.m0_x[0] + greater_dist, bbox_small.m0_x[1])
+        bbox_small.m0_y = (bbox_small.m0_y[0] + greater_dist, bbox_small.m0_y[1])
+        padded_tgt_bbox_fine = bbox_small
         tgt_field = self.get_field(
           tgt_field_cv,
           tgt_z,
@@ -830,6 +812,30 @@ class Aligner:
           relative=True,
           to_tensor=True,
         ).to(device=self.device)
+      else:
+        # Fetch vector field of target section
+        tgt_field = self.get_field(
+          tgt_field_cv,
+          tgt_z,
+          padded_tgt_bbox_fine,
+          mip,
+          relative=True,
+          to_tensor=True,
+        ).to(device=self.device)
+        left_sum = torch.sum(tgt_field[0,0:pad,:,:])
+        right_sum = torch.sum(tgt_field[0,-pad:,:,:])
+        top_sum = torch.sum(tgt_field[0,:,0:pad,:])
+        bot_sum = torch.sum(tgt_field[0,:,-pad:,:])
+        if left_sum == 0 or right_sum == 0 or top_sum == 0 or bot_sum == 0:
+          padded_tgt_bbox_fine = deepcopy(bbox)
+          tgt_field = self.get_field(
+            tgt_field_cv,
+            tgt_z,
+            padded_tgt_bbox_fine,
+            mip,
+            relative=True,
+            to_tensor=True,
+          ).to(device=self.device)
       tgt_field[tgt_field != tgt_field] = 0
       #HACKS
       # tgt_field = torch.zeros_like(tgt_field)
@@ -855,9 +861,11 @@ class Aligner:
           tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
         else:
           tgt_coarse_field_inv = tgt_coarse_field.inverse().down(mip - coarse_field_mip)
+        del tgt_coarse_field
         tgt_coarse_field_inv = tgt_coarse_field_inv.to(device='cuda')
 
         tgt_drift_field = tgt_coarse_field_inv.compose_with(tgt_field.permute(0, 3, 1, 2).field_())
+        del tgt_coarse_field_inv
         tgt_drift_field = tgt_drift_field.permute(0, 2, 3, 1)
       else:
         # Alignment without coarse field: tgt_field contains only the drift
@@ -870,26 +878,24 @@ class Aligner:
       tgt_rendered_image = grid_sample(tgt_unaligned_image, tgt_drift_field, padding_mode='zeros')
       tgt_drift_field = self.rel_to_abs_residual(tgt_drift_field, mip)
       drift_distance = self.profile_field(tgt_drift_field, [tgt_rendered_image])
+      del tgt_drift_field
       drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
       drift_distance_coarse_snap = (
         drift_distance // (2 ** max(mip, coarse_field_mip))
       ) * 2 ** max(mip, coarse_field_mip)
 
-      tgt_field = self.rel_to_abs_residual(tgt_field, mip)
-      tgt_distance = self.profile_field(tgt_field)
-      tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
-      tgt_field -= tgt_distance_fine_snap.to(device=self.device)
-      tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
-      tgt_field = torch.zeros_like(tgt_field)
+      # tgt_field = self.rel_to_abs_residual(tgt_field, mip)
+      # tgt_distance = self.profile_field(tgt_field)
+      # tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
+      # tgt_field -= tgt_distance_fine_snap.to(device=self.device)
+      # tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
+      # tgt_field = torch.zeros_like(tgt_field)
 
-    print(
-      "Displacement adjustment TGT: {} px".format(
-        drift_distance_fine_snap,
-      )
-    )
-
-    padded_tgt_bbox_fine = self.adjust_bbox(padded_tgt_bbox_fine, tgt_distance_fine_snap.flip(0))
-    # padded_tgt_bbox_fine.uncrop(pad, mip)
+    # print(
+      # "Displacement adjustment TGT: {} px".format(
+        # drift_distance_fine_snap,
+      # )
+    # )
 
     if coarse_field_cv is not None:
       # Fetch coarse alignment
@@ -908,6 +914,12 @@ class Aligner:
         relative=False,
         to_tensor=True,
       ).to(device=self.device)
+      if padded_src_bbox_coarse_field.m0_x[0] < -512 or padded_src_bbox_coarse_field.m0_y[0] < -512:
+        smaller_coord = min(padded_src_bbox_coarse_field.m0_x[0], padded_src_bbox_coarse_field.m0_y[0])
+        adjust = - (smaller_coord + 512) // (2 ** coarse_field_mip)
+        profiled_field = self.profile_field(coarse_field).to(device=self.device)
+        coarse_field[0,:adjust,:,:] = profiled_field
+        coarse_field[0,:,:adjust,:] = profiled_field
       coarse_field = coarse_field.permute(0, 3, 1, 2)
       # coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bilinear')(coarse_field)
       if coarse_field_mip >= mip:
@@ -979,6 +991,17 @@ class Aligner:
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
 
+    finetune = True
+    if torch.sum(src_patch) == 0:
+      finetune = False
+    model = modelhouse.load_model_simple(model_path,
+      finetune=finetune,
+      pass_field=True,
+      finetune_iter=400,
+      finetune_lr=3e-1,
+      finetune_sm=30e0,
+      checkpoint_name='test')
+
     # Running the model is the only part that will increase memory consumption
     # significantly - only incrementing the GPU lock here should be sufficient.
     if self.gpu_lock is not None:
@@ -988,41 +1011,38 @@ class Aligner:
       # print("Process {} acquired GPU lock. Locked time: {0:.2f} sec".format(os.getpid(), end - start))
 
     try:
+      torch.cuda.empty_cache()
       print(
         "GPU memory allocated: {}, cached: {}".format(
           torch.cuda.memory_allocated(), torch.cuda.memory_cached()
         )
       )
 
+
       coarse_field = coarse_field.permute((0,3,1,2)).field().pixels()
+      tgt_field = torch.zeros([1, tgt_patch.size()[2], tgt_patch.size()[3], 2], dtype=torch.float32, device=self.device)
       tgt_field = tgt_field.permute((0,3,1,2)).field().pixels()
-      if torch.sum(src_patch) == 0:
-        accum_field = torch.zeros_like(tgt_field).permute(0,2,3,1)
-        if do_pad:
-          accum_field = accum_field[:, pad:-pad, pad:-pad, :]
-        accum_field += combined_distance_fine_snap.to(device=self.device)
-      else:
-        # metroem model returns absolute residuals at MIP-level of input image
-        accum_field = model(
-          src_img=src_patch,
-          tgt_img=tgt_patch,
-          src_agg_field=coarse_field,
-          tgt_agg_field=tgt_field,
-          train=False
-        ).from_pixels().permute(0,2,3,1)
+      # metroem model returns absolute residuals at MIP-level of input image
+      accum_field = model(
+        src_img=src_patch,
+        tgt_img=tgt_patch,
+        src_agg_field=coarse_field,
+        tgt_agg_field=tgt_field,
+        train=False
+      ).from_pixels().permute(0,2,3,1)
 
-        if not isinstance(accum_field, torch.Tensor):
-            accum_field = accum_field[0]
+      if not isinstance(accum_field, torch.Tensor):
+        accum_field = accum_field[0]
 
-        print(
-          "GPU memory allocated: {}, cached: {}".format(
-            torch.cuda.memory_allocated(), torch.cuda.memory_cached()
-          )
+      print(
+        "GPU memory allocated: {}, cached: {}".format(
+          torch.cuda.memory_allocated(), torch.cuda.memory_cached()
         )
-        accum_field[accum_field != accum_field] = 0
-        accum_field = self.rel_to_abs_residual(accum_field, mip)
-        accum_field = accum_field[:, pad:-pad, pad:-pad, :]
-        accum_field += combined_distance_fine_snap.to(device=self.device)
+      )
+      accum_field[accum_field != accum_field] = 0
+      accum_field = self.rel_to_abs_residual(accum_field, mip)
+      accum_field = accum_field[:, pad:-pad, pad:-pad, :]
+      accum_field += combined_distance_fine_snap.to(device=self.device)
       accum_field = accum_field.data.cpu().numpy()
 
       # clear unused, cached memory so that other processes can allocate it
