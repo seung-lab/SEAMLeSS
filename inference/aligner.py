@@ -786,21 +786,12 @@ class Aligner:
     do_pad = True
     if tgt_field_cv is not None:
       # Fetch vector field of target section
-      tgt_field = self.get_field(
-        tgt_field_cv,
-        tgt_z,
-        padded_tgt_bbox_fine,
-        mip,
-        relative=True,
-        to_tensor=True,
-      ).to(device=self.device)
-      left_sum = torch.sum(tgt_field[0,0:pad,:,:])
-      right_sum = torch.sum(tgt_field[0,-pad:,:,:])
-      top_sum = torch.sum(tgt_field[0,:,0:pad,:])
-      bot_sum = torch.sum(tgt_field[0,:,-pad:,:])
-      if left_sum == 0 or right_sum == 0 or top_sum == 0 or bot_sum == 0:
-        do_pad = False
-        padded_tgt_bbox_fine = deepcopy(bbox)
+      if bbox.m0_x[0] < -512 or bbox.m0_y[0] < -512:
+        greater_dist = max(-512 - bbox.m0_x[0], -512 - bbox.m0_y[0])
+        bbox_small = deepcopy(bbox)
+        bbox_small.m0_x = (bbox_small.m0_x[0] + greater_dist, bbox_small.m0_x[1])
+        bbox_small.m0_y = (bbox_small.m0_y[0] + greater_dist, bbox_small.m0_y[1])
+        padded_tgt_bbox_fine = bbox_small
         tgt_field = self.get_field(
           tgt_field_cv,
           tgt_z,
@@ -809,6 +800,30 @@ class Aligner:
           relative=True,
           to_tensor=True,
         ).to(device=self.device)
+      else:
+        # Fetch vector field of target section
+        tgt_field = self.get_field(
+          tgt_field_cv,
+          tgt_z,
+          padded_tgt_bbox_fine,
+          mip,
+          relative=True,
+          to_tensor=True,
+        ).to(device=self.device)
+        left_sum = torch.sum(tgt_field[0,0:pad,:,:])
+        right_sum = torch.sum(tgt_field[0,-pad:,:,:])
+        top_sum = torch.sum(tgt_field[0,:,0:pad,:])
+        bot_sum = torch.sum(tgt_field[0,:,-pad:,:])
+        if left_sum == 0 or right_sum == 0 or top_sum == 0 or bot_sum == 0:
+          padded_tgt_bbox_fine = deepcopy(bbox)
+          tgt_field = self.get_field(
+            tgt_field_cv,
+            tgt_z,
+            padded_tgt_bbox_fine,
+            mip,
+            relative=True,
+            to_tensor=True,
+          ).to(device=self.device)
       #HACKS
       # tgt_field = torch.zeros_like(tgt_field)
 
@@ -881,6 +896,12 @@ class Aligner:
         relative=False,
         to_tensor=True,
       ).to(device=self.device)
+      if padded_src_bbox_coarse_field.m0_x[0] < -512 or padded_src_bbox_coarse_field.m0_y[0] < -512:
+        smaller_coord = min(padded_src_bbox_coarse_field.m0_x[0], padded_src_bbox_coarse_field.m0_y[0])
+        adjust = - (smaller_coord + 512) // (2 ** coarse_field_mip)
+        profiled_field = self.profile_field(coarse_field).to(device=self.device)
+        coarse_field[0,:adjust,:,:] = profiled_field
+        coarse_field[0,:,:adjust,:] = profiled_field
       coarse_field = coarse_field.permute(0, 3, 1, 2)
       # coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bilinear')(coarse_field)
       coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bicubic')(coarse_field)
