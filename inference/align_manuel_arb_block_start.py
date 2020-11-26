@@ -678,7 +678,7 @@ if __name__ == "__main__":
                     src_mip=mip,
                     field_mip=coarse_field_mip,
                     masks=src_masks,
-                    seethrough=args.seethrough,
+                    seethrough=False,
                     seethrough_misalign=False
                 )
                 yield from t
@@ -705,66 +705,6 @@ if __name__ == "__main__":
                 )
                 yield from t
 
-    class StarterComputeField(object):
-        def __init__(self, z_range):
-            self.z_range = z_range
-
-        def __iter__(self):
-            for z in self.z_range:
-                dst = starter_dst_lookup[z]
-                model_path = model_lookup[z]
-                bbox = bbox_lookup[z]
-                z_offset = starter_z_to_offset[z]
-                field = block_pair_fields[z_offset]
-                tgt_field = block_pair_fields[0]
-                tgt_z = z + z_offset
-                t = a.compute_field(
-                    cm,
-                    model_path,
-                    src,
-                    dst,
-                    field,
-                    z,
-                    tgt_z,
-                    bbox,
-                    mip,
-                    pad,
-                    src_masks=src_masks,
-                    tgt_masks=tgt_masks,
-                    prev_field_cv=None,
-                    prev_field_z=None,
-                    coarse_field_cv=coarse_field_cv,
-                    coarse_field_mip=coarse_field_mip,
-                    tgt_field_cv=tgt_field,
-                )
-                yield from t
-
-    class StarterRender(object):
-        def __init__(self, z_range):
-            self.z_range = z_range
-
-        def __iter__(self):
-            for z in self.z_range:
-                dst = starter_dst_lookup[z]
-                z_offset = starter_z_to_offset[z]
-                fine_field = block_pair_fields[z_offset]
-                bbox = bbox_lookup[z]
-                t = a.render(
-                    cm,
-                    src,
-                    fine_field,
-                    dst,
-                    src_z=z,
-                    field_z=z,
-                    dst_z=z,
-                    bbox=bbox,
-                    src_mip=mip,
-                    field_mip=mip,
-                    masks=src_masks,
-                    seethrough=args.seethrough,
-                    seethrough_misalign=args.seethrough_misalign
-                )
-                yield from t
 
     class BlockAlignComputeField(object):
         def __init__(self, z_range, block_starts_for_range):
@@ -922,27 +862,39 @@ if __name__ == "__main__":
 
         def __iter__(self):
           for z in self.z_range:
-            influencing_blocks = influencing_blocks_lookup[z]
-            factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
-            factors += [1.]
-            print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
-                                                                   factors))
-            bbox = bbox_lookup[z]
-            field = block_vvote_field
-            if z in block_start_lookup:
-                z_block_start = block_start_lookup[z]
-                if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
-                    field = block_overlap_field
-            if write_composing_field:
-                t = a.multi_compose(cm, [composing_field, field], compose_field, [z, z], z, bbox,
-                                mip, mip, [1., 1.], pad)
-                yield from t
+            if z == args.z_start:
+                t = a.cloud_upsample_field(
+                    cm,
+                    coarse_field_cv,
+                    compose_field,
+                    src_z=z,
+                    dst_z=z,
+                    bbox=bbox,
+                    src_mip=coarse_field_mip,
+                    dst_mip=mip
+                )
             else:
-                cv_list = [broadcasting_field]*len(influencing_blocks) + [field]
-                z_list = list(influencing_blocks) + [z]
-                t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
-                                    mip, mip, factors, pad)
-                yield from t
+                influencing_blocks = influencing_blocks_lookup[z]
+                factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
+                factors += [1.]
+                print('z={}\ninfluencing_blocks {}\nfactors {}'.format(z, influencing_blocks,
+                                                                    factors))
+                bbox = bbox_lookup[z]
+                field = block_vvote_field
+                if z in block_start_lookup:
+                    z_block_start = block_start_lookup[z]
+                    if (z - args.block_overlap + 1) in block_start_lookup and block_start_lookup[z - args.block_overlap + 1] != z_block_start:
+                        field = block_overlap_field
+                if write_composing_field:
+                    t = a.multi_compose(cm, [composing_field, field], compose_field, [z, z], z, bbox,
+                                    mip, mip, [1., 1.], pad)
+                    yield from t
+                else:
+                    cv_list = [broadcasting_field]*len(influencing_blocks) + [field]
+                    z_list = list(influencing_blocks) + [z]
+                    t = a.multi_compose(cm, cv_list, compose_field, z_list, z, bbox,
+                                        mip, mip, factors, pad)
+                    yield from t
 
     class StitchFinalRender(object):
         def __init__(self, z_range):
@@ -951,13 +903,8 @@ if __name__ == "__main__":
         def __iter__(self):
           for z in self.z_range:
             bbox = bbox_lookup[z]
-            if z == args.z_start:
-                field = block_pair_fields[0]
-                field_mip = mip
-                # field_mip = coarse_field_mip
-            else:
-                field = compose_field
-                field_mip = mip
+            field = compose_field
+            field_mip = mip
             t = a.render(cmr, src, field, final_dst, src_z=z,
                          field_z=z, dst_z=z, bbox=bbox,
                          src_mip=final_render_mip, field_mip=field_mip, pad=final_render_pad,
@@ -973,8 +920,6 @@ if __name__ == "__main__":
                             field_z=z, dst_z=z, bbox=bbox,
                             src_mip=mip, field_mip=mip, pad=final_render_pad)
                 tasks = tasks + t_mask
-                # yield from t + t_mask
-            # else:
             if write_other_masks:
                 if len(src_masks) > 0:
                     for cur_mask_cv_mip in mask_cv_dict:
@@ -1307,14 +1252,9 @@ if __name__ == "__main__":
         if do_alignment:
             print("COPY STARTING SECTION OF ALL BLOCKS")
             execute(StarterCopy, copy_range)
-        if do_alignment:
             if coarse_field_cv is not None:
                 print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
                 execute(StarterUpsampleField, copy_range)
-            print("ALIGN STARTER SECTIONS FOR EACH BLOCK")
-            execute(StarterComputeField, starter_range)
-        if do_alignment:
-            execute(StarterRender, starter_range)
         pass
     else:
         recover_status_from_file(args.recover_status_from_file)
