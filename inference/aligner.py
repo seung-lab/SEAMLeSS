@@ -739,7 +739,8 @@ class Aligner:
     prev_field_z=None,
     coarse_field_cv=None,
     coarse_field_mip=None,
-    tgt_field_cv=None
+    tgt_field_cv=None,
+    write_src_patch_cv=None
   ):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
@@ -786,9 +787,9 @@ class Aligner:
     do_pad = True
     if tgt_field_cv is not None:
       # Fetch vector field of target section
-      if bbox.m0_x[0] < -512 or bbox.m0_y[0] < -512:
-        greater_dist = max(-512 - bbox.m0_x[0], -512 - bbox.m0_y[0])
-        bbox_small = deepcopy(bbox)
+      if padded_tgt_bbox_fine.m0_x[0] < 0 or padded_tgt_bbox_fine.m0_y[0] < 0:
+        greater_dist = max(- padded_tgt_bbox_fine.m0_x[0], - padded_tgt_bbox_fine.m0_y[0])
+        bbox_small = deepcopy(padded_tgt_bbox_fine)
         bbox_small.m0_x = (bbox_small.m0_x[0] + greater_dist, bbox_small.m0_x[1])
         bbox_small.m0_y = (bbox_small.m0_y[0] + greater_dist, bbox_small.m0_y[1])
         padded_tgt_bbox_fine = bbox_small

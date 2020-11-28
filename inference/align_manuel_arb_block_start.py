@@ -863,6 +863,7 @@ if __name__ == "__main__":
         def __iter__(self):
           for z in self.z_range:
             if z == args.z_start:
+                bbox = bbox_lookup[z]
                 t = a.cloud_upsample_field(
                     cm,
                     coarse_field_cv,
@@ -873,6 +874,7 @@ if __name__ == "__main__":
                     src_mip=coarse_field_mip,
                     dst_mip=mip
                 )
+                yield from t
             else:
                 influencing_blocks = influencing_blocks_lookup[z]
                 factors = [interpolate(z, bs, decay_dist) for bs in influencing_blocks]
@@ -1254,8 +1256,7 @@ if __name__ == "__main__":
             execute(StarterCopy, copy_range)
             if coarse_field_cv is not None:
                 print("UPSAMPLE STARTING SECTION COARSE FIELDS OF ALL BLOCKS")
-                execute(StarterUpsampleField, copy_range)
-        pass
+                # execute(StarterUpsampleField, copy_range)
     else:
         recover_status_from_file(args.recover_status_from_file)
 
