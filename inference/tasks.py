@@ -517,6 +517,7 @@ class RenderTask(RegisteredTask):
 
              if self.seethrough_misalign:
                  prev_image_md = prev_image.clone()
+                 prev_image_md[norm_image==0] = 0
                  misalignment_region = misalignment_detector(image, prev_image_md, mip=4,
                                                              threshold=80)
                  misalignment_region[image[0,0,:,:] == 0] = 0
@@ -527,7 +528,7 @@ class RenderTask(RegisteredTask):
                    seethrough_limit = 2
                    misalignment_fill_in[misalignment_count_patch >= seethrough_limit] = 0
                    next_misalignment_count_patch = np.zeros(shape=misalignment_count_patch.shape, dtype=np.uint8)
-                   next_misalignment_count_patch[misalignment_region] = misalignment_count_patch[misalignment_region] + 1
+                   next_misalignment_count_patch[misalignment_fill_in] = misalignment_count_patch[misalignment_fill_in] + 1
                    aligner.save_image(next_misalignment_count_patch, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
                  seethrough_region[misalignment_fill_in] = True
                  while len(image.shape) > len(misalignment_fill_in.shape):
