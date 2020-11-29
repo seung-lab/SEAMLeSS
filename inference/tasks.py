@@ -356,11 +356,11 @@ class RenderTask(RegisteredTask):
                masks=[],
                affine=None, use_cpu=False, pad=256,
                seethrough=False, coarsen_small_folds=1, coarsen_big_folds=15,
-               coarsen_misalign=128, seethrough_cv=None,
+               coarsen_misalign=32, seethrough_cv=None,
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=False,
                blackout_op='none', report=False, brighten_misalign=False, block_start=None,
-               misalignment_mask_cv=None, orig_image_cv=None):
+               misalignment_mask_cv=None, orig_image_cv=None, misalignment_count_cv=None):
     if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
@@ -368,7 +368,7 @@ class RenderTask(RegisteredTask):
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
                       seethrough_folds, seethrough_misalign, seethrough_black,
                       big_fold_threshold, seethrough_renormalize, blackout_op, report,
-                      brighten_misalign, block_start, misalignment_mask_cv, orig_image_cv)
+                      brighten_misalign, block_start, misalignment_mask_cv, orig_image_cv, misalignment_count_cv)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -397,6 +397,10 @@ class RenderTask(RegisteredTask):
     coarsen_misalign = self.coarsen_misalign
     seethrough_renormalize = self.seethrough_renormalize
     affine = None
+
+    misalignment_count_cv = None
+    if self.misalignment_count_cv is not None:
+      misalignment_count_cv = DCV(self.misalignment_count_cv)
 
     if self.seethrough_cv is None:
         seethrough_cv = dst_cv
@@ -456,6 +460,10 @@ class RenderTask(RegisteredTask):
                                        patch_bbox, src_mip,
                                        masks=[],
                                        to_tensor=True, normalizer=None)
+         if misalignment_count_cv is not None:
+           misalignment_count_patch = aligner.get_masked_image(misalignment_count_cv, dst_z-1, 
+            patch_bbox, src_mip, masks=[], to_tensor=True, normalizer=None)
+
          seethrough_region = torch.zeros_like(image).byte()
          preseethru_blackout = torch.zeros_like(image).byte()
          prev_image_tissue = get_threshold_tissue_mask(prev_image)
@@ -509,12 +517,18 @@ class RenderTask(RegisteredTask):
 
              if self.seethrough_misalign:
                  prev_image_md = prev_image.clone()
-                 misalignment_region = misalignment_detector(image, prev_image, mip=4,
+                 misalignment_region = misalignment_detector(image, prev_image_md, mip=4,
                                                              threshold=80)
                  misalignment_region[image[0,0,:,:] == 0] = 0
              #misalignment_region = torch.zeros_like(misalignment_region)
                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
                  misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
+                 if misalignment_count_cv is not None:
+                   seethrough_limit = 2
+                   misalignment_fill_in[misalignment_count_patch >= seethrough_limit] = 0
+                   next_misalignment_count_patch = np.zeros(shape=misalignment_count_patch.shape, dtype=np.uint8)
+                   next_misalignment_count_patch[misalignment_region] = misalignment_count_patch[misalignment_region] + 1
+                   aligner.save_image(next_misalignment_count_patch, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
                  seethrough_region[misalignment_fill_in] = True
                  while len(image.shape) > len(misalignment_fill_in.shape):
                      misalignment_fill_in.unsqueeze(0)

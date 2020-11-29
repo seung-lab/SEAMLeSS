@@ -287,7 +287,9 @@ if __name__ == "__main__":
 
     # Create dst CloudVolumes for odd & even blocks, since blocks overlap by tgt_radius
     block_dsts = {}
+    misalignment_dsts = {}
     block_types = ["even", "odd"]
+    misalignment_block_types = ["misalignment_even", "misalignment_odd"]
     for i, block_type in enumerate(block_types):
         block_dst = cm.create(
             join(render_dst, "image_blocks", block_type),
@@ -297,6 +299,15 @@ if __name__ == "__main__":
             overwrite=do_alignment,
         )
         block_dsts[i] = block_dst.path
+    for i, block_type in enumerate(misalignment_block_types):
+        misalignment_block_dst = cm.create(
+            join(render_dst, "image_blocks", block_type),
+            data_type='uint8',
+            num_channels=1,
+            fill_missing=True,
+            overwrite=do_alignment,
+        )
+        misalignment_dsts[i] = misalignment_block_dst.path
 
     # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
     bbox_lookup = {}
@@ -408,6 +419,7 @@ if __name__ == "__main__":
     block_dst_lookup = {}
     block_start_lookup = {}
     starter_dst_lookup = {}
+    misalignment_dst_lookup = {}
     copy_offset_to_z_range = {0: deepcopy(block_starts)}
     overlap_copy_range = set()
     starter_offset_to_z_range = {i: set() for i in range(min_offset, 0)}
@@ -422,6 +434,7 @@ if __name__ == "__main__":
             if i > 0:
                 block_start_lookup[z] = bs
                 block_dst_lookup[z] = block_dsts[even_odd]
+                misalignment_dst_lookup[z] = misalignment_dsts[even_odd]
                 block_offset_to_z_range[i].add(z)
                 for tgt_offset in vvote_lookup[z]:
                     tgt_z = z + tgt_offset
@@ -763,6 +776,7 @@ if __name__ == "__main__":
                 z = self.z_range[i]
                 block_start = self.block_starts[i]
                 dst = block_dst_lookup[self.block_starts[i]+1]
+                misalignment_count_cv = misalignment_dst_lookup[self.block_starts[i]+1]
                 bbox = bbox_lookup[z]
                 misalignment_mask_cv_to_use = None
                 orig_image_cv = None
@@ -797,7 +811,8 @@ if __name__ == "__main__":
                     report=True,
                     block_start=block_start,
                     misalignment_mask_cv=misalignment_mask_cv_to_use,
-                    orig_image_cv=orig_image_cv
+                    orig_image_cv=orig_image_cv,
+                    misalignment_count_cv=misalignment_count_cv
                 )
                 yield from t
 

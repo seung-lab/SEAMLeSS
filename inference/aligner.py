@@ -1669,7 +1669,7 @@ class Aligner:
              return_iterator= False, pad=256, seethrough=False,
              seethrough_misalign=False,
              blackout_op='none', report=False, brighten_misalign=False, block_start=None,
-             misalignment_mask_cv=None, orig_image_cv=None):
+             misalignment_mask_cv=None, orig_image_cv=None, misalignment_count_cv=None):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1719,7 +1719,8 @@ class Aligner:
                        blackout_op=blackout_op,
                        report=report, block_start=block_start,
                        misalignment_mask_cv=misalignment_mask_cv,
-                       orig_image_cv=orig_image_cv)
+                       orig_image_cv=orig_image_cv,
+                       misalignment_count_cv=misalignment_count_cv)
     if return_iterator:
         return RenderTaskIterator(chunks,0, len(chunks))
     else:
@@ -1735,7 +1736,8 @@ class Aligner:
                            blackout_op=blackout_op,
                            report=report, block_start=block_start,
                            misalignment_mask_cv=misalignment_mask_cv,
-                           orig_image_cv=orig_image_cv))
+                           orig_image_cv=orig_image_cv,
+                           misalignment_count_cv=misalignment_count_cv))
         return batch
 
   def render_masks(self, cm, mask_dst_cv, field_cv, field_z, src_z, dst_z, bbox, dst_mip,
