@@ -188,6 +188,7 @@ if __name__ == "__main__":
         action='store_true',
         help="If True,brightens misalignments seenthrough"
     )
+    parser.add_argument('--write_patches', action='store_true')
 
 
     args = parse_args(parser)
@@ -222,6 +223,7 @@ if __name__ == "__main__":
     write_misalignment_masks = args.write_misalignment_masks
     write_other_masks = args.write_other_masks
     write_orig_cv = args.write_orig_cv
+    write_patches = args.write_patches
 
     if write_misalignment_masks:
         # Need composing field to produce misalignment masks
@@ -308,6 +310,30 @@ if __name__ == "__main__":
             overwrite=do_alignment,
         )
         misalignment_dsts[i] = misalignment_block_dst.path
+    if write_patches:
+        src_patch_dsts = {}
+        src_patch_block_types = ["src_patch_even", "src_patch_odd"]
+        for i, block_type in enumerate(src_patch_block_types):
+            src_patch_dst = cm.create(
+                join(render_dst, "image_blocks", block_type),
+                data_type=args.img_dtype,
+                num_channels=1,
+                fill_missing=True,
+                overwrite=do_alignment,
+            )
+            src_patch_dsts[i] = src_patch_dst.path
+
+        tgt_patch_dsts = {}
+        tgt_patch_block_types = ["tgt_patch_even", "tgt_patch_odd"]
+        for i, block_type in enumerate(tgt_patch_block_types):
+            tgt_patch_dst = cm.create(
+                join(render_dst, "image_blocks", block_type),
+                data_type=args.img_dtype,
+                num_channels=1,
+                fill_missing=True,
+                overwrite=do_alignment,
+            )
+            tgt_patch_dsts[i] = tgt_patch_dst.path
 
     # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
     bbox_lookup = {}
@@ -420,6 +446,8 @@ if __name__ == "__main__":
     block_start_lookup = {}
     starter_dst_lookup = {}
     misalignment_dst_lookup = {}
+    src_patch_lookup = {}
+    tgt_patch_lookup = {}
     copy_offset_to_z_range = {0: deepcopy(block_starts)}
     overlap_copy_range = set()
     starter_offset_to_z_range = {i: set() for i in range(min_offset, 0)}
@@ -434,6 +462,9 @@ if __name__ == "__main__":
             if i > 0:
                 block_start_lookup[z] = bs
                 block_dst_lookup[z] = block_dsts[even_odd]
+                if write_patches:
+                    src_patch_lookup[z] = src_patch_dsts[even_odd]
+                    tgt_patch_lookup[z] = tgt_patch_dsts[even_odd]
                 misalignment_dst_lookup[z] = misalignment_dsts[even_odd]
                 block_offset_to_z_range[i].add(z)
                 for tgt_offset in vvote_lookup[z]:
@@ -743,6 +774,11 @@ if __name__ == "__main__":
                         tgt_field = block_overlap_field
                     else:
                         tgt_field = block_vvote_field
+                    write_src_patch_cv = None
+                    write_tgt_patch_cv = None
+                    if write_patches:
+                        write_src_patch_cv = src_patch_lookup[self.block_starts[i]+1]
+                        write_tgt_patch_cv = tgt_patch_lookup[self.block_starts[i]+1]
                     t = a.compute_field(
                         cm,
                         model_path,
@@ -762,7 +798,9 @@ if __name__ == "__main__":
                         coarse_field_mip=coarse_field_mip,
                         tgt_field_cv=tgt_field,
                         report=True,
-                        block_start=block_start
+                        block_start=block_start,
+                        write_src_patch_cv=write_src_patch_cv,
+                        write_tgt_patch_cv=write_tgt_patch_cv
                     )
                     yield from t
 

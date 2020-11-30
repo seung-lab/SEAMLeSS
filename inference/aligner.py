@@ -220,14 +220,14 @@ class Aligner:
     return mask
 
   def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None,
-                dst_mip=None):
+                dst_mip=None, to_float=True):
     print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
     start = time()
     if dst_mip == None:
         d_mip = mip
     else:
         d_mip = dst_mip
-    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=d_mip, to_float=True,
+    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=d_mip, to_float=to_float,
                              to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
@@ -740,7 +740,8 @@ class Aligner:
     coarse_field_cv=None,
     coarse_field_mip=None,
     tgt_field_cv=None,
-    write_src_patch_cv=None
+    write_src_patch_cv=None,
+    write_tgt_patch_cv=None
   ):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
@@ -951,7 +952,8 @@ class Aligner:
       mask_op='data',
       return_mask=True,
       blackout=False
-    )
+    )      
+
     norm_image_cv = DCV('gs://zetta_aibs_mouse_unaligned/normalization/mip5_run/img/img_norm')
     norm_patch = self.get_composite_image(norm_image_cv, [src_z], padded_src_bbox_fine, mip,
                                 masks=[],
@@ -970,6 +972,20 @@ class Aligner:
     )
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
+
+    if write_src_patch_cv is not None:
+      src_patch_clone = torch.clone(src_patch)
+      src_patch_clone = src_patch_clone[:,pad:-pad,pad:-pad,:]
+      src_patch_clone = src_patch_clone.cpu().numpy()
+      src_patch_clone = np.transpose()
+      self.save_image(src_patch_clone, write_src_patch_cv, bbox, mip)
+
+    if write_tgt_patch_cv is not None:
+      tgt_patch_clone = torch.clone(tgt_patch)
+      tgt_patch_clone = tgt_patch_clone[:,pad:-pad,pad:-pad,:]
+      tgt_patch_clone = tgt_patch_clone.cpu().numpy()
+      tgt_patch_clone = np.transpose()
+      self.save_image(tgt_patch_clone, write_tgt_patch_cv, bbox, mip)
 
     # Running the model is the only part that will increase memory consumption
     # significantly - only incrementing the GPU lock here should be sufficient.
@@ -1547,7 +1563,8 @@ class Aligner:
                     tgt_masks=[],
                     return_iterator=False, prev_field_cv=None, prev_field_z=None,
                     prev_field_inverse=False, coarse_field_cv=None,
-                    coarse_field_mip=0,tgt_field_cv=None,stitch=False,report=False,block_start=None,cur_field_cv=None,unaligned_cv=None):
+                    coarse_field_mip=0,tgt_field_cv=None,stitch=False,report=False,block_start=None,
+                    cur_field_cv=None,unaligned_cv=None,write_src_patch_cv=None,write_tgt_patch_cv=None):
     """Compute field to warp src section to tgt section
 
     Args:
@@ -1594,7 +1611,9 @@ class Aligner:
                                           src_mask,
                                           tgt_mask,
                                           prev_field_cv, prev_field_z, prev_field_inverse,
-                                          coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start,cur_field_cv,unaligned_cv)
+                                          coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, 
+                                          block_start,cur_field_cv,unaligned_cv,
+                                          write_src_patch_cv,write_tgt_patch_cv)
     if return_iterator:
         return ComputeFieldTaskIterator(chunks,0, len(chunks))
     else:
@@ -1605,7 +1624,9 @@ class Aligner:
                                               src_masks,
                                               tgt_masks,
                                               prev_field_cv, prev_field_z, prev_field_inverse,
-                                              coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start,cur_field_cv,unaligned_cv))
+                                              coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, 
+                                              block_start,cur_field_cv,unaligned_cv,
+                                              write_src_patch_cv,write_tgt_patch_cv))
         return batch
 
   def seethrough_stitch_render(self, cm, src_cv, dst_cv, z_start, z_end,

@@ -130,7 +130,8 @@ class ComputeFieldTask(RegisteredTask):
   def __init__(self, model_path, src_cv, tgt_cv, field_cv, src_z, tgt_z,
                      patch_bbox, mip, pad, src_masks, tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False, report=False, block_start=None, cur_field_cv=None, unaligned_cv=None):
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False, report=False, block_start=None, cur_field_cv=None, unaligned_cv=None,
+                     write_src_patch_cv=None, write_tgt_patch_cv=None):
     #src_serialized_masks = [m.to_dict() for m in src_masks]
     #tgt_serialized_masks = [m.to_dict() for m in tgt_masks]
 
@@ -144,7 +145,8 @@ class ComputeFieldTask(RegisteredTask):
                      patch_bbox, mip, pad, src_masks,
                      tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
-                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start, cur_field_cv, unaligned_cv)
+                     coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start, cur_field_cv, unaligned_cv,
+                     write_src_patch_cv, write_tgt_patch_cv)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -169,6 +171,13 @@ class ComputeFieldTask(RegisteredTask):
     }
     mip = self.mip
     pad = self.pad
+
+    write_src_patch_cv = None
+    if self.write_src_patch_cv is not None:
+      write_src_patch_cv = DCV(self.write_src_patch_cv)
+    write_tgt_patch_cv = None
+    if self.write_tgt_patch_cv is not None:
+      write_tgt_patch_cv = DCV(self.write_tgt_patch_cv)
 
 
     tgt_masks = [Mask(**m) for m in self.tgt_masks]
@@ -461,8 +470,8 @@ class RenderTask(RegisteredTask):
                                        masks=[],
                                        to_tensor=True, normalizer=None)
          if misalignment_count_cv is not None:
-           misalignment_count_patch = aligner.get_masked_image(misalignment_count_cv, dst_z-1, 
-            patch_bbox, src_mip, masks=[], to_tensor=True, normalizer=None)
+           misalignment_count_patch = aligner.get_image(misalignment_count_cv, dst_z-1, 
+            patch_bbox, src_mip, to_tensor=True, normalizer=None, to_float=False)
 
          seethrough_region = torch.zeros_like(image).byte()
          preseethru_blackout = torch.zeros_like(image).byte()
@@ -526,10 +535,10 @@ class RenderTask(RegisteredTask):
                  misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
                  if misalignment_count_cv is not None:
                    seethrough_limit = 2
-                   misalignment_fill_in[misalignment_count_patch >= seethrough_limit] = 0
-                   next_misalignment_count_patch = np.zeros(shape=misalignment_count_patch.shape, dtype=np.uint8)
-                   next_misalignment_count_patch[misalignment_fill_in] = misalignment_count_patch[misalignment_fill_in] + 1
-                   aligner.save_image(next_misalignment_count_patch, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
+                   misalignment_fill_in[(src_z - block_start - misalignment_count_patch) > seethrough_limit] = 0
+                  #  next_misalignment_count_patch = torch.zeros_like(misalignment_count_patch)
+                  #  next_misalignment_count_patch[misalignment_fill_in] = misalignment_count_patch[misalignment_fill_in] + 1
+                  #  aligner.save_image(next_misalignment_count_patch.cpu().numpy().astype(np.uint8), misalignment_count_cv, dst_z, patch_bbox, src_mip, to_uint8=False)
                  seethrough_region[misalignment_fill_in] = True
                  while len(image.shape) > len(misalignment_fill_in.shape):
                      misalignment_fill_in.unsqueeze(0)
@@ -556,6 +565,11 @@ class RenderTask(RegisteredTask):
                  if fold_blackout_region.sum() > 0:
                     print ("BLACK FOLDS")
                  image[fold_blackout_region] = 1.0 / 255.0
+
+      if misalignment_count_cv is not None:
+        next_misalignment_count_patch = (torch.zeros_like(misalignment_count_patch) + 1) * (src_z - block_start)
+        next_misalignment_count_patch[seethrough_region] = misalignment_count_patch[seethrough_region]
+        aligner.save_image(next_misalignment_count_patch.cpu().numpy().astype(np.uint8), misalignment_count_cv, dst_z, patch_bbox, src_mip, to_uint8=False)
 
       image = image.cpu().numpy()
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
