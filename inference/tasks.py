@@ -535,7 +535,7 @@ class RenderTask(RegisteredTask):
                  misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
                  if misalignment_count_cv is not None:
                    seethrough_limit = 2
-                   misalignment_fill_in[(src_z - block_start - misalignment_count_patch) > seethrough_limit] = 0
+                   misalignment_fill_in[(src_z - self.block_start - misalignment_count_patch) > seethrough_limit] = 0
                   #  next_misalignment_count_patch = torch.zeros_like(misalignment_count_patch)
                   #  next_misalignment_count_patch[misalignment_fill_in] = misalignment_count_patch[misalignment_fill_in] + 1
                   #  aligner.save_image(next_misalignment_count_patch.cpu().numpy().astype(np.uint8), misalignment_count_cv, dst_z, patch_bbox, src_mip, to_uint8=False)
@@ -567,7 +567,7 @@ class RenderTask(RegisteredTask):
                  image[fold_blackout_region] = 1.0 / 255.0
 
       if misalignment_count_cv is not None:
-        next_misalignment_count_patch = (torch.zeros_like(misalignment_count_patch) + 1) * (src_z - block_start)
+        next_misalignment_count_patch = (torch.zeros_like(misalignment_count_patch) + 1) * (src_z - self.block_start)
         next_misalignment_count_patch[seethrough_region] = misalignment_count_patch[seethrough_region]
         aligner.save_image(next_misalignment_count_patch.cpu().numpy().astype(np.uint8), misalignment_count_cv, dst_z, patch_bbox, src_mip, to_uint8=False)
 
