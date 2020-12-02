@@ -794,13 +794,14 @@ class Aligner:
           coarse_field_mip,
           relative=True,
           to_tensor=True,
-        ).to(device=self.device)
+        ).to(device='cpu')
 
         #HACKS
         # tgt_coarse_field = torch.zeros_like(tgt_coarse_field)
 
         tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_()
         tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
+        tgt_coarse_field_inv = tgt_coarse_field_inv.to(device=self.device)
 
         tgt_drift_field = tgt_coarse_field_inv.compose_with(tgt_field.permute(0, 3, 1, 2).field_())
         tgt_drift_field = tgt_drift_field.permute(0, 2, 3, 1)
