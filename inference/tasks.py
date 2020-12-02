@@ -360,7 +360,7 @@ class RenderTask(RegisteredTask):
                seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=False,
                blackout_op='none', report=False, brighten_misalign=False, block_start=None,
-               misalignment_mask_cv=None):
+               misalignment_mask_cv=None, pixel_index_cv=None, warped_src_cv=None):
     if len(masks) > 0 and isinstance(masks[0], Mask):
         masks = [m.to_dict() for m in masks]
     super(). __init__(src_cv, field_cv, dst_cv, src_z, field_z, dst_z, patch_bbox, src_mip,
@@ -368,7 +368,7 @@ class RenderTask(RegisteredTask):
                      coarsen_small_folds, coarsen_big_folds, coarsen_misalign, seethrough_cv, seethrough_offset,
                       seethrough_folds, seethrough_misalign, seethrough_black,
                       big_fold_threshold, seethrough_renormalize, blackout_op, report,
-                      brighten_misalign, block_start, misalignment_mask_cv)
+                      brighten_misalign, block_start, misalignment_mask_cv, pixel_index_cv, warped_src_cv)
 
   def execute(self, aligner):
     src_cv = DCV(self.src_cv)
@@ -397,6 +397,10 @@ class RenderTask(RegisteredTask):
     coarsen_misalign = self.coarsen_misalign
     seethrough_renormalize = self.seethrough_renormalize
     affine = None
+
+    pixel_index_cv = None
+    if self.pixel_index_cv is not None:
+      pixel_index_cv = DCV(pixel_index_cv)
 
     if self.seethrough_cv is None:
         seethrough_cv = dst_cv
@@ -430,6 +434,8 @@ class RenderTask(RegisteredTask):
                                      use_cpu=self.use_cpu, pad=self.pad,
                                      return_mask=False,
                                      blackout_mask_op=self.blackout_op)
+         if self.warped_src_cv is not None:
+          warped_src = None
       else:
          image, mask_data = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
                                      patch_bbox, src_mip, field_mip,
@@ -439,7 +445,8 @@ class RenderTask(RegisteredTask):
                                      return_mask=True,
                                      blackout_mask_op=self.blackout_op,
                                      return_mask_op='data')
-
+         if self.warped_src_cv is not None:
+          warped_src = torch.clone(image)
          prev_image = aligner.get_masked_image(seethrough_cv, dst_z-1,
                                        patch_bbox, src_mip,
                                        masks=[],
@@ -451,6 +458,11 @@ class RenderTask(RegisteredTask):
          if mask_data is not None:
              preseethru_blackout = mask_data < 0
          image[preseethru_blackout] = 0
+
+         if pixel_index_cv is not None:
+          pixel_index_target_patch = aligner.get_image(
+            pixel_index_cv, dst_z-1, patch_bbox, src_mip, to_tensor=True, normalizer=None, to_float=False
+          )
 
          if (prev_image != 0).sum() == 0:
              #undetected_plastic = ((image * 255.0 > 180.0) + (image * 255.0 < 80)) > 0
@@ -506,6 +518,9 @@ class RenderTask(RegisteredTask):
                  seethrough_region[misalignment_fill_in] = True
                  while len(image.shape) > len(misalignment_fill_in.shape):
                      misalignment_fill_in.unsqueeze(0)
+                 if pixel_index_cv is not None:
+                   seethrough_limit = 2
+                   misalignment_fill_in[(src_z - self.block_start - pixel_index_target_patch) > seethrough_limit] = 0
                  image[misalignment_fill_in] = prev_image[misalignment_fill_in]
                  if self.misalignment_mask_cv is not None:
                    misalignment_mask = np.zeros(shape=image.shape, dtype=np.uint8)
@@ -529,8 +544,16 @@ class RenderTask(RegisteredTask):
                     print ("BLACK FOLDS")
                  image[fold_blackout_region] = 1.0 / 255.0
 
+      if pixel_index_cv is not None:
+        next_pixel_index_target_patch = (torch.zeros_like(pixel_index_target_patch) + 1) * (src_z - self.block_start)
+        next_pixel_index_target_patch[seethrough_region] = pixel_index_target_patch[seethrough_region]
+        aligner.save_image(next_pixel_index_target_patch.cpu().numpy().astype(np.uint8), pixel_index_cv, dst_z, patch_bbox, src_mip, to_uint8=False)
+
       image = image.cpu().numpy()
       aligner.save_image(image, dst_cv, dst_z, patch_bbox, src_mip)
+      if self.warped_src_cv is not None and warped_src is not None:
+        warped_src_cv = DCV(self.warped_src_cv)
+        aligner.save_image(warped_src.cpu().numpy(), warped_src_cv, dst_z, patch_bbox, src_mip)
       if self.report and aligner.completed_task_queue is not None:
           api_obj = aligner.completed_task_queue._api
           sqs_obj = aligner.completed_task_queue._api._sqs

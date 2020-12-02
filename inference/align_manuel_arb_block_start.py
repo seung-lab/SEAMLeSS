@@ -183,6 +183,7 @@ if __name__ == "__main__":
     parser.add_argument('--pin_second_starting_section', type=int, default=None)
     parser.add_argument('--write_misalignment_masks', action='store_true')
     parser.add_argument('--write_other_masks', action='store_true')
+    parser.add_argument('--write_warped_src', action='store_true')
 
 
     args = parse_args(parser)
@@ -216,6 +217,7 @@ if __name__ == "__main__":
     write_composing_field = args.write_composing_field
     write_misalignment_masks = args.write_misalignment_masks
     write_other_masks = args.write_other_masks
+    write_warped_src = args.write_warped_src
 
     if write_misalignment_masks:
         # Need composing field to produce misalignment masks
@@ -291,6 +293,17 @@ if __name__ == "__main__":
             overwrite=do_alignment,
         )
         block_dsts[i] = block_dst.path
+    pixel_index_block_dsts = {}
+    pixel_index_block_types = ["pixel_index_even", "pixel_index_odd"]
+    for i, block_type in enumerate(pixel_index_block_types):
+        pixel_index_block_dst = cm.create(
+            join(render_dst, "image_blocks", block_type),
+            data_type='uint8',
+            num_channels=1,
+            fill_missing=True,
+            overwrite=do_alignment,
+        )
+        pixel_index_block_dsts[i] = pixel_index_block_dst.path
 
     # Compile bbox, model, vvote_offsets for each z index, along with indices to skip
     bbox_lookup = {}
@@ -400,6 +413,7 @@ if __name__ == "__main__":
     # BLOCK STITCHING
     # Stitch blocks using the aligned block sections that have tgt_z in the starter sections
     block_dst_lookup = {}
+    pixel_index_block_dst_lookup = {}
     block_start_lookup = {}
     starter_dst_lookup = {}
     copy_offset_to_z_range = {0: deepcopy(block_starts)}
@@ -416,6 +430,7 @@ if __name__ == "__main__":
             if i > 0:
                 block_start_lookup[z] = bs
                 block_dst_lookup[z] = block_dsts[even_odd]
+                pixel_index_block_dst_lookup[z] = pixel_index_block_dsts[even_odd]
                 block_offset_to_z_range[i].add(z)
                 for tgt_offset in vvote_lookup[z]:
                     tgt_z = z + tgt_offset
@@ -518,6 +533,21 @@ if __name__ == "__main__":
             num_channels=1,
             fill_missing=True,
             overwrite=do_alignment,
+        ).path
+    if write_warped_src:
+        warped_src_cv = cm.create(
+            join(args.dst_path, "image_blocks", "no_st"),
+            data_type=args.img_dtype,
+            num_channels=1,
+            fill_missing=True,
+            overwrite=do_alignment
+        ).path
+        warped_src_overlap_cv = cm.create(
+            join(args.dst_path, "image_blocks", "no_st_overlap"),
+            data_type=args.img_dtype,
+            num_channels=1,
+            fill_missing=True,
+            overwrite=do_alignment
         ).path
     stitch_pair_fields = {}
     for z_offset in offset_range:
@@ -803,15 +833,21 @@ if __name__ == "__main__":
                 block_start = self.block_starts[i]
                 dst = block_dst_lookup[self.block_starts[i]+1]
                 bbox = bbox_lookup[z]
+                pixel_index_cv = pixel_index_block_dst_lookup[self.block_starts[i]+1]
                 misalignment_mask_cv_to_use = None
+                warped_src_image_cv = None
                 if block_start_lookup[z] != self.block_starts[i]:
                     field = block_overlap_field
                     if write_misalignment_masks:
                         misalignment_mask_cv_to_use = misalignment_mask_overlap_cv
+                    if write_warped_src:
+                        warped_src_image_cv = warped_src_cv
                 else:
                     field = block_vvote_field
                     if write_misalignment_masks:
-                        misalignment_mask_cv_to_use = misalignment_mask_cv                        
+                        misalignment_mask_cv_to_use = misalignment_mask_cv
+                    if write_warped_src:
+                        warped_src_image_cv = warped_src_overlap_cv
                 t = a.render(
                     cm,
                     src,
@@ -830,7 +866,9 @@ if __name__ == "__main__":
                     brighten_misalign=args.brighten_misalign,
                     report=True,
                     block_start=block_start,
-                    misalignment_mask_cv=misalignment_mask_cv_to_use
+                    misalignment_mask_cv=misalignment_mask_cv_to_use,
+                    pixel_index_cv=pixel_index_cv,
+                    warped_src_cv=warped_src_image_cv
                 )
                 yield from t
 

@@ -219,14 +219,14 @@ class Aligner:
     return mask
 
   def get_image(self, cv, z, bbox, mip, to_tensor=True, normalizer=None,
-                dst_mip=None):
+                dst_mip=None, to_float=True):
     print('get_image for {0}'.format(bbox.stringify(z)), flush=True)
     start = time()
     if dst_mip == None:
         d_mip = mip
     else:
         d_mip = dst_mip
-    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=d_mip, to_float=True,
+    image = self.get_data(cv, z, bbox, src_mip=mip, dst_mip=d_mip, to_float=to_float,
                              to_tensor=to_tensor, normalizer=normalizer)
     end = time()
     diff = end - start
@@ -1617,7 +1617,7 @@ class Aligner:
              return_iterator= False, pad=256, seethrough=False,
              seethrough_misalign=False,
              blackout_op='none', report=False, brighten_misalign=False, block_start=None,
-             misalignment_mask_cv=None):
+             misalignment_mask_cv=None, pixel_index_cv=None, warped_src_cv=None):
     """Warp image in src_cv by field in field_cv and save result to dst_cv
 
     Args:
@@ -1666,7 +1666,9 @@ class Aligner:
                        seethrough_misalign=seethrough_misalign,
                        blackout_op=blackout_op,
                        report=report, block_start=block_start,
-                       misalignment_mask_cv=misalignment_mask_cv)
+                       misalignment_mask_cv=misalignment_mask_cv,
+                       pixel_index_cv=pixel_index_cv,
+                       warped_src_cv=warped_src_cv)
     if return_iterator:
         return RenderTaskIterator(chunks,0, len(chunks))
     else:
@@ -1681,7 +1683,9 @@ class Aligner:
                            seethrough_misalign=seethrough_misalign,
                            blackout_op=blackout_op,
                            report=report, block_start=block_start,
-                           misalignment_mask_cv=misalignment_mask_cv))
+                           misalignment_mask_cv=misalignment_mask_cv,
+                           pixel_index_cv=pixel_index_cv,
+                           warped_src_cv=warped_src_cv))
         return batch
 
   def render_masks(self, cm, mask_dst_cv, field_cv, field_z, src_z, dst_z, bbox, dst_mip,
