@@ -446,8 +446,8 @@ class RenderTask(RegisteredTask):
                                        to_tensor=True, normalizer=None)
          seethrough_region = torch.zeros_like(image).byte()
          preseethru_blackout = torch.zeros_like(image).byte()
-         prev_image_tissue = get_threshold_tissue_mask(prev_image)
-         image_tissue = get_threshold_tissue_mask(image)
+         prev_image_tissue = get_threshold_tissue_mask(prev_image, low_threshold=10, high_threshold=255)
+         image_tissue = get_threshold_tissue_mask(image, low_threshold=10, high_threshold=255)
          if mask_data is not None:
              preseethru_blackout = mask_data < 0
          image[preseethru_blackout] = 0
