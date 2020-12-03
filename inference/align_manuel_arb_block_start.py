@@ -173,6 +173,7 @@ if __name__ == "__main__":
         default='none'
     )
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
+    parser.add_argument('--compose_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--final_render_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--status_output_file', type=str, default=None)
     parser.add_argument('--recover_status_from_file', type=str, default=None)
@@ -587,21 +588,21 @@ if __name__ == "__main__":
     stitch_pair_fields = {}
     for z_offset in offset_range:
         stitch_pair_fields[z_offset] = cm.create(
-            join(args.dst_path, "field", "stitch", str(z_offset)),
+            join(args.dst_path, "field", "stitch{}".format(args.stitch_suffix), str(z_offset)),
             data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
             overwrite=do_stitching,
         ).path
     overlap_vvote_field = cm.create(
-        join(args.dst_path, "field", "stitch", "vvote", "field"),
+        join(args.dst_path, "field", "stitch{}".format(args.stitch_suffix), "vvote", "field"),
         data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
         overwrite=do_stitching,
     ).path
     overlap_image = cm.create(
-        join(args.dst_path, "field", "stitch", "vvote", "image"),
+        join(args.dst_path, "field", "stitch{}".format(args.stitch_suffix), "vvote", "image"),
         data_type=args.img_dtype,
         num_channels=1,
         fill_missing=True,
@@ -610,14 +611,14 @@ if __name__ == "__main__":
     stitch_fields = {}
     for z_offset in offset_range:
         stitch_fields[z_offset] = cm.create(
-            join(args.dst_path, "field", "stitch", "vvote", str(z_offset)),
+            join(args.dst_path, "field", "stitch{}".format(args.stitch_suffix), "vvote", str(z_offset)),
             data_type=output_field_dtype,
             num_channels=2,
             fill_missing=True,
             overwrite=do_stitching,
         ).path
     broadcasting_field = cm.create(
-        join(args.dst_path, "field", "stitch", "broadcasting"),
+        join(args.dst_path, "field", "stitch{}".format(args.stitch_suffix), "broadcasting"),
         data_type=output_field_dtype,
         num_channels=2,
         fill_missing=True,
@@ -625,7 +626,7 @@ if __name__ == "__main__":
     ).path
 
     compose_field = cm.create(join(args.dst_path, 'field',
-                        'stitch{}'.format(args.stitch_suffix), 'compose'),
+                        'stitch{}'.format(args.stitch_suffix), 'compose{}'.format(args.compose_suffix)),
                         data_type=output_field_dtype, num_channels=2,
                         fill_missing=True, overwrite=do_compose).path
 
@@ -640,12 +641,12 @@ if __name__ == "__main__":
             size_chunk=chunk_size,
             batch_mip=final_render_mip,
         )
-        final_dst = cmr.create(join(args.dst_path, 'image_stitch{}'.format(args.final_render_suffix)),
+        final_dst = cmr.create(join(args.dst_path, 'image_stitch{}{}{}'.format(args.stitch_suffix, args.compose_suffix, args.final_render_suffix)),
                             data_type='uint8', num_channels=1, fill_missing=True,
                             overwrite=do_final_render).path
         
         if write_misalignment_masks:
-            final_misalignment_masks = cm.create(join(args.dst_path, 'misalignment_stitch{}'.format(args.final_render_suffix)),
+            final_misalignment_masks = cm.create(join(args.dst_path, 'misalignment_stitch{}{}{}'.format(args.stitch_suffix, args.compose_suffix, args.final_render_suffix)),
                             data_type='uint8', num_channels=1, fill_missing=True, overwrite=True).path
         if write_other_masks:
             mask_cv_dict = {}
