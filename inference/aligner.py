@@ -628,21 +628,33 @@ class Aligner:
         if coarse_field_cv is not None:
             cur_coarse_field = self.get_field(coarse_field_cv, src_z, padded_bbox, coarse_field_mip, relative=False, to_tensor=True)
             cur_coarse_field = upsample_field(cur_coarse_field, coarse_field_mip, mip)
-        src_raw_patch = self.get_masked_image(unaligned_cv, src_z, padded_bbox, mip,
-                                masks=[],
-                                to_tensor=True, normalizer=None)
-        tgt_raw_patch = self.get_composite_image(unaligned_cv, [tgt_z], padded_bbox, mip,
-                                masks=[],
-                                to_tensor=True, normalizer=None)
-        src_rendered_image = grid_sample(src_raw_patch, cur_field, padding_mode='zeros')
-        tgt_rendered_image = grid_sample(tgt_raw_patch, prev_field, padding_mode='zeros')
+        # src_raw_patch = self.get_masked_image(unaligned_cv, src_z, padded_bbox, mip,
+        #                         masks=[],
+        #                         to_tensor=True, normalizer=None)
+        # tgt_raw_patch = self.get_composite_image(unaligned_cv, [tgt_z], padded_bbox, mip,
+        #                         masks=[],
+        #                         to_tensor=True, normalizer=None)
+        # src_rendered_image = grid_sample(src_raw_patch, cur_field, padding_mode='zeros')
+        # tgt_rendered_image = grid_sample(tgt_raw_patch, prev_field, padding_mode='zeros')
+        src_rendered_image = self.cloudsample_image(unaligned_cv, cur_field_cv, src_z, src_z, 
+                              padded_bbox, mip, mip, pad=512)
+        tgt_rendered_image = self.cloudsample_image(unaligned_cv, prev_field_cv, tgt_z, tgt_z, 
+                                     padded_bbox, mip, mip, pad=512)
         cur_field = self.rel_to_abs_residual(cur_field, mip)
         prev_field = self.rel_to_abs_residual(prev_field, mip)
         if coarse_field_cv is not None:
-            field = (prev_field - prev_coarse_field) - (cur_field - cur_coarse_field)
+            # field = (prev_field - prev_coarse_field) - (cur_field - cur_coarse_field)
+            prev_fine_drift_field = prev_field - prev_coarse_field
+            prev_fine_drift = self.profile_field(prev_fine_drift_field, [tgt_rendered_image])
+            cur_fine_drift_field = cur_field - cur_coarse_field
+            cur_fine_drift = self.profile_field(cur_fine_drift_field, [src_rendered_image])
+            del prev_fine_drift_field
+            del cur_fine_drift_field
+            distance = prev_fine_drift - cur_fine_drift
         else:
             field = prev_field - cur_field
-        distance = self.profile_field(field, [src_rendered_image, tgt_rendered_image])
+            distance = self.profile_field(field, [src_rendered_image, tgt_rendered_image])
+            del field
         print('Displacement adjustment: {} px'.format(distance))
         distance = (distance // (2 ** mip)) * 2 ** mip
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
