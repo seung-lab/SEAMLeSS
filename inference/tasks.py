@@ -444,7 +444,7 @@ class RenderTask(RegisteredTask):
                                      use_cpu=self.use_cpu, pad=self.pad,
                                      return_mask=True,
                                      blackout_mask_op=self.blackout_op,
-                                     return_mask_op='data')
+                                     return_mask_op='gt')
          if self.warped_src_cv is not None:
           warped_src = torch.clone(image)
          prev_image = aligner.get_masked_image(seethrough_cv, dst_z-1,
