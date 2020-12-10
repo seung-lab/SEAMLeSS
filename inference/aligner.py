@@ -1007,6 +1007,8 @@ class Aligner:
       to_tensor=True,
       normalizer=normalizer,
     )
+    # import ipdb
+    # ipdb.set_trace()
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
 
@@ -1062,6 +1064,10 @@ class Aligner:
       accum_field = self.rel_to_abs_residual(accum_field, mip)
       accum_field = accum_field[:, pad:-pad, pad:-pad, :]
       accum_field += combined_distance_fine_snap.to(device=self.device)
+      
+      if torch.isnan(accum_field).any():
+        raise ValueError('NAN Field')
+      
       accum_field = accum_field.data.cpu().numpy()
 
       # clear unused, cached memory so that other processes can allocate it
