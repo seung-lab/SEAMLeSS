@@ -8,6 +8,7 @@ from taskqueue import TaskQueue, GreenTaskQueue, LocalTaskQueue
 import sys
 import torch
 import json
+import numpy as np
 from args import get_argparser, parse_args, get_aligner, get_bbox, get_provenance
 from os.path import join
 from cloudmanager import CloudManager
@@ -32,6 +33,39 @@ def make_range(block_range, part_num):
     range_list.append(block_range[(part-1)*srange:])
     return range_list
 
+
+def find_section_clamping_values(zlevel, lowerfract, upperfract):
+    """compute the clamping values for each section."""
+    filtered = np.copy(zlevel)
+
+    # remove pure black from frequency counts as
+    # it has no information in our images
+    filtered[0] = 0
+
+    cdf = np.zeros(shape=(len(filtered), ), dtype=np.uint64)
+    cdf[0] = filtered[0]
+    for i in range(1, len(filtered)):
+        cdf[i] = cdf[i - 1] + filtered[i]
+
+    total = cdf[-1]
+
+    if total == 0:
+        return (0, 0)
+
+    lower = 0
+    for i, val in enumerate(cdf):
+        if float(val) / float(total) > lowerfract:
+            break
+        lower = i
+
+    upper = 0
+    for i, val in enumerate(cdf):
+        if float(val) / float(total) > upperfract:
+            break
+        upper = i
+
+    return (lower, upper)
+
 if __name__ == '__main__':
   parser = get_argparser()
   parser.add_argument('--src_path', type=str)
@@ -50,6 +84,17 @@ if __name__ == '__main__':
   parser.add_argument('--pad', 
     help='the size of the largest displacement expected; should be 2^high_mip', 
     type=int, default=2048)
+  parser.add_argument('--preprocessor_path', type=str, default='',
+    help='Optional preprocessor to apply to image cutouts')
+  parser.add_argument("--ignore_pix_val", nargs='+', type=int,
+    help='Optional pixel values to ignore, i.e. they will be treated as the same in both images')
+  parser.add_argument('--luminance_level_path', type=str,
+    help='Optional luminance levels per section, used for per section contrast adjustment')
+  parser.add_argument('--mask_path', type=str,
+    help='Pre-existing masks to apply before running fcorr (e.g. fold masks)')
+  parser.add_argument('--mask_mip', type=int)
+  parser.add_argument('--mask_val', type=int,
+    help='Mask value to use for blackout')
   # parser.add_argument('--save_intermediary', action='store_true')
   args = parse_args(parser)
   args.max_mip = args.dst_mip
@@ -67,11 +112,25 @@ if __name__ == '__main__':
   pad = args.pad
   z_offset = args.z_offset
   fill_value = args.fill_value
+  preprocessor_path = args.preprocessor_path
+  ignore_pix_val = args.ignore_pix_val
+  luminance_level_path = args.luminance_level_path
+  mask_path = args.mask_path
+  mask_mip = args.mask_mip or src_mip
+  mask_val = args.mask_val or 255
+
   print('src_mip {}'.format(src_mip))
   print('dst_mip {}'.format(dst_mip))
   print('fcorr_chunk_size {}'.format(fcorr_chunk_size))
   # print('chunk_size {}'.format(chunk_size))
   print('z_offset {}'.format(z_offset))
+  print('ignore pix val {}'.format(ignore_pix_val or "None"))
+  print('preprocessor: {}'.format(preprocessor_path or "None"))
+  print('luminance_level_path: {}'.format(luminance_level_path or "None"))
+  print('mask_path: {}'.format(mask_path or "None"))
+  if mask_path:
+    print('mask_mip {}'.format(mask_mip))
+    print('mask_val {}'.format(mask_val))
 
   # Compile ranges
   full_range = range(args.bbox_start[2], args.bbox_stop[2])
@@ -83,6 +142,11 @@ if __name__ == '__main__':
   src = cm.create(args.src_path, data_type='uint8', num_channels=1,
                      fill_missing=True, overwrite=False)
 
+  src_mask_path = None
+  if mask_path is not None:
+    src_mask_path = cm.create(args.mask_path, data_type='uint8', num_channels=1,
+                              fill_missing=True, overwrite=False).path
+
   fcorr_dir = 'fcorr/{}_{}/{}'.format(src_mip, dst_mip, z_offset)
   # Create dst CloudVolumes
   dst_post = cm.create(join(args.dst_path, fcorr_dir, 'post'),
@@ -92,6 +156,13 @@ if __name__ == '__main__':
                   data_type='float32', num_channels=1, fill_missing=True,
                   overwrite=True)
 
+  # Load luminance levels + compute cutoffs
+  if luminance_level_path is not None:
+    with open(luminance_level_path, "r") as f:
+      luminance_level = json.load(f)
+  else:
+    luminance_level = None
+
   prefix = str(src_mip)
   class TaskIterator():
       def __init__(self, brange):
@@ -99,9 +170,21 @@ if __name__ == '__main__':
       def __iter__(self):
           for z in self.brange:
             #print("Fcorr for z={} and z={}".format(z, z+1))
+            if luminance_level is not None:
+              lower_cut, upper_cut = find_section_clamping_values(luminance_level[str(z)], 0.0023, 1.0-0.01)
+            else:
+              lower_cut, upper_cut = 0, 255
+
+            min_val, max_val = 1, 255
             t = a.compute_fcorr(cm, src.path, dst_pre.path, dst_post.path, bbox, 
                                 src_mip, dst_mip, z, z+args.z_offset, z, 
-                                fcorr_chunk_size, fill_value=fill_value, prefix=prefix)
+                                fcorr_chunk_size, fill_value=fill_value,
+                                preprocessor_path=preprocessor_path,
+                                ignore_pix_val=ignore_pix_val,
+                                lower_bound=(lower_cut/255.0, min_val/255.0),
+                                upper_bound=(upper_cut/255.0, max_val/255.0),
+                                mask_cv=src_mask_path, mask_mip=mask_mip, mask_val=mask_val
+            )
             yield from t
 
   range_list = make_range(full_range, a.threads)

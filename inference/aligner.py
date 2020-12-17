@@ -158,11 +158,25 @@ class Aligner:
   # Image IO + handlers #
   #######################
 
-  def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True):
+  def get_mask(self, cv, z, bbox, src_mip, dst_mip, valid_val, to_tensor=True, op='=='):
     start = time()
     data = self.get_data(cv, z, bbox, src_mip=src_mip, dst_mip=dst_mip, 
                              to_float=False, to_tensor=to_tensor, normalizer=None)
-    mask = data == valid_val
+    if op == '==':
+      mask = data == valid_val
+    elif op == '!=':
+      mask = data != valid_val
+    elif op == '>':
+      mask = data > valid_val
+    elif op == '>=':
+      mask = data >= valid_val
+    elif op == '<':
+      mask = data < valid_val
+    elif op == '<=':
+      mask = data <= valid_val
+    else:
+      raise ValueError("Unsupported mask operator: " + op)
+
     end = time()
     diff = end - start
     print('get_mask: {:.3f}'.format(diff), flush=True) 
@@ -184,7 +198,7 @@ class Aligner:
     return image
 
   def get_masked_image(self, image_cv, z, bbox, image_mip, mask_cv, mask_mip, mask_val,
-                             to_tensor=True, normalizer=None):
+                             to_tensor=True, normalizer=None, mask_val_op='=='):
     """Get image with mask applied
     """
     start = time()
@@ -193,7 +207,7 @@ class Aligner:
     if mask_cv is not None:
       mask = self.get_mask(mask_cv, z, bbox, 
                            src_mip=mask_mip,
-                           dst_mip=image_mip, valid_val=mask_val)
+                           dst_mip=image_mip, valid_val=mask_val, op=mask_val_op)
       image = image.masked_fill_(mask, 0)
     if not to_tensor:
       image = image.cpu().numpy()
@@ -272,7 +286,7 @@ class Aligner:
       diff = end - start
       print('normalizer: {:.3f}'.format(diff), flush=True) 
     # convert to tensor if requested, or if up/downsampling required
-    if to_tensor | (src_mip != dst_mip):
+    if to_tensor or (src_mip != dst_mip):
       if isinstance(data, np.ndarray):
         data = torch.from_numpy(data)
       if self.device.type == 'cuda':
@@ -1908,7 +1922,10 @@ class Aligner:
       return lap([field], device=self.device).unsqueeze(0)
 
   def compute_fcorr(self, cm, src_cv, dst_pre_cv, dst_post_cv, bbox, src_mip, 
-                    dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0):
+                    dst_mip, src_z, tgt_z, dst_z, fcorr_chunk_size, fill_value=0,
+                    preprocessor_path='',
+                    ignore_pix_val=None, lower_bound=None, upper_bound=None,
+                    mask_cv=None, mask_mip=None, mask_val=None):
       chunks = self.break_into_chunks(bbox, self.chunk_size,
                                       cm.dst_voxel_offsets[dst_mip], mip=dst_mip,
                                       max_mip=cm.max_mip)
@@ -1916,16 +1933,51 @@ class Aligner:
       for chunk in chunks:
         batch.append(tasks.ComputeFcorrTask(src_cv, dst_pre_cv, dst_post_cv, chunk, 
                                             src_mip, dst_mip, src_z, tgt_z, dst_z, 
-                                            fcorr_chunk_size, fill_value))
+                                            fcorr_chunk_size, fill_value,
+                                            preprocessor_path,
+                                            ignore_pix_val,
+                                            lower_bound, upper_bound,
+                                            mask_cv, mask_mip, mask_val))
       return batch
 
-  def get_fcorr(self, cv, src_z, tgt_z, bbox, mip, chunk_size=16, fill_value=0):
+  def get_fcorr(
+    self, cv, src_z, tgt_z, bbox, mip, chunk_size=16, fill_value=0,
+    preprocessor_path='', ignore_pix_val=None, **kwargs
+  ):
       """Perform fcorr for two images
       """
-      src = self.get_data(cv, src_z, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True).float()
-      tgt = self.get_data(cv, tgt_z, bbox, src_mip=mip, dst_mip=mip,
-                             to_float=False, to_tensor=True).float()
+      pad = 8
+      if ignore_pix_val is None:
+        ignore_pix_val = []
+      ignore_pix_val = np.atleast_1d(ignore_pix_val)
+
+      if not preprocessor_path:
+        normalizer = None
+      else:
+        archive = self.get_model_archive(preprocessor_path)
+        normalizer = partial(archive.preprocessor, **kwargs)
+
+      mask_cv = kwargs.get("mask_cv", None)
+      mask_mip = kwargs["mask_mip"]
+      mask_val = kwargs["mask_val"]
+
+      padded_bbox = deepcopy(bbox)
+      padded_bbox.uncrop(pad*chunk_size, mip=mip)
+      src = self.get_masked_image(cv, src_z, padded_bbox, image_mip=mip,
+                            mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val,
+                            to_tensor=True, normalizer=normalizer, mask_val_op='>=') * 255.0
+      tgt = self.get_masked_image(cv, tgt_z, padded_bbox, image_mip=mip,
+                            mask_cv=mask_cv, mask_mip=mask_mip, mask_val=mask_val,
+                            to_tensor=True, normalizer=normalizer, mask_val_op='>=') * 255.0
+
+      first_ignored_pix_val = ignore_pix_val[0].item() if len(ignore_pix_val) > 0 else None
+      for v in ignore_pix_val:
+        src[src==v.item()] = first_ignored_pix_val
+        tgt[tgt==v.item()] = first_ignored_pix_val
+
+      if first_ignored_pix_val is not None:
+        src[tgt==first_ignored_pix_val] = first_ignored_pix_val
+        tgt[src==first_ignored_pix_val] = first_ignored_pix_val
 
       # std1 = image1[image1!=0].std()
       # std2 = image2[image2!=0].std()
@@ -1938,16 +1990,20 @@ class Aligner:
       f2, p2 = get_fft_power2(new_image2)
       tmp_image = get_hp_fcorr(f1, p1, f2, p2, scaling=scaling, fill_value=fill_value)
       tmp_image = tmp_image.permute(2,3,0,1)
-      tmp_image = tmp_image.numpy()
+      tmp_image = tmp_image.cpu().numpy()
       tmp = deepcopy(tmp_image)
       tmp[tmp==2]=1
-      std = 1.
+      std = 1.0
       blurred = scipy.ndimage.morphology.filters.gaussian_filter(tmp, sigma=(0, 0, std, std))
       s = scipy.ndimage.generate_binary_structure(2, 1)[None, None, :, :]
       closed = scipy.ndimage.morphology.grey_closing(blurred, footprint=s)
       closed = 2*closed
       closed[closed>1] = 1
       closed = 1-closed
+
+      closed = closed[:, :, pad:-pad, pad:-pad]
+      tmp_image = tmp_image[:, :, pad:-pad, pad:-pad]
+
       #print("++++closed shape",closed.shape)
       return closed, tmp_image
 
