@@ -43,7 +43,7 @@ def defect_detect(model, image, chunk_size, overlap, n_pred=1):
   overlap = np.array(overlap)
   bboxes = chunk_bboxes(img_size, chunk_size, 2*overlap)
 
-  pred = torch.zeros((1,n_pred,)+image.size)
+  pred = torch.zeros((1,n_pred,img_size[0],img_size[1]))
 
   for b in bboxes:
     bs = b[0]
