@@ -69,6 +69,52 @@ class PredictImageTask(RegisteredTask):
     diff = end - start
     print(':{:.3f} s'.format(diff))
 
+class PredictMultiImageTask(RegisteredTask):
+  def __init__(self, model_path, src_cv, dst1_cv, dst2_cv, z, mip, bbox, overlap, prefix):
+    super().__init__(model_path, src_cv, dst1_cv, dst2_cv, z, mip, bbox, overlap, prefix)
+
+  def execute(self, aligner):
+    src_cv = DCV(self.src_cv)
+    dst1_cv = DCV(self.dst1_cv)
+    dst2_cv = DCV(self.dst2_cv)
+    z = self.z
+    mip = self.mip
+    overlap = self.overlap
+    overlap_bbox = np.array(overlap)*(2**mip)
+    patch_bbox_in = deserialize_bbox(self.bbox)
+    patch_bbox_in.extend(overlap_bbox)
+    patch_range = patch_bbox_in.range(mip)
+    patch_bbox_out = deserialize_bbox(self.bbox)
+    patch_size = patch_bbox_out.size(mip)
+    prefix = self.prefix
+
+    print("\nPredict Image\n"
+          "src {}\n"
+          "dst1 {}\n"
+          "dst2 {}\n"
+          "at z={}\n"
+          "MIP{}\n".format(src_cv, dst1_cv, dst2_cv z, mip), flush=True)
+    start = time()
+
+    chunk_size = (320,320)
+    image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox_in, chunk_size, overlap)
+    image = image.cpu().numpy()
+    min_bound = src_cv[mip].bounds.minpt
+    image1 = image1[(slice(0,1),slice(0,1),)+tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
+    image2 = image2[(slice(0,1),slice(1,2),)+tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
+    image1 = image1*(image1>=image2)
+    image2 = image2*(image2>=image1)
+    aligner.save_image(image1, dst1_cv, z, patch_bbox_out, mip)
+    aligner.save_image(image2, dst2_cv, z, patch_bbox_out, mip)
+
+    with Storage(dst_cv.path) as stor:
+        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox_out.stringify(z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
+    end = time()
+    diff = end - start
+    print(':{:.3f} s'.format(diff))
+
 class FilterMaskSizeTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, patch_bbox, overlap, mip, z, thr_filter):
     super(). __init__(src_cv, dst_cv, patch_bbox, overlap, mip, z, thr_filter)

@@ -576,6 +576,17 @@ class Aligner:
                                         patch_bbox, overlap, prefix))
     return batch
 
+  def predict_image_multi(self, cm, model_path, src_cv, dst1_cv, dst2_cv, z, mip, bbox,
+  												chunk_size, overlap, prefix=''):
+  	chunks = self.break_into_chunks(bbox, chunk_size,
+  																	cm.dst_voxel_offsets[mip], mip=mip,
+  																	max_mip=cm.num_scales)
+  	if prefix == '':
+  		prefix = '{}'.format(mip)
+  	batch = []
+  	for patch_bbox in chunks:
+  		batch.append(tasks.PredictMultiImageTask(model_patch))
+
   def predict_image_chunk(self, model_path, src_cv, z, mip, bbox, chunk_size=(256,256), overlap=(0,0)):
     archive = self.get_model_archive(model_path)
     model = archive.model
