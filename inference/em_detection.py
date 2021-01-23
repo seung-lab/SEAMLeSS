@@ -36,14 +36,14 @@ def bounds1D(full_width, step_size, overlap=0):
 
   return bounds
 
-def defect_detect(model, image, chunk_size, overlap):
+def defect_detect(model, image, chunk_size, overlap, n_pred=1):
 
   img_size = image.shape[2:]
   
   overlap = np.array(overlap)
   bboxes = chunk_bboxes(img_size, chunk_size, 2*overlap)
 
-  pred = torch.zeros(image.shape)
+  pred = torch.zeros((1,n_pred,)+image.size)
 
   for b in bboxes:
     bs = b[0]
@@ -60,6 +60,6 @@ def defect_detect(model, image, chunk_size, overlap):
       patch = torch.reshape(patch,(1,1,xsize,ysize))
       pred_patch = model(patch)
 
-    pred[0,0,bs[0]+overlap[0]:be[0]-overlap[0],bs[1]+overlap[1]:be[1]-overlap[1]] = pred_patch[0,0,overlap[0]:-overlap[0],overlap[1]:-overlap[1]]
+    pred[0,:,bs[0]+overlap[0]:be[0]-overlap[0],bs[1]+overlap[1]:be[1]-overlap[1]] = pred_patch[0,:,overlap[0]:-overlap[0],overlap[1]:-overlap[1]]
 
   return pred

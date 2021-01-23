@@ -589,12 +589,12 @@ class Aligner:
                                         patch_bbox, overlap, prefix))
   	return batch
 
-  def predict_image_chunk(self, model_path, src_cv, z, mip, bbox, chunk_size=(256,256), overlap=(0,0)):
+  def predict_image_chunk(self, model_path, src_cv, z, mip, bbox, chunk_size=(256,256), overlap=(0,0), n_pred=1):
     archive = self.get_model_archive(model_path)
     model = archive.model
     image = self.get_image(src_cv, z, bbox, mip, to_tensor=True)
     if torch.sum(image)>0:
-      return defect_detect(model, image, chunk_size, overlap)
+      return defect_detect(model, image, chunk_size, overlap, n_pred)
     else:
       return image
 

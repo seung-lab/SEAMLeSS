@@ -97,7 +97,7 @@ class PredictMultiImageTask(RegisteredTask):
     start = time()
 
     chunk_size = (320,320)
-    image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox_in, chunk_size, overlap)
+    image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox_in, chunk_size, overlap, n_pred=2)
     image = image.cpu().numpy()
     min_bound = src_cv[mip].bounds.minpt
     image1 = image[(slice(0,1),slice(0,1),)+tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
