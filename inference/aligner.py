@@ -596,7 +596,7 @@ class Aligner:
     if torch.sum(image)>0:
       return defect_detect(model, image, chunk_size, overlap, n_pred)
     else:
-      return image
+      return np.zeros((1,n_pred,image.shape[2],image.shape[3]))
 
   def calculate_fold_lengths(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, overlap, thr_binarize, w_connect, thr_filter, return_skeleys=False):
     # return [tasks.FoldLengthCalcTask(src_cv, dst_cv, bbox, mip, z, chunk_size, thr_binarize, w_connect, thr_filter, cm.dst_voxel_offsets[mip])]
