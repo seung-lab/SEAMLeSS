@@ -93,7 +93,7 @@ class PredictMultiImageTask(RegisteredTask):
           "dst1 {}\n"
           "dst2 {}\n"
           "at z={}\n"
-          "MIP{}\n".format(src_cv, dst1_cv, dst2_cv z, mip), flush=True)
+          "MIP{}\n".format(src_cv, dst1_cv, dst2_cv, z, mip), flush=True)
     start = time()
 
     chunk_size = (320,320)
