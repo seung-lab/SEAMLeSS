@@ -100,8 +100,8 @@ class PredictMultiImageTask(RegisteredTask):
     image = aligner.predict_image_chunk(self.model_path, src_cv, z, mip, patch_bbox_in, chunk_size, overlap)
     image = image.cpu().numpy()
     min_bound = src_cv[mip].bounds.minpt
-    image1 = image1[(slice(0,1),slice(0,1),)+tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
-    image2 = image2[(slice(0,1),slice(1,2),)+tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
+    image1 = image[(slice(0,1),slice(0,1),)+tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
+    image2 = image[(slice(0,1),slice(1,2),)+tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
     image1 = image1*(image1>=image2)
     image2 = image2*(image2>=image1)
     aligner.save_image(image1, dst1_cv, z, patch_bbox_out, mip)
