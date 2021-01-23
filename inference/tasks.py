@@ -107,7 +107,11 @@ class PredictMultiImageTask(RegisteredTask):
     aligner.save_image(image1, dst1_cv, z, patch_bbox_out, mip)
     aligner.save_image(image2, dst2_cv, z, patch_bbox_out, mip)
 
-    with Storage(dst_cv.path) as stor:
+    with Storage(dst1_cv.path) as stor:
+        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox_out.stringify(z))
+        stor.put_file(path, '')
+        print('Marked finished at {}'.format(path))
+    with Storage(dst2_cv.path) as stor:
         path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox_out.stringify(z))
         stor.put_file(path, '')
         print('Marked finished at {}'.format(path))
