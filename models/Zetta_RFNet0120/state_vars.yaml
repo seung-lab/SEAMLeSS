@@ -72,7 +72,7 @@ net: >
       (conv3): Conv2d(16, 16, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
       (norm): BatchNorm2d(16, eps=1e-05, momentum=0.1, affine=True, track_running_stats=False)
     )
-    (conv_out): Conv2d(16, 1, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (conv_out): Conv2d(16, 2, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
   )
 log_dir: /usr/people/jabae/seungmount/research/Alex/fold_detection/exp/FoldNet_v2/FoldNet_mip4_contrast_0106/log/
 exp_dir: /usr/people/jabae/seungmount/research/Alex/fold_detection/exp/FoldNet_v2/FoldNet_mip4_contrast_0106

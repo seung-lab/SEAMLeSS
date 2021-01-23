@@ -35,7 +35,7 @@ def bounds1D(full_width, step_size, overlap=0):
   bounds.append((end-step_size, end))
 
   return bounds
-
+ 
 def defect_detect(model, image, chunk_size, overlap, n_pred=1):
 
   img_size = image.shape[2:]
@@ -54,7 +54,7 @@ def defect_detect(model, image, chunk_size, overlap, n_pred=1):
     patch = image[0,0,bs[0]:be[0],bs[1]:be[1]]
 
     if torch.sum(patch)==0:
-      pred_patch = torch.zeros((1,1,chunk_size[0],chunk_size[1])).cuda()
+      pred_patch = torch.zeros((1,n_pred,chunk_size[0],chunk_size[1])).cuda()
 
     else:
       patch = torch.reshape(patch,(1,1,xsize,ysize))
