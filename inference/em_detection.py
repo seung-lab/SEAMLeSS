@@ -59,6 +59,7 @@ def defect_detect(model, image, chunk_size, overlap, n_pred=1):
     else:
       patch = torch.reshape(patch,(1,1,xsize,ysize))
       pred_patch = model(patch)
+      pred_patch = torch.sigmoid(pred_patch)
 
     pred[0,:,bs[0]+overlap[0]:be[0]-overlap[0],bs[1]+overlap[1]:be[1]-overlap[1]] = pred_patch[0,:,overlap[0]:-overlap[0],overlap[1]:-overlap[1]]
 

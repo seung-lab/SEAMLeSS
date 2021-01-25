@@ -102,8 +102,8 @@ class PredictMultiImageTask(RegisteredTask):
     min_bound = src_cv[mip].bounds.minpt
     image1 = image[(slice(0,1),slice(0,1),)+tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
     image2 = image[(slice(0,1),slice(1,2),)+tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
-    image1 = image1*(image1>=image2)
-    image2 = image2*(image2>=image1)
+#    image1 = image1*(image1>=image2)
+#    image2 = image2*(image2>=image1)
     aligner.save_image(image1, dst1_cv, z, patch_bbox_out, mip)
     aligner.save_image(image2, dst2_cv, z, patch_bbox_out, mip)
 
