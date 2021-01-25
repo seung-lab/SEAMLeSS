@@ -192,7 +192,7 @@ class UNet(nn.Module):
         x8 = self.uconv3(x2, x7)
         x9 = self.uconv4(x1, x8)
         x10 = self.conv_out(x9)
-        return x10
+        return torch.sigmoid(x10)
 
     def _initialize_weights(self):
         conv_modules = [m for m in self.modules() if isinstance(m, nn.Conv2d)]
