@@ -795,10 +795,10 @@ class Aligner:
     padded_tgt_bbox_fine.uncrop(pad, mip)
     tgt_field = None
     do_pad = True
-    norm_image_cv = DCV('gs://zetta_aibs_mouse_unaligned/normalization/mip5_run/img/img_norm')
-    norm_image = self.cloudsample_image(norm_image_cv, tgt_field_cv, tgt_z, tgt_z, 
-                                     padded_tgt_bbox_fine, mip, mip, 
-                                     pad=512)
+    # norm_image_cv = DCV('gs://zetta_aibs_mouse_unaligned/normalization/mip5_run/img/img_norm')
+    # norm_image = self.cloudsample_image(norm_image_cv, tgt_field_cv, tgt_z, tgt_z, 
+    #                                  padded_tgt_bbox_fine, mip, mip, 
+    #                                  pad=512)
     if tgt_field_cv is not None:
       tgt_field = self.get_field(
           tgt_field_cv,
@@ -816,104 +816,18 @@ class Aligner:
             to_tensor=True,
         ).to(device=self.device)
         tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_().up(coarse_field_mip-mip).permute(0,2,3,1)
-        drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [norm_image])
+        # drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [norm_image])
+        drift_distance = self.profile_field(tgt_field-tgt_coarse_field)
         drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
         drift_distance_coarse_snap = (
           drift_distance // (2 ** coarse_field_mip)
         ) * 2 ** coarse_field_mip
-      # Fetch vector field of target section
-      # if padded_tgt_bbox_fine.m0_x[0] < 0 or padded_tgt_bbox_fine.m0_y[0] < 0:
-      #   greater_dist = max(- padded_tgt_bbox_fine.m0_x[0], - padded_tgt_bbox_fine.m0_y[0])
-      #   bbox_small = deepcopy(padded_tgt_bbox_fine)
-      #   bbox_small.m0_x = (bbox_small.m0_x[0] + greater_dist, bbox_small.m0_x[1])
-      #   bbox_small.m0_y = (bbox_small.m0_y[0] + greater_dist, bbox_small.m0_y[1])
-      #   padded_tgt_bbox_fine = bbox_small
-      #   tgt_field = self.get_field(
-      #     tgt_field_cv,
-      #     tgt_z,
-      #     padded_tgt_bbox_fine,
-      #     mip,
-      #     relative=True,
-      #     to_tensor=True,
-      #   ).to(device=self.device)
-      # else:
-      #   # Fetch vector field of target section
-      #   tgt_field = self.get_field(
-      #     tgt_field_cv,
-      #     tgt_z,
-      #     padded_tgt_bbox_fine,
-      #     mip,
-      #     relative=True,
-      #     to_tensor=True,
-      #   ).to(device=self.device)
-      #   left_sum = torch.sum(tgt_field[0,0:pad,:,:])
-      #   right_sum = torch.sum(tgt_field[0,-pad:,:,:])
-      #   top_sum = torch.sum(tgt_field[0,:,0:pad,:])
-      #   bot_sum = torch.sum(tgt_field[0,:,-pad:,:])
-      #   if left_sum == 0 or right_sum == 0 or top_sum == 0 or bot_sum == 0:
-      #     padded_tgt_bbox_fine = deepcopy(bbox)
-      #     tgt_field = self.get_field(
-      #       tgt_field_cv,
-      #       tgt_z,
-      #       padded_tgt_bbox_fine,
-      #       mip,
-      #       relative=True,
-      #       to_tensor=True,
-      #     ).to(device=self.device)
-      #HACKS
-      # tgt_field = torch.zeros_like(tgt_field)
-
-      # if coarse_field_cv is not None and not is_identity(tgt_field):
-      #   # Alignment with coarse field: Need to subtract the coarse field out of
-      #   # the tgt_field to get the current alignment drift
-      #   # tgt_coarse_field = self.get_field(
-      #   #   coarse_field_cv,
-      #   #   tgt_z,
-      #   #   padded_tgt_bbox_fine,
-      #   #   coarse_field_mip,
-      #   #   relative=True,
-      #   #   to_tensor=True,
-      #   # ).to(device=self.device)
-
-      #   #HACKS
-      #   # tgt_coarse_field = torch.zeros_like(tgt_coarse_field)
-
-      #   tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_()
-      #   tgt_coarse_field_inv = tgt_coarse_field.inverse().up(coarse_field_mip - mip)
-
-      #   tgt_drift_field = tgt_coarse_field_inv.compose_with(tgt_field.permute(0, 3, 1, 2).field_())
-      #   tgt_drift_field = tgt_drift_field.permute(0, 2, 3, 1)
-      # else:
-      #   # Alignment without coarse field: tgt_field contains only the drift
-      #   # or prev_field is identity
-      #   tgt_drift_field = tgt_field
-
-      # tgt_unaligned_image = self.get_image(src_cv, tgt_z, padded_tgt_bbox_fine, mip,
-      #                         to_tensor=True, normalizer=None)
-
-      # tgt_rendered_image = grid_sample(tgt_unaligned_image, tgt_drift_field, padding_mode='zeros')
-      # tgt_drift_field = self.rel_to_abs_residual(tgt_drift_field, mip)
-      # drift_distance = self.profile_field(tgt_drift_field, [tgt_rendered_image])
-      # drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
-      # drift_distance_coarse_snap = (
-      #   drift_distance // (2 ** coarse_field_mip)
-      # ) * 2 ** coarse_field_mip
-
-      # tgt_field = self.rel_to_abs_residual(tgt_field, mip)
-      # tgt_distance = self.profile_field(tgt_field)
-      # tgt_distance_fine_snap = (tgt_distance // (2 ** mip)) * 2 ** mip
-      # tgt_field -= tgt_distance_fine_snap.to(device=self.device)
-      # tgt_field = self.abs_to_rel_residual(tgt_field, padded_tgt_bbox_fine, mip)
-      # tgt_field = torch.zeros_like(tgt_field)
 
     print(
       "Displacement adjustment TGT: {} px".format(
         drift_distance_fine_snap,
       )
     )
-
-    # padded_tgt_bbox_fine = self.adjust_bbox(padded_tgt_bbox_fine, tgt_distance_fine_snap.flip(0))
-    # padded_tgt_bbox_fine.uncrop(pad, mip)
 
     if coarse_field_cv is not None:
       # Fetch coarse alignment
@@ -932,29 +846,24 @@ class Aligner:
         relative=False,
         to_tensor=True,
       ).to(device=self.device)
-      # if padded_src_bbox_coarse_field.m0_x[0] < -512 or padded_src_bbox_coarse_field.m0_y[0] < -512:
-      #   smaller_coord = min(padded_src_bbox_coarse_field.m0_x[0], padded_src_bbox_coarse_field.m0_y[0])
-      #   adjust = - (smaller_coord + 512) // (2 ** coarse_field_mip)
-      #   profiled_field = self.profile_field(coarse_field).to(device=self.device)
-      #   coarse_field[0,:adjust,:,:] = profiled_field
-      #   coarse_field[0,:,:adjust,:] = profiled_field
-      coarse_field = coarse_field.permute(0, 3, 1, 2)
-      # coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bilinear')(coarse_field)
-      coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bicubic')(coarse_field)
-      coarse_field = coarse_field.permute(0, 2, 3, 1)
+      if not is_identity(coarse_field):
+        coarse_field = coarse_field.permute(0, 3, 1, 2)
+        coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bicubic')(coarse_field)
+        coarse_field = coarse_field.permute(0, 2, 3, 1)
 
-      crop = 2 ** (coarse_field_mip - mip)
-      offset = np.array((drift_distance_fine_snap - drift_distance_coarse_snap) // 2 ** mip, dtype=np.int)
-      coarse_field = coarse_field[:, crop+offset[1]:-crop+offset[1], crop+offset[0]:-crop+offset[0], :]
+        crop = 2 ** (coarse_field_mip - mip)
+        offset = np.array((drift_distance_fine_snap - drift_distance_coarse_snap) // 2 ** mip, dtype=np.int)
+        coarse_field = coarse_field[:, crop+offset[1]:-crop+offset[1], crop+offset[0]:-crop+offset[0], :]
 
-      img_test = self.get_image(DCV('gs://zetta_aibs_mouse_unaligned/prefine_run/v3/image_stitch'), src_z, padded_src_bbox_coarse_field, coarse_field_mip).to(device=self.device)
-      img_test = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bicubic')(img_test)
-      img_test = img_test[:, :, crop+offset[1]:-crop+offset[1], crop+offset[0]:-crop+offset[0]]
+        # img_test = self.get_image(DCV('gs://zetta_aibs_mouse_unaligned/prefine_run/v3/image_stitch'), src_z, padded_src_bbox_coarse_field, coarse_field_mip).to(device=self.device)
+        # img_test = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bicubic')(img_test)
+        # img_test = img_test[:, :, crop+offset[1]:-crop+offset[1], crop+offset[0]:-crop+offset[0]]
 
-      coarse_distance = self.profile_field(coarse_field, [img_test])
-      coarse_distance_fine_snap = (coarse_distance // (2 ** mip)) * 2 ** mip
-      coarse_field -= coarse_distance_fine_snap.to(device=self.device)
-      coarse_field = self.abs_to_rel_residual(coarse_field, padded_src_bbox_coarse, mip)
+        # coarse_distance = self.profile_field(coarse_field, [img_test])
+        coarse_distance = self.profile_field(coarse_field)
+        coarse_distance_fine_snap = (coarse_distance // (2 ** mip)) * 2 ** mip
+        coarse_field -= coarse_distance_fine_snap.to(device=self.device)
+        coarse_field = self.abs_to_rel_residual(coarse_field, padded_src_bbox_coarse, mip)
 
     combined_distance_fine_snap = (
       coarse_distance_fine_snap + drift_distance_fine_snap
@@ -992,9 +901,9 @@ class Aligner:
       blackout=False
     )      
 
-    norm_patch = self.get_composite_image(norm_image_cv, [src_z], padded_src_bbox_fine, mip,
-                                masks=[],
-                                to_tensor=True, normalizer=None)
+    # norm_patch = self.get_composite_image(norm_image_cv, [src_z], padded_src_bbox_fine, mip,
+    #                             masks=[],
+    #                             to_tensor=True, normalizer=None)
 
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
@@ -1048,7 +957,7 @@ class Aligner:
         tgt_patch,
         tgt_field=torch.zeros_like(coarse_field),
         src_field=coarse_field,
-        src_mask=norm_patch
+        # src_mask=norm_patch
       )
 
       if not isinstance(accum_field, torch.Tensor):
