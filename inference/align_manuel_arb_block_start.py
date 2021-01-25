@@ -86,7 +86,7 @@ if __name__ == "__main__":
     parser.add_argument("--z_stop", type=int)
     parser.add_argument("--max_mip", type=int, default=9)
     parser.add_argument("--img_dtype", type=str, default='uint8')
-    parser.add_argument("--final_render_pad", type=int, default=1024)
+    parser.add_argument("--final_render_pad", type=int, default=512)
     parser.add_argument(
         "--pad",
         help="the size of the largest displacement expected; should be 2^high_mip",
@@ -1341,6 +1341,8 @@ if __name__ == "__main__":
         if do_stitching:
             print("ALIGN OVERLAPPING OFFSET {}".format(z_offset))
             execute(StitchAlignComputeField, z_range)
+
+    # compose_range = range(17,400)
 
     if do_compose:
         if write_misalignment_masks:
