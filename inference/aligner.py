@@ -863,7 +863,7 @@ class Aligner:
         coarse_distance = self.profile_field(coarse_field)
         coarse_distance_fine_snap = (coarse_distance // (2 ** mip)) * 2 ** mip
         coarse_field -= coarse_distance_fine_snap.to(device=self.device)
-        coarse_field = self.abs_to_rel_residual(coarse_field, padded_src_bbox_coarse, mip)
+      coarse_field = self.abs_to_rel_residual(coarse_field, padded_src_bbox_coarse, mip)
 
     combined_distance_fine_snap = (
       coarse_distance_fine_snap + drift_distance_fine_snap
@@ -950,13 +950,14 @@ class Aligner:
             torch.cuda.memory_allocated(), torch.cuda.memory_cached()
           )
         )
-
+      # import ipdb
+      # ipdb.set_trace()
       # model produces field in relative coordinates
       accum_field = model(
         src_patch,
         tgt_patch,
-        tgt_field=torch.zeros_like(coarse_field),
-        src_field=coarse_field,
+        # tgt_field=torch.zeros_like(coarse_field),
+        # src_field=coarse_field,
         # src_mask=norm_patch
       )
 

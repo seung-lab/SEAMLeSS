@@ -328,7 +328,11 @@ class Aligner(nn.Module):
                              '{} channels for {}'
                              .format(self.channels, src.shape))
         if src.shape[1] == self.channels:
-            stack = torch.cat((src, tgt), dim=1)
+            try:
+                stack = torch.cat((src, tgt), dim=1)
+            except:
+                import ipdb
+                ipdb.set_trace()
             field = self.seq(stack)
             return field.field_()  # Removed from_pixel - factor is calculated in AligningPyramid forward
         else:  # stack of encodings
@@ -370,6 +374,8 @@ class AligningPyramid(nn.Module):
         assert _index.step is None
         _index = slice(max(0, _index.start or 0), _index.stop)
 
+        prev_level = None
+        accum_field = None
         if src_field is not None:
             prev_level = 5
             accum_field = src_field.permute(0,3,1,2).field_()
