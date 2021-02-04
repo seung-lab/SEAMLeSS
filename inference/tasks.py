@@ -482,18 +482,8 @@ class RenderTask(RegisteredTask):
          image[preseethru_blackout] = 0
 
          if (prev_image != 0).sum() == 0:
-             #undetected_plastic = ((image * 255.0 > 180.0) + (image * 255.0 < 80)) > 0
-             #undetected_plastic = coarsen_mask(undetected_plastic, 8)
-             #image[undetected_plastic] = 0
              pass
          else:
-             #undetected_plastic = (((image * 255.0) > 180) + \
-             #        ((prev_image == 0) * ((image * 255.0) > 160.0)) + \
-             #        ((image * 255.0) < 80.0)
-             #        ) > 0
-             #undetected_plastic = coarsen_mask(undetected_plastic, 10)
-             #image[undetected_plastic] = 0
-
              # mask values < 0 are the un-seethroughable masks that
              # should be applied before misalignment detection
 
@@ -526,19 +516,15 @@ class RenderTask(RegisteredTask):
 
              if self.seethrough_misalign:
                  prev_image_md = prev_image.clone()
-                 prev_image_md[norm_image==0] = 0
+                #  prev_image_md[norm_image==0] = 0
                  misalignment_region = misalignment_detector(image, prev_image_md, mip=4,
                                                              threshold=80)
                  misalignment_region[image[0,0,:,:] == 0] = 0
-             #misalignment_region = torch.zeros_like(misalignment_region)
                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
                  misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
                  if misalignment_count_cv is not None:
                    seethrough_limit = 2
                    misalignment_fill_in[(src_z - self.block_start - misalignment_count_patch) > seethrough_limit] = 0
-                  #  next_misalignment_count_patch = torch.zeros_like(misalignment_count_patch)
-                  #  next_misalignment_count_patch[misalignment_fill_in] = misalignment_count_patch[misalignment_fill_in] + 1
-                  #  aligner.save_image(next_misalignment_count_patch.cpu().numpy().astype(np.uint8), misalignment_count_cv, dst_z, patch_bbox, src_mip, to_uint8=False)
                  seethrough_region[misalignment_fill_in] = True
                  while len(image.shape) > len(misalignment_fill_in.shape):
                      misalignment_fill_in.unsqueeze(0)
@@ -549,8 +535,7 @@ class RenderTask(RegisteredTask):
                    aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
              
              if self.seethrough_black:
-                 seethrough_region[norm_image==0] = True
-                 #seethrough_region[(image_tissue == False) * prev_image_tissue] = True
+                #  seethrough_region[norm_image==0] = True
                  image[seethrough_region] = prev_image[seethrough_region]
              preseethru_blackout_fill = preseethru_blackout * prev_image_tissue
              image[preseethru_blackout_fill] = prev_image[preseethru_blackout_fill]

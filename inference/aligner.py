@@ -750,7 +750,8 @@ class Aligner:
     coarse_field_mip=None,
     tgt_field_cv=None,
     write_src_patch_cv=None,
-    write_tgt_patch_cv=None
+    write_tgt_patch_cv=None,
+    coarsely_warped_cv=None
   ):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
@@ -808,6 +809,9 @@ class Aligner:
           to_tensor=True,
       ).to(device=self.device)
       if coarse_field_cv is not None and not is_identity(tgt_field):
+        tgt_warped = self.cloudsample_image(tgt_cv, tgt_field_cv, tgt_z, 
+                                            tgt_z, padded_tgt_bbox_fine, mip, mip, 
+                                            pad=pad)
         tgt_coarse_field = self.get_field(
             coarse_field_cv,
             tgt_z,
@@ -816,8 +820,8 @@ class Aligner:
             to_tensor=True,
         ).to(device=self.device)
         tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_().up(coarse_field_mip-mip).permute(0,2,3,1)
-        # drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [norm_image])
-        drift_distance = self.profile_field(tgt_field-tgt_coarse_field)
+        drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [tgt_warped])
+        # drift_distance = self.profile_field(tgt_field-tgt_coarse_field)
         drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
         drift_distance_coarse_snap = (
           drift_distance // (2 ** coarse_field_mip)
@@ -855,15 +859,16 @@ class Aligner:
         offset = np.array((drift_distance_fine_snap - drift_distance_coarse_snap) // 2 ** mip, dtype=np.int)
         coarse_field = coarse_field[:, crop+offset[1]:-crop+offset[1], crop+offset[0]:-crop+offset[0], :]
 
-        # img_test = self.get_image(DCV('gs://zetta_aibs_mouse_unaligned/prefine_run/v3/image_stitch'), src_z, padded_src_bbox_coarse_field, coarse_field_mip).to(device=self.device)
-        # img_test = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bicubic')(img_test)
-        # img_test = img_test[:, :, crop+offset[1]:-crop+offset[1], crop+offset[0]:-crop+offset[0]]
-
-        # coarse_distance = self.profile_field(coarse_field, [img_test])
-        coarse_distance = self.profile_field(coarse_field)
+        if coarsely_warped_cv is not None:
+          img_test = self.get_image(coarsely_warped_cv, src_z, padded_src_bbox_coarse_field, coarse_field_mip).to(device=self.device)
+          img_test = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bicubic')(img_test)
+          img_test = img_test[:, :, crop+offset[1]:-crop+offset[1], crop+offset[0]:-crop+offset[0]]
+          coarse_distance = self.profile_field(coarse_field, [img_test])
+        else:
+          coarse_distance = self.profile_field(coarse_field)
         coarse_distance_fine_snap = (coarse_distance // (2 ** mip)) * 2 ** mip
         coarse_field -= coarse_distance_fine_snap.to(device=self.device)
-      coarse_field = self.abs_to_rel_residual(coarse_field, padded_src_bbox_coarse, mip)
+        coarse_field = self.abs_to_rel_residual(coarse_field, padded_src_bbox_coarse, mip)
 
     combined_distance_fine_snap = (
       coarse_distance_fine_snap + drift_distance_fine_snap
@@ -950,16 +955,23 @@ class Aligner:
             torch.cuda.memory_allocated(), torch.cuda.memory_cached()
           )
         )
-      # import ipdb
-      # ipdb.set_trace()
       # model produces field in relative coordinates
-      accum_field = model(
-        src_patch,
-        tgt_patch,
-        # tgt_field=torch.zeros_like(coarse_field),
-        # src_field=coarse_field,
-        # src_mask=norm_patch
-      )
+      if coarse_field_cv is None or is_identity(coarse_field):
+        accum_field = model(
+          src_patch,
+          tgt_patch,
+          # tgt_field=torch.zeros_like(coarse_field),
+          # src_field=coarse_field,
+          # src_mask=norm_patch
+        )
+      else:
+        accum_field = model(
+          src_patch,
+          tgt_patch,
+          tgt_field=torch.zeros_like(coarse_field),
+          src_field=coarse_field,
+          # src_mask=norm_patch
+        )
 
       if not isinstance(accum_field, torch.Tensor):
         accum_field = accum_field[0]

@@ -48,11 +48,11 @@ class Model(nn.Module):
     def forward(self, src, tgt, src_field=None, tgt_field=None, **kwargs):
         warped_src = src
         with torch.no_grad():
-            if (src_field != 0).sum() > 0:
+            if src_field is not None and (src_field != 0).sum() > 0:
                 src_field *= 0.5 * src.shape[-2]
                 warped_src = res_warp_img(src, src_field, is_pix_res=True)
             warped_tgt = tgt
-            if (tgt_field != 0).sum() > 0:
+            if tgt_field is not None and (tgt_field != 0).sum() > 0:
                 tgt_field *= 0.5 * tgt.shape[-2]
                 warped_tgt = res_warp_img(tgt, tgt_field, is_pix_res=True)
 

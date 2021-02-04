@@ -51,6 +51,8 @@ def res_warp_img(img, res_in, is_pix_res=True, padding_mode='zeros'):
 
 
 def combine_residuals(a, b, is_pix_res=True):
+    if b is None:
+        b = torch.zeros_like(a)
     return b + res_warp_res(a, b, is_pix_res=is_pix_res)
 
 upsampler = torch.nn.UpsamplingBilinear2d(scale_factor=2)

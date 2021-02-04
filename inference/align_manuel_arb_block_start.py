@@ -190,6 +190,7 @@ if __name__ == "__main__":
         help="If True,brightens misalignments seenthrough"
     )
     parser.add_argument('--write_patches', action='store_true')
+    parser.add_argument('--coarsely_warped_cv', type=str, default=None)
 
 
     args = parse_args(parser)
