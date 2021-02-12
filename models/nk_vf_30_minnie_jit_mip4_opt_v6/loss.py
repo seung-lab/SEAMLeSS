@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np
 import six
-from .masks import get_mse_and_smoothness_masks, get_mse_and_smoothness_masks2
+from .masks import get_mse_and_smoothness_masks, get_mse_and_smoothness_masks2, get_mse_and_smoothness_masks_opt
 from .residuals import combine_residuals
 
 from pdb import set_trace as st
@@ -132,31 +132,119 @@ def pix_identity(size, batch=1, device='cuda'):
     result = torch.transpose(result, 1, 2)
     return result
 
+# We ignore symmetric edges!
 def rigidity(field, power=2, diagonal_mult=0.8, two_diagonals=True):
+#    print(field.shape) #1, 2, 1024, 1024
+#    field = field.permute(0, 2, 3, 1)
     identity = pix_identity(size=field.shape[-2], device=field.device)
     field_abs = field + identity
 
-    result = rigidity_score(field_dx(field_abs, forward=False), 1, power=power)
-    result += rigidity_score(field_dx(field_abs, forward=True), 1, power=power)
-    result += rigidity_score(field_dy(field_abs, forward=False), 1, power=power)
-    result += rigidity_score(field_dy(field_abs, forward=True), 1, power=power)
-    result += rigidity_score(field_dxy(field_abs, forward=True), 2**(1/2), power=power) * diagonal_mult
-    result += rigidity_score(field_dxy(field_abs, forward=False), 2**(1/2), power=power) * diagonal_mult
-    total = 4 + 2*diagonal_mult
+#    import time
+#    st = time.time()
+#    result = rigidity_score(field_dx(field_abs, forward=False), 1, power=power)
+#    result += rigidity_score(field_dx(field_abs, forward=True), 1, power=power)
+#    result += rigidity_score(field_dy(field_abs, forward=False), 1, power=power)
+#    result += rigidity_score(field_dy(field_abs, forward=True), 1, power=power)
+#    result += rigidity_score(field_dxy(field_abs, forward=True), 2**(1/2), power=power) * diagonal_mult
+#    result += rigidity_score(field_dxy(field_abs, forward=False), 2**(1/2), power=power) * diagonal_mult
+#    total = 4 + 2*diagonal_mult
+#    if two_diagonals:
+#        result += rigidity_score(field_dxy2(field_abs, forward=True), 2**(1/2), power=power) * diagonal_mult
+#        result += rigidity_score(field_dxy2(field_abs, forward=False), 2**(1/2), power=power) * diagonal_mult
+#        total += 2*diagonal_mult
+
+#    total = 2 + 2*diagonal_mult
+#    result /= total
+
+
+    #compensate for padding
+#    result[..., 0:6, :] = 0
+#    result[..., -6:, :] = 0
+#    result[..., :,  0:6] = 0
+#    result[..., :, -6:] = 0
+#    print(f'new: {time.time()-st}')
+
+#    r2 = result.clone()
+
+
+#    import time
+#    st = time.time()
+    field_abs = field_abs.permute(3,0,1,2) #2, 1, 1024, 1024
+    diff_ker = torch.tensor([
+        [
+          [[ 0, 0, 0],
+           [-1, 1, 0],
+           [ 0, 0, 0]],
+
+          [[ 0,-1, 0],
+           [ 0, 1, 0],
+           [ 0, 0, 0]],
+          
+          [[-1, 0, 0],
+           [ 0, 1, 0],
+           [ 0, 0, 0]],
+          
+          [[ 0, 0,-1],
+           [ 0, 1, 0],
+           [ 0, 0, 0]],
+          ]
+            ], dtype=field_abs.dtype, device=field_abs.device)
+
+    diff_ker = diff_ker.permute(1, 0, 2, 3)
+    delta = torch.conv2d(field_abs, diff_ker, padding = [1,1])
+    delta = delta.permute(1, 2, 3, 0) #4, 1024, 1024, 2
+
+    delta_sq = torch.pow(delta, 2) + 1e-8
+#    delta_sq = delta_sq.permute(0, 3, 1, 2) #4, 2, 1024, 1024
+
+    delta_sq_sum = torch.sum(delta_sq, 3)
+    spring_lengths = torch.sqrt(delta_sq_sum)
+
+    # speedup hack for diagonal_mult
+    spring_defs = torch.cat([spring_lengths[0:2, :, :] - 1, 
+                             (spring_lengths[2:4, :, :] - 2**(1/2)) * (diagonal_mult)**(1/power)], 0)
+
+    if power != 2:
+        spring_defs = spring_defs.abs()
+
+    spring_energies = torch.pow(spring_defs, power)
+
     if two_diagonals:
-        result += rigidity_score(field_dxy2(field_abs, forward=True), 2**(1/2), power=power) * diagonal_mult
-        result += rigidity_score(field_dxy2(field_abs, forward=False), 2**(1/2), power=power) * diagonal_mult
-        total += 2*diagonal_mult
+        result = torch.sum(spring_energies, 0)
+        total = 2 + 2* diagonal_mult
+    else:
+        result = torch.sum(spring_energies[0:3, :, :], 0)
+        total = 2 + diagonal_mult
+
+
+
+#    resulta  = rigidity_score(delta[0, :, :, :], 1, power=power)
+#    resulta += rigidity_score(delta[1, :, :, :], 1, power=power)
+#    resulta += rigidity_score(delta[2, :, :, :], 2**(1/2), power=power) * diagonal_mult
+#    print(torch.sum(resulta) / torch.sum(result))
+#    total = 2 + diagonal_mult
+#    if two_diagonals:
+#        result += rigidity_score(delta[3, :, :, :], 2**(1/2), power=power) * diagonal_mult
+#        total += diagonal_mult
 
     result /= total
 
-    #compensate for padding
+    #remove padding
     result[..., 0:6, :] = 0
     result[..., -6:, :] = 0
     result[..., :,  0:6] = 0
     result[..., :, -6:] = 0
 
+
+
+#    print(f'new: {time.time()-st}')
+#    print(torch.sum(r2) / torch.sum(result))
+#    print(torch.sum(result))
+    
+
+
     return result.squeeze()
+
 
 def smoothness_penalty(ptype='jacob'):
     def penalty(fields, weights=None):
@@ -317,7 +405,7 @@ def unsupervised_loss(smoothness_factor, smoothness_type='rig', use_defect_mask=
     def compute_loss(bundle, smoothness_mult=1.0, crop=32):
         loss_dict = {}
         if use_defect_mask:
-            mse_mask, smoothness_mask = get_mse_and_smoothness_masks2(bundle,
+            mse_mask, smoothness_mask = get_mse_and_smoothness_masks_opt(bundle,
                     sm_keys_to_apply=sm_keys_to_apply,
                     mse_keys_to_apply=mse_keys_to_apply)
         else:
@@ -335,6 +423,7 @@ def unsupervised_loss(smoothness_factor, smoothness_type='rig', use_defect_mask=
 
         loss_dict['result'] = result
         loss_dict['similarity'] = similarity
+        loss_dict['similarity_proportion'] = similarity / result
         loss_dict['smoothness'] = smoothness * smoothness_factor * smoothness_mult
         loss_dict['vec_magnitude'] = torch.mean(torch.abs(bundle['pred_res']))
         loss_dict['vec_sim'] = torch.FloatTensor([0]).to(device=similarity.device)

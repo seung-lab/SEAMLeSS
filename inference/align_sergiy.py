@@ -1,3 +1,4 @@
+import os
 import gevent.monkey
 
 gevent.monkey.patch_all()
@@ -16,6 +17,8 @@ from cloudmanager import CloudManager
 
 import json
 from mask import Mask
+
+#os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
 def print_run(diff, n_tasks):
     if n_tasks > 0:

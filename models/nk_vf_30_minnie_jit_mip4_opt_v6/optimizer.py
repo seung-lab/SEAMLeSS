@@ -80,6 +80,8 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
         nan_count = 0
         no_impr_count = 0
         new_best_count = 0
+        similarity_prop = 0
+        similarity_prop_dec_ago = 0
         print (loss_dict['result'].cpu().detach().numpy(), loss_dict['similarity'].detach().cpu().numpy(), loss_dict['smoothness'].detach().cpu().numpy())
         for epoch in range(num_iter):
 
@@ -94,6 +96,7 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
             #print (loss_dict['result'].cpu().detach().numpy(), loss_dict['similarity'].detach().cpu().numpy(), loss_dict['smoothness'].detach().cpu().numpy())
 
             curr_loss = loss_var.cpu().detach().numpy()
+            curr_sim_prop = loss_dict['similarity_proportion'].cpu().detach().numpy()
 
             #print (loss_dict['result'].cpu().detach().numpy(), loss_dict['similarity'].detach().cpu().numpy(), loss_dict['smoothness'].detach().cpu().numpy())
             if np.isnan(curr_loss):
@@ -115,6 +118,13 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
                 prev_loss = []
                 new_best_ago = 0
             else:
+                if similarity_prop < curr_sim_prop:
+                    similarity_prop_dec_ago += 1
+                else:
+                    similarity_prop_dec_ago = 0
+                if similarity_prop_dec_ago > 20:
+                    break
+                similarity_prop = curr_sim_prop
                 min_improve = 1e-14
                 if not np.isnan(curr_loss) and curr_loss + min_improve <= best_loss:
                     prev_pre_res = pre_res.clone()
@@ -141,12 +151,12 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
                         new_best_ago -= 5
                     prev_loss.append(curr_loss)
 
-                    optimizer.zero_grad()
-                    loss_var.backward()
-                    #torch.nn.utils.clip_grad_norm([pre_res, post_res], 4e0)
-                    pre_res.grad[pre_res.grad != pre_res.grad] = 0
-                    post_res.grad[post_res.grad != post_res.grad] = 0
-                    optimizer.step()
+                optimizer.zero_grad()
+                loss_var.backward()
+                #torch.nn.utils.clip_grad_norm([pre_res, post_res], 4e0)
+                pre_res.grad[pre_res.grad != pre_res.grad] = 0
+                post_res.grad[post_res.grad != post_res.grad] = 0
+                optimizer.step()
                 if lr_halfed_count >= 15:
                     break
 
