@@ -21,3 +21,6 @@ kimimaro
 simplejson
 -e git+https://github.com/seung-lab/artificery.git@nkem-config-device#egg=artificery
 -e git+https://github.com/seung-lab/scalenet.git#egg=scalenet
+-e git+https://github.com/seung-lab/modelhouse.git#egg=modelhouse
+-e git+https://github.com/seung-lab/metroem.git#egg=metroem
+-e git+https://github.com/seung-lab/procspec.git#egg=procspec
