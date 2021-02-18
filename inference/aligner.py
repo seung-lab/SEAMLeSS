@@ -11,6 +11,7 @@ from time import time, sleep
 from pathos.multiprocessing import ProcessPool, ThreadPool
 from mipless_cloudvolume import deserialize_miplessCV as DCV
 from threading import Lock
+import modelhouse
 
 from cloudvolume import Storage
 from cloudvolume.lib import Vec
@@ -608,13 +609,14 @@ class Aligner:
       field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
     if is_metroem:
+      finetune=True
       normalizer=None
       model = modelhouse.load_model_simple(model_path,
           finetune=finetune,
           pass_field=True,
-          finetune_iter=400,
+          finetune_iter=100,
           finetune_lr=3e-1,
-          finetune_sm=30e0,
+          finetune_sm=300e0,
           checkpoint_name='test')
     else:
       archive = self.get_model_archive(model_path)
@@ -795,15 +797,16 @@ class Aligner:
     Returns:
       field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
+    finetune=True
     if is_metroem:
       normalizer = None
       model = modelhouse.load_model_simple(model_path,
           finetune=finetune,
           pass_field=True,
-          finetune_iter=400,
+          finetune_iter=100,
           finetune_lr=3e-1,
-          finetune_sm=30e0,
-          checkpoint_name='test')
+          finetune_sm=300e0,
+          checkpoint_name='try_x0_nobn')
     else:
       archive = self.get_model_archive(model_path, device=self.device)
       model = archive.model
