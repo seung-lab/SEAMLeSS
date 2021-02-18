@@ -588,7 +588,8 @@ class Aligner:
   def compute_field_chunk_stitch(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
                           src_masks=[], tgt_masks=[],
                           tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
-                          prev_field_inverse=False, cur_field_cv=None, coarse_field_cv=None, coarse_field_mip=None, unaligned_cv=None):
+                          prev_field_inverse=False, cur_field_cv=None, coarse_field_cv=None, coarse_field_mip=None, unaligned_cv=None,
+                          is_metroem=True):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
     Args:
       model_path: str for relative path to model directory
@@ -606,9 +607,19 @@ class Aligner:
     Returns:
       field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
-    archive = self.get_model_archive(model_path)
-    model = archive.model
-    normalizer = archive.preprocessor
+    if is_metroem:
+      normalizer=None
+      model = modelhouse.load_model_simple(model_path,
+          finetune=finetune,
+          pass_field=True,
+          finetune_iter=400,
+          finetune_lr=3e-1,
+          finetune_sm=30e0,
+          checkpoint_name='test')
+    else:
+      archive = self.get_model_archive(model_path)
+      model = archive.model
+      normalizer = archive.preprocessor
     print('compute_field for {0} to {1}'.format(bbox.stringify(src_z),
                                                 bbox.stringify(tgt_z)))
     print('pad: {}'.format(pad))
@@ -697,6 +708,7 @@ class Aligner:
       torch.cuda.empty_cache()
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       zero_fieldC = torch.zeros([1, src_patch.size()[2], src_patch.size()[3], 2], dtype=torch.float32, device=self.device)
+
       # import ipdb
       # ipdb.set_trace()
 
@@ -704,12 +716,22 @@ class Aligner:
       # zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
 
       # model produces field in relative coordinates
-      field = model(
-        src_patch,
-        tgt_patch,
-        tgt_field=zero_fieldC,
-        src_field=zero_fieldC,
-      )
+      
+      if is_metroem:
+        field = model(
+          src_img=src_patch,
+          tgt_img=tgt_patch,
+          src_agg_field=zero_fieldC,
+          tgt_agg_field=zero_fieldC,
+          train=False
+        ).from_pixels().permute(0,2,3,1)
+      else:   
+        field = model(
+          src_patch,
+          tgt_patch,
+          tgt_field=zero_fieldC,
+          src_field=zero_fieldC,
+        )
 
       if not isinstance(field, torch.Tensor):
           field = field[0]
@@ -751,7 +773,8 @@ class Aligner:
     tgt_field_cv=None,
     write_src_patch_cv=None,
     write_tgt_patch_cv=None,
-    coarsely_warped_cv=None
+    coarsely_warped_cv=None,
+    is_metroem=True
   ):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
 
@@ -772,9 +795,19 @@ class Aligner:
     Returns:
       field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
-    archive = self.get_model_archive(model_path, device=self.device)
-    model = archive.model
-    normalizer = archive.preprocessor
+    if is_metroem:
+      normalizer = None
+      model = modelhouse.load_model_simple(model_path,
+          finetune=finetune,
+          pass_field=True,
+          finetune_iter=400,
+          finetune_lr=3e-1,
+          finetune_sm=30e0,
+          checkpoint_name='test')
+    else:
+      archive = self.get_model_archive(model_path, device=self.device)
+      model = archive.model
+      normalizer = archive.preprocessor
     print(
       "compute_field for {0} to {1}".format(
         bbox.stringify(src_z), bbox.stringify(tgt_z)
@@ -796,10 +829,6 @@ class Aligner:
     padded_tgt_bbox_fine.uncrop(pad, mip)
     tgt_field = None
     do_pad = True
-    # norm_image_cv = DCV('gs://zetta_aibs_mouse_unaligned/normalization/mip5_run/img/img_norm')
-    # norm_image = self.cloudsample_image(norm_image_cv, tgt_field_cv, tgt_z, tgt_z, 
-    #                                  padded_tgt_bbox_fine, mip, mip, 
-    #                                  pad=512)
     if tgt_field_cv is not None:
       tgt_field = self.get_field(
           tgt_field_cv,
@@ -906,9 +935,9 @@ class Aligner:
       blackout=False
     )      
 
-    # norm_patch = self.get_composite_image(norm_image_cv, [src_z], padded_src_bbox_fine, mip,
-    #                             masks=[],
-    #                             to_tensor=True, normalizer=None)
+    norm_patch = self.get_composite_image(src_cv, [src_z], padded_src_bbox_fine, mip,
+                                masks=[],
+                                to_tensor=True, normalizer=None)
 
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
@@ -956,22 +985,39 @@ class Aligner:
           )
         )
       # model produces field in relative coordinates
-      if coarse_field_cv is None or is_identity(coarse_field):
+      if is_metroem:
+        finetune = True
+        if torch.sum(src_patch) == 0:
+          finetune = False
+        if coarse_field is not None:
+          coarse_field = coarse_field.permute((0,3,1,2)).field().pixels()
+        if tgt_field is not None:
+          tgt_field = torch.zeros([1, tgt_patch.size()[2], tgt_patch.size()[3], 2], dtype=torch.float32, device=self.device)
+          tgt_field = tgt_field.permute((0,3,1,2)).field().pixels()
         accum_field = model(
-          src_patch,
-          tgt_patch,
-          # tgt_field=torch.zeros_like(coarse_field),
-          # src_field=coarse_field,
-          # src_mask=norm_patch
-        )
+          src_img=src_patch,
+          tgt_img=tgt_patch,
+          src_agg_field=coarse_field,
+          tgt_agg_field=tgt_field,
+          train=False
+        ).from_pixels().permute(0,2,3,1)
       else:
-        accum_field = model(
-          src_patch,
-          tgt_patch,
-          tgt_field=torch.zeros_like(coarse_field),
-          src_field=coarse_field,
-          # src_mask=norm_patch
-        )
+        if coarse_field_cv is None or is_identity(coarse_field):
+          accum_field = model(
+            src_patch,
+            tgt_patch,
+            # tgt_field=torch.zeros_like(coarse_field),
+            # src_field=coarse_field,
+            # src_mask=(norm_patch == 0)
+          )
+        else:
+          accum_field = model(
+            src_patch,
+            tgt_patch,
+            tgt_field=torch.zeros_like(coarse_field),
+            src_field=coarse_field,
+            # src_mask=(norm_patch == 0)
+          )
 
       if not isinstance(accum_field, torch.Tensor):
         accum_field = accum_field[0]
