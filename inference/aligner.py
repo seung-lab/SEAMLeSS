@@ -614,7 +614,7 @@ class Aligner:
       model = modelhouse.load_model_simple(model_path,
           finetune=finetune,
           pass_field=True,
-          finetune_iter=100,
+          finetune_iter=200,
           finetune_lr=3e-1,
           finetune_sm=300e0,
           checkpoint_name='test')
@@ -672,10 +672,11 @@ class Aligner:
         print('Displacement adjustment: {} px'.format(distance))
         distance = (distance // (2 ** mip)) * 2 ** mip
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
-        del prev_coarse_field
+        if coarse_field_cv is not None:
+            del prev_coarse_field
+            del cur_coarse_field
         del prev_field
         del cur_field
-        del cur_coarse_field
         del src_rendered_image
         del tgt_rendered_image
 
@@ -723,8 +724,8 @@ class Aligner:
         field = model(
           src_img=src_patch,
           tgt_img=tgt_patch,
-          src_agg_field=zero_fieldC,
-          tgt_agg_field=zero_fieldC,
+          src_agg_field=zero_fieldC.permute((0,3,1,2)).field().pixels(),
+          tgt_agg_field=zero_fieldC.permute((0,3,1,2)).field().pixels(),
           train=False
         ).from_pixels().permute(0,2,3,1)
       else:   
@@ -803,7 +804,7 @@ class Aligner:
       model = modelhouse.load_model_simple(model_path,
           finetune=finetune,
           pass_field=True,
-          finetune_iter=100,
+          finetune_iter=200,
           finetune_lr=3e-1,
           finetune_sm=300e0,
           checkpoint_name='try_x0_nobn')
