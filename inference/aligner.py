@@ -586,11 +586,28 @@ class Aligner:
   # CloudVolume chunk methods #
   #############################
 
-  def compute_field_chunk_stitch(self, model_path, src_cv, tgt_cv, src_z, tgt_z, bbox, mip, pad,
-                          src_masks=[], tgt_masks=[],
-                          tgt_alt_z=None, prev_field_cv=None, prev_field_z=None,
-                          prev_field_inverse=False, cur_field_cv=None, coarse_field_cv=None, coarse_field_mip=None, unaligned_cv=None,
-                          is_metroem=True):
+  def compute_field_chunk_stitch(
+    self,
+    model_path,
+    src_cv,
+    tgt_cv,
+    src_z,
+    tgt_z,
+    bbox,
+    mip,
+    pad,
+    src_masks=[],              # unused
+    tgt_masks=[],              # unused
+    tgt_alt_z=None,
+    prev_field_cv=None,        # compute_field_chunk_stitch
+    prev_field_z=None,         # compute_field_chunk_stitch
+    prev_field_inverse=False,  # compute_field_chunk_stitch
+    cur_field_cv=None,         # compute_field_chunk_stitch
+    coarse_field_cv=None,
+    coarse_field_mip=None,
+    unaligned_cv=None,         # compute_field_chunk_stitch
+    is_metroem=True
+  ):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
     Args:
       model_path: str for relative path to model directory
@@ -766,17 +783,17 @@ class Aligner:
     tgt_cv,
     tgt_z,
     mip,
-    src_masks=[],
-    tgt_masks=[],
+    src_masks=[],              # compute_field_chunk only
+    tgt_masks=[],              # unused
     tgt_alt_z=None,
-    prev_field_cv=None,
-    prev_field_z=None,
+    prev_field_cv=None,        # unused
+    prev_field_z=None,         # unused
     coarse_field_cv=None,
     coarse_field_mip=None,
-    tgt_field_cv=None,
-    write_src_patch_cv=None,
-    write_tgt_patch_cv=None,
-    coarsely_warped_cv=None,
+    tgt_field_cv=None,         # compute_field_chunk only
+    write_src_patch_cv=None,   # compute_field_chunk only, optional debug image output
+    write_tgt_patch_cv=None,   # compute_field_chunk only, optional debug image output
+    coarsely_warped_cv=None,   # compute_field_chunk only, more precise src coarse field lookup
     is_metroem=True
   ):
     """Run inference with SEAMLeSS model on two images stored as CloudVolume regions.
@@ -798,8 +815,10 @@ class Aligner:
     Returns:
       field with MIP0 residuals with the shape of bbox at MIP mip (np.ndarray)
     """
-    finetune=True
+
+    # Load Model
     if is_metroem:
+      finetune=True
       normalizer = None
       model = modelhouse.load_model_simple(model_path,
           finetune=finetune,
@@ -812,6 +831,7 @@ class Aligner:
       archive = self.get_model_archive(model_path, device=self.device)
       model = archive.model
       normalizer = archive.preprocessor
+
     print(
       "compute_field for {0} to {1}".format(
         bbox.stringify(src_z), bbox.stringify(tgt_z)
@@ -822,7 +842,6 @@ class Aligner:
     if coarse_field_mip is None:
       coarse_field_mip = bbox.max_mip
 
-    # Find the target patch (Coarse+Fine vector field)
     coarse_field = None
     coarse_distance_fine_snap = torch.Tensor([0, 0])
     drift_distance_fine_snap = torch.Tensor([0, 0])
@@ -831,8 +850,8 @@ class Aligner:
     tgt_field = None
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
-    tgt_field = None
-    do_pad = True
+
+    # Find the target patch (Coarse+Fine vector field)
     if tgt_field_cv is not None:
       tgt_field = self.get_field(
           tgt_field_cv,
@@ -841,10 +860,14 @@ class Aligner:
           mip,
           to_tensor=True,
       ).to(device=self.device)
+
       if coarse_field_cv is not None and not is_identity(tgt_field):
-        tgt_warped = self.cloudsample_image(tgt_cv, tgt_field_cv, tgt_z, 
-                                            tgt_z, padded_tgt_bbox_fine, mip, mip, 
-                                            pad=pad)
+        # Retrieve warped target to mask out irrelevant field values
+        # FIXME: This looks like an unnecessarily expensive call
+        tgt_warped = self.cloudsample_image(
+          tgt_cv, tgt_field_cv, tgt_z, tgt_z,
+          padded_tgt_bbox_fine, mip, mip, pad=pad
+        )
         tgt_coarse_field = self.get_field(
             coarse_field_cv,
             tgt_z,
@@ -853,8 +876,10 @@ class Aligner:
             to_tensor=True,
         ).to(device=self.device)
         tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_().up(coarse_field_mip-mip).permute(0,2,3,1)
+
+        # Get prev section's current alignment drift,
+        # using -tgt_coarse_field as approximation for inverse
         drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [tgt_warped])
-        # drift_distance = self.profile_field(tgt_field-tgt_coarse_field)
         drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
         drift_distance_coarse_snap = (
           drift_distance // (2 ** coarse_field_mip)
@@ -867,7 +892,7 @@ class Aligner:
     )
 
     if coarse_field_cv is not None:
-      # Fetch coarse alignment
+      # Fetch coarse alignment for source section
       padded_src_bbox_coarse = self.adjust_bbox(bbox, drift_distance_coarse_snap.flip(0))
       padded_src_bbox_coarse.max_mip = coarse_field_mip
       padded_src_bbox_coarse.uncrop(pad, mip)
@@ -883,6 +908,7 @@ class Aligner:
         relative=False,
         to_tensor=True,
       ).to(device=self.device)
+
       if not is_identity(coarse_field):
         coarse_field = coarse_field.permute(0, 3, 1, 2)
         coarse_field = nn.Upsample(scale_factor=2**(coarse_field_mip - mip), mode='bicubic')(coarse_field)
@@ -954,8 +980,7 @@ class Aligner:
       to_tensor=True,
       normalizer=normalizer,
     )
-    # import ipdb
-    # ipdb.set_trace()
+
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
 
