@@ -965,9 +965,12 @@ class Aligner:
       blackout=False
     )      
 
-    norm_patch = self.get_composite_image(src_cv, [src_z], padded_src_bbox_fine, mip,
-                                masks=[],
-                                to_tensor=True, normalizer=None)
+    norm_patch = None
+    if is_metroem is False:
+      norm_patch = self.get_composite_image(
+        src_cv, [src_z], padded_src_bbox_fine, mip,
+        masks=[], to_tensor=True, normalizer=None
+      )
 
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
