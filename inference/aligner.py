@@ -634,7 +634,7 @@ class Aligner:
           finetune_iter=200,
           finetune_lr=3e-1,
           finetune_sm=300e0,
-          checkpoint_name='test')
+          checkpoint_name='try_x0_nobn')
     else:
       archive = self.get_model_archive(model_path)
       model = archive.model
