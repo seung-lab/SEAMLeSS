@@ -1,6 +1,6 @@
 urllib3==1.25.11
-torch>=1.6.0
-torchvision
+torch~=1.6.0
+torchvision~=0.7.0
 torchfields
 numpy>=1.18.0
 scikit-image
@@ -21,6 +21,6 @@ kimimaro
 simplejson
 -e git+https://github.com/seung-lab/artificery.git@nkem-config-device#egg=artificery
 -e git+https://github.com/seung-lab/scalenet.git#egg=scalenet
--e git+https://github.com/seung-lab/modelhouse.git#egg=modelhouse
--e git+https://github.com/seung-lab/metroem.git#egg=metroem
--e git+https://github.com/seung-lab/procspec.git#egg=procspec
+-e git+https://github.com/seung-lab/modelhouse.git@tmacrina-load-model-simple#egg=modelhouse
+-e git+https://github.com/seung-lab/metroem_release.git@tmacrina-dataset-handling#egg=metroem
+-e git+https://github.com/seung-lab/procspec.git@tmacrina-fix-procs-import#egg=procspec
