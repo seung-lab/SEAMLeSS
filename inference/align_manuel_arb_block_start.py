@@ -187,11 +187,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--write_orig_cv",
         action='store_true',
-        help="If True,brightens misalignments seenthrough"
+        help="If True,write image blocks without seethrough for debugging"
     )
     parser.add_argument('--write_patches', action='store_true')
     parser.add_argument('--coarsely_warped_cv', type=str, default=None)
-
+    parser.add_argument(
+        "--is_metroem",
+        action='store_true',
+        help="If True, is metroem"
+    )
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -226,6 +230,7 @@ if __name__ == "__main__":
     write_other_masks = args.write_other_masks
     write_orig_cv = args.write_orig_cv
     write_patches = args.write_patches
+    is_metroem = args.is_metroem
 
     if write_misalignment_masks:
         # Need composing field to produce misalignment masks
@@ -802,7 +807,8 @@ if __name__ == "__main__":
                         report=True,
                         block_start=block_start,
                         write_src_patch_cv=write_src_patch_cv,
-                        write_tgt_patch_cv=write_tgt_patch_cv
+                        write_tgt_patch_cv=write_tgt_patch_cv,
+                        is_metroem=is_metroem
                     )
                     yield from t
 
@@ -890,7 +896,8 @@ if __name__ == "__main__":
                                         cur_field_cv=block_vvote_field,
                                         coarse_field_cv=coarse_field_cv,
                                         coarse_field_mip=coarse_field_mip,
-                                        prev_field_z=tgt_z,stitch=True,unaligned_cv=src)
+                                        prev_field_z=tgt_z,stitch=True,unaligned_cv=src,
+                                        is_metroem=is_metroem)
                     yield from t
 
     class StitchPreCompose(object):

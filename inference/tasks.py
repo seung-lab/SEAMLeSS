@@ -131,7 +131,7 @@ class ComputeFieldTask(RegisteredTask):
                      patch_bbox, mip, pad, src_masks, tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
                      coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False, report=False, block_start=None, cur_field_cv=None, unaligned_cv=None,
-                     write_src_patch_cv=None, write_tgt_patch_cv=None):
+                     write_src_patch_cv=None, write_tgt_patch_cv=None, is_metroem=True):
     #src_serialized_masks = [m.to_dict() for m in src_masks]
     #tgt_serialized_masks = [m.to_dict() for m in tgt_masks]
 
@@ -146,7 +146,7 @@ class ComputeFieldTask(RegisteredTask):
                      tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
                      coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start, cur_field_cv, unaligned_cv,
-                     write_src_patch_cv, write_tgt_patch_cv)
+                     write_src_patch_cv, write_tgt_patch_cv, is_metroem)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -171,6 +171,7 @@ class ComputeFieldTask(RegisteredTask):
     }
     mip = self.mip
     pad = self.pad
+    is_metroem = self.is_metroem
 
     write_src_patch_cv = None
     if self.write_src_patch_cv is not None:
@@ -226,14 +227,17 @@ class ComputeFieldTask(RegisteredTask):
                                             patch_bbox, mip, pad,
                                             src_masks, tgt_masks,
                                             None, prev_field_cv, prev_field_z,
-                                            prev_field_inverse, cur_field_cv=cur_field_cv, coarse_field_cv=coarse_field_cv,coarse_field_mip=coarse_field_mip,unaligned_cv=unaligned_cv)
+                                            prev_field_inverse, cur_field_cv=cur_field_cv, 
+                                            coarse_field_cv=coarse_field_cv,coarse_field_mip=coarse_field_mip,
+                                            unaligned_cv=unaligned_cv,is_metroem=is_metroem)
         aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
       else:
         field = aligner.compute_field_chunk(model_path, src_cv=src_cv, tgt_cv=tgt_cv, src_z=src_z, tgt_z=tgt_z,
                                             bbox=patch_bbox, mip=mip, pad=pad,
                                             src_masks=src_masks, tgt_masks=tgt_masks,
                                             tgt_alt_z=None, prev_field_cv=prev_field_cv, prev_field_z=prev_field_z,
-                                            coarse_field_cv=coarse_field_cv, coarse_field_mip=coarse_field_mip, tgt_field_cv=tgt_field_cv)
+                                            coarse_field_cv=coarse_field_cv, coarse_field_mip=coarse_field_mip, 
+                                            tgt_field_cv=tgt_field_cv, is_metroem=is_metroem)
         aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
         if self.report and aligner.completed_task_queue is not None:
           print('Reporting to completed queue...')
@@ -366,7 +370,7 @@ class RenderTask(RegisteredTask):
                affine=None, use_cpu=False, pad=256,
                seethrough=False, coarsen_small_folds=1, coarsen_big_folds=15,
                coarsen_misalign=32, seethrough_cv=None,
-               seethrough_offset=-1, seethrough_folds=True, seethrough_misalign=True,
+               seethrough_offset=-1, seethrough_folds=False, seethrough_misalign=True,
                seethrough_black=True, big_fold_threshold=800, seethrough_renormalize=False,
                blackout_op='none', report=False, brighten_misalign=False, block_start=None,
                misalignment_mask_cv=None, orig_image_cv=None, misalignment_count_cv=None):
@@ -516,7 +520,7 @@ class RenderTask(RegisteredTask):
 
              if self.seethrough_misalign:
                  prev_image_md = prev_image.clone()
-                #  prev_image_md[norm_image==0] = 0
+                 prev_image_md[image==0] = 0
                  misalignment_region = misalignment_detector(image, prev_image_md, mip=4,
                                                              threshold=80)
                  misalignment_region[image[0,0,:,:] == 0] = 0
@@ -535,7 +539,7 @@ class RenderTask(RegisteredTask):
                    aligner.save_image(misalignment_mask, misalignment_mask_cv, dst_z, patch_bbox, src_mip)
              
              if self.seethrough_black:
-                #  seethrough_region[norm_image==0] = True
+                 seethrough_region[image==0] = True
                  image[seethrough_region] = prev_image[seethrough_region]
              preseethru_blackout_fill = preseethru_blackout * prev_image_tissue
              image[preseethru_blackout_fill] = prev_image[preseethru_blackout_fill]

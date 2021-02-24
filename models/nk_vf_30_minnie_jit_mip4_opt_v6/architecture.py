@@ -92,7 +92,7 @@ class Model(nn.Module):
                 large_defect_threshold = 400
                 small_defect_threshold = 25
                 # src_large_defects = (kwargs['src_mask'] >= large_defect_threshold).float()
-                src_large_defects = (kwargs['src_mask'] == 0.0).float()
+                src_large_defects = (kwargs['src_mask'] == True).float()
                 # src_small_defects = (kwargs['src_mask'] >= small_defect_threshold).float()
                 src_small_defects = None
 
