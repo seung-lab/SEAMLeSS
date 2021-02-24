@@ -131,7 +131,7 @@ class ComputeFieldTask(RegisteredTask):
                      patch_bbox, mip, pad, src_masks, tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
                      coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch=False, report=False, block_start=None, cur_field_cv=None, unaligned_cv=None,
-                     write_src_patch_cv=None, write_tgt_patch_cv=None, is_metroem=True):
+                     write_src_patch_cv=None, write_tgt_patch_cv=None, coarsely_warped_cv=None, is_metroem=True):
     #src_serialized_masks = [m.to_dict() for m in src_masks]
     #tgt_serialized_masks = [m.to_dict() for m in tgt_masks]
 
@@ -146,7 +146,7 @@ class ComputeFieldTask(RegisteredTask):
                      tgt_masks,
                      prev_field_cv, prev_field_z, prev_field_inverse,
                      coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, block_start, cur_field_cv, unaligned_cv,
-                     write_src_patch_cv, write_tgt_patch_cv, is_metroem)
+                     write_src_patch_cv, write_tgt_patch_cv, coarsely_warped_cv, is_metroem)
 
   def execute(self, aligner):
     model_path = self.model_path
@@ -171,6 +171,10 @@ class ComputeFieldTask(RegisteredTask):
     }
     mip = self.mip
     pad = self.pad
+    if self.coarsely_warped_cv is not None:
+      coarsely_warped_cv = DCV(self.coarsely_warped_cv)
+    else:
+      coarsely_warped_cv = None
     is_metroem = self.is_metroem
 
     write_src_patch_cv = None
@@ -237,7 +241,8 @@ class ComputeFieldTask(RegisteredTask):
                                             src_masks=src_masks, tgt_masks=tgt_masks,
                                             tgt_alt_z=None, prev_field_cv=prev_field_cv, prev_field_z=prev_field_z,
                                             coarse_field_cv=coarse_field_cv, coarse_field_mip=coarse_field_mip, 
-                                            tgt_field_cv=tgt_field_cv, is_metroem=is_metroem)
+                                            tgt_field_cv=tgt_field_cv, coarsely_warped_cv=coarsely_warped_cv,
+                                            is_metroem=is_metroem)
         aligner.save_field(field, field_cv, src_z, patch_bbox, mip, relative=False)
         if self.report and aligner.completed_task_queue is not None:
           print('Reporting to completed queue...')

@@ -1040,7 +1040,7 @@ class Aligner:
             tgt_patch,
             # tgt_field=torch.zeros_like(coarse_field),
             # src_field=coarse_field,
-            src_mask=src_mask
+            # src_mask=src_mask
           )
         else:
           accum_field = model(
@@ -1048,7 +1048,7 @@ class Aligner:
             tgt_patch,
             tgt_field=torch.zeros_like(coarse_field),
             src_field=coarse_field,
-            src_mask=src_mask
+            # src_mask=src_mask
           )
 
       if not isinstance(accum_field, torch.Tensor):
@@ -1608,7 +1608,7 @@ class Aligner:
                     prev_field_inverse=False, coarse_field_cv=None,
                     coarse_field_mip=0,tgt_field_cv=None,stitch=False,report=False,block_start=None,
                     cur_field_cv=None,unaligned_cv=None,write_src_patch_cv=None,write_tgt_patch_cv=None,
-                    is_metroem=True):
+                    coarsely_warped_cv=None, is_metroem=True):
     """Compute field to warp src section to tgt section
 
     Args:
@@ -1657,7 +1657,7 @@ class Aligner:
                                           prev_field_cv, prev_field_z, prev_field_inverse,
                                           coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, 
                                           block_start,cur_field_cv,unaligned_cv,
-                                          write_src_patch_cv,write_tgt_patch_cv,is_metroem)
+                                          write_src_patch_cv,write_tgt_patch_cv,coarsely_warped_cv,is_metroem)
     if return_iterator:
         return ComputeFieldTaskIterator(chunks,0, len(chunks))
     else:
@@ -1670,7 +1670,7 @@ class Aligner:
                                               prev_field_cv, prev_field_z, prev_field_inverse,
                                               coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, 
                                               block_start,cur_field_cv,unaligned_cv,
-                                              write_src_patch_cv,write_tgt_patch_cv,is_metroem))
+                                              write_src_patch_cv,write_tgt_patch_cv,coarsely_warped_cv,is_metroem))
         return batch
 
   def seethrough_stitch_render(self, cm, src_cv, dst_cv, z_start, z_end,
