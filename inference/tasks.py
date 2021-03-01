@@ -526,6 +526,7 @@ class RenderTask(RegisteredTask):
              if self.seethrough_misalign:
                  prev_image_md = prev_image.clone()
                  prev_image_md[image==0] = 0
+                 prev_image_md[mask_data==1] = 0
                  misalignment_region = misalignment_detector(image, prev_image_md, mip=4,
                                                              threshold=80)
                  misalignment_region[image[0,0,:,:] == 0] = 0
@@ -545,6 +546,7 @@ class RenderTask(RegisteredTask):
              
              if self.seethrough_black:
                  seethrough_region[image==0] = True
+                 seethrough_region[mask_data==1] = True
                  image[seethrough_region] = prev_image[seethrough_region]
              preseethru_blackout_fill = preseethru_blackout * prev_image_tissue
              image[preseethru_blackout_fill] = prev_image[preseethru_blackout_fill]

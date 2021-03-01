@@ -172,7 +172,7 @@ class Aligner:
         result = None
         for mask in masks:
             mask_data = self.get_mask(mask.cv, z, bbox, mask.mip, dst_mip, mask.val,
-                                to_tensor=to_tensor, mask_op=mask_op,
+                                to_tensor=to_tensor, mask_op=mask.op or mask_op,
                                 coarsen_count=mask.coarsen_count,
                                 mult=mask.mult).long()
             if result is None:
@@ -729,12 +729,6 @@ class Aligner:
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       zero_fieldC = torch.zeros([1, src_patch.size()[2], src_patch.size()[3], 2], dtype=torch.float32, device=self.device)
 
-      # import ipdb
-      # ipdb.set_trace()
-
-      # zero_fieldC = torch.Field(torch.zeros(torch.Size([1,2,2048,2048])))
-      # zero_fieldC = zero_fieldC.permute(0,2,3,1).to(device=self.device)
-
       # model produces field in relative coordinates
       
       if is_metroem:
@@ -963,7 +957,8 @@ class Aligner:
       mask_op='data',
       return_mask=True,
       blackout=False
-    )      
+    )
+    src_mask[src_patch == 0] = 1
 
     norm_patch = None
     if is_metroem is False:
@@ -1040,7 +1035,7 @@ class Aligner:
             tgt_patch,
             # tgt_field=torch.zeros_like(coarse_field),
             # src_field=coarse_field,
-            # src_mask=src_mask
+            src_mask=src_mask
           )
         else:
           accum_field = model(
@@ -1048,7 +1043,7 @@ class Aligner:
             tgt_patch,
             tgt_field=torch.zeros_like(coarse_field),
             src_field=coarse_field,
-            # src_mask=src_mask
+            src_mask=src_mask
           )
 
       if not isinstance(accum_field, torch.Tensor):

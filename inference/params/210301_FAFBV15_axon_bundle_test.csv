@@ -1,0 +1,2 @@
+x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
+99000,38000,1,122000,53000,7063,0,nk_vf_30_minnie_jit_mip4_opt_v6,1,0,original
