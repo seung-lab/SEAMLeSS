@@ -1,0 +1,93 @@
+x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
+0,0,1,237568,131072,301,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,original
+0,0,301,237568,131072,901,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,original
+0,0,901,237568,131072,1401,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,original
+0,0,1170,237568,131072,1171,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,"partial, no adjustment"
+0,0,1171,237568,131072,1172,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"partial, needs adjustment"
+0,0,1172,237568,131072,1173,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"partial, needs adjustment"
+0,0,1173,237568,131072,1174,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,1174,237568,131072,1175,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,1175,237568,131072,1176,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,1176,237568,131072,1177,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,1177,237568,131072,1178,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,1198,237568,131072,1199,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,1201,237568,131072,1202,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,1202,237568,131072,1203,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,1249,237568,131072,1250,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,1250,237568,131072,1251,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,1261,237568,131072,1262,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,1262,237568,131072,1263,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,1401,237568,131072,2401,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,original
+0,0,1504,237568,131072,1505,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three sections with damage
+0,0,1505,237568,131072,1506,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three sections with damage
+0,0,1564,237568,131072,1565,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,"partial, no adjustment"
+0,0,1565,237568,131072,1566,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,"partial, no adjustment"
+0,0,1566,237568,131072,1567,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"partial, needs adjustment"
+0,0,1567,237568,131072,1568,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,1568,237568,131072,1569,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,1569,237568,131072,1570,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,1570,237568,131072,1571,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,1571,237568,131072,1572,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,2176,237568,131072,2177,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,"partial, no adjustment"
+0,0,2177,237568,131072,2178,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"partial, needs adjustment"
+0,0,2178,237568,131072,2179,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"partial, needs adjustment"
+0,0,2179,237568,131072,2180,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,2180,237568,131072,2181,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,2181,237568,131072,2182,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,2182,237568,131072,2183,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,2183,237568,131072,2184,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after partial, needs adjustment"
+0,0,2201,237568,131072,2202,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,9,0,history has multiple sections with damage
+0,0,2202,237568,131072,2203,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,9,0,history has multiple sections with damage
+0,0,2203,237568,131072,2204,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,9,0,history has multiple sections with damage
+0,0,2204,237568,131072,2205,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,9,0,history has multiple sections with damage
+0,0,2205,237568,131072,2206,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,9,0,history has multiple sections with damage
+0,0,2206,237568,131072,2207,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,9,0,history has multiple sections with damage
+0,0,2401,237568,131072,6201,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,original
+0,0,2566,237568,131072,2567,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,history has two partial sections
+0,0,2635,237568,131072,2636,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,history has two damaged sections
+0,0,3595,237568,131072,3596,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,3596,237568,131072,3597,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,3597,237568,131072,3598,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,3715,237568,131072,3716,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,3717,237568,131072,3718,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,"follows missing & partial, but no need for adjustment"
+0,0,3742,237568,131072,3743,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,3743,237568,131072,3744,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,3744,237568,131072,3745,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,3745,237568,131072,3746,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,3746,237568,131072,3747,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has two partial sections
+0,0,4163,237568,131072,4164,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three partial sections
+0,0,4164,237568,131072,4165,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three partial sections
+0,0,4165,237568,131072,4166,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three partial sections
+0,0,4166,237568,131072,4167,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three partial sections
+0,0,4167,237568,131072,4168,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three partial sections
+0,0,4192,237568,131072,4193,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,4353,237568,131072,4354,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,4474,237568,131072,4475,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,4530,237568,131072,4531,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three partial sections
+0,0,4531,237568,131072,4532,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three partial sections
+0,0,4532,237568,131072,4533,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three partial sections
+0,0,4533,237568,131072,4534,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three partial sections
+0,0,4534,237568,131072,4535,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three partial sections
+0,0,4638,237568,131072,4639,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,"consistent merge error, no adjustment"
+0,0,4639,237568,131072,4640,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"consistent merge error, needs adjustment"
+0,0,4640,237568,131072,4641,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"consistent merge error, needs adjustment"
+0,0,4641,237568,131072,4642,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after consistent merge error, needs adjustment"
+0,0,4642,237568,131072,4643,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after consistent merge error, needs adjustment"
+0,0,4643,237568,131072,4644,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after consistent merge error, needs adjustment"
+0,0,4644,237568,131072,4645,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after consistent merge error, needs adjustment"
+0,0,4645,237568,131072,4646,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,"after consistent merge error, needs adjustment"
+0,0,4951,237568,131072,4952,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,5247,237568,131072,5248,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,history has three partial sections
+0,0,5248,237568,131072,5249,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,9,0,history has four partial sections
+0,0,5249,237568,131072,5250,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,9,0,history has four partial sections
+0,0,5250,237568,131072,5251,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,9,0,history has four partial sections
+0,0,5251,237568,131072,5252,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,history has four partial sections
+0,0,6159,237568,131072,6160,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,6160,237568,131072,6161,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,6162,237568,131072,6163,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,6201,237568,131072,7101,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,original
+0,0,6462,237568,131072,6463,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,6465,237568,131072,6466,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,follows missing with some additional defects
+0,0,6883,237568,131072,6884,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,6884,237568,131072,6885,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,6885,237568,131072,6886,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
