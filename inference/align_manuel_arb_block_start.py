@@ -187,10 +187,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--write_orig_cv",
         action='store_true',
-        help="If True,brightens misalignments seenthrough"
+        help="If True,write image blocks without seethrough for debugging"
     )
     parser.add_argument('--write_patches', action='store_true')
-    parser.add_argument('--coarsely_warped_cv', type=str, default=None)
+    parser.add_argument('--coarsely_warped_cv_path', type=str, default=None)
 
 
     args = parse_args(parser)
@@ -226,6 +226,7 @@ if __name__ == "__main__":
     write_other_masks = args.write_other_masks
     write_orig_cv = args.write_orig_cv
     write_patches = args.write_patches
+    coarsely_warped_cv_path = args.coarsely_warped_cv_path
 
     if write_misalignment_masks:
         # Need composing field to produce misalignment masks
@@ -282,8 +283,10 @@ if __name__ == "__main__":
     if coarse_field_mip is None:
         coarse_field_mip = mip
 
-
-
+    if coarsely_warped_cv_path is not None:
+        coarsely_warped_cv = cm.create(args.coarsely_warped_cv_path,
+            data_type='float32', num_channels=1, fill_missing=True,
+            overwrite=False).path
 
     render_dst = args.dst_path
     if args.render_dst is not None:
@@ -802,7 +805,8 @@ if __name__ == "__main__":
                         report=True,
                         block_start=block_start,
                         write_src_patch_cv=write_src_patch_cv,
-                        write_tgt_patch_cv=write_tgt_patch_cv
+                        write_tgt_patch_cv=write_tgt_patch_cv,
+                        coarsely_warped_cv=coarsely_warped_cv
                     )
                     yield from t
 
@@ -1115,8 +1119,11 @@ if __name__ == "__main__":
     def executeNew(task_iterator, z_range, respective_block_starts):
         assert len(z_range) == len(respective_block_starts)
         if len(z_range) == 1:
-            ptask = []
-            remote_upload(task_iterator(z_range, respective_block_starts))
+            if a.distributed:
+                remote_upload(task_iterator(z_range, respective_block_starts))
+            else:
+                tq = MockTaskQueue(parallel=1)
+                tq.insert_all(task_iterator(z_range, respective_block_starts), args=[a])
         elif len(z_range) > 0:
             ptask = []
             range_list = make_range(z_range, a.threads)
@@ -1127,8 +1134,13 @@ if __name__ == "__main__":
                 irange = range_list[i]
                 iblock_starts = block_range_list[i]
                 ptask.append(task_iterator(irange, iblock_starts))
-            with ProcessPoolExecutor(max_workers=a.threads) as executor:
-                executor.map(remote_upload, ptask)
+            if a.distributed:
+                with ProcessPoolExecutor(max_workers=a.threads) as executor:
+                    executor.map(remote_upload, ptask)
+            else:
+                for t in ptask:
+                    tq = MockTaskQueue(parallel=1)
+                    tq.insert_all(t, args=[a])
 
     status_filename = args.status_output_file
     if status_filename is None:
@@ -1324,10 +1336,12 @@ if __name__ == "__main__":
             z_range = list(block_offset_to_z_range[z_offset])
             if do_alignment:
                 print("ALIGN BLOCK OFFSET {}".format(z_offset))
-                execute(BlockAlignComputeField, z_range)
+                for cur_z in z_range:
+                    executeNew(BlockAlignComputeField, [cur_z], [block_start_lookup[cur_z]])
             if do_alignment:
                 print("RENDER BLOCK OFFSET {}".format(z_offset))
-                execute(BlockAlignRender, z_range)
+                for cur_z in z_range:
+                    executeNew(BlockAlignRender, [cur_z], [block_start_lookup[cur_z]])
 
     print("END BLOCK ALIGNMENT")
     print("START BLOCK STITCHING")

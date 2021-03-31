@@ -171,7 +171,7 @@ class Aligner:
         result = None
         for mask in masks:
             mask_data = self.get_mask(mask.cv, z, bbox, mask.mip, dst_mip, mask.val,
-                                to_tensor=to_tensor, mask_op=mask_op,
+                                to_tensor=to_tensor, mask_op=mask.op or mask_op,
                                 coarsen_count=mask.coarsen_count,
                                 mult=mask.mult).long()
             if result is None:
@@ -629,14 +629,6 @@ class Aligner:
         if coarse_field_cv is not None:
             cur_coarse_field = self.get_field(coarse_field_cv, src_z, padded_bbox, coarse_field_mip, relative=False, to_tensor=True)
             cur_coarse_field = upsample_field(cur_coarse_field, coarse_field_mip, mip)
-        # src_raw_patch = self.get_masked_image(unaligned_cv, src_z, padded_bbox, mip,
-        #                         masks=[],
-        #                         to_tensor=True, normalizer=None)
-        # tgt_raw_patch = self.get_composite_image(unaligned_cv, [tgt_z], padded_bbox, mip,
-        #                         masks=[],
-        #                         to_tensor=True, normalizer=None)
-        # src_rendered_image = grid_sample(src_raw_patch, cur_field, padding_mode='zeros')
-        # tgt_rendered_image = grid_sample(tgt_raw_patch, prev_field, padding_mode='zeros')
         src_rendered_image = self.cloudsample_image(unaligned_cv, cur_field_cv, src_z, src_z, 
                               padded_bbox, mip, mip, pad=512)
         tgt_rendered_image = self.cloudsample_image(unaligned_cv, prev_field_cv, tgt_z, tgt_z, 
@@ -651,7 +643,8 @@ class Aligner:
             del prev_fine_drift_field
             del cur_fine_drift_field
             distance = prev_fine_drift - cur_fine_drift
-            # field = (prev_field - prev_coarse_field) - (cur_field - cur_coarse_field)
+            del prev_coarse_field
+            del cur_coarse_field
         else:
             field = prev_field - cur_field
             distance = self.profile_field(field, [src_rendered_image, tgt_rendered_image])
@@ -659,10 +652,8 @@ class Aligner:
         print('Displacement adjustment: {} px'.format(distance))
         distance = (distance // (2 ** mip)) * 2 ** mip
         new_bbox = self.adjust_bbox(padded_bbox, distance.flip(0))
-        del prev_coarse_field
         del prev_field
         del cur_field
-        del cur_coarse_field
         del src_rendered_image
         del tgt_rendered_image
 
@@ -794,12 +785,17 @@ class Aligner:
     tgt_field = None
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
-    tgt_field = None
-    do_pad = True
-    # norm_image_cv = DCV('gs://zetta_aibs_mouse_unaligned/normalization/mip5_run/img/img_norm')
-    # norm_image = self.cloudsample_image(norm_image_cv, tgt_field_cv, tgt_z, tgt_z, 
-    #                                  padded_tgt_bbox_fine, mip, mip, 
-    #                                  pad=512)
+    
+    # tgt_patch_raw = self.get_composite_image(
+    #   tgt_cv,
+    #   tgt_z,
+    #   padded_tgt_bbox_fine,
+    #   mip,
+    #   masks=[],
+    #   to_tensor=True,
+    #   normalizer=None,
+    # )
+    
     if tgt_field_cv is not None:
       tgt_field = self.get_field(
           tgt_field_cv,
@@ -809,9 +805,11 @@ class Aligner:
           to_tensor=True,
       ).to(device=self.device)
       if coarse_field_cv is not None and not is_identity(tgt_field):
-        tgt_warped = self.cloudsample_image(tgt_cv, tgt_field_cv, tgt_z, 
+        tgt_warped = self.cloudsample_image(src_cv, tgt_field_cv, tgt_z, 
                                             tgt_z, padded_tgt_bbox_fine, mip, mip, 
                                             pad=pad)
+        # import ipdb
+        # ipdb.set_trace()
         tgt_coarse_field = self.get_field(
             coarse_field_cv,
             tgt_z,
@@ -821,7 +819,6 @@ class Aligner:
         ).to(device=self.device)
         tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_().up(coarse_field_mip-mip).permute(0,2,3,1)
         drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [tgt_warped])
-        # drift_distance = self.profile_field(tgt_field-tgt_coarse_field)
         drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
         drift_distance_coarse_snap = (
           drift_distance // (2 ** coarse_field_mip)
@@ -905,10 +902,7 @@ class Aligner:
       return_mask=True,
       blackout=False
     )      
-
-    # norm_patch = self.get_composite_image(norm_image_cv, [src_z], padded_src_bbox_fine, mip,
-    #                             masks=[],
-    #                             to_tensor=True, normalizer=None)
+    src_mask[src_patch == 0] = 1
 
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
@@ -921,8 +915,6 @@ class Aligner:
       to_tensor=True,
       normalizer=normalizer,
     )
-    # import ipdb
-    # ipdb.set_trace()
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
 
@@ -960,9 +952,7 @@ class Aligner:
         accum_field = model(
           src_patch,
           tgt_patch,
-          # tgt_field=torch.zeros_like(coarse_field),
-          # src_field=coarse_field,
-          # src_mask=norm_patch
+          src_mask=src_mask
         )
       else:
         accum_field = model(
@@ -970,7 +960,7 @@ class Aligner:
           tgt_patch,
           tgt_field=torch.zeros_like(coarse_field),
           src_field=coarse_field,
-          # src_mask=norm_patch
+          src_mask=src_mask
         )
 
       if not isinstance(accum_field, torch.Tensor):
@@ -1529,7 +1519,8 @@ class Aligner:
                     return_iterator=False, prev_field_cv=None, prev_field_z=None,
                     prev_field_inverse=False, coarse_field_cv=None,
                     coarse_field_mip=0,tgt_field_cv=None,stitch=False,report=False,block_start=None,
-                    cur_field_cv=None,unaligned_cv=None,write_src_patch_cv=None,write_tgt_patch_cv=None):
+                    cur_field_cv=None,unaligned_cv=None,write_src_patch_cv=None,write_tgt_patch_cv=None,
+                    coarsely_warped_cv=None):
     """Compute field to warp src section to tgt section
 
     Args:
@@ -1578,7 +1569,7 @@ class Aligner:
                                           prev_field_cv, prev_field_z, prev_field_inverse,
                                           coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, 
                                           block_start,cur_field_cv,unaligned_cv,
-                                          write_src_patch_cv,write_tgt_patch_cv)
+                                          write_src_patch_cv,write_tgt_patch_cv,coarsely_warped_cv)
     if return_iterator:
         return ComputeFieldTaskIterator(chunks,0, len(chunks))
     else:
@@ -1591,7 +1582,7 @@ class Aligner:
                                               prev_field_cv, prev_field_z, prev_field_inverse,
                                               coarse_field_cv, coarse_field_mip, tgt_field_cv, stitch, report, 
                                               block_start,cur_field_cv,unaligned_cv,
-                                              write_src_patch_cv,write_tgt_patch_cv))
+                                              write_src_patch_cv,write_tgt_patch_cv,coarsely_warped_cv))
         return batch
 
   def seethrough_stitch_render(self, cm, src_cv, dst_cv, z_start, z_end,

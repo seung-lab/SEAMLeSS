@@ -89,15 +89,10 @@ class Model(nn.Module):
             fine_field = fine_field.permute(0, 2, 3, 1)
 
             if 'src_mask' in kwargs:
-                large_defect_threshold = 400
-                small_defect_threshold = 25
-                # src_large_defects = (kwargs['src_mask'] >= large_defect_threshold).float()
-                src_large_defects = (kwargs['src_mask'] == 0.0).float()
-                # src_small_defects = (kwargs['src_mask'] >= small_defect_threshold).float()
+                src_large_defects = (kwargs['src_mask'] == True).float()
                 src_small_defects = None
 
                 tgt_defects = (tgt < 0.005).float()
-                # src_defects = (src < 0.005).float() + src_large_defects + src_small_defects
                 src_defects = (src < 0.005).float() + src_large_defects
 
             else:
