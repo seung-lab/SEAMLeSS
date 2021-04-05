@@ -85,9 +85,10 @@ x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comm
 0,0,6159,237568,131072,6160,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
 0,0,6160,237568,131072,6161,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
 0,0,6162,237568,131072,6163,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
-0,0,6201,237568,131072,7101,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,original
+0,0,6201,237568,131072,7062,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,original
 0,0,6462,237568,131072,6463,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
 0,0,6465,237568,131072,6466,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,7,0,follows missing with some additional defects
 0,0,6883,237568,131072,6884,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
 0,0,6884,237568,131072,6885,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
 0,0,6885,237568,131072,6886,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,1,missing
+0,0,7063,237568,131072,7100,0,pyramid_fly_x2_210218_tmacrina_blockmatched_iters19,5,0,original
