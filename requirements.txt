@@ -1,7 +1,4 @@
-urllib3==1.25.11
-torch~=1.6.0
-torchvision~=0.7.0
-torchfields
+torch>=1.7.0
 numpy>=1.18.0
 scikit-image
 matplotlib
@@ -15,8 +12,9 @@ pandas
 opencv-python-headless
 pyyaml
 task-queue~=1.0
-moviepy==0.2.3.5
-imageio==2.4.1
+moviepy
+imageio
+imageio-ffmpeg
 kimimaro
 simplejson
 -e git+https://github.com/seung-lab/artificery.git@nkem-config-device#egg=artificery
@@ -24,3 +22,4 @@ simplejson
 -e git+https://github.com/seung-lab/modelhouse.git@tmacrina-load-model-simple#egg=modelhouse
 -e git+https://github.com/seung-lab/metroem_release.git@tmacrina-dataset-handling#egg=metroem
 -e git+https://github.com/seung-lab/procspec.git@tmacrina-fix-procs-import#egg=procspec
+-e git+https://github.com/seung-lab/torchfields.git@master#egg=torchfields
