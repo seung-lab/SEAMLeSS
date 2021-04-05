@@ -958,6 +958,8 @@ class Aligner:
       return_mask=True,
       blackout=False
     )
+    if src_mask is None:
+      src_mask = torch.zeros_like(src_patch)
     src_mask[src_patch == 0] = 1
 
     norm_patch = None
