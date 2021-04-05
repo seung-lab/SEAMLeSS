@@ -595,7 +595,7 @@ class RenderTask(RegisteredTask):
       print('RenderTask: {:.3f} s'.format(diff))
 
 
-def get_threshold_tissue_mask(image, low_threshold=10, high_threshold=160):
+def get_threshold_tissue_mask(image, low_threshold=0, high_threshold=256):
     if image.max() > 5:
         return (image > low_threshold) * (image < high_threshold)
     else:
