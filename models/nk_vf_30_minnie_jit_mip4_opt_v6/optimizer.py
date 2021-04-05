@@ -33,7 +33,7 @@ def optimize_pre_post_ups(opti_loss, src, tgt, initial_res, sm, lr, num_iter, op
     while not finish:
         #import pdb; pdb.set_trace()
         finish = True
-        pred_res = initial_res.clone()
+        pred_res = initial_res.tensor()
         pred_res.requires_grad = False
 
         pre_res = torch.zeros_like(pred_res, device=pred_res.device, requires_grad=True)
