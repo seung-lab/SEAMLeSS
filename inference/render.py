@@ -58,10 +58,10 @@ if __name__ == '__main__':
   parser.add_argument('--max_mip', type=int, default=9)
   parser.add_argument('--pad',
     help='the size of the largest displacement expected; should be 2^high_mip',
-    type=int, default=2048)
+    type=int, default=512)
   parser.add_argument('--render_pad',
     help='the size of the largest displacement expected; should be 2^high_mip',
-    type=int, default=256)
+    type=int, default=512)
   args = parse_args(parser)
   # only compute matches to previous sections
   a = get_aligner(args)

@@ -1,0 +1,2 @@
+x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
+0,30000,1,730000,400000,9704,0,sergiy_m8m10_net_opt_v2,9,0,tmacrina_metroem_testing

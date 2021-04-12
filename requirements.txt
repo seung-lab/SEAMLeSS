@@ -3,7 +3,7 @@ urllib3>=1.26.3
 torch>=1.6.0
 torchvision
 torchfields
-numpy>=1.18.0
+numpy>=1.20.1
 scikit-image
 matplotlib
 cloud-volume>=3.0

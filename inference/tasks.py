@@ -78,6 +78,56 @@ class PredictImageTask(RegisteredTask):
     print(':{:.3f} s'.format(diff))
 
 
+class FoldLengthCalcTask(RegisteredTask):
+  def __init__(self, cv, dst_cv, patch_bbox, pad, mip, z, thr_binarize, w_connect, 
+              thr_filter, return_skeleys=False, longest_fold_cv=None, count_pixels=False):
+    super(). __init__(cv, dst_cv, patch_bbox, pad, mip, z, thr_binarize, w_connect, 
+                      thr_filter, return_skeleys, longest_fold_cv, count_pixels)
+
+  def execute(self, aligner):
+    import time
+    btime = time.time()
+    cv = DCV(self.cv)
+    dst_cv = DCV(self.dst_cv)
+    pad = self.pad
+    mip = self.mip
+    if self.longest_fold_cv:
+      from cloudvolume import CloudVolume
+      longest_fold_cv = CloudVolume(self.longest_fold_cv)
+
+    patch_bbox = deserialize_bbox(self.patch_bbox)
+    patch_bbox.uncrop(pad, mip)
+    image = aligner.calculate_fold_lengths_chunk(cv, patch_bbox, mip, self.z, self.thr_binarize, 
+              self.w_connect, self.thr_filter, self.return_skeleys, self.count_pixels)
+
+    patch_bbox.crop(pad, mip)
+    if self.longest_fold_cv:
+      chunk_ind = (np.array([patch_bbox.x_range(mip)[0], patch_bbox.y_range(mip)[0]]) - 
+                    dst_cv[0].voxel_offset[:-1]) / dst_cv[0].chunk_size[:-1]
+      longest_fold_cv[chunk_ind[0], chunk_ind[1], self.z, 0] = np.max(image)
+    image = image[pad:-pad,pad:-pad]
+    image = image[...,np.newaxis,np.newaxis]
+    aligner.save_image(image, dst_cv, self.z, patch_bbox, mip, to_uint8=False, render_mip=0 ,transpose=False)
+    print(f'time taken = {time.time() - btime}')
+
+
+class ThresholdAndMaskTask(RegisteredTask):
+  def __init__(self, src_cv_path, dst_cv_path, patch_bbox, mip, z, threshold):
+    super(). __init__(src_cv_path, dst_cv_path, patch_bbox, mip, z, threshold)
+
+  def execute(self, aligner):
+    cv = DCV(self.src_cv_path)
+    dst_cv = DCV(self.dst_cv_path)
+    mip = self.mip
+    z = self.z
+    bbox = deserialize_bbox(self.patch_bbox)
+    image = aligner.get_image(cv, z, bbox, mip, to_tensor=False, to_float=False)
+    mask = image < self.threshold
+    image[mask] = 0
+    image[~mask] = 1
+    aligner.save_image(image, dst_cv, z, bbox, mip, to_uint8=True, render_mip=0)
+
+
 class CopyTask(RegisteredTask):
   def __init__(self, src_cv, dst_cv, src_z, dst_z, patch_bbox, mip,
           is_field, to_uint8, masks=[]):
@@ -510,7 +560,7 @@ class RenderTask(RegisteredTask):
                                                              threshold=80)
                  misalignment_region[image[0,0,:,:] == 0] = 0
                  misalignment_region_coarse = coarsen_mask(misalignment_region, coarsen_misalign).byte()
-                 misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
+                #  misalignment_fill_in = misalignment_region_coarse * prev_image_tissue
                  if misalignment_count_cv is not None:
                    seethrough_limit = 2
                    misalignment_fill_in[(src_z - self.block_start - misalignment_count_patch) > seethrough_limit] = 0
@@ -527,8 +577,8 @@ class RenderTask(RegisteredTask):
                  seethrough_region[image==0] = True
                  seethrough_region[mask_data==1] = True
                  image[seethrough_region] = prev_image[seethrough_region]
-             preseethru_blackout_fill = preseethru_blackout * prev_image_tissue
-             image[preseethru_blackout_fill] = prev_image[preseethru_blackout_fill]
+            #  preseethru_blackout_fill = preseethru_blackout * prev_image_tissue
+            #  image[preseethru_blackout_fill] = prev_image[preseethru_blackout_fill]
          if self.seethrough_folds:
              if mask_data is not None:
                  small_fold_region = mask_data > 0

@@ -34,6 +34,7 @@ from utilities.helpers import save_chunk, crop, upsample, grid_sample, \
                               is_identity, cpc, vector_vote, get_affine_field, is_blank, \
                               identity_grid, percentile, coarsen_mask
 from boundingbox import BoundingBox, deserialize_bbox
+from fold_processing import postprocess_length_filter
 
 from pathos.multiprocessing import ProcessPool, ThreadPool
 from threading import Lock
@@ -400,10 +401,13 @@ class Aligner:
 
     return data
 
-  def save_image(self, float_patch, cv, z, bbox, mip, to_uint8=True):
+  def save_image(self, float_patch, cv, z, bbox, mip, to_uint8=True, render_mip=None, transpose=True):
     x_range = bbox.x_range(mip=mip)
     y_range = bbox.y_range(mip=mip)
-    patch = np.transpose(float_patch, (2,3,0,1))
+    if transpose:
+      patch = np.transpose(float_patch, (2,3,0,1))
+    else:
+      patch = float_patch
     #print("----------------z is", z, "save image patch at mip", mip, "range", x_range, y_range, "range at mip0", bbox.x_range(mip=0), bbox.y_range(mip=0))
     if to_uint8 and cv[mip].dtype != np.float32:
       patch = (np.multiply(patch, 255)).astype(np.uint8)
@@ -425,6 +429,8 @@ class Aligner:
         diff = cv[mip].bounds.minpt[0] - x_range[0]
         patch = patch[diff:,:,:,:]
         x_range = (cv[mip].bounds.minpt, x_range[1])
+    if render_mip is not None:
+      mip = render_mip
     cv[mip][x_range[0]:x_range[1], y_range[0]:y_range[1], z] = patch
 
   def save_image_batch(self, cv, z_range, float_patch, bbox, mip, to_uint8=True):
@@ -788,7 +794,7 @@ class Aligner:
     
     # tgt_patch_raw = self.get_composite_image(
     #   tgt_cv,
-    #   tgt_z,
+    #   [tgt_z],
     #   padded_tgt_bbox_fine,
     #   mip,
     #   masks=[],
@@ -902,7 +908,6 @@ class Aligner:
       return_mask=True,
       blackout=False
     )      
-    src_mask[src_patch == 0] = 1
 
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
@@ -915,6 +920,7 @@ class Aligner:
       to_tensor=True,
       normalizer=normalizer,
     )
+    src_mask[src_patch == 0] = 1
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
 
@@ -996,6 +1002,33 @@ class Aligner:
         print("Process {} releasing GPU lock".format(os.getpid()))
         self.gpu_lock.release()
     return accum_field
+
+  def calculate_fold_lengths(self, cm, src_cv, dst_cv, z, mip, bbox, chunk_size, overlap, 
+                            thr_binarize, w_connect, thr_filter, return_skeleys=False, longest_fold_cv=None, count_pixels=False):
+    # return [tasks.FoldLengthCalcTask(src_cv, dst_cv, bbox, mip, z, chunk_size, thr_binarize, w_connect, thr_filter, cm.dst_voxel_offsets[mip])]
+    chunks = self.break_into_chunks(bbox, chunk_size,
+                                    cm.dst_voxel_offsets[mip], mip=mip,
+                                    max_mip=cm.num_scales)
+    batch = []
+    for patch_bbox in chunks:
+      batch.append(tasks.FoldLengthCalcTask(src_cv, dst_cv,patch_bbox, overlap, mip, z, 
+                    thr_binarize, w_connect, thr_filter, return_skeleys, longest_fold_cv, count_pixels))
+    return batch
+
+  def calculate_fold_lengths_chunk(self, cv, bbox, mip, z, thr_binarize, w_connect, thr_filter, return_skeleys, count_pixels):
+    image = self.get_image(cv, z, bbox, mip, to_tensor=False)
+    return postprocess_length_filter(image[0,0,...],
+                      thr_binarize=thr_binarize, w_connect=w_connect,
+                      thr_filter=thr_filter, return_skeleys=return_skeleys, count_pixels=count_pixels)
+
+  def threshold_and_mask(self, src_cv_path, src_cv, dst_cv_path, z, mip, bbox, threshold, max_mip):
+    chunks = self.break_into_chunks(bbox, src_cv.chunk_size,
+                                    src_cv.voxel_offset, mip=mip,
+                                    max_mip=max_mip)
+    batch = []
+    for patch_bbox in chunks:
+      batch.append(tasks.ThresholdAndMaskTask(src_cv_path, dst_cv_path, patch_bbox, mip, z, threshold))
+    return batch
 
   def predict_image(self, cm, model_path, src_cv, dst_cv, z, mip, bbox,
                     chunk_size):
