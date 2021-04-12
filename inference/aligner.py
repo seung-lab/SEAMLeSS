@@ -810,25 +810,30 @@ class Aligner:
           mip,
           to_tensor=True,
       ).to(device=self.device)
-      if coarse_field_cv is not None and not is_identity(tgt_field):
+      if not is_identity(tgt_field) and coarse_field_cv is not None:
         tgt_warped = self.cloudsample_image(src_cv, tgt_field_cv, tgt_z, 
                                             tgt_z, padded_tgt_bbox_fine, mip, mip, 
                                             pad=pad)
         # import ipdb
         # ipdb.set_trace()
-        tgt_coarse_field = self.get_field(
-            coarse_field_cv,
-            tgt_z,
-            padded_tgt_bbox_fine,
-            coarse_field_mip,
-            to_tensor=True,
-        ).to(device=self.device)
-        tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_().up(coarse_field_mip-mip).permute(0,2,3,1)
-        drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [tgt_warped])
-        drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
-        drift_distance_coarse_snap = (
-          drift_distance // (2 ** coarse_field_mip)
-        ) * 2 ** coarse_field_mip
+        if coarse_field_cv is None:
+          drift_distance = self.profile_field(tgt_field, [tgt_warped])
+          drift_distance_fine_snap = self.profile_field(tgt_field-tgt_coarse_field, [tgt_warped])
+          drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
+        else:
+          tgt_coarse_field = self.get_field(
+              coarse_field_cv,
+              tgt_z,
+              padded_tgt_bbox_fine,
+              coarse_field_mip,
+              to_tensor=True,
+          ).to(device=self.device)
+          tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_().up(coarse_field_mip-mip).permute(0,2,3,1)
+          drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [tgt_warped])
+          drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
+          drift_distance_coarse_snap = (
+            drift_distance // (2 ** coarse_field_mip)
+          ) * 2 ** coarse_field_mip
 
     print(
       "Displacement adjustment TGT: {} px".format(
@@ -938,6 +943,9 @@ class Aligner:
       tgt_patch_clone = np.transpose()
       self.save_image(tgt_patch_clone, write_tgt_patch_cv, bbox, mip)
 
+    # import ipdb
+    # ipdb.set_trace()
+
     # Running the model is the only part that will increase memory consumption
     # significantly - only incrementing the GPU lock here should be sufficient.
     if torch.cuda.is_available() and self.gpu_lock is not None:
@@ -987,6 +995,9 @@ class Aligner:
         raise ValueError('NAN Field')
       
       accum_field = accum_field.data.cpu().numpy()
+
+      import ipdb
+      ipdb.set_trace()
 
       # clear unused, cached memory so that other processes can allocate it
       if torch.cuda.is_available():
