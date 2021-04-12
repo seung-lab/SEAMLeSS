@@ -920,7 +920,8 @@ class Aligner:
       to_tensor=True,
       normalizer=normalizer,
     )
-    src_mask[src_patch == 0] = 1
+    if src_mask is not None:
+      src_mask[src_patch == 0] = 1
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
 
