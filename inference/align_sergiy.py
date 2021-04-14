@@ -177,6 +177,7 @@ if __name__ == "__main__":
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--compose_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--final_render_suffix', type=str, default='', help='string to append to directory names')
+    parser.add_argument('--coarsely_warped_cv_path', type=str, default=None)
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -205,6 +206,7 @@ if __name__ == "__main__":
     stitch_suffix = args.stitch_suffix
     skip_vv = args.skip_vv
     output_field_dtype = args.output_field_dtype
+    coarsely_warped_cv_path = args.coarsely_warped_cv_path
 
     final_render_mip = args.final_render_mip or args.mip
     # Create CloudVolume Manager
@@ -248,6 +250,13 @@ if __name__ == "__main__":
     coarse_field_mip = args.coarse_field_mip
     if coarse_field_mip is None:
         coarse_field_mip = mip
+
+    if coarsely_warped_cv_path is not None:
+        coarsely_warped_cv = cm.create(args.coarsely_warped_cv_path,
+            data_type='float32', num_channels=1, fill_missing=True,
+            overwrite=False).path
+    else:
+        coarsely_warped_cv = None
 
 
     render_dst = args.dst_path
@@ -531,9 +540,6 @@ if __name__ == "__main__":
             if z < args.z_stop:
                 influencing_blocks_lookup[z].append(b_start)
 
-    # import ipdb
-    # ipdb.set_trace()
-
 
     # Task scheduling functions
     def remote_upload(tasks):
@@ -656,6 +662,7 @@ if __name__ == "__main__":
                     coarse_field_cv=coarse_field_cv,
                     coarse_field_mip=coarse_field_mip,
                     tgt_field_cv=tgt_field,
+                    coarsely_warped_cv=coarsely_warped_cv
                 )
                 yield from t
 
@@ -727,6 +734,7 @@ if __name__ == "__main__":
                         coarse_field_cv=coarse_field_cv,
                         coarse_field_mip=coarse_field_mip,
                         tgt_field_cv=tgt_field,
+                        coarsely_warped_cv=coarsely_warped_cv
                     )
                     yield from t
 

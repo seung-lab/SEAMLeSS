@@ -792,15 +792,15 @@ class Aligner:
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
     
-    # tgt_patch_raw = self.get_composite_image(
-    #   tgt_cv,
-    #   [tgt_z],
-    #   padded_tgt_bbox_fine,
-    #   mip,
-    #   masks=[],
-    #   to_tensor=True,
-    #   normalizer=None,
-    # )
+    tgt_patch = self.get_composite_image(
+      tgt_cv,
+      [tgt_z],
+      padded_tgt_bbox_fine,
+      mip,
+      masks=[],
+      to_tensor=True,
+      normalizer=None,
+    )
     
     if tgt_field_cv is not None:
       tgt_field = self.get_field(
@@ -810,15 +810,10 @@ class Aligner:
           mip,
           to_tensor=True,
       ).to(device=self.device)
-      if not is_identity(tgt_field) and coarse_field_cv is not None:
-        tgt_warped = self.cloudsample_image(src_cv, tgt_field_cv, tgt_z, 
-                                            tgt_z, padded_tgt_bbox_fine, mip, mip, 
-                                            pad=pad)
-        # import ipdb
-        # ipdb.set_trace()
+      if not is_identity(tgt_field):
         if coarse_field_cv is None:
-          drift_distance = self.profile_field(tgt_field, [tgt_warped])
-          drift_distance_fine_snap = self.profile_field(tgt_field-tgt_coarse_field, [tgt_warped])
+          drift_distance = self.profile_field(tgt_field, [tgt_patch])
+          drift_distance_fine_snap = self.profile_field(tgt_field, [tgt_patch])
           drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
         else:
           tgt_coarse_field = self.get_field(
@@ -829,7 +824,7 @@ class Aligner:
               to_tensor=True,
           ).to(device=self.device)
           tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_().up(coarse_field_mip-mip).permute(0,2,3,1)
-          drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [tgt_warped])
+          drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [tgt_patch])
           drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
           drift_distance_coarse_snap = (
             drift_distance // (2 ** coarse_field_mip)
@@ -893,14 +888,6 @@ class Aligner:
     padded_src_bbox_fine = self.adjust_bbox(bbox, combined_distance_fine_snap.flip(0))
     padded_src_bbox_fine.uncrop(pad, mip)
 
-    tgt_z = [tgt_z]
-    if tgt_alt_z is not None:
-      try:
-        tgt_z.extend(tgt_alt_z)
-      except TypeError:
-        tgt_z.append(tgt_alt_z)
-      print("alternative target slices:", tgt_alt_z)
-
     src_patch, src_mask = self.get_masked_image(
       src_cv,
       src_z,
@@ -912,20 +899,10 @@ class Aligner:
       mask_op='data',
       return_mask=True,
       blackout=False
-    )      
-
-    padded_tgt_bbox_fine = deepcopy(bbox)
-    padded_tgt_bbox_fine.uncrop(pad, mip)
-    tgt_patch = self.get_composite_image(
-      tgt_cv,
-      tgt_z,
-      padded_tgt_bbox_fine,
-      mip,
-      masks=[],
-      to_tensor=True,
-      normalizer=normalizer,
     )
-    src_mask[src_patch == 0] = 1
+    
+    if src_mask is not None:
+      src_mask[src_patch == 0] = 1
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
 
@@ -942,9 +919,6 @@ class Aligner:
       tgt_patch_clone = tgt_patch_clone.cpu().numpy()
       tgt_patch_clone = np.transpose()
       self.save_image(tgt_patch_clone, write_tgt_patch_cv, bbox, mip)
-
-    # import ipdb
-    # ipdb.set_trace()
 
     # Running the model is the only part that will increase memory consumption
     # significantly - only incrementing the GPU lock here should be sufficient.
@@ -995,9 +969,6 @@ class Aligner:
         raise ValueError('NAN Field')
       
       accum_field = accum_field.data.cpu().numpy()
-
-      import ipdb
-      ipdb.set_trace()
 
       # clear unused, cached memory so that other processes can allocate it
       if torch.cuda.is_available():

@@ -1,0 +1,4 @@
+x_start,y_start,z_start,x_stop,y_stop,z_stop,mip,model_name,tgt_radius,skip,comment
+0,0,0,524288,524288,2276,0,sergiy_m8m10_net_opt_v2,7,0,nkem_testing
+0,0,2276,524288,524288,2376,0,sergiy_m8m10_net_opt_v2,11,0,nkem_testing
+0,0,2376,524288,524288,9704,0,sergiy_m8m10_net_opt_v2,7,0,nkem_testing
