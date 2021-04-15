@@ -287,6 +287,8 @@ if __name__ == "__main__":
         coarsely_warped_cv = cm.create(args.coarsely_warped_cv_path,
             data_type='float32', num_channels=1, fill_missing=True,
             overwrite=False).path
+    else:
+        coarsely_warped_cv = None
 
     render_dst = args.dst_path
     if args.render_dst is not None:
