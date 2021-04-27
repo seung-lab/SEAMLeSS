@@ -444,14 +444,6 @@ class RenderTask(RegisteredTask):
                         field_mip_print, src_mip), flush=True)
     start = time()
     if not aligner.dry_run:
-      # norm_image_cv = DCV(NORM_IMAGE_PATH)
-      # norm_image = aligner.cloudsample_image(norm_image_cv, field_cv, src_z, field_z,
-      #                                patch_bbox, src_mip, field_mip,
-      #                                masks=masks,
-      #                                affine=affine,
-      #                                use_cpu=self.use_cpu, pad=self.pad,
-      #                                return_mask=False,
-      #                                blackout_mask_op=self.blackout_op)
       if not seethrough:
          image = aligner.cloudsample_image(src_cv, field_cv, src_z, field_z,
                                      patch_bbox, src_mip, field_mip,

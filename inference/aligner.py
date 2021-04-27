@@ -844,6 +844,15 @@ class Aligner:
     tgt_field = None
     padded_tgt_bbox_fine = deepcopy(bbox)
     padded_tgt_bbox_fine.uncrop(pad, mip)
+    tgt_patch = self.get_composite_image(
+      tgt_cv,
+      [tgt_z],
+      padded_tgt_bbox_fine,
+      mip,
+      masks=[],
+      to_tensor=True,
+      normalizer=normalizer,
+    )
 
     # Find the target patch (Coarse+Fine vector field)
     if tgt_field_cv is not None:
@@ -855,29 +864,29 @@ class Aligner:
           to_tensor=True,
       ).to(device=self.device)
 
-      if coarse_field_cv is not None and not is_identity(tgt_field):
-        # Retrieve warped target to mask out irrelevant field values
-        # FIXME: This looks like an unnecessarily expensive call
-        tgt_warped = self.cloudsample_image(
-          src_cv, tgt_field_cv, tgt_z, tgt_z,
-          padded_tgt_bbox_fine, mip, mip, pad=pad
-        )
-        tgt_coarse_field = self.get_field(
-            coarse_field_cv,
-            tgt_z,
-            padded_tgt_bbox_fine,
-            coarse_field_mip,
-            to_tensor=True,
-        ).to(device=self.device)
-        tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_().up(coarse_field_mip-mip).permute(0,2,3,1)
-
-        # Get prev section's current alignment drift,
-        # using -tgt_coarse_field as approximation for inverse
-        drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [tgt_warped])
-        drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
-        drift_distance_coarse_snap = (
-          drift_distance // (2 ** coarse_field_mip)
-        ) * 2 ** coarse_field_mip
+      if not is_identity(tgt_field):
+        if coarse_field_cv is None:
+          # Get prev section's current alignment drift
+          drift_distance = self.profile_field(tgt_field, [tgt_patch])
+          drift_distance_fine_snap = self.profile_field(tgt_field, [tgt_patch])
+          drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
+        else:
+          # Retrieve warped target to mask out irrelevant field values
+          tgt_coarse_field = self.get_field(
+              coarse_field_cv,
+              tgt_z,
+              padded_tgt_bbox_fine,
+              coarse_field_mip,
+              to_tensor=True,
+          ).to(device=self.device)
+          tgt_coarse_field = tgt_coarse_field.permute(0, 3, 1, 2).field_().up(coarse_field_mip-mip).permute(0,2,3,1)
+          # Get prev section's current alignment drift,
+          # using -tgt_coarse_field as approximation for inverse
+          drift_distance = self.profile_field(tgt_field-tgt_coarse_field, [tgt_patch])
+          drift_distance_fine_snap = (drift_distance // (2 ** mip)) * 2 ** mip
+          drift_distance_coarse_snap = (
+            drift_distance // (2 ** coarse_field_mip)
+          ) * 2 ** coarse_field_mip
 
     print(
       "Displacement adjustment TGT: {} px".format(
@@ -962,24 +971,17 @@ class Aligner:
       src_mask = torch.zeros_like(src_patch)
     src_mask[src_patch == 0] = 1
 
-    # norm_patch = None
-    # if is_metroem is False:
-    #   norm_patch = self.get_composite_image(
-    #     src_cv, [src_z], padded_src_bbox_fine, mip,
-    #     masks=[], to_tensor=True, normalizer=None
-    #   )
-
-    padded_tgt_bbox_fine = deepcopy(bbox)
-    padded_tgt_bbox_fine.uncrop(pad, mip)
-    tgt_patch = self.get_composite_image(
-      tgt_cv,
-      tgt_z,
-      padded_tgt_bbox_fine,
-      mip,
-      masks=[],
-      to_tensor=True,
-      normalizer=normalizer,
-    )
+    # padded_tgt_bbox_fine = deepcopy(bbox)
+    # padded_tgt_bbox_fine.uncrop(pad, mip)
+    # tgt_patch = self.get_composite_image(
+    #   tgt_cv,
+    #   tgt_z,
+    #   padded_tgt_bbox_fine,
+    #   mip,
+    #   masks=[],
+    #   to_tensor=True,
+    #   normalizer=normalizer,
+    # )
 
     print("src_patch.shape {}".format(src_patch.shape))
     print("tgt_patch.shape {}".format(tgt_patch.shape))
