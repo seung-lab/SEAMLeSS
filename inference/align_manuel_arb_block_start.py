@@ -73,6 +73,8 @@ if __name__ == "__main__":
         help="relative path to CSV file identifying params to use per z range",
     )
     parser.add_argument("--src_path", type=str)
+    parser.add_argument('--info_path', type=str,
+            help='path to CloudVolume to use as template info file')
     parser.add_argument("--chunk_size", type=int, default=1024)
     parser.add_argument('--src_mask', action='append',
             help='Pass string that contains a JSON dict. Fields: "cv", "mip", "val", "op"',
@@ -240,15 +242,20 @@ if __name__ == "__main__":
 
     final_render_mip = args.final_render_mip or args.mip
     # Create CloudVolume Manager
-    cm = CloudManager(
-        args.src_path,
-        max_mip,
-        pad,
-        provenance,
-        batch_size=1,
-        size_chunk=chunk_size,
-        batch_mip=mip,
-    )
+    if args.info_path:
+        template_path = args.info_path
+        cm = CloudManager(
+            template_path, max_mip, pad, provenance, batch_size=1,
+            size_chunk=chunk_size, batch_mip=mip,
+            create_info=False
+        )
+    else:
+        template_path = args.src_path
+        cm = CloudManager(
+            template_path, max_mip, pad, provenance, batch_size=1,
+            size_chunk=chunk_size, batch_mip=mip,
+            create_info=True
+        )
 
     # Create src CloudVolumes
     print("Create src & align image CloudVolumes")
