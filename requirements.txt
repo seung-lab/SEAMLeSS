@@ -1,25 +1,25 @@
-torch>=0.4.1 # for out of date CUDA versions, go to https://pytorch.org/ to install torch
-torchvision
-numpy>=1.16.2
+torch>=1.7.0
+numpy>=1.18.0
 scikit-image
 matplotlib
-cloud-volume
-# fpzip==1.1.2
+cloud-volume>=3.0
 h5py
-neuroglancer
 visdom
 pathos
 pyshorteners
 argcomplete
 pandas
-opencv-python
-setuptools>=34.0.0
+opencv-python-headless
 pyyaml
-task-queue==1.0.0
-# moviepy==0.2.3.5
-# imageio==2.4.1
-moviepy==0.2.3.5
-imageio==2.4.1
-six>=1.12.0
-python-dateutil==2.8.0
+task-queue~=1.0
+moviepy
+imageio
+imageio-ffmpeg
 kimimaro
+simplejson
+-e git+https://github.com/seung-lab/artificery.git@nkem-config-device#egg=artificery
+-e git+https://github.com/seung-lab/scalenet.git#egg=scalenet
+-e git+https://github.com/seung-lab/modelhouse.git@tmacrina-load-model-simple#egg=modelhouse
+-e git+https://github.com/seung-lab/metroem_release.git#egg=metroem
+-e git+https://github.com/seung-lab/procspec.git@tmacrina-fix-procs-import#egg=procspec
+-e git+https://github.com/seung-lab/torchfields.git#egg=torchfields

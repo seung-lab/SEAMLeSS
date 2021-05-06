@@ -61,10 +61,10 @@ class PredictImageTask(RegisteredTask):
     image = image[(slice(0,1),slice(0,1),)+tuple([slice(overlap[i]*(patch_range[i][0]>min_bound[i]),overlap[i]*(patch_range[i][0]>min_bound[i])+patch_size[i]) for i in [0,1]])]
     aligner.save_image(image, dst_cv, z, patch_bbox_out, mip)
 
-    with Storage(dst_cv.path) as stor:
-        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox_out.stringify(z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
+    # with Storage(dst_cv.path) as stor:
+    #     path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox_out.stringify(z))
+    #     stor.put_file(path, '')
+    #     print('Marked finished at {}'.format(path))
     end = time()
     diff = end - start
     print(':{:.3f} s'.format(diff))
@@ -107,14 +107,14 @@ class PredictMultiImageTask(RegisteredTask):
     aligner.save_image(image1, dst1_cv, z, patch_bbox_out, mip)
     aligner.save_image(image2, dst2_cv, z, patch_bbox_out, mip)
 
-    with Storage(dst1_cv.path) as stor:
-        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox_out.stringify(z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
-    with Storage(dst2_cv.path) as stor:
-        path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox_out.stringify(z))
-        stor.put_file(path, '')
-        print('Marked finished at {}'.format(path))
+    # with Storage(dst1_cv.path) as stor:
+    #     path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox_out.stringify(z))
+    #     stor.put_file(path, '')
+    #     print('Marked finished at {}'.format(path))
+    # with Storage(dst2_cv.path) as stor:
+    #     path = 'predict_image_done/{}/{}'.format(prefix, patch_bbox_out.stringify(z))
+    #     stor.put_file(path, '')
+    #     print('Marked finished at {}'.format(path))
     end = time()
     diff = end - start
     print(':{:.3f} s'.format(diff))
