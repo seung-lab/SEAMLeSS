@@ -102,9 +102,9 @@ def optimize_pre_post_ups(opti_loss, src, tgt, src_defects, tgt_defects, initial
                     new_best_ago -= 5
                 prev_loss.append(curr_loss)
 
-                optimizer.zero_grad()
-                loss_var.backward()
-                optimizer.step()
+            optimizer.zero_grad()
+            loss_var.backward()
+            optimizer.step()
             if lr_halfed_count >= 15:
                 break
 

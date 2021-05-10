@@ -34,7 +34,7 @@ class Model(nn.Module):
 
         if src.var() > 1e-4:
             pred_res = optimize(src, tgt, pred_res, torch.zeros_like(src),
-                                    torch.zeros_like(tgt), max_iter=100)
+                                    torch.zeros_like(tgt), max_iter=50)
             pass
         else:
             print ("Skipping low variance region")
@@ -45,7 +45,7 @@ class Model(nn.Module):
                                    min_overlap_px=400, filler=0)
         if src.var() > 1e-4:
             refinement_res = optimize(warped_tgt, tgt, refinement_res, torch.zeros_like(src),
-                                    torch.zeros_like(tgt), max_iter=70)
+                                    torch.zeros_like(tgt), max_iter=35)
             pass
         final_res = combine_residuals(pred_res, refinement_res, is_pix_res=True)
         final_res = pred_res

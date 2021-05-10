@@ -177,6 +177,11 @@ if __name__ == "__main__":
     parser.add_argument('--stitch_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--compose_suffix', type=str, default='', help='string to append to directory names')
     parser.add_argument('--final_render_suffix', type=str, default='', help='string to append to directory names')
+    parser.add_argument(
+        "--is_metroem",
+        action='store_true',
+        help="If True, is metroem"
+    )
 
     args = parse_args(parser)
     # Only compute matches to previous sections
@@ -205,6 +210,7 @@ if __name__ == "__main__":
     stitch_suffix = args.stitch_suffix
     skip_vv = args.skip_vv
     output_field_dtype = args.output_field_dtype
+    is_metroem = args.is_metroem
 
     final_render_mip = args.final_render_mip or args.mip
     # Create CloudVolume Manager
@@ -653,6 +659,7 @@ if __name__ == "__main__":
                     coarse_field_cv=coarse_field_cv,
                     coarse_field_mip=coarse_field_mip,
                     tgt_field_cv=tgt_field,
+                    is_metroem=is_metroem
                 )
                 yield from t
 
@@ -724,6 +731,7 @@ if __name__ == "__main__":
                         coarse_field_cv=coarse_field_cv,
                         coarse_field_mip=coarse_field_mip,
                         tgt_field_cv=tgt_field,
+                        is_metroem=is_metroem
                     )
                     yield from t
 
@@ -851,7 +859,8 @@ if __name__ == "__main__":
                                         cur_field_cv=block_vvote_field,
                                         coarse_field_cv=coarse_field_cv,
                                         coarse_field_mip=coarse_field_mip,
-                                        prev_field_z=tgt_z,stitch=True,unaligned_cv=src)
+                                        prev_field_z=tgt_z,stitch=True,unaligned_cv=src,
+                                        is_metroem=is_metroem)
                     yield from t
 
     class StitchAlignVectorVote(object):
