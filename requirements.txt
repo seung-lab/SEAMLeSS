@@ -1,5 +1,5 @@
 torch>=1.7.0
-numpy>=1.18.0
+numpy>=1.20.0
 scikit-image
 matplotlib
 cloud-volume>=3.0
@@ -17,9 +17,11 @@ imageio
 imageio-ffmpeg
 kimimaro
 simplejson
+urllib3[secure]>=1.26.3
+requests>=2.25.1
 -e git+https://github.com/seung-lab/artificery.git@nkem-config-device#egg=artificery
 -e git+https://github.com/seung-lab/scalenet.git#egg=scalenet
 -e git+https://github.com/seung-lab/modelhouse.git@tmacrina-load-model-simple#egg=modelhouse
--e git+https://github.com/seung-lab/metroem_release.git@tmacrina-dataset-handling#egg=metroem
+-e git+https://github.com/seung-lab/metroem_release.git#egg=metroem
 -e git+https://github.com/seung-lab/procspec.git@tmacrina-fix-procs-import#egg=procspec
 -e git+https://github.com/seung-lab/torchfields.git@master#egg=torchfields
