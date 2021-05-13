@@ -305,15 +305,15 @@ if __name__ == "__main__":
                 bbox_mip = int(r[6])
                 model_path = join("..", "models", r[7])
                 tgt_radius = int(r[8])
+                skip = bool(int(r[9]))
                 while z_start - last_alignment_start > (block_size + minimum_block_size):
                     last_alignment_start = last_alignment_start + block_size
                     alignment_z_starts.append(last_alignment_start)
-                if z_start > last_alignment_start:
+                if z_start > last_alignment_start and not skip:
                     last_alignment_start = z_start
                     alignment_z_starts.append(z_start)
                 if tgt_radius > 1 and skip_vv:
                     raise ValueError('Cannot have both a tgt_radius greater than 1 and skip vv.')
-                skip = bool(int(r[9]))
                 bbox = BoundingBox(x_start, x_stop, y_start, y_stop, bbox_mip, max_mip)
                 # print('{},{}'.format(z_start, z_stop))
                 for z in range(z_start, z_stop):
