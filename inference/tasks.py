@@ -360,7 +360,8 @@ class RenderMasksTask(RegisteredTask):
       masked_result = aligner.get_masks(masks, src_z, new_bbox, dst_mip, mask_op=self.blackout_op)
       masked_result = masked_result.float()
       image = grid_sample(masked_result, field, padding_mode='zeros')
-      image = image[:,:,pad:-pad,pad:-pad]
+      if pad > 0:
+        image = image[:,:,pad:-pad,pad:-pad]
       image = image.cpu().numpy()
       aligner.save_image(image, mask_dst_cv, dst_z, patch_bbox, dst_mip)
       end = time()
@@ -748,7 +749,8 @@ class CloudUpsampleFieldTask(RegisteredTask):
         to_tensor=True,
       ).to(device=aligner.device)
       field = upsample_field(field, src_mip, dst_mip)
-      field = field[:, pad:-pad, pad:-pad, :]
+      if pad > 0:
+        field = field[:, pad:-pad, pad:-pad, :]
       field = field.cpu().numpy()
       aligner.save_field(field, dst_cv, dst_z, patch_bbox, dst_mip, relative=False)
     end = time()
@@ -1248,7 +1250,9 @@ class ComputeSmoothness(RegisteredTask):
     pad = 256
     penalty = aligner.compute_smoothness_chunk(src_cv, src_z, bbox, mip, pad)
     penalty = penalty.data.cpu().numpy()
-    aligner.save_image(penalty[:,:,pad:-pad,pad:-pad], dst_cv, dst_z, bbox, mip,
+    if pad > 0:
+      penalty = penalty[:,:,pad:-pad,pad:-pad]
+    aligner.save_image(penalty, dst_cv, dst_z, bbox, mip,
                        to_uint8=False)
     end = time()
     diff = end - start

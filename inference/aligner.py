@@ -752,7 +752,8 @@ class Aligner:
 
       print("GPU memory allocated: {}, cached: {}".format(torch.cuda.memory_allocated(), torch.cuda.memory_cached()))
       field = self.rel_to_abs_residual(field, mip)
-      field = field[:,pad:-pad,pad:-pad,:]
+      if pad > 0:
+        field = field[:,pad:-pad,pad:-pad,:]
       field += distance.to(device=self.device)
       field = field.data.cpu().numpy()
       # clear unused, cached memory so that other processes can allocate it
@@ -988,14 +989,16 @@ class Aligner:
 
     if write_src_patch_cv is not None:
       src_patch_clone = torch.clone(src_patch)
-      src_patch_clone = src_patch_clone[:,pad:-pad,pad:-pad,:]
+      if pad > 0:
+        src_patch_clone = src_patch_clone[:,pad:-pad,pad:-pad,:]
       src_patch_clone = src_patch_clone.cpu().numpy()
       src_patch_clone = np.transpose()
       self.save_image(src_patch_clone, write_src_patch_cv, bbox, mip)
 
     if write_tgt_patch_cv is not None:
       tgt_patch_clone = torch.clone(tgt_patch)
-      tgt_patch_clone = tgt_patch_clone[:,pad:-pad,pad:-pad,:]
+      if pad > 0:
+        tgt_patch_clone = tgt_patch_clone[:,pad:-pad,pad:-pad,:]
       tgt_patch_clone = tgt_patch_clone.cpu().numpy()
       tgt_patch_clone = np.transpose()
       self.save_image(tgt_patch_clone, write_tgt_patch_cv, bbox, mip)
@@ -1061,7 +1064,8 @@ class Aligner:
         )
 
       accum_field = self.rel_to_abs_residual(accum_field, mip)
-      accum_field = accum_field[:, pad:-pad, pad:-pad, :]
+      if pad > 0:
+        accum_field = accum_field[:, pad:-pad, pad:-pad, :]
       accum_field += combined_distance_fine_snap.to(device=self.device)
       
       if torch.isnan(accum_field).any():
@@ -1194,7 +1198,8 @@ class Aligner:
       # use optimizer if no model provided
       invf = invert(f)
     invf = self.rel_to_abs_residual(invf, mip=mip)
-    invf = invf[:,pad:-pad, pad:-pad,:]
+    if pad > 0:
+      invf = invf[:,pad:-pad, pad:-pad,:]
     end = time()
     print (": {} sec".format(end - start))
     invf = invf.data.cpu().numpy()
@@ -1286,14 +1291,18 @@ class Aligner:
                                       to_tensor=True, normalizer=None,
                                       mask_op=blackout_mask_op)
         image = grid_sample(image, field, padding_mode='zeros')
-        image = image[:,:,pad:-pad,pad:-pad]
+        if pad > 0:
+          image = image[:,:,pad:-pad,pad:-pad]
 
       if return_mask:
           mask = self.get_masks(masks, image_z, new_bbox,
                                 dst_mip=image_mip, mask_op=return_mask_op)
           if mask is not None:
               warped_mask = grid_sample(mask.float(), field, padding_mode='zeros')
-              cropped_warped_mask = warped_mask[:,:,pad:-pad,pad:-pad]
+              if pad > 0:
+                cropped_warped_mask = warped_mask[:,:,pad:-pad,pad:-pad]
+              else:
+                cropped_warped_mask = warped_mask
           else:
               cropped_warped_mask = None
           return image, cropped_warped_mask
@@ -1343,7 +1352,10 @@ class Aligner:
                            relative=False, to_tensor=True)
         if g_mip > dst_mip:
             g = upsample_field(g, g_mip, dst_mip)
-        return g[:,pad:-pad,pad:-pad,:]
+        if pad > 0:
+          return g[:,pad:-pad,pad:-pad,:]
+        else:
+          return g
 
       distance = self.profile_field(f)
       distance = (distance // (2 ** g_mip)) * 2 ** g_mip
@@ -1361,7 +1373,8 @@ class Aligner:
       h = compose_fields(f, g)
       h = self.rel_to_abs_residual(h, dst_mip)
       h += distance.to(device=self.device)
-      h = h[:,pad:-pad,pad:-pad,:]
+      if pad > 0:
+        h = h[:,pad:-pad,pad:-pad,:]
 
       if affine is not None:
         # PyTorch conventions are column, row order (y, then x) so flip
@@ -1433,7 +1446,9 @@ class Aligner:
                        relative=False, to_tensor=True)
     f = f * f_factor
     if len(field_list) == 0:
+      if pad > 0:
         return f[:, pad:-pad, pad:-pad, :]
+      return f
 
     # skip any empty / identity fields
     while is_identity(f):
@@ -1445,7 +1460,9 @@ class Aligner:
                            relative=False, to_tensor=True)
         f = f * f_factor
         if len(field_list) == 0:
+          if pad > 0:
             return f[:, pad:-pad, pad:-pad, :]
+          return f
 
     if f_mip > dst_mip:
         f = upsample_field(f, f_mip, dst_mip)
@@ -1475,7 +1492,9 @@ class Aligner:
         h = self.rel_to_abs_residual(h, dst_mip)
         h += distance.to(device=self.device)
         f = h
-    return f[:, pad:-pad, pad:-pad, :]
+    if pad > 0:
+      return f[:, pad:-pad, pad:-pad, :]
+    return f
 
   def cloudsample_image_batch(self, z_range, image_cv, field_cv,
                               bbox, image_mip, field_mip,
