@@ -1020,6 +1020,7 @@ class Aligner:
         )
       # model produces field in relative coordinates
       if is_metroem:
+        src_patch[src_mask == 0] = 0
         finetune = True
         if torch.sum(src_patch) == 0:
           finetune = False
