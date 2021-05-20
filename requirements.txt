@@ -1,6 +1,5 @@
-requests>2.23
-urllib3>=1.26.3
-torch>=1.6.0
+urllib3==1.26.3
+requests==2.25.1
 torchvision
 torchfields
 numpy>=1.20.1
@@ -22,3 +21,4 @@ kimimaro
 simplejson
 -e git+https://github.com/seung-lab/artificery.git@nkem-config-device#egg=artificery
 -e git+https://github.com/seung-lab/scalenet.git#egg=scalenet
+git+git://github.com/seung-lab/torchfields
