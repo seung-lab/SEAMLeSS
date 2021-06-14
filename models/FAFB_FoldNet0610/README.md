@@ -1,4 +1,4 @@
-# FAFB FoldNet0515
+# FAFB FoldNet0610
 
 Trained by Alexander Bae (jabae@princeton.edu)  
   
